@@ -224,10 +224,10 @@ struct MessageBodyView: View {
 
     private func render(_ token: BodyToken) -> Text {
         switch token {
-        case .text(let text): return Text(text)
-        case .bold(let text): return Text(text).bold()
-        case .italic(let text): return Text(text).italic()
-        case .strike(let text): return Text(text).strikethrough()
+        case .text(let text): return Text(Emoji.replaceShortcodes(text))
+        case .bold(let text): return Text(Emoji.replaceShortcodes(text)).bold()
+        case .italic(let text): return Text(Emoji.replaceShortcodes(text)).italic()
+        case .strike(let text): return Text(Emoji.replaceShortcodes(text)).strikethrough()
         case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
         case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
         case .link(let url, let label):

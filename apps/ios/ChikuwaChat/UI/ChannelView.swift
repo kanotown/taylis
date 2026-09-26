@@ -343,6 +343,7 @@ struct MessageRow: View {
     @State private var confirmingDelete = false
     @State private var showTime = false
     @State private var showingProfile = false
+    @State private var pickingReaction = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -419,6 +420,7 @@ struct MessageRow: View {
                 ForEach(reactionPalette, id: \.self) { emoji in
                     Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
                 }
+                Button("その他のリアクション…", systemImage: "face.smiling") { pickingReaction = true }
                 if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
                 Button(store.isBookmarked(message.id) ? "保存を解除" : "あとで見る (保存)", systemImage: store.isBookmarked(message.id) ? "bookmark.slash" : "bookmark") {
                     Task { await controller.toggleBookmark(message.id) }
@@ -430,6 +432,9 @@ struct MessageRow: View {
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
             }
+        }
+        .sheet(isPresented: $pickingReaction) {
+            EmojiPickerView { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
         }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet(controller: controller, userId: message.senderId) { id in
@@ -504,11 +509,17 @@ struct ComposerView: View {
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var showCamera = false
+    @State private var showEmojiPicker = false
     @FocusState private var focused: Bool
 
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
         return Mentions.candidates(query, users: users)
+    }
+    /// `:tada` completes to an emoji (M11f) when no mention is being typed.
+    private var emojiCandidates: [EmojiEntry] {
+        guard candidates.isEmpty, let query = Emoji.query(text) else { return [] }
+        return Emoji.candidates(query)
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -539,6 +550,22 @@ struct ComposerView: View {
             PendingAttachmentsView(items: pending) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }
+            if !emojiCandidates.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(emojiCandidates, id: \.shortcode) { entry in
+                            Button { textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) } label: {
+                                Text(entry.glyph) + Text("  :\(entry.shortcode):").foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .padding(.top, 6)
+            }
             if !candidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -562,6 +589,7 @@ struct ComposerView: View {
                         Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
                         if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
                         Button("ファイル", systemImage: "folder") { showFileImporter = true }
+                        Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true }
                     } label: {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 30))
@@ -601,6 +629,7 @@ struct ComposerView: View {
         }
         .background(Color(.systemBackground))
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
+        .sheet(isPresented: $showEmojiPicker) { EmojiPickerView { glyph in textBinding.wrappedValue = text + glyph } }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }

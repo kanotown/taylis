@@ -45,6 +45,7 @@ fun MessageMenu(
     onPin: (() -> Unit)? = null,
     bookmarked: Boolean = false,
     onBookmark: (() -> Unit)? = null,
+    onMoreReactions: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -52,6 +53,7 @@ fun MessageMenu(
                 Text(emoji, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onReact(emoji); onDismiss() }.padding(6.dp))
             }
         }
+        if (onMoreReactions != null) DropdownMenuItem(text = { Text("その他のリアクション…") }, onClick = { onDismiss(); onMoreReactions() })
         HorizontalDivider()
         if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
         if (onBookmark != null) DropdownMenuItem(text = { Text(if (bookmarked) "保存を解除" else "あとで見る (保存)") }, onClick = { onDismiss(); onBookmark() })

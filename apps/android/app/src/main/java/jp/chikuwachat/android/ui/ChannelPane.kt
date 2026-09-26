@@ -2,6 +2,7 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.PushPin
@@ -240,6 +241,7 @@ fun MessageRow(
     var confirmingDelete by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var showingProfile by remember { mutableStateOf(false) }
+    var pickingReaction by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
@@ -297,8 +299,10 @@ fun MessageRow(
             onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
+            onMoreReactions = { pickingReaction = true },
         )
     }
+    if (pickingReaction) EmojiPickerDialog(onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
@@ -334,6 +338,19 @@ fun ConversationComposer(controller: AppController, channelId: String, parentId:
         if (uploading > 0) Text("添付をアップロード中…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp))
         val query = Mentions.query(draft)
         val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
+        // `:tada` completes to an emoji (M11f) when no mention is being typed.
+        val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { Emoji.candidates(it) } ?: emptyList() else emptyList()
+        var pickingEmoji by remember { mutableStateOf(false) }
+        if (pickingEmoji) EmojiPickerDialog(onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
+        if (emojiHits.isNotEmpty()) {
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(emojiHits, key = { it.shortcode }) { entry ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText(Emoji.complete(draft, entry.glyph)) }) {
+                        Text(entry.glyph + "  :" + entry.shortcode + ":", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                }
+            }
+        }
         if (candidates.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(candidates, key = { it.username }) { candidate ->
@@ -346,6 +363,7 @@ fun ConversationComposer(controller: AppController, channelId: String, parentId:
         PendingAttachments(pendingUploads) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
+            IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
             OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
             IconButton(
                 onClick = {
