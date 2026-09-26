@@ -10,6 +10,9 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonNull
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.SearchOut
@@ -380,6 +383,22 @@ class AppController(private val app: Application) {
         store.setNotification(channelId, pref.level, pref.mutedUntil)
         true
     }.getOrElse { error = describe(it); false }
+
+    /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
+    suspend fun updateProfile(fields: Map<String, String?>): Boolean = runCatching {
+        val body = buildJsonObject { fields.forEach { (key, value) -> if (value == null) put(key, JsonNull) else put(key, value) } }
+        val updated = api!!.updateProfile(body)
+        me = updated
+        store.setMe(updated)
+        store.upsertUser(updated.asPublic)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** Open (or create) the DM with one user; returns its channel id. */
+    suspend fun openDmWith(userId: String): String? {
+        store.channels.values.firstOrNull { it.channel.type == "dm" && userId in (it.channel.dmUserIds ?: emptyList()) && (it.channel.dmUserIds?.size ?: 0) <= 2 }?.let { return it.id }
+        return createDm(listOf(userId)).getOrElse { error = describe(it); null }
+    }
 
     suspend fun updateDisplayName(displayName: String): Boolean = runCatching {
         val updated = api!!.updateMe(displayName = displayName.trim())
