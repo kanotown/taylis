@@ -24,6 +24,9 @@ struct ProfileSheet: View {
                             Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
                             if let title = user?.title, !title.isEmpty { Text(title).font(.footnote).foregroundStyle(.secondary) }
                             Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)
+                            if DND.isActive(user) {
+                                Text("🔕 通知を一時停止中" + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
@@ -74,6 +77,12 @@ struct StatusEditorView: View {
     @State private var text = ""
     @State private var expiry: Expiry = .never
     @State private var busy = false
+    // M12c: a pause applies at once; quiet hours are saved with the form.
+    @State private var quietOn = false
+    @State private var quietStart = Date()
+    @State private var quietEnd = Date()
+    @State private var quietDays: Set<Int> = Set(0..<7)
+    @State private var quietLoaded = false
 
     enum Expiry: String, CaseIterable, Identifiable {
         case never, halfHour, hour, fourHours, today, week
@@ -113,6 +122,39 @@ struct StatusEditorView: View {
         activeStatus(controller.store.me.map { controller.store.users[$0.id] ?? $0.asPublic })
     }
 
+    private var meNow: UserPublic? { controller.store.me.map { controller.store.users[$0.id] ?? $0.asPublic } }
+    private var pausedUntil: String? {
+        guard let raw = meNow?.dndUntil, let until = parseIsoDate(raw), until > Date() else { return nil }
+        return raw
+    }
+    private var quietDraft: QuietHours? {
+        guard quietOn else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.component(.hour, from: quietStart) * 60 + calendar.component(.minute, from: quietStart)
+        let end = calendar.component(.hour, from: quietEnd) * 60 + calendar.component(.minute, from: quietEnd)
+        return QuietHours(start: DND.hhmm(start), end: DND.hhmm(end), days: quietDays.sorted(), tz: TimeZone.current.identifier)
+    }
+    private var quietChanged: Bool {
+        let existing = meNow?.quietHours
+        if quietOn != (existing != nil) { return true }
+        guard let draft = quietDraft, let existing else { return false }
+        return draft.start != existing.start || draft.end != existing.end || Set(draft.days) != Set(existing.days) || draft.tz != existing.tz
+    }
+    private func loadQuiet() {
+        guard !quietLoaded else { return }
+        quietLoaded = true
+        let calendar = Calendar.current
+        if let hours = meNow?.quietHours {
+            quietOn = true
+            quietStart = calendar.date(bySettingHour: DND.minutes(hours.start) / 60, minute: DND.minutes(hours.start) % 60, second: 0, of: Date()) ?? Date()
+            quietEnd = calendar.date(bySettingHour: DND.minutes(hours.end) / 60, minute: DND.minutes(hours.end) % 60, second: 0, of: Date()) ?? Date()
+            quietDays = Set(hours.days.isEmpty ? Array(0..<7) : hours.days)
+        } else {
+            quietStart = calendar.date(bySettingHour: 22, minute: 0, second: 0, of: Date()) ?? Date()
+            quietEnd = calendar.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -136,6 +178,41 @@ struct StatusEditorView: View {
                     }
                     .pickerStyle(.menu)
                 }
+                Section("通知を一時停止") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(DND.Pause.allCases) { pause in
+                                Button(pause.label) {
+                                    Task { busy = true; _ = await controller.updateProfile(dndUntil: .some(ISO8601DateFormatter().string(from: pause.until()))); busy = false }
+                                }
+                                .buttonStyle(.bordered).controlSize(.small).disabled(busy)
+                            }
+                        }
+                    }
+                    if let pausedUntil {
+                        Button("🔕 \(expiryLabel(pausedUntil) ?? "") · 解除") {
+                            Task { busy = true; _ = await controller.updateProfile(dndUntil: .some(nil)); busy = false }
+                        }
+                        .disabled(busy)
+                    }
+                }
+                Section("おやすみ時間") {
+                    Toggle("毎日この時間帯は通知を止める", isOn: $quietOn)
+                    if quietOn {
+                        DatePicker("開始", selection: $quietStart, displayedComponents: .hourAndMinute)
+                        DatePicker("終了", selection: $quietEnd, displayedComponents: .hourAndMinute)
+                        HStack(spacing: 6) {
+                            ForEach(0..<7, id: \.self) { day in
+                                Button(DND.dayLabels[day]) {
+                                    if quietDays.contains(day) { quietDays.remove(day) } else { quietDays.insert(day) }
+                                }
+                                .buttonStyle(.bordered).controlSize(.small)
+                                .tint(quietDays.contains(day) ? .accentColor : .secondary)
+                            }
+                        }
+                        Text("タイムゾーン: \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 if current != nil {
                     Section {
                         Button("ステータスをクリア", role: .destructive) {
@@ -154,16 +231,25 @@ struct StatusEditorView: View {
                         Task {
                             busy = true
                             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let e = emoji.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if await controller.updateProfile(statusText: .some(trimmed.isEmpty ? nil : trimmed), statusEmoji: .some(e.isEmpty ? nil : e), statusExpiresAt: .some(iso)) { dismiss() }
+                            let e = emoji.trimmingCharacters(in: .whitespaces)
+                            let hasStatus = !trimmed.isEmpty || !e.isEmpty
+                            let quiet: QuietHours?? = quietChanged ? .some(quietDraft) : nil
+                            let ok = await controller.updateProfile(
+                                statusText: hasStatus ? .some(trimmed.isEmpty ? nil : trimmed) : nil,
+                                statusEmoji: hasStatus ? .some(e.isEmpty ? nil : e) : nil,
+                                statusExpiresAt: hasStatus ? .some(iso) : nil,
+                                quietHours: quiet
+                            )
+                            if ok { dismiss() }
                             busy = false
                         }
                     }
-                    .disabled(busy || (emoji.trimmingCharacters(in: .whitespaces).isEmpty && text.trimmingCharacters(in: .whitespaces).isEmpty))
+                    .disabled(busy || (emoji.trimmingCharacters(in: .whitespaces).isEmpty && text.trimmingCharacters(in: .whitespaces).isEmpty && !quietChanged))
                 }
             }
             .onAppear {
                 if let current { emoji = current.emoji; text = current.text }
+                loadQuiet()
             }
         }
     }
@@ -173,8 +259,11 @@ struct StatusEditorView: View {
 struct StatusEmojiView: View {
     let user: UserPublic?
     var body: some View {
-        if let status = activeStatus(user), !status.emoji.isEmpty {
-            Text(status.emoji).font(.caption).accessibilityLabel(status.text)
+        let status = activeStatus(user)
+        let quiet = DND.isActive(user)
+        if (status != nil && !status!.emoji.isEmpty) || quiet {
+            Text((status?.emoji ?? "") + (quiet ? "🔕" : "")).font(.caption)
+                .accessibilityLabel([status?.text, quiet ? "通知を一時停止中" : nil].compactMap { $0 }.joined(separator: " · "))
         }
     }
 }

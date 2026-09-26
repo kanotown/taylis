@@ -15,6 +15,17 @@ struct UserPublic: Codable, Identifiable, Equatable, Hashable {
     var statusText: String? = nil
     var statusEmoji: String? = nil
     var statusExpiresAt: String? = nil
+    /// Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name).
+    var dndUntil: String? = nil
+    var quietHours: QuietHours? = nil
+}
+
+/// A daily window (in the user's zone) during which pushes are held back (M12c).
+struct QuietHours: Codable, Equatable, Hashable {
+    var start: String
+    var end: String
+    var days: [Int]
+    var tz: String
 }
 
 struct UserMe: Codable, Equatable {
@@ -31,10 +42,13 @@ struct UserMe: Codable, Equatable {
     var statusText: String? = nil
     var statusEmoji: String? = nil
     var statusExpiresAt: String? = nil
+    var dndUntil: String? = nil
+    var quietHours: QuietHours? = nil
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
-                   title: title, statusText: statusText, statusEmoji: statusEmoji, statusExpiresAt: statusExpiresAt)
+                   title: title, statusText: statusText, statusEmoji: statusEmoji, statusExpiresAt: statusExpiresAt,
+                   dndUntil: dndUntil, quietHours: quietHours)
     }
 }
 
