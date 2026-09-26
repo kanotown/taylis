@@ -173,3 +173,28 @@ describe("SyncEngine", () => {
     expect(restored.getChannel(channel.id)?.syncedSeq).toBe(2);
   });
 });
+
+describe("channel browsing", () => {
+  it("lists public channels created before login and reflects joining", async () => {
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const bob = server.addUser("bob");
+    const general = server.createChannel("general", alice.id);
+    const secret = server.createChannel("secret", alice.id, "private");
+    const store = new Store();
+    const engine = new SyncEngine(
+      { api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store, getAccessToken: () => "t", sleep: async () => {} },
+      { pageSize: 3 },
+    );
+    await engine.start();
+    await engine.idle();
+    expect(store.getChannel(general.id)?.isMember).toBe(false); // browsable
+    expect(store.getChannel(secret.id)).toBeUndefined(); // private channels stay invisible
+
+    server.join(general.id, bob.id);
+    server.emitMembership(general.id, bob.id);
+    await engine.idle();
+    expect(store.getChannel(general.id)?.isMember).toBe(true);
+    engine.stop();
+  });
+});

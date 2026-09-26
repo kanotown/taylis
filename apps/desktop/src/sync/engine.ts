@@ -14,6 +14,8 @@ export interface SyncApi {
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
   postMessage(channelId: string, clientMsgId: string, body: string): Promise<{ message: MessageOut; created: boolean }>;
+  /** Public channels the user has not joined (for the browse list). Optional. */
+  publicChannels?(): Promise<ChannelOut[]>;
 }
 
 export interface WsLike {
@@ -154,6 +156,7 @@ export class SyncEngine {
       // Frames that arrive from here on are queued behind this step (= buffered, §7.2).
       const bootstrap = await this.deps.api.bootstrap();
       this.applyBootstrap(bootstrap);
+      await this.loadBrowsableChannels();
       if (this.currentChannelId) await this.catchUp(this.currentChannelId);
       this.reconnectAttempt = 0;
       this.setStatus("online");
@@ -256,6 +259,24 @@ export class SyncEngine {
     }
     for (const channel of [...store.channels.values()]) {
       if (channel.isMember && !seen.has(channel.id)) store.removeChannel(channel.id); // no longer a member
+    }
+  }
+
+  /** Public channels I am not a member of; bootstrap only lists my own channels. */
+  async loadBrowsableChannels(): Promise<void> {
+    if (!this.deps.api.publicChannels) return;
+    try {
+      const store = this.deps.store;
+      const listed = await this.deps.api.publicChannels();
+      const listedIds = new Set(listed.map((c) => c.id));
+      for (const channel of listed) {
+        if (!store.getChannel(channel.id)) store.upsertChannel(channel, { isMember: false });
+      }
+      for (const channel of [...store.channels.values()]) {
+        if (!channel.isMember && !listedIds.has(channel.id)) store.removeChannel(channel.id);
+      }
+    } catch (err) {
+      console.warn("could not load public channels", err);
     }
   }
 
