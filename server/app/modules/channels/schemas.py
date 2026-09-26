@@ -1,0 +1,58 @@
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+ChannelType = Literal["public", "private", "dm", "group_dm"]
+CHANNEL_NAME_PATTERN = r"^[^\s#@/]{1,80}$"
+
+
+class ChannelCreate(BaseModel):
+    type: Literal["public", "private"] = "public"
+    name: str = Field(min_length=1, max_length=80, pattern=CHANNEL_NAME_PATTERN)
+    topic: str | None = Field(default=None, max_length=250)
+    purpose: str | None = Field(default=None, max_length=250)
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = Field(
+        default=None, min_length=1, max_length=80, pattern=CHANNEL_NAME_PATTERN
+    )
+    topic: str | None = Field(default=None, max_length=250)
+    purpose: str | None = Field(default=None, max_length=250)
+
+
+class MembershipOut(BaseModel):
+    role: str
+    joined_at: datetime
+
+
+class ChannelOut(BaseModel):
+    id: UUID
+    type: ChannelType
+    name: str | None
+    topic: str | None
+    purpose: str | None
+    archived: bool
+    created_by: UUID | None
+    last_seq: int
+    last_message_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    membership: MembershipOut | None
+    dm_user_ids: list[UUID] | None
+
+
+class MemberOut(BaseModel):
+    user_id: UUID
+    role: str
+    joined_at: datetime
+
+
+class MemberAdd(BaseModel):
+    user_id: UUID
+
+
+class DmCreate(BaseModel):
+    user_ids: list[UUID] = Field(min_length=1, max_length=9)

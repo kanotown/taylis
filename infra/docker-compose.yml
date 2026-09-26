@@ -1,0 +1,76 @@
+name: chikuwachat
+
+services:
+  db:
+    image: groonga/pgroonga:latest-alpine-17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chikuwa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-chikuwa}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # 開発用にホストへ公開する (localhost のみ)。本番では docker-compose.prod.yml で打ち消す。
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chikuwa} -d ${POSTGRES_DB:-chikuwa}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  objectstore:
+    image: versity/versitygw:v1.8.0
+    command: ["posix", "/data"]
+    environment:
+      ROOT_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-chikuwa}
+      ROOT_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in infra/.env}
+      VGW_REGION: ${S3_REGION:-us-east-1}
+    volumes:
+      - objectstore-data:/data
+    restart: unless-stopped
+
+  app:
+    build: ../server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chikuwa}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chikuwa}
+      S3_ENDPOINT: http://objectstore:7070
+      S3_BUCKET: ${S3_BUCKET:-chikuwa}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-chikuwa}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_REGION: ${S3_REGION:-us-east-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      objectstore:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8000}:8000"
+    # M5 で APNs 鍵をマウントする:
+    # volumes:
+    #   - ./secrets/AuthKey_XXXXXXXXXX.p8:/run/secrets/apns_key.p8:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    profiles: ["proxy"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CHAT_DOMAIN: ${CHAT_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  objectstore-data:
+  caddy-data:
+  caddy-config:

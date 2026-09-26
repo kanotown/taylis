@@ -1,0 +1,28 @@
+{$CHAT_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options nosniff
+
+	@uploads path /api/v1/attachments*
+	handle @uploads {
+		request_body {
+			max_size 110MB
+		}
+		reverse_proxy app:8000
+	}
+
+	handle /api/* {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy app:8000
+	}
+
+	handle /healthz {
+		reverse_proxy app:8000
+	}
+
+	handle {
+		respond "ChikuwaChat" 200
+	}
+}
