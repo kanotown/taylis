@@ -338,7 +338,7 @@ export class SyncEngine {
       }
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
-        this.applyReadState(data.channel_id, data);
+        this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
         return;
       }
       case "session.revoked":
@@ -407,12 +407,13 @@ export class SyncEngine {
     store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
   }
 
-  private applyReadState(channelId: string, state: ReadStateOut): void {
+  private applyReadState(channelId: string, state: ReadStateOut, allowDecrease = false): void {
     const channel = this.deps.store.getChannel(channelId);
     if (!channel) return;
-    // The server's position wins, downwards too (another device may have marked messages unread).
+    // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
+    // a mark-as-unread (reason "set") moves the position down as well.
     this.deps.store.updateChannel(channelId, {
-      lastReadSeq: state.last_read_seq,
+      lastReadSeq: allowDecrease ? state.last_read_seq : Math.max(channel.lastReadSeq, state.last_read_seq),
       unreadCount: state.unread_count,
       mentionCount: state.mention_count,
     });
@@ -471,7 +472,7 @@ export class SyncEngine {
     const pending = (async () => {
       try {
         const state = await this.deps.api.markRead(channelId, target, "set");
-        await this.enqueue(async () => this.applyReadState(channelId, state));
+        await this.enqueue(async () => this.applyReadState(channelId, state, true));
       } catch {
         // the position moved locally; bootstrap or the next mark reconciles
       }

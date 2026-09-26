@@ -42,7 +42,25 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   };
 
   const positioned = useRef(false);
-  const scrollToBottom = () => bottom.current?.scrollIntoView({ block: "end" });
+  const content = useRef<HTMLDivElement>(null);
+  // Scroll the container itself (scrollIntoView would also move scrollable ancestors).
+  const scrollToBottom = () => {
+    const el = container.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+  // Images loading, the composer growing or the window resizing change heights after we positioned:
+  // stay pinned to the bottom when the reader was there.
+  useEffect(() => {
+    const el = container.current;
+    const inner = content.current;
+    if (!el || !inner || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (atBottom.current && positioned.current && !anchor.current) scrollToBottom();
+    });
+    observer.observe(el);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
   const markVisible = () => {
     const el = container.current;
     if (!el || focus || !positioned.current || !document.hasFocus()) return;
@@ -116,6 +134,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll}>
+        <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
             <span>検索位置の前後の会話</span>
@@ -164,6 +183,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           return <MessageRow key={item.message.id} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread} />;
         })}
         <div ref={bottom} />
+        </div>
       </div>
       {!focus && showJump && (
         <button

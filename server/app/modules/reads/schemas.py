@@ -19,3 +19,6 @@ class ReadStateOut(BaseModel):
 
 class ReadUpdatedData(ReadStateOut):
     channel_id: UUID
+    # "advance": monotonic; clients merge with max so a stale event cannot lower a newer local
+    # position. "set": mark as unread; clients take the position as is, downwards too.
+    reason: Literal["advance", "set"] = "advance"

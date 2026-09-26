@@ -49,7 +49,11 @@ export class AppController {
     return () => this.listeners.delete(listener);
   }
 
+  /** Bumped on every emit so useSyncExternalStore sees controller-only changes (editing, error, focus). */
+  version = 0;
+
   private emit(): void {
+    this.version += 1;
     for (const listener of this.listeners) listener();
   }
 

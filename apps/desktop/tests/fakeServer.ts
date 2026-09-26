@@ -151,7 +151,7 @@ export class FakeServer {
     if (mode === "set" ? target !== current : target > current) {
       this.readPositions.set(key, target);
       const state = this.readState(userId, channelId);
-      this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "read.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, ...state } });
+      this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "read.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, reason: mode, ...state } });
       return state;
     }
     return this.readState(userId, channelId);

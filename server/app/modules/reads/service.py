@@ -5,6 +5,7 @@ authorised. The channel row is passed in where the clamp to ``last_seq`` is need
 """
 
 import uuid
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,7 +58,7 @@ async def advance_in_tx(
 ) -> ReadStateOut:
     """GREATEST(current, min(seq, last_seq)); emits read.updated to the user's devices on change."""
     last_read_seq, changed = await repo.advance(db, user_id, channel_id, min(seq, last_seq))
-    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed)
+    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed, "advance")
 
 
 async def set_in_tx(
@@ -65,11 +66,16 @@ async def set_in_tx(
 ) -> ReadStateOut:
     """Exact position clamped to [0, last_seq] (mark as unread); devices follow via read.updated."""
     last_read_seq, changed = await repo.set_position(db, user_id, channel_id, min(seq, last_seq))
-    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed)
+    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed, "set")
 
 
 async def _state_after_change(
-    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, last_read_seq: int, changed: bool
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    last_read_seq: int,
+    changed: bool,
+    reason: Literal["advance", "set"],
 ) -> ReadStateOut:
     unread, mentions = await repo.counts(db, user_id, channel_id, last_read_seq)
     state = ReadStateOut(last_read_seq=last_read_seq, unread_count=unread, mention_count=mentions)
@@ -80,8 +86,8 @@ async def _state_after_change(
             audience_type="user",
             audience_id=user_id,
             channel_id=channel_id,
-            payload=ReadUpdatedData(channel_id=channel_id, **state.model_dump()).model_dump(
-                mode="json"
-            ),
+            payload=ReadUpdatedData(
+                channel_id=channel_id, reason=reason, **state.model_dump()
+            ).model_dump(mode="json"),
         )
     return state

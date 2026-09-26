@@ -20,6 +20,7 @@ struct BodyListItem: Equatable {
 }
 
 enum BodyBlock: Equatable {
+    case heading(Int, [BodyToken])
     case paragraph([[BodyToken]])
     case quote([[BodyToken]])
     case list(ordered: Bool, start: Int, items: [BodyListItem])
@@ -35,6 +36,7 @@ enum BodyTokenizer {
     private static let bullet = try! NSRegularExpression(pattern: #"^(\s*)[-*•]\s+(.*)$"#)
     private static let numbered = try! NSRegularExpression(pattern: #"^(\s*)(\d{1,3})\.\s+(.*)$"#)
     private static let quote = try! NSRegularExpression(pattern: #"^>\s?(.*)$"#)
+    private static let heading = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(\S.*)$"#)
 
     /// Whole-body tokens (inline markup, fenced code and newlines); kept for the search highlighter and tests.
     static func tokenize(_ body: String) -> [BodyToken] { scan(body, pattern: fullPattern, withBlocks: true) }
@@ -115,6 +117,11 @@ enum BodyTokenizer {
                 i = close + 1
                 continue
             }
+            if let h = firstMatch(heading, line) {
+                blocks.append(.heading(group(h, 1, in: line).count, tokenizeInline(group(h, 2, in: line))))
+                i += 1
+                continue
+            }
             if firstMatch(quote, line) != nil {
                 var quoted: [[BodyToken]] = []
                 while i < lines.count, let q = firstMatch(quote, lines[i]) {
@@ -142,7 +149,7 @@ enum BodyTokenizer {
             var paragraph: [[BodyToken]] = []
             while i < lines.count {
                 let current = lines[i]
-                if !paragraph.isEmpty, opensFence(i) || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil { break }
+                if !paragraph.isEmpty, opensFence(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil { break }
                 paragraph.append(tokenizeInline(current))
                 i += 1
             }
@@ -168,6 +175,8 @@ struct MessageBodyView: View {
     @ViewBuilder
     private func blockView(_ block: BodyBlock) -> some View {
         switch block {
+        case .heading(let level, let tokens):
+            inlineText(tokens).font(level == 1 ? .title3.bold() : level == 2 ? .headline : .subheadline.bold())
         case .paragraph(let lines):
             joined(lines)
         case .quote(let lines):

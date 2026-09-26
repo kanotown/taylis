@@ -344,7 +344,7 @@ class SyncEngine(
             }
             "read.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
-                applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data))
+                applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data), allowDecrease = frame.data.str("reason") == "set")
             }
             "notification_preference.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
@@ -399,10 +399,15 @@ class SyncEngine(
         }
     }
 
-    private fun applyReadState(channelId: String, state: ReadStateOut) {
-        // The server's position wins, downwards too (another device may have marked messages unread).
+    private fun applyReadState(channelId: String, state: ReadStateOut, allowDecrease: Boolean = false) {
+        // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
+        // a mark-as-unread (reason "set") moves the position down as well.
         val updated = store.updateChannel(channelId) {
-            it.copy(lastReadSeq = state.lastReadSeq, unreadCount = state.unreadCount, mentionCount = state.mentionCount)
+            it.copy(
+                lastReadSeq = if (allowDecrease) state.lastReadSeq else maxOf(it.lastReadSeq, state.lastReadSeq),
+                unreadCount = state.unreadCount,
+                mentionCount = state.mentionCount,
+            )
         } ?: return
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
     }
@@ -461,7 +466,7 @@ class SyncEngine(
         pendingReads[channelId] = scope.launch {
             val state = runCatching { api.setReadPosition(channelId, target) }.getOrNull()
             pendingReads.remove(channelId)
-            if (state != null) post { applyReadState(channelId, state) }
+            if (state != null) post { applyReadState(channelId, state, allowDecrease = true) }
         }
     }
 

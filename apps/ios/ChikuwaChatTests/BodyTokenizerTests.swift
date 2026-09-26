@@ -35,6 +35,9 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(blocks[4], .codeBlock("const x = 1;", lang: "ts"))
         XCTAssertEqual(blocks[5], .paragraph([[.text("tail")]]))
         XCTAssertEqual(BodyTokenizer.parseBlocks("```\nopen"), [.paragraph([[.text("```")], [.text("open")]])])
+        XCTAssertEqual(BodyTokenizer.parseBlocks("# Title\n## Sub **b**\n#### not"), [
+            .heading(1, [.text("Title")]), .heading(2, [.text("Sub "), .bold("b")]), .paragraph([[.text("#### not")]]),
+        ])
     }
 
     func testIsoDatesWithMicroseconds() {

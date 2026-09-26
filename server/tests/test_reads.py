@@ -141,11 +141,11 @@ async def test_mark_unread_sets_the_position_and_recounts(
 
     events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
     positions = [
-        e.payload["last_read_seq"]
+        (e.payload["last_read_seq"], e.payload["reason"])
         for e in events
         if e.event_type == "read.updated" and e.audience_id == bob.id
     ]
-    assert positions == [3, 1, 3, 0, 2]
+    assert positions == [(3, "advance"), (1, "set"), (3, "set"), (0, "set"), (2, "advance")]
 
 
 def channel_last_seq(response: Any) -> int:

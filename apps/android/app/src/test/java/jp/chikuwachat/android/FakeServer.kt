@@ -150,7 +150,7 @@ class FakeServer {
         if (if (mode == "set") target != current else target > current) {
             readPositions[key] = target
             val state = readState(userId, channelId)
-            emit(setOf(userId), event("read.updated", channelId, null, buildJsonObject {
+            emit(setOf(userId), event("read.updated", channelId, null, buildJsonObject { put("reason", mode)
                 put("channel_id", channelId); put("last_read_seq", state.lastReadSeq); put("unread_count", state.unreadCount); put("mention_count", state.mentionCount)
             }))
             return state

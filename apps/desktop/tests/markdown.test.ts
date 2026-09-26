@@ -55,6 +55,15 @@ describe("light markdown blocks", () => {
     });
   });
 
+  it("parses up to three heading levels and leaves deeper or bare hashes alone", () => {
+    expect(parseBlocks("# Title\n## Sub **b**\n### Third\n#### not\n#nospace")).toEqual([
+      { kind: "heading", level: 1, tokens: [{ kind: "text", text: "Title" }] },
+      { kind: "heading", level: 2, tokens: [{ kind: "text", text: "Sub " }, { kind: "bold", text: "b" }] },
+      { kind: "heading", level: 3, tokens: [{ kind: "text", text: "Third" }] },
+      { kind: "paragraph", lines: [[{ kind: "text", text: "#### not" }], [{ kind: "text", text: "#nospace" }]] },
+    ]);
+  });
+
   it("keeps unterminated fences and stray markers as text", () => {
     expect(parseBlocks("```\nopen")).toEqual([{ kind: "paragraph", lines: [[{ kind: "text", text: "```" }], [{ kind: "text", text: "open" }]] }]);
     expect(tokenizeInline("2 * 3 = 6")).toEqual([{ kind: "text", text: "2 * 3 = 6" }]);

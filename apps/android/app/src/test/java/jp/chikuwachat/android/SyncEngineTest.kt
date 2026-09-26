@@ -274,6 +274,11 @@ class SyncEngineTest {
 
         w.server.markRead(w.bob, w.channelId, 0, mode = "set"); settle(w.engine) // another device of bob
         assertEquals(listOf(0, 3), w.store.channel(w.channelId)?.let { listOf(it.lastReadSeq, it.unreadCount) })
+        // A plain advance event behind the local position (an older PUT of ours) must not lower it.
+        w.engine.markRead(w.channelId, 3)
+        w.server.markRead(w.bob, w.channelId, 2); settle(w.engine)
+        assertEquals(3, w.store.channel(w.channelId)?.lastReadSeq)
+        w.engine.flushReads()
         w.engine.stop(); w.scope.cancel()
     }
 
