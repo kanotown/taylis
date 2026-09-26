@@ -10,6 +10,9 @@ import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.Notifier
+import jp.chikuwachat.android.platform.PushCenter
+import jp.chikuwachat.android.platform.PushMessage
+import jp.chikuwachat.android.platform.fetchFcmToken
 import jp.chikuwachat.android.platform.RoomPersistence
 import jp.chikuwachat.android.platform.SecretStore
 import jp.chikuwachat.android.sync.EngineStatus
@@ -55,6 +58,8 @@ class AppController(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val secrets = SecretStore(app)
     private val notifier = Notifier(app)
+    /** FCM token registration (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
+    val push = PushCenter(scope, { fetchFcmToken(app) }, { api })
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     private var api: ApiClient? = null
     private var persistence: RoomPersistence? = null
@@ -173,12 +178,30 @@ class AppController(private val app: Application) {
         scope.launch { engine.status.collect { engineStatus = it } }
         screen = Screen.MAIN
         scope.launch { engine.start() }
+        push.attach()
+    }
+
+    /**
+     * A data-only push (PUSH_NOTIFICATIONS.md §9): shown unless the app is in the foreground with a
+     * live socket (the event arrives over the socket then); either way the engine catches up.
+     */
+    fun handlePush(message: PushMessage) {
+        scope.launch {
+            val live = foreground && engineStatus == EngineStatus.ONLINE
+            if (!message.isSilent && !live && message.channelId != null) {
+                notifier.notifyMessage(message.channelId, message.title, message.body)
+            }
+            engine?.reconnectNow()
+        }
     }
 
     /** Foreground / background from the activity: drives push suppression and reconnects (§7.5). */
     fun setForeground(active: Boolean) {
         foreground = active
-        if (active) engine?.reconnectNow()
+        if (active) {
+            engine?.reconnectNow()
+            if (api != null) push.refresh()
+        }
     }
 
     suspend fun openChannel(channelId: String) {

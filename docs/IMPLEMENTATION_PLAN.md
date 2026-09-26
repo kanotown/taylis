@@ -33,7 +33,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M4 | iOS クライアント | login、channel list、messages、send、リアルタイム同期 | **実装済み (2026-09-26)**: SwiftUI、Keychain、SQLite3 ラッパ、Desktop と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (シミュレータ) が通過。実機での通し確認は Xcode からのインストール後に行う |
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
-| M7 | FCM | 端末登録、トークン処理、配送 | エミュレータで通知を受ける |
+| M7 | FCM | 端末登録、トークン処理、配送 | **実装済み (2026-09-26)**: `FCMPushProvider` (HTTP v1、サービスアカウントの JWT bearer grant、data-only、応答対応表のテスト)、compose の鍵マウント、Android の `FirebaseMessagingService` / `PushCenter` (トークン登録・更新、通知の組み立て、タップで該当チャンネル)。Firebase プロジェクトでの実受信はユーザー側の設定後に確認する (infra/README.md) |
 | M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | 3 クライアントで動作し、差分同期で回復する |
 | M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
 | M10 | 運用 | backup、restore、security review、logging、deployment docs | 復元リハーサルが成功する |
@@ -158,6 +158,10 @@ data-only メッセージから通知を組み立て (`tag = channel_id`)、タ�
 1 ユーザーに複数の FCM トークンがある前提のテスト。
 
 完了条件: Play services 入りエミュレータで通知を受け、タップして該当チャンネルが開く。
+
+実装メモ (2026-09-26): サーバ側は `google-auth` を使わず PyJWT (RS256) で JWT bearer grant を組む (依存を増やさない)。
+Android 側は `google-services.json` がある場合だけ Google services プラグインを適用する (無くても CI が通る)。
+FCM の実受信には Firebase プロジェクトが要るため、infra/README.md の手順でユーザーが設定してから確認する。
 
 ### M8: メッセージ機能 (3 分割)
 

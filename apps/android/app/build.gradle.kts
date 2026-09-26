@@ -5,6 +5,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Firebase (FCM, M7): the Google services plugin needs app/google-services.json from the Firebase
+// console. Without the file the app still builds; push registration is skipped at runtime.
+if (file("google-services.json").exists()) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+}
+
 android {
     namespace = "jp.chikuwachat.android"
     compileSdk = 37
@@ -42,6 +48,8 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    // Play services (via Firebase) pulls an old androidx.fragment; ActivityResult needs 1.3+.
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
@@ -53,6 +61,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // The only non-Jetpack dependency: Jetpack has no WebSocket client (CLAUDE.md "Android").
     implementation(libs.okhttp)
+    // Firebase Cloud Messaging (CLAUDE.md "Android": FCM for push).
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
 }
