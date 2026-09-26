@@ -80,7 +80,7 @@ Redis、Kafka、RabbitMQ、Celery、Kubernetes、Elasticsearch、分散 DB、サ
 | アプリ | スタック | ローカルストア | 備考 |
 | --- | --- | --- | --- |
 | Desktop (Windows / macOS) | Tauri 2 + React + TypeScript | SQLite (tauri-plugin-sql) | OS ネイティブ通知。左: チャンネル / DM、中央: メッセージと入力、右: スレッド |
-| iOS | Swift / SwiftUI / Swift Concurrency | SQLite (GRDB) | Keychain、APNs 直接。Xcode から実機に直接インストール (App Store 配布を前提にしない) |
+| iOS | Swift / SwiftUI / Swift Concurrency | SQLite (SQLite3 C API の薄いラッパ。第三者依存なし) | Keychain、APNs 直接。Xcode から実機に直接インストール (App Store 配布を前提にしない) |
 | Android | Kotlin / Jetpack Compose / Coroutines + Flow | Room | FCM。Jetpack 標準 API を優先し、サードパーティ依存は最小限 |
 
 3 つのクライアントは同じ API 仕様 (`openapi/`) と同じ同期プロトコル (SYNC_PROTOCOL.md) を各言語で

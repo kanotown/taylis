@@ -97,3 +97,18 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: ignore
+
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Tests (iOS Simulator)
+        run: |
+          xcodebuild -project ChikuwaChat.xcodeproj -scheme ChikuwaChat \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            CODE_SIGNING_ALLOWED=NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 test
