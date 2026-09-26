@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelReadStateOut
@@ -109,6 +110,7 @@ class FakeServer {
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
         override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
         override suspend fun listScheduled(): List<ScheduledOut> { maybeFail(); return scheduled[userId]?.toList() ?: emptyList() }
+        override suspend fun listReminders(): List<ReminderOut> { maybeFail(); return reminders[userId]?.toList() ?: emptyList() }
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
@@ -203,6 +205,22 @@ class FakeServer {
 
     /** user → saved message ids, newest first. */
     val bookmarks = HashMap<String, MutableList<String>>()
+    /** "user" → open reminders (M12e). */
+    val reminders = HashMap<String, MutableList<ReminderOut>>()
+
+    fun remind(userId: String, channelId: String, messageId: String, remindAt: String, note: String? = null): ReminderOut {
+        val row = ReminderOut(id = "rem-${++eventId}", messageId = messageId, channelId = channelId, note = note, preview = "preview", remindAt = remindAt, status = "pending", createdAt = now())
+        reminders.getOrPut(userId) { ArrayList() }.add(row)
+        return row
+    }
+
+    fun emitReminder(userId: String, row: ReminderOut) {
+        val list = reminders.getOrPut(userId) { ArrayList() }
+        list.removeAll { it.id == row.id }
+        if (row.status == "pending" || row.status == "fired") list.add(row)
+        emit(setOf(userId), event("reminder.updated", row.channelId, null, buildJsonObject { put("reminder", Codec.snake.encodeToJsonElement(ReminderOut.serializer(), row)) }))
+    }
+
     /** "user" → pending scheduled messages (M12d). */
     val scheduled = HashMap<String, MutableList<ScheduledOut>>()
 

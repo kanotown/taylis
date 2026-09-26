@@ -294,12 +294,15 @@ fun MessageRow(
                 }
             }
         }
+        var reminding by remember { mutableStateOf(false) }
+        if (reminding) ReminderDialog(onDismiss = { reminding = false }) { at, note -> reminding = false; controller.scope.launch { controller.setReminder(message.id, at, note) } }
         MessageMenu(
             expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false },
             onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
             onCopyLink = { controller.copyPermalink(message.id) },
+            onRemind = { reminding = true },
             onMoreReactions = { pickingReaction = true },
         )
     }

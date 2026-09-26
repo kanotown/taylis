@@ -265,6 +265,17 @@ class ApiClient(
 
     suspend fun linkPreview(url: String): LinkPreviewOut = request("GET", "/api/v1/link-previews?url=" + Enc.encode(url, "UTF-8"))
 
+    // --- reminders (M12e) -----------------------------------------------------------------------
+
+    suspend fun createReminder(messageId: String, remindAt: String, note: String?): ReminderOut =
+        request("POST", "/api/v1/messages/$messageId/reminders", buildJsonObject {
+            put("remind_at", remindAt)
+            if (note == null) put("note", JsonNull) else put("note", note)
+        })
+    override suspend fun listReminders(): List<ReminderOut> = request("GET", "/api/v1/reminders")
+    /** Cancels a pending reminder or marks a fired one done. */
+    suspend fun closeReminder(id: String) { requestRaw("DELETE", "/api/v1/reminders/$id", null, auth = true, retry401 = true) }
+
     // --- scheduled messages (M12d) --------------------------------------------------------------
 
     suspend fun scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, sendAt: String): ScheduledOut =

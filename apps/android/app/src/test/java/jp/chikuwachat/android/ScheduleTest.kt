@@ -21,6 +21,14 @@ class ScheduleTest {
         assertEquals(local(2026, 10, 12, 9), monday[3].at)
     }
 
+    @Test fun reminderPresetsAreALittleLaterOrNextMorning() {
+        val now = local(2026, 10, 2, 19, 30)
+        val presets = Schedule.reminderPresets(now)
+        assertEquals(listOf("20m", "1h", "3h", "tomorrow9", "monday9"), presets.map { it.key })
+        assertEquals(local(2026, 10, 2, 19, 50), presets[0].at)
+        assertEquals(local(2026, 10, 3, 9), presets[3].at)
+    }
+
     @Test fun labelsAreRelativeToToday() {
         val now = local(2026, 10, 2, 10)
         assertEquals("今日 18:00", Schedule.label(local(2026, 10, 2, 18), now))

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelReadStateOut
@@ -45,6 +46,8 @@ interface SyncApi {
     suspend fun readAll(): List<ChannelReadStateOut>
     /** M12d: my pending scheduled messages. */
     suspend fun listScheduled(): List<ScheduledOut>
+    /** M12e: my open reminders. */
+    suspend fun listReminders(): List<ReminderOut>
     suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
     /** THREADS.md §3. */
@@ -349,7 +352,16 @@ class SyncEngine(
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
         scope.launch { loadScheduled() }
+        scope.launch { loadReminders() }
     }
+
+    /** M12e: open reminders; refreshed after every bootstrap. */
+    suspend fun loadReminders() {
+        runCatching { store.replaceReminders(api.listReminders()) }
+    }
+
+    /** M12e: a reminder just fired while the app is open (the push covers the background case). */
+    var onReminder: ((ReminderOut) -> Unit)? = null
 
     /** M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events). */
     suspend fun loadScheduled() {
@@ -389,6 +401,12 @@ class SyncEngine(
             "bookmark.updated" -> {
                 val id = frame.data.str("message_id") ?: return
                 store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
+            "reminder.updated" -> {
+                val row = Codec.snake.decodeFromJsonElement(ReminderOut.serializer(), frame.data["reminder"] ?: return)
+                val before = store.reminders[row.id]?.status
+                store.applyReminder(row)
+                if (row.status == "fired" && before != "fired") onReminder?.invoke(row)
             }
             "scheduled.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(ScheduledOut.serializer(), frame.data["scheduled"] ?: return)

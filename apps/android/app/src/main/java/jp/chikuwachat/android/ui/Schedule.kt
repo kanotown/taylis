@@ -23,6 +23,21 @@ object Schedule {
         return list
     }
 
+    /** 「リマインド」 choices (M12e): a little later, or a fresh morning. */
+    fun reminderPresets(now: ZonedDateTime = ZonedDateTime.now()): List<Preset> {
+        fun soon(minutes: Long) = now.plusMinutes(minutes).withSecond(0).withNano(0)
+        val list = arrayListOf(
+            Preset("20m", "20 分後", soon(20)),
+            Preset("1h", "1 時間後", soon(60)),
+            Preset("3h", "3 時間後", soon(180)),
+            Preset("tomorrow9", "明日 9:00", now.plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0)),
+        )
+        var toMonday = ((DayOfWeek.MONDAY.value - now.dayOfWeek.value) + 7) % 7
+        if (toMonday == 0) toMonday = 7
+        list += Preset("monday9", "来週月曜 9:00", now.plusDays(toMonday.toLong()).withHour(9).withMinute(0).withSecond(0).withNano(0))
+        return list
+    }
+
     private val DAYS = listOf("月", "火", "水", "木", "金", "土", "日")
 
     /** "今日 18:00" / "明日 9:00" / "10月3日(土) 9:00" / "2027年1月4日(月) 9:00". */

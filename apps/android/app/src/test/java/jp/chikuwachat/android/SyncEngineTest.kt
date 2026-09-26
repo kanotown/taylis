@@ -462,6 +462,30 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun remindersLoadListFiredFirstAndNudgeOnce() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice")
+        val general = server.createChannel("general", alice.id)
+        val (message, _) = server.post(general.id, alice.id, "remember me")
+        val later = server.remind(alice.id, general.id, message.id, "2026-10-03T00:00:00Z")
+        val sooner = server.remind(alice.id, general.id, message.id, "2026-10-02T00:00:00Z", "reply")
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(alice.id), server.connector(alice.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        val nudges = ArrayList<String>()
+        engine.onReminder = { nudges += it.id }
+        engine.start(); settle(engine)
+        assertEquals(listOf(sooner.id, later.id), store.listReminders().map { it.id })
+        val fired = sooner.copy(status = "fired", firedAt = "2026-10-02T00:00:00Z")
+        server.emitReminder(alice.id, fired); server.emitReminder(alice.id, fired); settle(engine) // replayed event
+        assertEquals(listOf(sooner.id), nudges)
+        assertEquals(1, store.firedReminderCount())
+        assertEquals(listOf("fired", "pending"), store.listReminders().map { it.status })
+        server.emitReminder(alice.id, sooner.copy(status = "done")); server.emitReminder(alice.id, later.copy(status = "cancelled")); settle(engine)
+        assertTrue(store.listReminders().isEmpty())
+        engine.stop(); scope.cancel()
+    }
+
     @Test fun scheduledRowsLoadAfterBootstrapAndFollowEvents() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice")
