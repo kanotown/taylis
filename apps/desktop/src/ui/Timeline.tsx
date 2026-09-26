@@ -20,6 +20,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const bottom = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const [showJump, setShowJump] = useState(false);
+  // Newest seq the reader has had on screen at the bottom; messages above it from others are "new".
+  const [seenSeq, setSeenSeq] = useState(channel.lastReadSeq);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const anchor = useRef<{ height: number; top: number } | null>(null);
 
@@ -31,6 +33,11 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   }
   const items = buildTimeline(messages, { firstUnreadAfterSeq: unreadMark.current.seq, meId: me?.id ?? null });
   const lastId = messages[messages.length - 1]?.id;
+  const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
+  const unseenBelow = focus ? 0 : messages.filter((m) => m.seq !== null && m.seq > seenSeq && m.sender_id !== me?.id).length;
+  const markSeen = () => {
+    if (maxSeq > seenSeq) setSeenSeq(maxSeq);
+  };
 
   const positioned = useRef(false);
   const scrollToBottom = () => bottom.current?.scrollIntoView({ block: "end" });
@@ -58,6 +65,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   useLayoutEffect(() => {
     positioned.current = false;
     atBottom.current = false;
+    setSeenSeq(channel.lastReadSeq);
   }, [channel.id, focus?.messageId]);
 
   useLayoutEffect(() => {
@@ -69,9 +77,15 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     const el = container.current;
     atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setShowJump(!atBottom.current);
+    if (atBottom.current) markSeen();
   }, [channel.id, focus?.messageId, messages.length]);
 
-  useEffect(() => { if (!focus && atBottom.current && positioned.current) scrollToBottom(); }, [lastId]);
+  useEffect(() => {
+    if (!focus && atBottom.current && positioned.current) {
+      scrollToBottom();
+      markSeen();
+    }
+  }, [lastId]);
   useEffect(() => {
     markVisible();
     window.addEventListener("focus", markVisible);
@@ -84,6 +98,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     atBottom.current = distance < 48;
     setShowJump(distance > 240);
+    if (atBottom.current) markSeen();
     markVisible();
     if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") {
       setLoadingOlder(true);
@@ -140,8 +155,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
         <div ref={bottom} />
       </div>
       {!focus && showJump && (
-        <button className="jump" onClick={scrollToBottom}>
-          ↓ 最新のメッセージへ
+        <button className={`jump${unseenBelow > 0 ? " fresh" : ""}`} onClick={scrollToBottom}>
+          {unseenBelow > 0 ? `↓ 新着 ${unseenBelow} 件` : "↓ 最新のメッセージへ"}
         </button>
       )}
     </div>
@@ -156,18 +171,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const store = controller.store;
   const engine = controller.engine;
   const me = store.me;
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const startEdit = (message: MessageState) => {
-    setEditingId(message.id);
-    setDraft(decodeMentions(message.body, store.users));
-  };
-  const saveEdit = (message: MessageState) => {
-    const body = encodeMentions(draft.trim(), store.users.values());
-    setEditingId(null);
-    if (body && body !== message.body) void controller.editMessage(message.id, body);
-  };
+  const editing = controller.editing === message.id;
 
   const sender = store.users.get(message.sender_id);
   const senderName = sender?.display_name ?? (message.pending ? me?.display_name : undefined) ?? "unknown";
@@ -193,18 +198,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             {message.edited_at && <span className="muted">(編集済み)</span>}
           </div>
         )}
-        {editingId === message.id ? (
-          <div className="editor">
-            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus />
-            <div>
-              <button onClick={() => saveEdit(message)} disabled={!draft.trim()}>
-                保存
-              </button>
-              <button className="secondary" onClick={() => setEditingId(null)}>
-                キャンセル
-              </button>
-            </div>
-          </div>
+        {editing ? (
+          <MessageEditor controller={controller} message={message} />
         ) : (
           <>
             {message.body && <MessageBody body={message.body} users={store.users} />}
@@ -259,7 +254,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             </button>
           )}
           {mine && (
-            <button title="編集" onClick={() => startEdit(message)}>
+            <button title="編集 (空の入力欄で ↑)" onClick={() => controller.setEditing(message.id)}>
               ✏️
             </button>
           )}
@@ -285,5 +280,57 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         </div>
       )}
     </article>
+  );
+}
+
+/** Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. */
+function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
+  const store = controller.store;
+  const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users));
+  const composing = useRef(false);
+  const finish = () => {
+    controller.setEditing(null);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+  };
+  const save = () => {
+    const body = encodeMentions(draft.trim(), store.users.values());
+    finish();
+    if (body && body !== message.body) void controller.editMessage(message.id, body);
+  };
+  return (
+    <div className="editor">
+      <textarea
+        value={draft}
+        rows={3}
+        autoFocus
+        aria-label="メッセージを編集"
+        onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+        onChange={(e) => setDraft(e.target.value)}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            finish();
+          } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
+            e.preventDefault();
+            if (draft.trim()) save();
+          }
+        }}
+      />
+      <div>
+        <button onClick={save} disabled={!draft.trim()}>
+          保存
+        </button>
+        <button className="secondary" onClick={finish}>
+          キャンセル
+        </button>
+        <span className="muted hint">Enter で保存、Esc で取り消し</span>
+      </div>
+    </div>
   );
 }

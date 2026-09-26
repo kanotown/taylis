@@ -149,6 +149,4 @@ func channelTitle(_ channel: ChannelState, store: Store) -> String {
 
 /// Muted when the level is "none" or a timed mute is active.
 @MainActor
-func isMuted(_ channel: ChannelState) -> Bool {
-    channel.channel.notification?.level == "none" || Timeline.muteLabel(channel.channel.notification?.mutedUntil) != nil
-}
+func isMuted(_ channel: ChannelState) -> Bool { channel.isMuted }

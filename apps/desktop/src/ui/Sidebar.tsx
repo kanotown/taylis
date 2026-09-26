@@ -1,13 +1,15 @@
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { formatMuted } from "./format";
+import { badgeCount, hasUnread, isMutedChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
 
 interface Props {
   controller: AppController;
   channels: ChannelState[];
   currentId: string | null;
+  unreadOnly: boolean;
+  onToggleUnreadOnly: () => void;
   onOpen: (id: string) => void;
   onJoin: (id: string) => void;
   onNewDm: () => void;
@@ -16,22 +18,18 @@ interface Props {
   onSettings?: () => void;
 }
 
-export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings }: Props) {
   const engine = controller.engine;
   const me = controller.store.me ?? controller.me;
-  const mine = channels.filter((c) => c.isMember && (c.type === "public" || c.type === "private") && !c.archived).sort(byName(controller));
-  const dms = channels
-    .filter((c) => c.isMember && (c.type === "dm" || c.type === "group_dm"))
-    .sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
-  const browse = channels.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byName(controller));
+  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
   const status = engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
-    const unread = channel.unreadCount > 0 && channel.id !== currentId;
-    const badge = channel.type === "dm" || channel.type === "group_dm" ? channel.unreadCount : channel.mentionCount;
-    const muted = channel.notificationLevel === "none" || formatMuted(channel.mutedUntil) !== null;
+    const muted = isMutedChannel(channel);
+    const unread = hasUnread(channel) && channel.id !== currentId;
+    const badge = badgeCount(channel);
     return (
-      <li key={channel.id} className={`${channel.id === currentId ? "active" : ""}${unread ? " unread" : ""}`}>
+      <li key={channel.id} className={`${channel.id === currentId ? "active" : ""}${unread ? " unread" : ""}${muted ? " muted-channel" : ""}`}>
         <button onClick={() => onOpen(channel.id)} title={channelTitle(channel, controller)}>
           <span className="prefix">{channel.type === "private" ? "🔒" : channel.type === "public" ? "#" : "@"}</span>
           <span className="name">{channelTitle(channel, controller).replace(/^#/, "")}</span>
@@ -63,9 +61,19 @@ export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNew
           )}
         </div>
       </div>
-      <button className="switcher-hint" onClick={() => window.dispatchEvent(new CustomEvent("chikuwa:quick-switch"))}>
-        移動… <kbd>Ctrl/⌘ K</kbd>
-      </button>
+      <div className="tools-row">
+        <button className="switcher-hint" onClick={() => window.dispatchEvent(new CustomEvent("chikuwa:quick-switch"))}>
+          移動… <kbd>Ctrl/⌘ K</kbd>
+        </button>
+        <button
+          className={`filter${unreadOnly ? " active" : ""}`}
+          title={unreadOnly ? "すべて表示" : "未読のみ表示"}
+          aria-pressed={unreadOnly}
+          onClick={onToggleUnreadOnly}
+        >
+          未読
+        </button>
+      </div>
       <section>
         <h2>
           チャンネル
@@ -73,24 +81,24 @@ export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNew
             +
           </button>
         </h2>
-        <ul>{mine.map(item)}</ul>
-        {mine.length === 0 && <p className="hint">まだチャンネルがありません</p>}
+        <ul>{sections.channels.map(item)}</ul>
+        {sections.channels.length === 0 && <p className="hint">{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</p>}
       </section>
       <section>
         <h2>
           ダイレクトメッセージ
-          <button className="icon" title="DM を開始" onClick={onNewDm}>
+          <button className="icon" title="DM を開始 (Ctrl/⌘+Shift+K)" onClick={onNewDm}>
             +
           </button>
         </h2>
-        <ul>{dms.map(item)}</ul>
-        {dms.length === 0 && <p className="hint">+ から相手を選んで開始</p>}
+        <ul>{sections.dms.map(item)}</ul>
+        {sections.dms.length === 0 && <p className="hint">{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</p>}
       </section>
-      {browse.length > 0 && (
+      {sections.browse.length > 0 && (
         <section>
           <h2>参加できるチャンネル</h2>
           <ul>
-            {browse.map((c) => (
+            {sections.browse.map((c) => (
               <li key={c.id}>
                 <button onClick={() => onJoin(c.id)} title="参加する">
                   <span className="prefix">#</span>
@@ -104,10 +112,6 @@ export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNew
       )}
     </nav>
   );
-}
-
-function byName(controller: AppController) {
-  return (a: ChannelState, b: ChannelState) => channelTitle(a, controller).localeCompare(channelTitle(b, controller), "ja");
 }
 
 function statusLabel(status: string): string {

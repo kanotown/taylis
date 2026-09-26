@@ -382,8 +382,11 @@ final class SyncEngine {
     /// DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4).
     private func maybeNotify(_ message: MessageOut, _ channel: ChannelState, _ thread: ParentThread? = nil) {
         guard let me = store.me, message.senderId != me.id else { return }
+        // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
+        let level = channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions")
+        if channel.isMuted { return }
         let involved = message.mentions(me.id) || (thread?.participantIds.contains(me.id) ?? false)
-        if !channel.channel.isDm && !involved { return }
+        if level == "mentions" && !involved { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
     }

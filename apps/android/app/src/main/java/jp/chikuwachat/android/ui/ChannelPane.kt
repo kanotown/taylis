@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +75,12 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     val items = remember(messages, channelId, focus, unreadMark) { Timeline.build(messages, unreadMark, store.me?.id).asReversed() }
     val listState = rememberLazyListState()
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
+    val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
+    // Newest seq the reader has had on screen at the bottom; later messages from others are "new".
+    var seenSeq by remember(channelId) { mutableStateOf(channel.lastReadSeq) }
+    val maxSeq = messages.maxOfOrNull { it.seq ?: 0 } ?: 0
+    LaunchedEffect(atBottom, maxSeq) { if (atBottom && maxSeq > seenSeq) seenSeq = maxSeq }
+    val unseenBelow = if (focus != null) 0 else messages.count { (it.seq ?: 0) > seenSeq && it.senderId != store.me?.id }
     val scope = rememberCoroutineScope()
     LaunchedEffect(channelId, focus?.messageId, items.isEmpty()) {
         if (items.isEmpty() || positioned) return@LaunchedEffect
@@ -157,10 +164,19 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                 }
             }
             if (showJump && focus == null) {
-                SmallFloatingActionButton(
-                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "最新のメッセージへ") }
+                if (unseenBelow > 0) {
+                    ExtendedFloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+                        text = { Text("新着 $unseenBelow 件") },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                    )
+                } else {
+                    SmallFloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                    ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "最新のメッセージへ") }
+                }
             }
         }
         HorizontalDivider()

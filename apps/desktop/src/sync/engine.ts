@@ -420,9 +420,13 @@ export class SyncEngine {
     const me = this.deps.store.me;
     if (!me || message.sender_id === me.id) return;
     const isDm = channel.type === "dm" || channel.type === "group_dm";
+    // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
+    const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
+    const mutedUntil = channel.mutedUntil ? new Date(channel.mutedUntil).getTime() : 0;
+    if (level === "none" || mutedUntil > Date.now()) return;
     const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
     const involved = mentioned || (thread?.participant_ids ?? []).includes(me.id);
-    if (!isDm && !involved) return;
+    if (level === "mentions" && !involved) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
   }

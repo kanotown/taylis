@@ -405,8 +405,12 @@ class SyncEngine(
     private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
+        // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
+        val level = channel.channel.notification?.level ?: if (channel.channel.isDm) "all" else "mentions"
+        val mutedUntil = channel.channel.notification?.mutedUntil?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+        if (level == "none" || (mutedUntil != null && mutedUntil.isAfter(java.time.Instant.now()))) return
         val involved = message.mentions(me.id) || (thread != null && me.id in thread.participantIds)
-        if (!channel.channel.isDm && !involved) return
+        if (level == "mentions" && !involved) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
     }

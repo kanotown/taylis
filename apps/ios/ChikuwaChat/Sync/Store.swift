@@ -16,8 +16,17 @@ struct ChannelState: Codable, Identifiable, Equatable {
 
     var id: String { channel.id }
     var hasUnread: Bool { unreadCount > 0 }
-    /// What the app badge shows for this channel (PUSH_NOTIFICATIONS.md §4.2).
-    var badgeContribution: Int { channel.isDm ? unreadCount : mentionCount }
+    /// Level "none" or an active timed mute (PUSH_NOTIFICATIONS.md §4).
+    var isMuted: Bool {
+        guard let pref = channel.notification else { return false }
+        if pref.level == "none" { return true }
+        guard let until = pref.mutedUntil.flatMap(parseIsoDate) else { return false }
+        return until > Date()
+    }
+    /// Slack / Mattermost rule: a muted conversation is unread only when I am mentioned.
+    var showsUnread: Bool { isMember && (isMuted ? mentionCount > 0 : unreadCount > 0) }
+    /// What the app badge and the list show for this channel (PUSH_NOTIFICATIONS.md §4.2).
+    var badgeContribution: Int { isMuted ? mentionCount : (channel.isDm ? unreadCount : mentionCount) }
 
     enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder }
 

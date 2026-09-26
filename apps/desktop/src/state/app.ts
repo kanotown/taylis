@@ -27,6 +27,9 @@ export class AppController {
   me: UserMe | null = null;
   messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[] } | null = null;
 
+  /** Message in inline edit mode (Timeline / ThreadPane); ↑ in an empty composer sets it. */
+  editing: string | null = null;
+  setEditing(id: string | null): void { this.editing = id; this.emit(); }
   clearMessageFocus(): void { this.messageFocus = null; this.emit(); }
   async revealMessage(message: MessageOut): Promise<boolean> {
     if (!this.api) return false;
@@ -246,6 +249,7 @@ export class AppController {
     if (!api) return false;
     this.engine?.stop();
     this.messageFocus = null;
+    this.editing = null;
     const profile = safeProfile(this.account(api.baseUrl, this.username));
     this.store = new Store(isTauri() ? await SqlitePersistence.open(profile) : null);
     await this.store.load();
