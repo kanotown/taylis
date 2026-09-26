@@ -3,7 +3,9 @@ import { useEffect } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { AttachmentList } from "./Attachments";
+import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { fullTimestamp, timeLabel } from "./format";
 import { MessageBody } from "./MessageBody";
 
 /** The right pane: one thread (parent + replies) with its own composer. */
@@ -47,11 +49,17 @@ function ThreadMessage({ message, controller }: { message: MessageState; control
   const sender = store.users.get(message.sender_id)?.display_name ?? store.me?.display_name ?? "?";
   return (
     <article className={`message${message.pending ? " pending" : ""}`}>
-      <div className="meta">
-        <strong>{sender}</strong>
+      <div className="gutter">
+        <Avatar id={message.sender_id} name={sender} size={28} />
       </div>
-      {message.body && <MessageBody body={message.body} users={store.users} />}
-      <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+      <div className="content">
+        <div className="meta">
+          <strong>{sender}</strong>
+          <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
+        </div>
+        {message.body && <MessageBody body={message.body} users={store.users} />}
+        <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+      </div>
     </article>
   );
 }

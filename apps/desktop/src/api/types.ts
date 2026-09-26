@@ -9,6 +9,8 @@ export type MessageOut = components["schemas"]["MessageOut"];
 export type ReactionOut = components["schemas"]["ReactionOut"];
 export type ReadStateOut = components["schemas"]["ReadStateOut"];
 export type AttachmentOut = components["schemas"]["AttachmentOut"];
+export type NotificationPreferenceOut = components["schemas"]["NotificationPreferenceOut"];
+export type NotificationLevel = NotificationPreferenceOut["level"];
 /** message.created / message.deleted payloads for thread replies (SYNC_PROTOCOL.md §6). */
 export interface ParentThread {
   id: string;

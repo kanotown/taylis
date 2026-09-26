@@ -1,7 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, TokenResponse, UserMe } from "../api/types";
+import type { AttachmentOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -40,6 +40,12 @@ export class AppController {
   private setScreen(screen: Screen, error: string | null = null): void {
     this.screen = screen;
     this.error = error;
+    this.emit();
+  }
+
+  /** Surface a problem to the UI (toast on the main screen); null clears it. */
+  setError(error: unknown): void {
+    this.error = error === null ? null : error instanceof Error ? error.message : String(error);
     this.emit();
   }
 
@@ -125,7 +131,7 @@ export class AppController {
       const blob = await this.api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`);
       await saveDownload(attachment.filename, blob);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.setError(error);
     }
   }
 
@@ -136,7 +142,7 @@ export class AppController {
     try {
       this.store.upsertMessage(await this.api.editMessage(messageId, body));
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.setError(error);
     }
   }
 
@@ -145,7 +151,7 @@ export class AppController {
     try {
       this.store.upsertMessage(await this.api.deleteMessage(messageId));
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.setError(error);
     }
   }
 
@@ -157,7 +163,55 @@ export class AppController {
       const updated = mine ? await this.api.removeReaction(message.id, emoji) : await this.api.addReaction(message.id, emoji);
       this.store.upsertMessage(updated);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.setError(error);
+    }
+  }
+
+  // --- channel and profile settings (UI brush-up) -------------------------------------------------------
+
+  async updateTopic(channelId: string, topic: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const channel = await this.api.updateChannel(channelId, { topic: topic.trim() || null });
+      this.store.upsertChannel(channel);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async setNotification(channelId: string, level: NotificationLevel, mutedUntil: string | null = null): Promise<void> {
+    if (!this.api) return;
+    try {
+      const out = await this.api.setNotificationPreference(channelId, level, mutedUntil);
+      this.store.setNotification(channelId, out.level, out.muted_until ?? null);
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  async updateDisplayName(displayName: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const me = await this.api.updateMe({ display_name: displayName.trim() });
+      this.me = me;
+      this.store.setMe(me);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** Password change from the settings dialog (the forced first-login flow is `changePassword`). */
+  async changePasswordInSession(current: string, next: string): Promise<string | null> {
+    if (!this.api) return "ログインしていません";
+    try {
+      await this.api.changePassword(current, next);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
     }
   }
 

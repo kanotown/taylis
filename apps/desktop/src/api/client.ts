@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, SearchOut, TokenResponse, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ReadStateOut, SearchOut, TokenResponse, UserMe, UserPublic } from "./types";
 
 export interface DeviceInfo {
   platform: "desktop" | "ios" | "android";
@@ -133,6 +133,18 @@ export class ApiClient {
 
   joinChannel(channelId: string): Promise<ChannelOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/join`);
+  }
+
+  updateChannel(channelId: string, patch: { name?: string; topic?: string | null; purpose?: string | null }): Promise<ChannelOut> {
+    return this.request("PATCH", `/api/v1/channels/${channelId}`, patch);
+  }
+
+  setNotificationPreference(channelId: string, level: NotificationLevel, mutedUntil: string | null): Promise<NotificationPreferenceOut> {
+    return this.request("PUT", `/api/v1/channels/${channelId}/notification-preference`, { level, muted_until: mutedUntil });
+  }
+
+  updateMe(patch: { display_name?: string; email?: string | null }): Promise<UserMe> {
+    return this.request("PATCH", "/api/v1/users/me", patch);
   }
 
   members(channelId: string): Promise<MemberOut[]> {

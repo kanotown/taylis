@@ -53,7 +53,7 @@ export function Composer({
         const uploaded = await controller.api.uploadAttachment(file, file.name);
         setPending((items) => [...items, uploaded]);
       } catch (error) {
-        controller.error = error instanceof Error ? error.message : String(error);
+        controller.setError(error);
       } finally {
         setUploading((n) => n - 1);
       }

@@ -6,7 +6,7 @@
 import { ApiError, isRetryable } from "../api/errors";
 import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, MessageState, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
+import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
@@ -319,6 +319,11 @@ export class SyncEngine {
       case "user.deactivated": {
         const data = frame.data as { user: UserPublic };
         store.upsertUser(data.user);
+        return;
+      }
+      case "notification_preference.updated": {
+        const data = frame.data as { channel_id: string; level: NotificationLevel; muted_until: string | null };
+        store.setNotification(data.channel_id, data.level, data.muted_until ?? null);
         return;
       }
       case "read.updated": {
