@@ -1,12 +1,58 @@
 # apps/desktop
 
-Desktop クライアント (Windows / macOS)。M3 で作成する。
+Desktop クライアント (Windows / macOS)。Tauri 2 + React + TypeScript (Vite)。
 
-スタック (CLAUDE.md): Tauri 2 + React + TypeScript (Vite)。ローカルストアは SQLite (tauri-plugin-sql)。
-トークンは OS の資格情報ストア。通知は OS ネイティブ通知 (tauri-plugin-notification)。
+## 開発
 
-レイアウト: 左にチャンネルと DM、中央にメッセージと入力欄、右に必要な時だけスレッドパネル。
+```
+npm ci
+npm run gen:api        # ../../openapi/openapi.json から src/api/schema.d.ts を生成 (コミット対象)
+npm run typecheck      # tsc --noEmit
+npm test               # vitest: エンジン、API クライアント、本文トークナイザ、共有の契約フィクスチャ
+npm run dev            # ブラウザで UI だけ動かす (資格情報は localStorage、通知は Notification API)
+npm run tauri dev      # Tauri で起動 (Keychain / SQLite / OS 通知が本物になる)
+npm run tauri build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi / .exe)
+```
 
-責務: [docs/SYNC_PROTOCOL.md](../../docs/SYNC_PROTOCOL.md) のクライアント側手順
-(WS → bootstrap → catch_up、ギャップ検知、楽観的送信、既読) の実装。
-API の型は `openapi/openapi.json` から生成する。
+実サーバに対するエンジンの検証: `LIVE_URL=http://127.0.0.1:8000 LIVE_PASS=... npm test -- tests/live.test.ts`
+(`dtuser1` / `dtuser2` を CLI で作っておく)。
+
+## 構成
+
+```
+src/
+  api/        client.ts (bearer 認証、token_expired で 1 回だけ refresh、エラー分類)、schema.d.ts (生成)、types.ts
+  sync/       engine.ts (SYNC_PROTOCOL.md §5/§7/§8/§9 の実装)、store.ts (表示の唯一のソース、SQLite へ write-through)、ws.ts
+  platform/   secrets.ts (Keychain / Credential Manager)、sqlite.ts (tauri-plugin-sql)、notify.ts (OS 通知)
+  state/      app.ts (起動時のセッション復元、ログイン、強制パスワード変更、エンジンのライフサイクル)
+  ui/         LoginScreen、ChangePasswordScreen、MainScreen (左: チャンネル / DM、中央: タイムラインと入力欄、右: スレッド用の余白)
+src-tauri/    Rust 側: secret_get / secret_set / secret_delete (keyring)、SQL と通知プラグイン
+tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiClient / markdown のテスト、contract.test.ts (server/tests/contract/*.json)、live.test.ts
+```
+
+## 同期の要点 (SYNC_PROTOCOL.md に準拠)
+
+- 起動時は WS 接続 → hello → bootstrap → 開いているチャンネルの catch_up。hello 以降のイベントは
+  処理キューで直列化されるため、bootstrap 中に届いたものは自然に「バッファ」される。
+- チャンネルごとに `syncedSeq` を持ち、イベントの seq が連番でなければ差分 API で回復する。
+  5000 件以上遅れていれば最新ページを読み直す。
+- 送信は `client_msg_id` 付きで楽観的に表示し、一時的な失敗 (ネットワーク / 5xx / 429) は再接続後に再送、
+  恒久的な失敗 (4xx) は「再送 / 破棄」を選べる。
+- refresh token は OS の資格情報ストアにのみ保存し、access token はメモリに置く。
+- DM の新着は、ウィンドウが非アクティブなら OS 通知を出す (メンションは M8a 以降)。
+
+## 本文の表示フォーマット
+
+サーバはプレーンテキストを保存し、クライアントが次の最小限の記法だけを解釈する (DATA_MODEL.md)。
+
+| 記法 | 表示 |
+| --- | --- |
+| `*太字*` | **太字** |
+| `_斜体_` | *斜体* |
+| `` `code` `` | インラインコード |
+| ```` ``` ... ``` ```` | コードブロック (中の記法は解釈しない) |
+| `<@user_id>` | @表示名 |
+| `<!channel>` / `<!here>` | @channel / @here |
+| `https://...` | リンク (別ウィンドウで開く) |
+
+HTML は解釈しない (React が全文をエスケープする)。

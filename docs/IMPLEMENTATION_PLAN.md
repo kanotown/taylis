@@ -29,7 +29,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M0 | 設計 | 設計文書、ディレクトリ構造 (完了) | docs が CLAUDE.md と整合している |
 | M1 | バックエンド基盤 | PostgreSQL、認証、users、channels、channel membership、メッセージ作成・取得 | **完了 (2026-09-26)**。テストクライアントがログインし、投稿し、PostgreSQL に保存され、取得できる。pytest 57 件、mypy、ruff、compose 上の curl による通し確認 (管理者作成 → メンバー作成 → 仮パスワード変更の強制 → チャンネル作成・参加 → 投稿と冪等再送 → 履歴 → 非メンバー 403 → refresh 回転と再利用検知 → logout) がすべて成功 |
 | M2 | 信頼できる同期 | channel sequence と idempotency の保証、outbox、WebSocket、再接続同期、bootstrap | **完了 (2026-09-26)**。outbox + Relay (LISTEN/NOTIFY)、InMemoryEventBus、WebSocket Hub、差分 API、bootstrap、ws-events.json。pytest 75 件 (実 uvicorn + WebSocket の統合テスト、SYNC_PROTOCOL §13 の契約フィクスチャ 1/2/3/5/6/8/9 を参照クライアントで実行) がすべて成功 |
-| M3 | Desktop クライアント | login、channel list、message list、send、リアルタイム更新 | 2 つのプロファイルで会話できる |
+| M3 | Desktop クライアント | login、channel list、message list、send、リアルタイム更新 | **実装済み (2026-09-26)**: Tauri 2 + React + TS、SQLite ストア、Keychain、SYNC_PROTOCOL の同期エンジン、DM 通知、契約フィクスチャ 7 本と実サーバに対するライブテストが通過。macOS で `tauri build` 済み。Windows ビルドは CI (windows runner) で行う |
 | M4 | iOS クライアント | login、channel list、messages、send、リアルタイム同期 | 実機で Desktop と会話できる |
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | 実機で通知を受け、タップして同期済みの画面が開く |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | エミュレータで会話できる |
