@@ -32,7 +32,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M3 | Desktop クライアント | login、channel list、message list、send、リアルタイム更新 | **実装済み (2026-09-26)**: Tauri 2 + React + TS、SQLite ストア、Keychain、SYNC_PROTOCOL の同期エンジン、DM 通知、契約フィクスチャ 7 本と実サーバに対するライブテストが通過。macOS で `tauri build` 済み。Windows ビルドは CI (windows runner) で行う |
 | M4 | iOS クライアント | login、channel list、messages、send、リアルタイム同期 | **実装済み (2026-09-26)**: SwiftUI、Keychain、SQLite3 ラッパ、Desktop と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (シミュレータ) が通過。実機での通し確認は Xcode からのインストール後に行う |
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
-| M6 | Android クライアント | login、channel list、messages、send、同期 | エミュレータで会話できる |
+| M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
 | M7 | FCM | 端末登録、トークン処理、配送 | エミュレータで通知を受ける |
 | M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | 3 クライアントで動作し、差分同期で回復する |
 | M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
@@ -145,6 +145,11 @@ PushPlanner (永続ハンドラ。PUSH_NOTIFICATIONS.md §4 の M5 分のルー�
 
 スコープ: M3 と同じ機能セット。完了条件: エミュレータで Desktop / iOS と会話できる。`./gradlew build` が通り、
 契約テストのフィクスチャを JUnit で通す。
+
+実装メモ (2026-09-26): AGP 9.x の built-in Kotlin + compileSdk 37。同期エンジンの状態変更は 1 本のワークキューで
+直列化し、`hello` だけはキューの外 (トランスポートのスレッド) で待機を解除する (キュー内で待つとデッドロックする)。
+Room は Persistence の書き込みを単一スレッドの executor に順序どおり流す (UI をブロックしない)。
+FCM (M7) までは DM 通知を WS 経由のローカル通知で出す。
 
 ### M7: FCM
 

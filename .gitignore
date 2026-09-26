@@ -29,6 +29,7 @@ apps/ios/**/Pods/
 # android
 apps/android/**/build/
 apps/android/**/.gradle/
+apps/android/**/.kotlin/
 apps/android/**/local.properties
 apps/android/**/*.keystore
 

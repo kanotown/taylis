@@ -112,3 +112,29 @@ jobs:
           xcodebuild -project ChikuwaChat.xcodeproj -scheme ChikuwaChat \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
             CODE_SIGNING_ALLOWED=NO -test-timeouts-enabled YES -default-test-execution-time-allowance 120 test
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-37.0 build-tools;37.0.0
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests (sync engine, contract fixtures, API client)
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Lint
+        run: ./gradlew :app:lintDebug --console=plain
+      - name: Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
