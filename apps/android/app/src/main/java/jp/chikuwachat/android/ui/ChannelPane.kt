@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -256,7 +259,9 @@ fun MessageRow(
                 ReactionChips(message, store, onToggle = onReact)
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
-                        Text("💬 ${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
+                        Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
                     }
                 }
                 if (message.failed) {
@@ -315,7 +320,7 @@ fun ConversationComposer(controller: AppController, channelId: String, parentId:
         }
         PendingAttachments(pendingUploads) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-            IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Text("📎") }
+            IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
             OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
             IconButton(
                 onClick = {

@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -79,7 +82,7 @@ private fun FileRow(attachment: AttachmentOut, controller: AppController) {
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, shape).clickable { controller.openAttachment(attachment) }.padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("📄")
+        Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column {
             Text(attachment.filename, style = MaterialTheme.typography.bodyMedium)
             Text(formatSize(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
