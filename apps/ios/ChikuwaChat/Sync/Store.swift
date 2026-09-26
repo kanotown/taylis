@@ -76,10 +76,13 @@ struct MessageState: Codable, Identifiable, Equatable {
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
     var attachments: [AttachmentOut] = []
+    /// M11c: pinned in the channel; rows persisted earlier lack the fields.
+    var pinnedAt: String? = nil
+    var pinnedBy: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
-        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments
+        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -108,6 +111,8 @@ struct MessageState: Codable, Identifiable, Equatable {
         replyCount = message.replyCount
         lastReplyAt = message.lastReplyAt
         attachments = message.attachments
+        pinnedAt = message.pinnedAt
+        pinnedBy = message.pinnedBy
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -132,6 +137,8 @@ struct MessageState: Codable, Identifiable, Equatable {
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
         attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
+        pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
+        pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil) {
@@ -166,7 +173,8 @@ extension MessageOut {
         self.init(id: state.id, channelId: state.channelId, senderId: state.senderId, seq: seq, updatedSeq: state.updatedSeq,
                   clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
                   mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
-                  replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments)
+                  replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
+                  pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy)
     }
 }
 
@@ -230,6 +238,8 @@ final class Store {
     var presence: [String: String] = [:]
     /// "channel[:parent]" → user id → expiry; volatile typing indicators.
     var typing: [String: [String: Date]] = [:]
+    /// My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted.
+    var bookmarks: Set<String> = []
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -362,6 +372,16 @@ final class Store {
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
     }
+
+    // MARK: bookmarks (M11c)
+
+    func isBookmarked(_ messageId: String) -> Bool { bookmarks.contains(messageId) }
+
+    func setBookmarked(_ messageId: String, on: Bool) {
+        if on { bookmarks.insert(messageId) } else { bookmarks.remove(messageId) }
+    }
+
+    func replaceBookmarks(_ ids: [String]) { bookmarks = Set(ids) }
 
     // MARK: presence / typing (volatile, SYNC_PROTOCOL.md §5.2)
 

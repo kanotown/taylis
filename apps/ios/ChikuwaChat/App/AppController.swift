@@ -206,6 +206,27 @@ final class AppController {
         do { _ = store.upsertMessage(try await api.deleteMessage(id: messageId)) } catch { self.error = describe(error) }
     }
 
+    /// M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row.
+    func togglePin(_ message: MessageState) async {
+        guard let api else { return }
+        do {
+            _ = store.upsertMessage(message.pinnedAt != nil ? try await api.unpinMessage(id: message.id) : try await api.pinMessage(id: message.id))
+        } catch { self.error = describe(error) }
+    }
+
+    /// M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device.
+    func toggleBookmark(_ messageId: String) async {
+        guard let api else { return }
+        let on = !store.isBookmarked(messageId)
+        store.setBookmarked(messageId, on: on)
+        do {
+            if on { _ = try await api.bookmarkMessage(id: messageId) } else { _ = try await api.unbookmarkMessage(id: messageId) }
+        } catch {
+            store.setBookmarked(messageId, on: !on)
+            self.error = describe(error)
+        }
+    }
+
     func toggleReaction(_ message: MessageState, emoji: String) async {
         guard let api, let me = store.me else { return }
         do {

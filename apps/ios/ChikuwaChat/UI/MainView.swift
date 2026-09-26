@@ -42,6 +42,15 @@ struct MainView: View {
         } detail: {
             if selection == ThreadsListView.selectionId {
                 ThreadsListView(controller: controller)
+            } else if selection == SavedView.selectionId {
+                SavedView(controller: controller) { message in
+                    Task {
+                        if await controller.revealMessage(message) {
+                            selection = message.channelId
+                            pendingThreadId = message.parentId
+                        }
+                    }
+                }
             } else if let id = selection, let channel = controller.store.channel(id) {
                 // View state resets; conversation drafts live in the persistent Store.
                 ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
@@ -70,7 +79,7 @@ struct MainView: View {
         }
         .onChange(of: selection) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
-            if id == ThreadsListView.selectionId {
+            if id == ThreadsListView.selectionId || id == SavedView.selectionId {
                 controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }

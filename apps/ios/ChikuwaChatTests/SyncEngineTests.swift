@@ -362,6 +362,35 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testPinsTravelAsMessageUpdatesAndBookmarksFollowTheUserEvent() async throws {
+        let w = makeWorld()
+        let (message, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "keep this")
+        w.server.setBookmark(w.bob.id, messageId: message.id, on: true) // saved on another device before this one started
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertTrue(w.store.isBookmarked(message.id))
+
+        // A pin is an ordinary seq-consuming update: the row gets pinnedBy without a resync.
+        try w.server.pin(channelId: w.channel.id, userId: w.alice.id, messageId: message.id, pinned: true)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.message(w.channel.id, id: message.id)?.pinnedBy, w.alice.id)
+        XCTAssertEqual(w.store.message(w.channel.id, id: message.id)?.updatedSeq, 2)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 2)
+        try w.server.pin(channelId: w.channel.id, userId: w.bob.id, messageId: message.id, pinned: false)
+        await settle(w.engine)
+        XCTAssertNil(w.store.message(w.channel.id, id: message.id)?.pinnedAt)
+
+        // Another device removes the bookmark: the flag follows the user event.
+        w.server.setBookmark(w.bob.id, messageId: message.id, on: false)
+        await settle(w.engine)
+        XCTAssertFalse(w.store.isBookmarked(message.id))
+        w.server.setBookmark(w.bob.id, messageId: message.id, on: true)
+        await settle(w.engine)
+        XCTAssertTrue(w.store.isBookmarked(message.id))
+        w.engine.stop()
+    }
+
     func testAttachmentIdsTravelWithTheOutbox() async throws {
         let w = makeWorld()
         await w.engine.start()

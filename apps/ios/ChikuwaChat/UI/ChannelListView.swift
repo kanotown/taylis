@@ -24,6 +24,7 @@ struct ChannelListView: View {
             }
             Section {
                 threadsRow
+                savedRow
             }
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
@@ -68,6 +69,20 @@ struct ChannelListView: View {
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(summary.mentionCount > 0 ? Color.red : Color.accentColor, in: Capsule())
                 }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    /// 「保存済み」 (M11c): my bookmarked messages.
+    private var savedRow: some View {
+        let count = controller.store.bookmarks.count
+        return NavigationLink(value: SavedView.selectionId) {
+            HStack(spacing: 12) {
+                Image(systemName: "bookmark").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                Text("保存済み")
+                Spacer()
+                if count > 0 { Text("\(count)").font(.caption).foregroundStyle(.secondary) }
             }
             .padding(.vertical, 2)
         }

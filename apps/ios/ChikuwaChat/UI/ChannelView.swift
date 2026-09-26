@@ -20,8 +20,8 @@ struct ChannelView: View {
     @State private var seenSeq: Int?
 
     enum ChannelSheet: Identifiable {
-        case info, addMember
-        var id: Int { switch self { case .info: 0; case .addMember: 1 } }
+        case info, addMember, pins
+        var id: Int { switch self { case .info: 0; case .addMember: 1; case .pins: 2 } }
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
@@ -227,6 +227,7 @@ struct ChannelView: View {
                 }
             }
             if let channel, channel.isMember {
+                ToolbarItem(placement: .topBarTrailing) { Button("ピン留め", systemImage: "pin") { sheet = .pins } }
                 ToolbarItem(placement: .topBarTrailing) { NotificationMenu(controller: controller, channel: channel) }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -236,6 +237,14 @@ struct ChannelView: View {
         .sheet(item: $sheet) { which in
             switch which {
             case .info: ChannelInfoView(controller: controller, channelId: channelId)
+            case .pins: PinsView(controller: controller, channelId: channelId) { message in
+                Task {
+                    if await controller.revealMessage(message) {
+                        pendingThreadId = message.parentId
+                        sheet = nil
+                    }
+                }
+            }
             case .addMember: AddMemberView(controller: controller, channelId: channelId)
             }
         }
@@ -344,6 +353,15 @@ struct MessageRow: View {
                 AvatarView(id: message.senderId, name: senderName)
             }
             VStack(alignment: .leading, spacing: 2) {
+                let saved = store.isBookmarked(message.id)
+                let pinnedBy = message.pinnedAt.map { _ in store.users[message.pinnedBy ?? ""]?.displayName ?? "?" }
+                if pinnedBy != nil || saved {
+                    HStack(spacing: 10) {
+                        if let pinnedBy { Label("\(pinnedBy) がピン留め", systemImage: "pin.fill").foregroundStyle(.orange) }
+                        if saved { Label("保存済み", systemImage: "bookmark.fill").foregroundStyle(Color.accentColor) }
+                    }
+                    .font(.caption2)
+                }
                 if !compact {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(senderName).bold()
@@ -396,6 +414,12 @@ struct MessageRow: View {
                     Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
                 }
                 if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
+                Button(store.isBookmarked(message.id) ? "保存を解除" : "あとで見る (保存)", systemImage: store.isBookmarked(message.id) ? "bookmark.slash" : "bookmark") {
+                    Task { await controller.toggleBookmark(message.id) }
+                }
+                Button(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", systemImage: message.pinnedAt != nil ? "pin.slash" : "pin") {
+                    Task { await controller.togglePin(message) }
+                }
                 if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
