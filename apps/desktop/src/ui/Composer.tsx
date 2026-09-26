@@ -1,4 +1,4 @@
-import { Bold, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, SquareCode, Strikethrough, TextQuote } from "lucide-react";
+import { Bold, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -7,9 +7,11 @@ import type { ChannelState } from "../sync/types";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
+import { completeEmoji, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
+import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
-import { Button, cn, IconButton, Kbd, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Button, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, cn, modKey } from "./primitives";
 
 const MAX_LENGTH = 20_000;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
@@ -54,7 +56,12 @@ export function Composer({
   }, [text, preview]);
   const query = mentionQuery(text, caret);
   const candidates = query ? mentionCandidates(query.query, [...store.users.values()]) : [];
-  const active = Math.min(selected, Math.max(candidates.length - 1, 0));
+  // `:tada` completes to an emoji (M11f) when no mention is being typed.
+  const emojiAt = query ? null : emojiQuery(text, caret);
+  const emojiHits = emojiAt ? emojiCandidates(emojiAt.query) : [];
+  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length;
+  const active = Math.min(selected, Math.max(listLength - 1, 0));
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   const send = () => {
     const body = encodeMentions(text.trim(), store.users.values());
@@ -97,6 +104,26 @@ export function Composer({
     });
   };
 
+  const pickEmoji = (entry: EmojiEntry) => {
+    if (!emojiAt) return;
+    const next = completeEmoji(text, emojiAt.start, caret, entry.glyph);
+    rememberEmoji(entry.glyph);
+    setText(next.text);
+    setSelected(0);
+    setCaret(next.caret);
+    requestAnimationFrame(() => {
+      area.current?.focus();
+      area.current?.setSelectionRange(next.caret, next.caret);
+    });
+  };
+
+  /** The toolbar picker: insert at the caret (replacing a selection) and keep typing. */
+  const insertEmoji = (entry: EmojiEntry) => {
+    rememberEmoji(entry.glyph);
+    setEmojiOpen(false);
+    edit((s) => ({ text: s.text.slice(0, s.start) + entry.glyph + s.text.slice(s.end), start: s.start + entry.glyph.length, end: s.start + entry.glyph.length }));
+  };
+
   const syncCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
 
   /** Run a markdown edit on the current selection and restore focus + selection afterwards. */
@@ -134,21 +161,22 @@ export function Composer({
       composing.current ||
       event.keyCode === 229 ||
       Date.now() - composedAt.current < IME_COMMIT_GRACE_MS;
-    if (candidates.length > 0 && !imeEnter) {
+    if (listLength > 0 && !imeEnter) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSelected((active + 1) % candidates.length);
+        setSelected((active + 1) % listLength);
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        setSelected((active - 1 + candidates.length) % candidates.length);
+        setSelected((active - 1 + listLength) % listLength);
         return;
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
         const candidate = candidates[active];
         if (candidate) pick(candidate);
+        else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
         return;
       }
     }
@@ -170,7 +198,7 @@ export function Composer({
         return;
       }
     }
-    if (event.key === "Tab" && !imeEnter && candidates.length === 0) {
+    if (event.key === "Tab" && !imeEnter && listLength === 0) {
       // Tab changes the nesting of a list line; elsewhere it keeps moving focus.
       if (edit((s) => indentListLine(s, event.shiftKey))) event.preventDefault();
       return;
@@ -217,6 +245,22 @@ export function Composer({
         void pickFiles(event.dataTransfer.files);
       }}
     >
+      {emojiHits.length > 0 && (
+        <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
+          {emojiHits.map((entry, index) => (
+            <li
+              key={entry.shortcode}
+              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pickEmoji(entry);
+              }}
+            >
+              <span className="text-lg leading-none">{entry.glyph}</span> <span className="text-muted">:{entry.shortcode}:</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {candidates.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl">
           {candidates.map((candidate, index) => (
@@ -289,6 +333,16 @@ export function Composer({
                 {tool.icon}
               </IconButton>
             ))}
+            <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" title="絵文字" aria-label="絵文字" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
+                  <Smile size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-3">
+                <EmojiPicker recent={readRecentEmoji()} onPick={insertEmoji} />
+              </PopoverContent>
+            </PopoverRoot>
             <span className="mx-1 h-4 w-px bg-line" />
             <IconButton label={`ファイルを添付 (${modKey()}+U)`} className="h-7 w-7 text-muted hover:text-ink" onClick={() => fileInput.current?.click()} disabled={uploading > 0}>
               <Paperclip size={15} />

@@ -1,5 +1,6 @@
 import type { UserPublic } from "../api/types";
 import { type Block, parseBlocks, type Token } from "./markdown";
+import { replaceShortcodes } from "./emoji";
 import { cn } from "./primitives";
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
@@ -60,13 +61,13 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>) {
   return tokens.map((token, i) => {
     switch (token.kind) {
       case "text":
-        return <span key={i}>{token.text}</span>;
+        return <span key={i}>{replaceShortcodes(token.text)}</span>;
       case "bold":
-        return <strong key={i}>{token.text}</strong>;
+        return <strong key={i}>{replaceShortcodes(token.text)}</strong>;
       case "italic":
-        return <em key={i}>{token.text}</em>;
+        return <em key={i}>{replaceShortcodes(token.text)}</em>;
       case "strike":
-        return <del key={i}>{token.text}</del>;
+        return <del key={i}>{replaceShortcodes(token.text)}</del>;
       case "code":
         return <code key={i}>{token.text}</code>;
       case "codeblock":

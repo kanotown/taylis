@@ -11,8 +11,10 @@ import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
+import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 
-const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥", "😢", "😮", "💯", "🚀", "👏", "🤔", "😍", "😅", "🙌", "💪", "☕", "🍵", "🎂", "🥳", "😴", "🫡"];
+/** Quick reactions on the action bar; everything else comes from the emoji picker (M11f). */
+const REACTION_PALETTE = ["👍", "❤️", "😂"];
 
 export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
   const store = controller.store;
@@ -338,22 +340,15 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
                 <SmilePlus size={16} />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64">
-              <div className="grid grid-cols-8 gap-0.5">
-                {REACTION_PALETTE.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-base hover:bg-panel-2"
-                    onClick={() => {
-                      setPickerOpen(false);
-                      void controller.toggleReaction(message, emoji);
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
+            <PopoverContent align="end" className="w-auto p-3">
+              <EmojiPicker
+                recent={readRecentEmoji()}
+                onPick={(entry) => {
+                  setPickerOpen(false);
+                  rememberEmoji(entry.glyph);
+                  void controller.toggleReaction(message, entry.glyph);
+                }}
+              />
             </PopoverContent>
           </PopoverRoot>
           {onOpenThread && (
