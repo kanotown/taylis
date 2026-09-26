@@ -28,6 +28,7 @@ import type {
   ThreadState,
   TokenResponse,
   UserMe,
+  UserUpdate,
   UserPublic,
 } from "./types";
 
@@ -177,7 +178,7 @@ export class ApiClient {
     return this.request("PUT", `/api/v1/channels/${channelId}/notification-preference`, { level, muted_until: mutedUntil });
   }
 
-  updateMe(patch: { display_name?: string; email?: string | null; title?: string | null; status_text?: string | null; status_emoji?: string | null; status_expires_at?: string | null }): Promise<UserMe> {
+  updateMe(patch: UserUpdate): Promise<UserMe> {
     return this.request("PATCH", "/api/v1/users/me", patch);
   }
 

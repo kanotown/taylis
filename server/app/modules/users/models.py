@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func, text
-from sqlalchemy.dialects.postgresql import CITEXT
+from sqlalchemy import DateTime, SmallInteger, String, Text, func, text
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -25,6 +25,12 @@ class User(Base):
     status_text: Mapped[str | None] = mapped_column(String(100))
     status_emoji: Mapped[str | None] = mapped_column(String(32))
     status_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Do not disturb (M12c): a manual pause and a daily quiet-hours window in the user's zone.
+    dnd_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quiet_hours_start: Mapped[int | None] = mapped_column(SmallInteger)  # minutes after midnight
+    quiet_hours_end: Mapped[int | None] = mapped_column(SmallInteger)
+    quiet_hours_days: Mapped[list[int] | None] = mapped_column(ARRAY(SmallInteger))  # 0 = Monday
+    quiet_hours_tz: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

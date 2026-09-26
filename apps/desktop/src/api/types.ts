@@ -71,3 +71,6 @@ export type FileListOut = components["schemas"]["FileListOut"];
 /** Starred channels and 「すべて既読にする」 (M12a). */
 export type FavoriteStateOut = components["schemas"]["FavoriteStateOut"];
 export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];
+
+/** PATCH /users/me body (M11d, M12c). */
+export type UserUpdate = components["schemas"]["UserUpdate"];

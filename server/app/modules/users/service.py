@@ -14,6 +14,10 @@ from app.modules.users.models import User
 from app.modules.users.schemas import UserUpdate
 
 
+async def get_users(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, User]:
+    return {user.id: user for user in await repo.get_many(db, ids)}
+
+
 async def get_user(
     db: AsyncSession, user_id: uuid.UUID, *, for_update: bool = False
 ) -> User | None:
@@ -59,6 +63,15 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
             user.status_expires_at = data.status_expires_at
         if user.status_text is None and user.status_emoji is None:
             user.status_expires_at = None
+    # Do not disturb (M12c).
+    if "dnd_until" in data.model_fields_set:
+        user.dnd_until = data.dnd_until
+    if "quiet_hours" in data.model_fields_set:
+        hours = data.quiet_hours
+        user.quiet_hours_start = hours.start_minutes if hours else None
+        user.quiet_hours_end = hours.end_minutes if hours else None
+        user.quiet_hours_days = hours.days if hours else None
+        user.quiet_hours_tz = hours.tz if hours else None
     user.updated_at = utcnow()
     try:
         await db.flush()

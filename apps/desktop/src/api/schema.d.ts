@@ -1550,6 +1550,29 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * QuietHours
+         * @description A daily window (in the user's zone) during which pushes are held back (M12c).
+         */
+        QuietHours: {
+            /** Days */
+            days?: number[];
+            /**
+             * End
+             * @description HH:MM local time; before start = overnight
+             */
+            end: string;
+            /**
+             * Start
+             * @description HH:MM local time
+             */
+            start: string;
+            /**
+             * Tz
+             * @description IANA zone, e.g. Asia/Tokyo
+             */
+            tz: string;
+        };
         /** ReactionOut */
         ReactionOut: {
             /** Count */
@@ -1754,6 +1777,8 @@ export interface components {
             deactivated_at: string | null;
             /** Display Name */
             display_name: string;
+            /** Dnd Until */
+            dnd_until?: string | null;
             /** Email */
             email: string | null;
             /**
@@ -1763,6 +1788,7 @@ export interface components {
             id: string;
             /** Must Change Password */
             must_change_password: boolean;
+            quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Role */
             role: string;
             /** Status Emoji */
@@ -1792,11 +1818,14 @@ export interface components {
             deactivated_at: string | null;
             /** Display Name */
             display_name: string;
+            /** Dnd Until */
+            dnd_until?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Role */
             role: string;
             /** Status Emoji */
@@ -1819,8 +1848,11 @@ export interface components {
         UserUpdate: {
             /** Display Name */
             display_name?: string | null;
+            /** Dnd Until */
+            dnd_until?: string | null;
             /** Email */
             email?: string | null;
+            quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Status Emoji */
             status_emoji?: string | null;
             /** Status Expires At */

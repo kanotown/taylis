@@ -1,8 +1,9 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
+import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
+import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -386,7 +387,7 @@ export class AppController {
   }
 
   /** M11d: profile card fields (title, custom status). Null clears; omitted fields keep their value. */
-  async updateProfile(patch: { title?: string | null; status_text?: string | null; status_emoji?: string | null; status_expires_at?: string | null }): Promise<boolean> {
+  async updateProfile(patch: UserUpdate): Promise<boolean> {
     if (!this.api) return false;
     try {
       const me = await this.api.updateMe(patch);
@@ -479,6 +480,7 @@ export class AppController {
       },
       onSignedOut: () => { if (this.engine === engine) void this.handleSignedOut(this.account(api.baseUrl, this.username)); },
       onNotify: (message, channel) => {
+        if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return; // M12c: paused / quiet hours
         const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";
         const title = channel.type === "dm" ? sender : `${sender} (group DM)`;
         void notify(title, plainText(mentionsToNames(message.body, this.store.users)) || "新しいメッセージ");
