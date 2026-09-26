@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.channels.models import Channel
+from app.modules.channels.models import Channel, ChannelMember
 from app.modules.messages.models import Message, Reaction
 
 
@@ -56,6 +57,29 @@ async def list_history(
     if before_seq is not None:
         stmt = stmt.where(Message.seq < before_seq)
     stmt = stmt.order_by(Message.seq.desc()).limit(limit)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_mentions(
+    db: AsyncSession, user_id: uuid.UUID, *, before: datetime | None, limit: int
+) -> list[Message]:
+    """Messages mentioning the user (or everyone) in their channels, newest first (M11h)."""
+    stmt = (
+        select(Message)
+        .join(
+            ChannelMember,
+            and_(ChannelMember.channel_id == Message.channel_id, ChannelMember.user_id == user_id),
+        )
+        .where(
+            or_(Message.mentioned_user_ids.contains([user_id]), Message.mention_all.is_(True)),
+            Message.deleted_at.is_(None),
+            Message.sender_id != user_id,
+        )
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    if before is not None:
+        stmt = stmt.where(Message.created_at < before)
     return list((await db.execute(stmt)).scalars().all())
 
 

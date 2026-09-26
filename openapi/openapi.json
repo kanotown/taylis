@@ -483,6 +483,17 @@
             "title": "Last Seq",
             "type": "integer"
           },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Count"
+          },
           "membership": {
             "anyOf": [
               {
@@ -1154,6 +1165,36 @@
           "joined_at"
         ],
         "title": "MembershipOut",
+        "type": "object"
+      },
+      "MentionListOut": {
+        "description": "Messages that mention me (M11h), newest first; `next_cursor` goes back as `cursor`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MentionListOut",
         "type": "object"
       },
       "MessageCreate": {
@@ -4062,6 +4103,74 @@
         "summary": "Get Link Preview",
         "tags": [
           "link-previews"
+        ]
+      }
+    },
+    "/api/v1/mentions": {
+      "get": {
+        "description": "Messages that mention me or everyone, in my channels, newest first (M11h).",
+        "operationId": "list_mentions_api_v1_mentions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MentionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Mentions",
+        "tags": [
+          "messages"
         ]
       }
     },

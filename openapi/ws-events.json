@@ -116,6 +116,18 @@
                 "title": "Last Seq",
                 "type": "integer"
               },
+              "member_count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Member Count"
+              },
               "membership": {
                 "anyOf": [
                   {
@@ -428,6 +440,18 @@
               "last_seq": {
                 "title": "Last Seq",
                 "type": "integer"
+              },
+              "member_count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Member Count"
               },
               "membership": {
                 "anyOf": [

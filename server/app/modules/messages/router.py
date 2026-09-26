@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Path, Query, Response
@@ -9,6 +10,7 @@ from app.modules.messages.schemas import (
     EMOJI_PATTERN,
     DeltaOut,
     HistoryOut,
+    MentionListOut,
     MessageCreate,
     MessageEdit,
     MessageOut,
@@ -78,6 +80,17 @@ async def edit_message(
 async def delete_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
     """Returns the tombstone so the caller can apply it locally."""
     return await service.delete_message(db, user, message_id)
+
+
+@router.get("/mentions", response_model=MentionListOut)
+async def list_mentions(
+    user: CurrentUser,
+    db: Db,
+    cursor: datetime | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+) -> MentionListOut:
+    """Messages that mention me or everyone, in my channels, newest first (M11h)."""
+    return await service.list_mentions(db, user, cursor=cursor, limit=limit)
 
 
 @router.get("/channels/{channel_id}/pins", response_model=list[MessageOut])

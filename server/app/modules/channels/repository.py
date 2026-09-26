@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.channels.models import Channel, ChannelMember
@@ -36,6 +36,19 @@ async def list_user_channels(
         .order_by(Channel.type, Channel.name, Channel.created_at)
     )
     return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
+
+async def member_counts_for_channels(
+    db: AsyncSession, channel_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    if not channel_ids:
+        return {}
+    stmt = (
+        select(ChannelMember.channel_id, func.count())
+        .where(ChannelMember.channel_id.in_(channel_ids))
+        .group_by(ChannelMember.channel_id)
+    )
+    return {row[0]: int(row[1]) for row in (await db.execute(stmt)).all()}
 
 
 async def list_public_channels_not_member(db: AsyncSession, user_id: uuid.UUID) -> list[Channel]:

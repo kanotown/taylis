@@ -53,7 +53,10 @@ def _membership_out(membership: ChannelMember | None) -> MembershipOut | None:
 
 
 def to_channel_out(
-    channel: Channel, membership: ChannelMember | None, dm_user_ids: list[uuid.UUID] | None
+    channel: Channel,
+    membership: ChannelMember | None,
+    dm_user_ids: list[uuid.UUID] | None,
+    member_count: int | None = None,
 ) -> ChannelOut:
     return ChannelOut(
         id=channel.id,
@@ -69,6 +72,9 @@ def to_channel_out(
         updated_at=channel.updated_at,
         membership=_membership_out(membership),
         dm_user_ids=dm_user_ids,
+        member_count=member_count
+        if member_count is not None
+        else (len(dm_user_ids) if dm_user_ids else None),
     )
 
 
@@ -218,12 +224,12 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
     rows = await repo.list_user_channels(db, actor.id)
     dm_ids = [c.id for c, _ in rows if c.is_dm]
     members = await repo.member_ids_for_channels(db, dm_ids)
-    out = [to_channel_out(c, m, members.get(c.id)) for c, m in rows]
-    if include_public:
-        out.extend(
-            to_channel_out(c, None, None)
-            for c in await repo.list_public_channels_not_member(db, actor.id)
-        )
+    browsable = await repo.list_public_channels_not_member(db, actor.id) if include_public else []
+    counts = await repo.member_counts_for_channels(
+        db, [c.id for c, _ in rows if not c.is_dm] + [c.id for c in browsable]
+    )
+    out = [to_channel_out(c, m, members.get(c.id), counts.get(c.id)) for c, m in rows]
+    out.extend(to_channel_out(c, None, None, counts.get(c.id, 0)) for c in browsable)
     return out
 
 
@@ -235,7 +241,8 @@ async def get_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> C
     dm_ids = None
     if channel.is_dm:
         dm_ids = (await repo.member_ids_for_channels(db, [channel.id])).get(channel.id)
-    return to_channel_out(channel, membership, dm_ids)
+    counts = await repo.member_counts_for_channels(db, [channel.id])
+    return to_channel_out(channel, membership, dm_ids, counts.get(channel.id, 0))
 
 
 async def update_channel(
