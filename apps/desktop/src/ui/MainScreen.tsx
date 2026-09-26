@@ -150,7 +150,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];
 
   return (
-    <div className="grid h-full grid-cols-[260px_minmax(0,1fr)_auto] bg-canvas text-ink">
+    <div className="grid h-full grid-cols-[260px_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)] overflow-hidden bg-canvas text-ink">
       <Sidebar
         controller={controller}
         channels={channels}
@@ -164,7 +164,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onSearch={() => setSearching(true)}
         onSettings={() => setDialog("settings")}
       />
-      <main className="relative flex min-w-0 flex-col">
+      {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
+      <main className="relative flex min-h-0 min-w-0 flex-col">
         {status !== "online" && status !== "idle" && (
           <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
             {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}

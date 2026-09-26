@@ -58,7 +58,8 @@
 }
 
 @layer base {
-  html, body, #root { height: 100%; }
+  /* The app shell never scrolls as a page: only the sidebar, the timeline and the panes scroll. */
+  html, body, #root { height: 100%; overflow: hidden; }
   body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
