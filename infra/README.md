@@ -99,6 +99,34 @@ app 側の設定: `S3_ENDPOINT=http://objectstore:7070`、`S3_BUCKET=chikuwa`、
 6. **鍵の疎通確認 (任意、アプリが無くてもできる)**: ダミーのデバイストークンで sandbox に送り、
    `400 BadDeviceToken` が返れば鍵・Key ID・Team ID は正しい。`403 InvalidProviderToken` なら設定ミス。
 
+### FCM (Android) の準備 (M7)
+
+Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サーバは FCM HTTP v1 API をサービスアカウントで叩き、
+アプリは Firebase SDK でトークンを取得する。どちらも Firebase プロジェクトが必要。
+
+1. **Firebase プロジェクト**: https://console.firebase.google.com で「プロジェクトを追加」(Google アナリティクスは不要)。
+2. **Android アプリの登録**: プロジェクトの概要 → Android アイコン → パッケージ名 `jp.chikuwachat.android` を入力 → 登録 →
+   `google-services.json` をダウンロードし `apps/android/app/google-services.json` に置く (`.gitignore` 済み)。
+   このファイルがあるときだけ Gradle が Google services プラグインを適用する。無くてもビルドは通り、
+   プッシュ登録がスキップされるだけ。
+3. **サービスアカウント鍵**: プロジェクトの設定 → サービス アカウント → 「新しい秘密鍵の生成」→ JSON を
+   `infra/secrets/fcm_service_account.json` に置く (権限 `600`。`*service-account*.json` と `infra/secrets/*` は除外済み)。
+   Cloud Messaging API (V1) が有効になっていることを確認する (既定で有効)。
+4. **`.env`**:
+
+   ```
+   FCM_SERVICE_ACCOUNT_FILE=./secrets/fcm_service_account.json
+   PUSH_FCM_ENABLED=true
+   PUSH_FCM_SERVICE_ACCOUNT_PATH=/run/secrets/fcm_service_account.json
+   ```
+
+   `compose up -d --build app` で反映。サーバは起動時に JSON から `project_id` / `client_email` / `private_key` を読み、
+   JWT bearer grant で 1 時間有効のアクセストークンを取得して送信する (追加ライブラリは不要、PyJWT の RS256)。
+5. **確認**: Play services 入りのエミュレータ (Pixel_9 など "Google Play" イメージ) か実機でログインすると、
+   端末が `push_provider = fcm` で登録される (`GET /api/v1/auth/sessions` の device で確認)。
+   `uv run python -m app.cli push-test --user <name> --body "hello"` でテスト通知を送る。
+   無効なトークンは FCM の `UNREGISTERED` 応答で `push_token = NULL` になる。
+
    ```bash
    uv run --with 'pyjwt[crypto]' --with 'httpx[http2]' python - <<'EOF'
    import time, jwt, httpx

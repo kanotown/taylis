@@ -54,8 +54,12 @@ adb shell am start -n jp.chikuwachat.android/.MainActivity
 実機では Mac の LAN アドレス (`http://192.168.x.x:8000`) を入れる。
 平文 HTTP は開発用に `usesCleartextTraffic` で許可している (iOS の ATS 設定と同じ)。本番は Caddy で TLS 終端する (SECURITY.md)。
 
-## 通知
+## 通知 (FCM)
 
-M6 では DM を受信したときにアプリ内 (WS 経由) でローカル通知を出す。バックグラウンドでソケットが
-切れているときの通知は M7 の FCM で追加する (PUSH_NOTIFICATIONS.md §3 / §9)。
-Android 13 以降は起動時に通知権限を求める。
+- WS 接続中に届いた DM はアプリがローカル通知を出す (フォアグラウンドで当該チャンネルを開いていれば出さない)。
+- バックグラウンドでソケットが切れている間は、サーバが FCM の data-only メッセージを送り、
+  `ChikuwaMessagingService.onMessageReceived` が `Notifier` で通知を組み立てる (チャンネルごとに 1 件、
+  タップで該当チャンネルを開く)。`onNewToken` と各セッション開始時に `PUT /devices/current` でトークンを登録する。
+- 有効にするには Firebase プロジェクトの `google-services.json` を `app/` に置く (手順は
+  [infra/README.md](../../infra/README.md) の「FCM (Android) の準備」)。無い場合はビルドは通り、登録がスキップされる。
+- Android 13 以降は起動時に通知権限を求める。

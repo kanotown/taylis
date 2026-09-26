@@ -32,6 +32,7 @@ apps/android/**/.gradle/
 apps/android/**/.kotlin/
 apps/android/**/local.properties
 apps/android/**/*.keystore
+apps/android/app/google-services.json
 
 # os / editors
 .DS_Store

@@ -178,7 +178,7 @@ class PushResult:
 | 実装 | 用途 |
 | --- | --- |
 | `APNsPushProvider` | HTTP/2 + JWT (ES256, `.p8` キー)。`httpx` の HTTP/2 で直接叩く。端末の `push_environment` で sandbox / production のホストを切り替える。M5 |
-| `FCMPushProvider` | FCM HTTP v1。`google-auth` でサービスアカウントから OAuth2 トークンを取得。M7 |
+| `FCMPushProvider` | FCM HTTP v1。サービスアカウント鍵 (JSON) から JWT bearer grant で OAuth2 アクセストークンを取得する (PyJWT の RS256。`google-auth` は不要)。data-only メッセージ、`android.priority` HIGH / NORMAL、`ttl`、`collapse_key`。M7 |
 | `LogPushProvider` | 開発用。ログに出すだけ。設定が無い時の既定 |
 | `FakePushProvider` | テスト用。呼び出しを記録する |
 
@@ -250,3 +250,17 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
 - iOS: `AppDelegate` がトークンを受け取り `PushCenter` が `PUT /devices/current` で登録する。`aps-environment` は
   `ChikuwaChat.entitlements` で development (= sandbox)。埋め込みプロビジョニングプロファイルから環境を判定する。
 - M8 で追加するもの: メンション時の通知 (`level = mentions`)、既読チェック、バッジの正確な数。
+
+## 14. 実装メモ (M7)
+
+- サーバ: `FCMPushProvider` (`providers.py`)。`build_providers` は `PUSH_FCM_ENABLED=true` のとき
+  `PUSH_FCM_SERVICE_ACCOUNT_PATH` の JSON から生成する。アクセストークンは有効期限の 60 秒前に更新、
+  401 / 403 ではトークンを捨てて `retry` (設定ミスをエラーログ)。`Retry-After` を尊重する。
+  応答の対応表 (§8) を `tests/test_fcm_provider.py` で固定している。
+- Android: `ChikuwaMessagingService` (`onNewToken` → `PushCenter.tokenReceived`、`onMessageReceived` →
+  `AppController.handlePush`)。`PushCenter` はセッション開始時と復帰時にトークンを取得し、変わったときと
+  新しいセッションのときだけ `PUT /devices/current` (`push_provider = fcm`) を送る。
+  data-only メッセージはフォアグラウンドかつ WS 接続中なら表示しない (WS で届く)。それ以外は
+  `Notifier` がチャンネルごとの通知 (id = channel_id) を出し、タップで該当チャンネルを開く。
+  `google-services.json` が無いビルドでは Firebase が初期化されず、登録は静かにスキップされる。
+- 未確認: 実際の Firebase プロジェクトでの受信 (infra/README.md の手順でユーザー側が設定する)。

@@ -1,5 +1,6 @@
 """PushProvider implementations (PUSH_NOTIFICATIONS.md §8)."""
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -176,6 +177,148 @@ class APNsPushProvider:
         return PushResult("failed", f"{response.status_code} {reason}")
 
 
+class FCMPushProvider:
+    """FCM HTTP v1 with a service account: a JWT bearer grant yields short-lived OAuth2 tokens."""
+
+    provider = "fcm"
+    SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
+    GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+    ASSERTION_LIFETIME_SECONDS = 3600
+    TOKEN_SAFETY_MARGIN_SECONDS = 60
+
+    def __init__(
+        self,
+        *,
+        project_id: str,
+        client_email: str,
+        private_key: str,
+        token_uri: str = "https://oauth2.googleapis.com/token",
+        fcm_host: str = "https://fcm.googleapis.com",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self.project_id = project_id
+        self.client_email = client_email
+        self.private_key = private_key
+        self.token_uri = token_uri
+        self.fcm_host = fcm_host
+        self.client = client or httpx.AsyncClient(http2=True, timeout=15.0)
+        self._access_token: str | None = None
+        self._access_token_expires_at = 0.0
+
+    @classmethod
+    def from_file(cls, path: str) -> "FCMPushProvider":
+        """A service account key file from the Firebase console (never committed)."""
+        info = json.loads(Path(path).read_text())
+        return cls(
+            project_id=info["project_id"],
+            client_email=info["client_email"],
+            private_key=info["private_key"],
+            token_uri=info.get("token_uri", "https://oauth2.googleapis.com/token"),
+        )
+
+    def assertion(self, now: float) -> str:
+        return jwt.encode(
+            {
+                "iss": self.client_email,
+                "scope": self.SCOPE,
+                "aud": self.token_uri,
+                "iat": int(now),
+                "exp": int(now) + self.ASSERTION_LIFETIME_SECONDS,
+            },
+            self.private_key,
+            algorithm="RS256",
+        )
+
+    async def access_token(self, now: float | None = None) -> str:
+        now = time.time() if now is None else now
+        if (
+            self._access_token is not None
+            and now < self._access_token_expires_at - self.TOKEN_SAFETY_MARGIN_SECONDS
+        ):
+            return self._access_token
+        response = await self.client.post(
+            self.token_uri,
+            data={"grant_type": self.GRANT_TYPE, "assertion": self.assertion(now)},
+        )
+        response.raise_for_status()
+        data = response.json()
+        self._access_token = str(data["access_token"])
+        self._access_token_expires_at = now + float(data.get("expires_in", 3600))
+        return self._access_token
+
+    def build_message(
+        self, device: Device, payload: dict[str, Any], now: float | None = None
+    ) -> dict[str, Any]:
+        """Data-only message (PUSH_NOTIFICATIONS.md §5): the app builds the notification itself."""
+        now = time.time() if now is None else now
+        silent = payload.get("kind") == "silent"
+        data = {
+            key: str(payload[key])
+            for key in (
+                "kind",
+                "channel_id",
+                "message_id",
+                "seq",
+                "title",
+                "subtitle",
+                "body",
+                "badge",
+                "collapse_key",
+                "sent_at",
+            )
+            if payload.get(key) is not None
+        }
+        android: dict[str, Any] = {"priority": "NORMAL" if silent else "HIGH"}
+        if payload.get("collapse_key"):
+            android["collapse_key"] = str(payload["collapse_key"])[:64]
+        expires = payload.get("expires_at")
+        if expires:
+            ttl = max(0, int(datetime.fromisoformat(str(expires)).timestamp() - now))
+            android["ttl"] = f"{ttl}s"
+        return {"message": {"token": device.push_token, "data": data, "android": android}}
+
+    @staticmethod
+    def _error(response: httpx.Response) -> tuple[str, str, str]:
+        """(status, errorCode, message) from an FCM error body; blanks when unparsable."""
+        try:
+            error = response.json().get("error", {})
+        except ValueError:
+            return "", "", ""
+        code = ""
+        for detail in error.get("details", []):
+            if isinstance(detail, dict) and detail.get("errorCode"):
+                code = str(detail["errorCode"])
+        return str(error.get("status", "")), code, str(error.get("message", ""))
+
+    async def send(self, device: Device, payload: dict[str, Any]) -> PushResult:
+        url = f"{self.fcm_host}/v1/projects/{self.project_id}/messages:send"
+        try:
+            token = await self.access_token()
+            response = await self.client.post(
+                url,
+                headers={"authorization": f"Bearer {token}"},
+                json=self.build_message(device, payload),
+            )
+        except httpx.HTTPError as exc:
+            return PushResult("retry", f"transport: {exc}")
+        if response.status_code == 200:
+            return PushResult("sent")
+        status, code, message = self._error(response)
+        detail = code or status or str(response.status_code)
+        if response.status_code == 404 and (code == "UNREGISTERED" or status == "NOT_FOUND"):
+            return PushResult("invalid_token", "UNREGISTERED")
+        if response.status_code == 400 and "registration token" in message.lower():
+            return PushResult("invalid_token", "INVALID_ARGUMENT")
+        if response.status_code in (401, 403):
+            self._access_token = None  # force a fresh access token next time
+            log.error("FCM rejected the service account credentials (%s)", detail)
+            return PushResult("retry", detail)
+        if response.status_code == 429 or response.status_code >= 500:
+            retry_after = response.headers.get("retry-after")
+            return PushResult("retry", detail, float(retry_after) if retry_after else None)
+        return PushResult("failed", f"{response.status_code} {detail} {message}".strip())
+
+
 def build_providers(settings: Any) -> dict[str, PushProvider]:
     """Provider registry from settings; unconfigured platforms log instead of sending."""
     providers: dict[str, PushProvider] = {}
@@ -188,5 +331,8 @@ def build_providers(settings: Any) -> dict[str, PushProvider]:
         )
     else:
         providers["apns"] = LogPushProvider("apns")
-    providers["fcm"] = LogPushProvider("fcm")  # FCM arrives in M7
+    if settings.push_fcm_enabled:
+        providers["fcm"] = FCMPushProvider.from_file(settings.push_fcm_service_account_path)
+    else:
+        providers["fcm"] = LogPushProvider("fcm")
     return providers
