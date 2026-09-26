@@ -203,6 +203,7 @@ struct ChannelView: View {
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
+                    TypingLine(controller: controller, channelId: channelId)
                     ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds in
                         Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds) }
                     }
@@ -249,7 +250,12 @@ struct ChannelView: View {
 
     private func headerSubtitle(_ channel: ChannelState) -> String? {
         if let topic = channel.channel.topic, !topic.isEmpty { return topic }
-        return !channel.channel.isDm && channel.isMember && !channel.channel.archived ? "トピックを設定" : nil
+        if channel.channel.isDm {
+            // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2).
+            let others = (channel.channel.dmUserIds ?? []).filter { $0 != controller.store.me?.id }
+            return others.count == 1 ? presenceLabel(controller.store.presenceOf(others[0])) : nil
+        }
+        return channel.isMember && !channel.channel.archived ? "トピックを設定" : nil
     }
 }
 
@@ -457,6 +463,7 @@ struct ComposerView: View {
     private var uploading: Int { controller?.store.uploading(channelId, parentId: parentId) ?? 0 }
     private var textBinding: Binding<String> { Binding(get: { text }, set: { value in
         controller?.store.setDraft(channelId, parentId: parentId) { $0.text = value }
+        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { controller?.engine?.sendTyping(channelId, parentId: parentId) } // §5.2, throttled
     }) }
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false

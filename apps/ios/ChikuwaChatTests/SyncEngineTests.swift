@@ -320,6 +320,48 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testPresenceAndTypingAreVolatile() async throws {
+        let w = makeWorld()
+        // alice is connected before bob bootstraps: listed in bootstrap.
+        let aliceSocket = try await w.server.connector(for: w.alice.id)(URL(string: "ws://fake")!, "t")
+        try await aliceSocket.send(ClientFrame.auth(token: "t"))
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.presenceOf(w.alice.id), "online")
+        XCTAssertEqual(w.store.presenceOf(w.bob.id), "online") // own connection announced too
+
+        w.server.awayUsers.insert(w.alice.id)
+        w.server.announcePresence(w.alice.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.presenceOf(w.alice.id), "away")
+        aliceSocket.close()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.presenceOf(w.alice.id), "offline")
+        XCTAssertNil(w.store.presence[w.alice.id])
+
+        // Typing from alice shows up for bob, expires, and is cleared by her message.
+        let aliceAgain = try await w.server.connector(for: w.alice.id)(URL(string: "ws://fake")!, "t")
+        try await aliceAgain.send(ClientFrame.auth(token: "t"))
+        try await aliceAgain.send(ClientFrame.typing(channelId: w.channel.id, parentId: nil))
+        await settle(w.engine)
+        XCTAssertEqual(w.store.typingUsers(w.channel.id, parentId: nil), [w.alice.id])
+        XCTAssertEqual(w.store.typingUsers(w.channel.id, parentId: nil, now: Date().addingTimeInterval(6)), []) // 5 s TTL
+        try await aliceAgain.send(ClientFrame.typing(channelId: w.channel.id, parentId: "p1"))
+        await settle(w.engine)
+        XCTAssertEqual(w.store.typingUsers(w.channel.id, parentId: "p1"), [w.alice.id])
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "here it is")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.typingUsers(w.channel.id, parentId: nil), [])
+
+        // Our own typing goes out at most once per interval and never comes back to us.
+        w.engine.sendTyping(w.channel.id)
+        w.engine.sendTyping(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.typingUsers(w.channel.id, parentId: nil), [])
+        w.engine.stop()
+    }
+
     func testAttachmentIdsTravelWithTheOutbox() async throws {
         let w = makeWorld()
         await w.engine.start()

@@ -67,5 +67,16 @@ final class ThreadsSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(image.size.width, 0)
         _ = try render(NavigationStack { ChannelListView(controller: controller, selection: .constant(nil)) }, size: CGSize(width: 393, height: 500), name: "threads-sidebar.png")
         _ = try render(ThreadView(controller: controller, channelId: "c1", parentId: "m1"), size: CGSize(width: 393, height: 760), name: "thread-open.png")
+
+        // Presence + typing (M11b): a 1:1 DM header shows the other person's status; the typing line sits above the composer.
+        let dm = ChannelOut(id: "d1", type: "dm", name: nil, topic: nil, purpose: nil, archived: false, createdBy: "me", lastSeq: 1,
+                            lastMessageAt: nil, createdAt: "", updatedAt: "", membership: MembershipOut(role: "member", joinedAt: ""), dmUserIds: ["me", "u2"])
+        store.upsertChannel(dm, isMember: true)
+        store.updateChannel("d1") { $0.hasOlder = false; $0.syncedSeq = 1 }
+        _ = store.upsertMessage(message("d1m1", channel: "d1", sender: "u2", body: "今いい？", seq: 1, minute: 30))
+        store.setPresence("u2", status: "online")
+        store.noteTyping("d1", parentId: nil, userId: "u2", until: Date().addingTimeInterval(60))
+        _ = try render(NavigationStack { ChannelView(controller: controller, channelId: "d1", pendingThreadId: .constant(nil)) }, size: CGSize(width: 393, height: 500), name: "dm-presence-typing.png")
+        _ = try render(NavigationStack { ChannelListView(controller: controller, selection: .constant(nil)) }, size: CGSize(width: 393, height: 600), name: "sidebar-presence.png")
     }
 }

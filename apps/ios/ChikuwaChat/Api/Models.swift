@@ -213,6 +213,13 @@ struct BootstrapOut: Codable {
     let limits: Limits
     /// Followed threads with unread replies / mentions (THREADS.md §3); the 「スレッド」 badge.
     var threads: ThreadSummary? = nil
+    /// Who is connected right now (SYNC_PROTOCOL.md §5.2 presence); users not listed are offline.
+    var presence: [PresenceEntry]? = nil
+}
+
+struct PresenceEntry: Codable, Equatable {
+    let userId: String
+    let status: String
 }
 
 /// My relation to one thread (THREADS.md §3).

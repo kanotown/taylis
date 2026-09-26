@@ -5,6 +5,8 @@ struct AvatarView: View {
     let id: String
     let name: String
     var size: CGFloat = 36
+    /// "online" / "away" adds the status dot (SYNC_PROTOCOL.md §5.2); nil or "offline" shows none.
+    var presence: String? = nil
 
     var body: some View {
         Text(Timeline.initials(name))
@@ -12,7 +14,24 @@ struct AvatarView: View {
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(Color(hue: Timeline.hue(id), saturation: 0.55, brightness: 0.72), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if let presence, presence != "offline" {
+                    Circle()
+                        .fill(presence == "online" ? Color.green : Color.orange)
+                        .frame(width: size * 0.3, height: size * 0.3)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                        .offset(x: size * 0.08, y: size * 0.08)
+                }
+            }
             .accessibilityHidden(true)
+    }
+}
+
+func presenceLabel(_ status: String) -> String {
+    switch status {
+    case "online": return "オンライン"
+    case "away": return "離席中"
+    default: return "オフライン"
     }
 }
 

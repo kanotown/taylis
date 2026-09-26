@@ -33,6 +33,9 @@ struct EngineOptions {
     var threadPageSize = 50
     /// thread.updated bursts (one per reply) collapse into one list / badge refresh.
     var threadRefresh: TimeInterval = 0.3
+    /// §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtl.
+    var typingInterval: TimeInterval = 3
+    var typingTtl: TimeInterval = 5
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -63,6 +66,8 @@ final class SyncEngine {
     /// Thread read positions sent (or about to be) while the thread's state is not loaded yet.
     private var threadReadFloor: [String: Int] = [:]
     private var threadRefreshTask: Task<Void, Never>?
+    /// "channel[:parent]" → when the last typing frame went out.
+    private var typingSent: [String: Date] = [:]
     var isActive: () -> Bool = { true }
     var prepareConnection: (() async throws -> Void)?
 
@@ -237,6 +242,11 @@ final class SyncEngine {
     private func onRaw(_ text: String) {
         guard let frame = ServerFrame.parse(text) else { return }
         switch frame {
+        case .typing(let channelId, let parentId, let userId):
+            // Volatile (SYNC_PROTOCOL.md §5.2): shown for a few seconds, never stored.
+            if userId != store.me?.id { store.noteTyping(channelId, parentId: parentId, userId: userId, until: Date().addingTimeInterval(options.typingTtl)) }
+        case .presence(let userId, let status):
+            store.setPresence(userId, status: status)
         case .hello(_, let interval):
             helloReceived = true
             resumeHello(true)
@@ -289,7 +299,18 @@ final class SyncEngine {
         }
         if let summary = bootstrap.threads { store.setThreadSummary(summary) }
         if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
+        store.replacePresence(bootstrap.presence ?? [])
         onBadge?(store.badgeCount)
+    }
+
+    /// The composer changed: tell the other members, at most once per typingInterval per conversation.
+    func sendTyping(_ channelId: String, parentId: String? = nil) {
+        guard status == .online, let ws else { return }
+        let key = parentId.map { "\(channelId):\($0)" } ?? channelId
+        let now = Date()
+        if let last = typingSent[key], now.timeIntervalSince(last) < options.typingInterval { return }
+        typingSent[key] = now
+        Task { try? await ws.send(ClientFrame.typing(channelId: channelId, parentId: parentId)) }
     }
 
     /// Public channels I am not a member of; bootstrap only lists my own channels.
@@ -379,6 +400,7 @@ final class SyncEngine {
 
     /// §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise.
     private func countUnread(_ message: MessageOut) {
+        store.clearTyping(message.channelId, parentId: message.parentId, userId: message.senderId) // their message arrived
         guard let me = store.me else { return }
         if message.senderId == me.id {
             unreadHold[message.channelId] = nil // sending reads the conversation (the server does the same)

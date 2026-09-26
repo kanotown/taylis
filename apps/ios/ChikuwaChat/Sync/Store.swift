@@ -226,6 +226,10 @@ final class Store {
     var threadsLoaded = false
     var threadsCursor: String?
     var threadsHasMore = false
+    /// Who is connected right now (SYNC_PROTOCOL.md §5.2); absent = offline. Replaced by bootstrap.
+    var presence: [String: String] = [:]
+    /// "channel[:parent]" → user id → expiry; volatile typing indicators.
+    var typing: [String: [String: Date]] = [:]
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -357,6 +361,35 @@ final class Store {
             let mention = (state.following && state.mentionCount > 0 ? 1 : 0) - (before.following && before.mentionCount > 0 ? 1 : 0)
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
+    }
+
+    // MARK: presence / typing (volatile, SYNC_PROTOCOL.md §5.2)
+
+    func presenceOf(_ userId: String) -> String { presence[userId] ?? "offline" }
+
+    func setPresence(_ userId: String, status: String) {
+        if status == "offline" { presence[userId] = nil } else { presence[userId] = status }
+    }
+
+    /// bootstrap: the full picture; everyone not listed is offline.
+    func replacePresence(_ entries: [PresenceEntry]) {
+        presence = Dictionary(entries.filter { $0.status != "offline" }.map { ($0.userId, $0.status) }, uniquingKeysWith: { _, latest in latest })
+    }
+
+    private func typingKey(_ channelId: String, _ parentId: String?) -> String { parentId.map { "\(channelId):\($0)" } ?? channelId }
+
+    func noteTyping(_ channelId: String, parentId: String?, userId: String, until: Date) {
+        typing[typingKey(channelId, parentId), default: [:]][userId] = until
+    }
+
+    /// The user posted: their indicator goes away at once.
+    func clearTyping(_ channelId: String, parentId: String?, userId: String) {
+        typing[typingKey(channelId, parentId)]?[userId] = nil
+    }
+
+    /// Users typing in this conversation right now (expired entries are skipped, not removed).
+    func typingUsers(_ channelId: String, parentId: String?, now: Date = Date()) -> [String] {
+        (typing[typingKey(channelId, parentId)] ?? [:]).filter { $0.value > now }.keys.sorted()
     }
 
     /// The rows of the threads view: followed, newest reply first, unread only when that filter is on.
