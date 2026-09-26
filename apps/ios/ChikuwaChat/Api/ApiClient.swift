@@ -204,6 +204,20 @@ final class ApiClient: SyncApi {
         return try await request("GET", components.string ?? "/api/v1/link-previews")
     }
 
+    // MARK: reminders (M12e)
+
+    func createReminder(messageId: String, remindAt: Date, note: String?) async throws -> ReminderOut {
+        try await request("POST", "/api/v1/messages/\(messageId)/reminders", body: .object([
+            "remind_at": .string(ISO8601DateFormatter().string(from: remindAt)),
+            "note": note.map(JSONValue.string) ?? .null,
+        ]))
+    }
+    func listReminders() async throws -> [ReminderOut] { try await request("GET", "/api/v1/reminders") }
+    /// Cancels a pending reminder or marks a fired one done.
+    func closeReminder(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/reminders/\(id)", body: nil, auth: true, retry401: true)
+    }
+
     // MARK: scheduled messages (M12d)
 
     func scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], sendAt: Date) async throws -> ScheduledOut {

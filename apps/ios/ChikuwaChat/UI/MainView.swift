@@ -63,6 +63,8 @@ struct MainView: View {
                         }
                     }
                 }
+            } else if selection == RemindersView.selectionId {
+                RemindersView(controller: controller) { row in Task { await controller.openPermalink(row.messageId) } }
             } else if selection == FilesView.selectionId {
                 FilesView(controller: controller) { messageId, channelId, parentId in
                     Task {
@@ -111,7 +113,7 @@ struct MainView: View {
         }
         .onChange(of: selection) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
-            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId || id == FilesView.selectionId {
+            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId || id == FilesView.selectionId || id == RemindersView.selectionId {
                 controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }

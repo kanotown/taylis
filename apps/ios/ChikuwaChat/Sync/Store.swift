@@ -244,6 +244,8 @@ final class Store {
     var favorites: Set<String> = []
     /// My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted.
     var scheduled: [String: ScheduledOut] = [:]
+    /// My open reminders (M12e): fired ones wait for 完了, pending ones for their time.
+    var reminders: [String: ReminderOut] = [:]
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -352,8 +354,8 @@ final class Store {
         return merged
     }
 
-    /// Unread DMs + channel mentions + followed threads with an unread mention (PUSH_NOTIFICATIONS.md §4.2).
-    var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } + threadSummary.mentionCount }
+    /// Unread DMs + channel mentions + followed threads with an unread mention (PUSH_NOTIFICATIONS.md §4.2) + fired reminders (M12e).
+    var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } + threadSummary.mentionCount + firedReminderCount }
 
     // MARK: threads (THREADS.md §5)
 
@@ -396,6 +398,26 @@ final class Store {
             let mention = (state.following && state.mentionCount > 0 ? 1 : 0) - (before.following && before.mentionCount > 0 ? 1 : 0)
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
+    }
+
+    // MARK: reminders (M12e)
+
+    /// Fired first (newest nudge on top), then pending by time.
+    func listReminders() -> [ReminderOut] {
+        reminders.values.sorted { a, b in
+            if a.status != b.status { return a.status == "fired" }
+            return a.status == "fired" ? a.remindAt > b.remindAt : a.remindAt < b.remindAt
+        }
+    }
+
+    var firedReminderCount: Int { reminders.values.filter { $0.status == "fired" }.count }
+
+    func replaceReminders(_ rows: [ReminderOut]) {
+        reminders = Dictionary(uniqueKeysWithValues: rows.filter { $0.status == "pending" || $0.status == "fired" }.map { ($0.id, $0) })
+    }
+
+    func applyReminder(_ row: ReminderOut) {
+        if row.status == "pending" || row.status == "fired" { reminders[row.id] = row } else { reminders.removeValue(forKey: row.id) }
     }
 
     // MARK: scheduled messages (M12d)

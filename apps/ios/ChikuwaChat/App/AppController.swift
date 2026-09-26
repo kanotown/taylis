@@ -151,6 +151,9 @@ final class AppController {
         }
         engine.isActive = { UIApplication.shared.applicationState == .active }
         engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
+        engine.onReminder = { [weak self] reminder in
+            self?.notice = "⏰ " + ((reminder.note?.isEmpty == false ? reminder.note! + " — " : "") + reminder.preview)
+        }
         engine.onBadge = { count in PushCenter.shared.setBadge(count) }
         self.engine = engine
         engine.prepareConnection = { [weak self, weak engine] in
@@ -236,6 +239,27 @@ final class AppController {
         guard let api else { return }
         do {
             _ = store.upsertMessage(message.pinnedAt != nil ? try await api.unpinMessage(id: message.id) : try await api.pinMessage(id: message.id))
+        } catch { self.error = describe(error) }
+    }
+
+    // MARK: reminders (M12e)
+
+    func setReminder(messageId: String, at: Date, note: String? = nil) async -> Bool {
+        guard let api else { return false }
+        do {
+            let row = try await api.createReminder(messageId: messageId, remindAt: at, note: note)
+            store.applyReminder(row)
+            notice = "\(Schedule.label(at)) にリマインドします"
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// Cancels a pending reminder or marks a fired one done.
+    func closeReminder(_ row: ReminderOut) async {
+        guard let api else { return }
+        do {
+            try await api.closeReminder(id: row.id)
+            store.reminders.removeValue(forKey: row.id)
         } catch { self.error = describe(error) }
     }
 

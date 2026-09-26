@@ -29,6 +29,25 @@ enum Schedule {
         return list
     }
 
+    /// 「リマインド」 choices (M12e): a little later, or a fresh morning.
+    static func reminderPresets(now: Date = Date(), calendar: Calendar = .current) -> [Preset] {
+        func soon(_ minutes: Int) -> Date {
+            let date = now.addingTimeInterval(TimeInterval(minutes * 60))
+            return calendar.date(bySetting: .second, value: 0, of: date) ?? date
+        }
+        var list = [
+            Preset(key: "20m", label: "20 分後", at: soon(20)),
+            Preset(key: "1h", label: "1 時間後", at: soon(60)),
+            Preset(key: "3h", label: "3 時間後", at: soon(180)),
+            Preset(key: "tomorrow9", label: "明日 9:00", at: at(now, dayOffset: 1, hour: 9, calendar: calendar)),
+        ]
+        let weekday = calendar.component(.weekday, from: now)
+        var toMonday = (9 - weekday) % 7
+        if toMonday == 0 { toMonday = 7 }
+        list.append(Preset(key: "monday9", label: "来週月曜 9:00", at: at(now, dayOffset: toMonday, hour: 9, calendar: calendar)))
+        return list
+    }
+
     private static let days = ["日", "月", "火", "水", "木", "金", "土"]
 
     /// "今日 18:00" / "明日 9:00" / "10月3日(土) 9:00" / "2027年1月4日(月) 9:00".

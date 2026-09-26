@@ -108,6 +108,10 @@ final class FakeServer {
             }
         }
 
+        func listReminders() async throws -> [ReminderOut] {
+            try maybeFail()
+            return server.reminders[userId] ?? []
+        }
         func listScheduled() async throws -> [ScheduledOut] {
             try maybeFail()
             return server.scheduled[userId] ?? []
@@ -245,6 +249,26 @@ final class FakeServer {
 
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
+    /// "user" → open reminders (M12e).
+    var reminders: [String: [ReminderOut]] = [:]
+
+    func remind(_ userId: String, channelId: String, messageId: String, remindAt: String, note: String? = nil) -> ReminderOut {
+        eventId += 1
+        let row = ReminderOut(id: "rem-\(eventId)", messageId: messageId, channelId: channelId, note: note, preview: "preview", remindAt: remindAt,
+                              status: "pending", firedAt: nil, createdAt: now())
+        reminders[userId, default: []].append(row)
+        return row
+    }
+
+    func emitReminder(_ userId: String, _ row: ReminderOut) {
+        let open = row.status == "pending" || row.status == "fired"
+        reminders[userId] = (reminders[userId] ?? []).filter { $0.id != row.id } + (open ? [row] : [])
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reminder.updated"), "ts": .string(now()),
+                                "channel_id": .string(row.channelId), "seq": .null,
+                                "data": .object(["reminder": try! JSONValue.from(row)])]))
+    }
+
     /// "user" → pending scheduled messages (M12d).
     var scheduled: [String: [ScheduledOut]] = [:]
 

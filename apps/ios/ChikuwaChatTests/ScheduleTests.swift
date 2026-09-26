@@ -23,6 +23,14 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(mondayPresets[3].at, local(2026, 10, 12, 9))
     }
 
+    func testReminderPresetsAreALittleLaterOrNextMorning() {
+        let now = local(2026, 10, 2, 19, 30)
+        let presets = Schedule.reminderPresets(now: now, calendar: calendar)
+        XCTAssertEqual(presets.map(\.key), ["20m", "1h", "3h", "tomorrow9", "monday9"])
+        XCTAssertEqual(presets[0].at, local(2026, 10, 2, 19, 50))
+        XCTAssertEqual(presets[3].at, local(2026, 10, 3, 9))
+    }
+
     func testLabelsAreRelativeToToday() {
         let now = local(2026, 10, 2, 10)
         XCTAssertEqual(Schedule.label(local(2026, 10, 2, 18), now: now, calendar: calendar), "今日 18:00")

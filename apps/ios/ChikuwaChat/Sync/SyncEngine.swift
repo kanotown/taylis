@@ -14,6 +14,8 @@ protocol SyncApi: AnyObject {
     func readAll() async throws -> [ChannelReadStateOut]
     /// M12d: my pending scheduled messages.
     func listScheduled() async throws -> [ScheduledOut]
+    /// M12e: my open reminders.
+    func listReminders() async throws -> [ReminderOut]
     func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
     /// THREADS.md §3.
@@ -307,6 +309,7 @@ final class SyncEngine {
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
         Task { await self.loadScheduled() }
+        Task { await self.loadReminders() }
         onBadge?(store.badgeCount)
     }
 
@@ -373,6 +376,13 @@ final class SyncEngine {
             if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
                 store.setBookmarked(id, on: on)
             }
+        case "reminder.updated":
+            struct Payload: Decodable { let reminder: ReminderOut }
+            let reminder = try frame.data.decode(Payload.self).reminder
+            let before = store.reminders[reminder.id]?.status
+            store.applyReminder(reminder)
+            if reminder.status == "fired" && before != "fired" { onReminder?(reminder) }
+            onBadge?(store.badgeCount)
         case "scheduled.updated":
             struct Payload: Decodable { let scheduled: ScheduledOut }
             store.applyScheduled(try frame.data.decode(Payload.self).scheduled)
@@ -443,6 +453,14 @@ final class SyncEngine {
         }
         onBadge?(store.badgeCount)
     }
+
+    /// M12e: open reminders; refreshed after every bootstrap.
+    func loadReminders() async {
+        if let rows = try? await api.listReminders() { store.replaceReminders(rows) }
+    }
+
+    /// M12e: a reminder just fired while the app is open (the push covers the background case).
+    var onReminder: ((ReminderOut) -> Void)?
 
     /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
     func loadScheduled() async {
