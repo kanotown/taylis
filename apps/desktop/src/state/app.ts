@@ -1,7 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, MessageOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
+import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -191,6 +191,32 @@ export class AppController {
     } catch (error) {
       this.setError(error);
     }
+  }
+
+  // --- link previews (M11g): one fetch per URL per session ---------------------------------
+
+  readonly linkPreviews = new Map<string, LinkPreviewOut | null>();
+  private readonly previewLoads = new Map<string, Promise<void>>();
+
+  /** The cached preview for a URL (null = failed / none); starts a fetch when unknown. */
+  linkPreview(url: string): LinkPreviewOut | null | undefined {
+    if (this.linkPreviews.has(url)) return this.linkPreviews.get(url);
+    if (!this.api || this.previewLoads.has(url)) return undefined;
+    const api = this.api;
+    const load = api
+      .linkPreview(url)
+      .then((preview) => {
+        this.linkPreviews.set(url, preview.status === "ok" ? preview : null);
+      })
+      .catch(() => {
+        this.linkPreviews.set(url, null); // refused or rate limited: no card for this session
+      })
+      .finally(() => {
+        this.previewLoads.delete(url);
+        this.emit();
+      });
+    this.previewLoads.set(url, load);
+    return undefined;
   }
 
   /** M11c: any member pins / unpins; the updated message (with pinned_at) replaces the row. */

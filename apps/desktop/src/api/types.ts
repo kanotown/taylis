@@ -57,3 +57,6 @@ export type AdminUserCreate = components["schemas"]["AdminUserCreate"];
 export type AdminUserCreated = components["schemas"]["AdminUserCreated"];
 export type AdminUserUpdate = components["schemas"]["AdminUserUpdate"];
 export type TemporaryPasswordOut = components["schemas"]["TemporaryPasswordOut"];
+
+/** Link previews (M11g). */
+export type LinkPreviewOut = components["schemas"]["LinkPreviewOut"];

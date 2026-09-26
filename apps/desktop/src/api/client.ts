@@ -9,6 +9,7 @@ import type {
   BookmarkStateOut,
   BootstrapOut,
   ChannelOut,
+  LinkPreviewOut,
   DeltaOut,
   HistoryOut,
   MemberOut,
@@ -208,6 +209,12 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- link previews (M11g) --------------------------------------------------------------
+
+  linkPreview(url: string): Promise<LinkPreviewOut> {
+    return this.request("GET", `/api/v1/link-previews?${new URLSearchParams({ url })}`);
   }
 
   // --- channel management (M11e) ---------------------------------------------------------

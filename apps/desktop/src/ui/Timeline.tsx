@@ -12,6 +12,8 @@ import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { LinkPreviewCard } from "./LinkPreviewCard";
+import { firstLink } from "./links";
 
 /** Quick reactions on the action bar; everything else comes from the emoji picker (M11f). */
 const REACTION_PALETTE = ["👍", "❤️", "😂"];
@@ -228,6 +230,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const highlighted = controller.messageFocus?.messageId === message.id;
   const size = thread ? 30 : 36;
   const saved = store.isBookmarked(message.id);
+  const link = message.body ? firstLink(message.body) : null;
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   return (
     <article
@@ -289,6 +292,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           <>
             {message.body && <MessageBody body={message.body} users={store.users} />}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+            {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
           </>
         )}
         {message.failed && (
