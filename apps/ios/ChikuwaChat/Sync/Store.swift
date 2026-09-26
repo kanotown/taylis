@@ -151,6 +151,25 @@ struct MessageState: Codable, Identifiable, Equatable {
     }
 }
 
+/// One row of the threads view (THREADS.md §5): the parent and my relation to the thread. Not persisted:
+/// the badge comes with bootstrap and the list is fetched when the view opens.
+struct ThreadEntry: Identifiable, Equatable {
+    var parent: MessageOut
+    var state: ThreadState
+    var id: String { parent.id }
+}
+
+extension MessageOut {
+    /// A confirmed local row in the server shape (thread rows built from the timeline).
+    init?(_ state: MessageState) {
+        guard let seq = state.seq, !state.pending else { return nil }
+        self.init(id: state.id, channelId: state.channelId, senderId: state.senderId, seq: seq, updatedSeq: state.updatedSeq,
+                  clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
+                  mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
+                  replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments)
+    }
+}
+
 struct OutboxItem: Codable, Identifiable, Equatable {
     var clientMsgId: String
     var channelId: String
@@ -200,6 +219,13 @@ final class Store {
     var users: [String: UserPublic] = [:]
     var channels: [String: ChannelState] = [:]
     var outbox: [OutboxItem] = []
+    /// Followed threads (THREADS.md §5), replaced by thread.updated and GET /threads pages.
+    var threads: [String: ThreadEntry] = [:]
+    var threadSummary = ThreadSummary(unreadCount: 0, mentionCount: 0)
+    var threadsFilter = "all"
+    var threadsLoaded = false
+    var threadsCursor: String?
+    var threadsHasMore = false
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -287,8 +313,59 @@ final class Store {
         return merged
     }
 
-    /// Unread DMs + channel mentions (PUSH_NOTIFICATIONS.md §4.2).
-    var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } }
+    /// Unread DMs + channel mentions + followed threads with an unread mention (PUSH_NOTIFICATIONS.md §4.2).
+    var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } + threadSummary.mentionCount }
+
+    // MARK: threads (THREADS.md §5)
+
+    func setThreadSummary(_ summary: ThreadSummary) { threadSummary = summary }
+
+    /// A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
+    /// refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
+    /// elsewhere) are dropped.
+    func setThreadPage(filter: String, items: [ThreadItem], cursor: String?, append: Bool, pageSize: Int) {
+        if !append {
+            let listed = Set(items.map(\.parent.id))
+            let oldest = items.count >= pageSize ? (items.last?.state.lastReplyAt ?? "") : ""
+            for (id, entry) in threads where !listed.contains(id) && entry.state.following {
+                if filter == "unread" && entry.state.unreadCount == 0 { continue }
+                if (entry.state.lastReplyAt ?? "") >= oldest { threads[id] = nil }
+            }
+        }
+        for item in items { threads[item.parent.id] = ThreadEntry(parent: item.parent, state: item.state) }
+        threadsFilter = filter
+        threadsLoaded = true
+        threadsCursor = cursor
+        threadsHasMore = items.count >= pageSize
+    }
+
+    /// thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known.
+    func applyThreadState(_ state: ThreadState, parent: MessageOut? = nil) {
+        let before = threads[state.parentId]?.state
+        if var entry = threads[state.parentId] {
+            entry.state = state
+            entry.parent.replyCount = state.replyCount
+            entry.parent.lastReplyAt = state.lastReplyAt
+            threads[state.parentId] = entry
+        } else if var known = parent ?? messagesByChannel[state.channelId]?[state.parentId].flatMap(MessageOut.init) {
+            known.replyCount = state.replyCount
+            known.lastReplyAt = state.lastReplyAt
+            threads[state.parentId] = ThreadEntry(parent: known, state: state)
+        }
+        if let before {
+            let unread = (state.following && state.unreadCount > 0 ? 1 : 0) - (before.following && before.unreadCount > 0 ? 1 : 0)
+            let mention = (state.following && state.mentionCount > 0 ? 1 : 0) - (before.following && before.mentionCount > 0 ? 1 : 0)
+            threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
+        }
+    }
+
+    /// The rows of the threads view: followed, newest reply first, unread only when that filter is on.
+    func threadList(filter: String? = nil) -> [ThreadEntry] {
+        let filter = filter ?? threadsFilter
+        return threads.values
+            .filter { $0.state.following && (filter == "all" || $0.state.unreadCount > 0) }
+            .sorted { ($0.state.lastReplyAt ?? "", $0.parent.seq) > ($1.state.lastReplyAt ?? "", $1.parent.seq) }
+    }
 
     func setNotification(_ channelId: String, level: String, mutedUntil: String?) {
         updateChannel(channelId) { state in
