@@ -295,7 +295,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         )}
       </div>
       {!message.pending && (
-        <div className="row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity">
+        <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
           {REACTION_PALETTE.slice(0, 3).map((emoji) => (
             <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
@@ -340,21 +340,27 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
               <Pencil size={15} />
             </IconButton>
           )}
-          {(mine || controller.isAdmin) &&
-            (confirmDelete ? (
-              <span className="flex items-center gap-1 pl-1">
-                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
-                  削除する
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
-                  やめる
-                </Button>
-              </span>
-            ) : (
-              <IconButton label="削除" className="h-7 w-7 text-muted hover:text-danger" onClick={() => setConfirmDelete(true)}>
-                <Trash2 size={15} />
-              </IconButton>
-            ))}
+          {(mine || controller.isAdmin) && (
+            <PopoverRoot open={confirmDelete} onOpenChange={setConfirmDelete}>
+              <PopoverTrigger asChild>
+                <button type="button" title="削除" aria-label="削除" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-danger">
+                  <Trash2 size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-3">
+                <div className="text-sm font-medium">このメッセージを削除しますか？</div>
+                <div className="mt-1 text-xs text-muted">削除したメッセージは元に戻せません。</div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
+                    キャンセル
+                  </Button>
+                  <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
+                    削除する
+                  </Button>
+                </div>
+              </PopoverContent>
+            </PopoverRoot>
+          )}
         </div>
       )}
     </article>
