@@ -8,6 +8,7 @@ from app.modules.auth import events as auth_events
 from app.modules.channels import events as channel_events
 from app.modules.messages import events as message_events
 from app.modules.notifications import events as notification_events
+from app.modules.reads import events as read_events
 from app.modules.users import events as user_events
 from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
@@ -39,6 +40,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     user_events.USER_UPDATED: (user_events.UserEventData, "all", False),
     user_events.USER_DEACTIVATED: (user_events.UserEventData, "all", False),
     auth_events.SESSION_REVOKED: (auth_events.SessionRevokedData, "session", False),
+    read_events.READ_UPDATED: (read_events.ReadUpdatedData, "user", False),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

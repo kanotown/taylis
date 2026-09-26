@@ -56,8 +56,9 @@ async def test_domain_changes_are_relayed_in_order_with_audience(
 
     bus = RecordingBus()
     relay = _relay(app, bus)
-    # channel.created, member_added, channel.created (for bob), message.created
-    assert await relay.process_batch() == 4
+    # channel.created, member_added, channel.created (for bob), message.created,
+    # read.updated (the sender has read their own message; M8b)
+    assert await relay.process_batch() == 5
     assert await relay.process_batch() == 0
 
     events = [e.event for e in bus.published]
@@ -66,6 +67,7 @@ async def test_domain_changes_are_relayed_in_order_with_audience(
         "channel.member_added",
         "channel.created",
         "message.created",
+        "read.updated",
     ]
     assert [e.id for e in bus.published] == sorted(e.id for e in bus.published)
 
@@ -104,10 +106,10 @@ async def test_a_new_relay_delivers_rows_left_by_a_crashed_one(
     assert await _relay(app, first, batch_size=2).process_batch() == 2  # "crash" after one batch
 
     second = RecordingBus()
-    assert await _relay(app, second).process_batch() == 2
+    assert await _relay(app, second).process_batch() == 5
     delivered = [e.event for e in first.published + second.published]
-    assert delivered == ["channel.created"] + ["message.created"] * 3
-    assert [e.seq for e in second.published] == [2, 3]
+    assert delivered == ["channel.created"] + ["message.created", "read.updated"] * 3
+    assert [e.seq for e in second.published if e.seq is not None] == [2, 3]
 
 
 async def test_poison_event_is_retried_then_skipped_without_blocking_others(

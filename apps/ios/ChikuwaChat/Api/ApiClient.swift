@@ -158,6 +158,10 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
+        try await request("PUT", "/api/v1/channels/\(channelId)/read", body: .object(["last_read_seq": .number(Double(lastReadSeq))]))
+    }
+
     func editMessage(id: String, body: String) async throws -> MessageOut {
         try await request("PATCH", "/api/v1/messages/\(id)", body: .object(["body": .string(body)]))
     }

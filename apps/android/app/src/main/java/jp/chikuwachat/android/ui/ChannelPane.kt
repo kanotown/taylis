@@ -60,6 +60,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int) {
     val scope = rememberCoroutineScope()
     var draft by rememberSaveable(channelId) { mutableStateOf("") }
     var loadingOlder by remember { mutableStateOf(false) }
+    // Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
+    LaunchedEffect(channel.lastSeq) { controller.engine?.markRead(channelId, channel.lastSeq) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {

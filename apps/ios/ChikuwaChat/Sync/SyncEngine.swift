@@ -9,6 +9,7 @@ protocol SyncApi: AnyObject {
     func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut
     func postMessage(channelId: String, clientMsgId: String, body: String) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
+    func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
@@ -20,6 +21,8 @@ struct EngineOptions {
     var helloTimeout: TimeInterval = 10
     var reconnectMin: TimeInterval = 1
     var reconnectMax: TimeInterval = 30
+    /// §10: read marks are debounced so scrolling does not spam the server.
+    var readDebounce: TimeInterval = 1
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -40,6 +43,11 @@ final class SyncEngine {
     let store: Store
     var onSignedOut: (() -> Void)?
     var onNotify: ((MessageOut, ChannelState) -> Void)?
+    /// A channel became fully read (here or on another device): dismiss its notifications.
+    var onRead: ((String) -> Void)?
+    /// The app badge (unread DMs + mentions) changed.
+    var onBadge: ((Int) -> Void)?
+    private var pendingReads: [String: Task<Void, Never>] = [:]
     var isActive: () -> Bool = { true }
 
     private let api: SyncApi
@@ -255,6 +263,7 @@ final class SyncEngine {
         for channel in Array(store.channels.values) where channel.isMember && !seen.contains(channel.id) {
             store.removeChannel(channel.id) // no longer a member
         }
+        onBadge?(store.badgeCount)
     }
 
     /// Public channels I am not a member of; bootstrap only lists my own channels.
@@ -292,6 +301,8 @@ final class SyncEngine {
         case "user.created", "user.updated", "user.deactivated":
             struct Payload: Decodable { let user: UserPublic }
             store.upsertUser(try frame.data.decode(Payload.self).user)
+        case "read.updated":
+            if let id = frame.data["channel_id"]?.stringValue { applyReadState(id, try frame.data.decode(ReadStateOut.self)) }
         case "session.revoked":
             signOut()
         default:
@@ -309,19 +320,45 @@ final class SyncEngine {
 
         guard let synced = channel.syncedSeq else {
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
-            if isNew { maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel) }
             return
         }
         if seq == synced + 1 {
             store.upsertMessage(message)
             store.updateChannel(channelId) { $0.syncedSeq = seq; $0.lastSeq = max($0.lastSeq, seq) }
-            if isNew { maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel) }
         } else if seq > synced + 1 {
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             try await catchUp(channelId)
-            if isNew { maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel) }
         }
         // seq <= synced: already applied.
+    }
+
+    /// §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise.
+    private func countUnread(_ message: MessageOut) {
+        guard let me = store.me else { return }
+        if message.senderId == me.id {
+            store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
+        } else {
+            store.updateChannel(message.channelId) { state in
+                guard message.seq > state.lastReadSeq else { return }
+                state.unreadCount += 1
+                if message.mentions(me.id) { state.mentionCount += 1 }
+            }
+        }
+        onBadge?(store.badgeCount)
+    }
+
+    private func applyReadState(_ channelId: String, _ state: ReadStateOut) {
+        guard store.channel(channelId) != nil else { return }
+        store.updateChannel(channelId) {
+            $0.lastReadSeq = max($0.lastReadSeq, state.lastReadSeq)
+            $0.unreadCount = state.unreadCount
+            $0.mentionCount = state.mentionCount
+        }
+        if state.unreadCount == 0 { onRead?(channelId) }
+        onBadge?(store.badgeCount)
     }
 
     /// DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults).
@@ -339,13 +376,34 @@ final class SyncEngine {
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId) else { return }
             if channel.syncedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }
-            markSeen(channelId)
+            markRead(channelId, seq: store.channel(channelId)?.lastSeq ?? channel.lastSeq)
         }.value
     }
 
-    func markSeen(_ channelId: String) {
-        guard let channel = store.channel(channelId), channel.seenSeq < channel.lastSeq else { return }
-        store.updateChannel(channelId) { $0.seenSeq = $0.lastSeq }
+    /// §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins.
+    func markRead(_ channelId: String, seq: Int) {
+        guard let channel = store.channel(channelId), channel.isMember, seq > channel.lastReadSeq else { return }
+        store.updateChannel(channelId) { state in
+            state.lastReadSeq = seq
+            if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0 }
+        }
+        onBadge?(store.badgeCount)
+        pendingReads[channelId]?.cancel()
+        let options = self.options
+        pendingReads[channelId] = Task { [weak self] in
+            await options.sleep(options.readDebounce)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingReads[channelId] = nil
+            let target = self.store.channel(channelId)?.lastReadSeq ?? seq
+            guard let state = try? await self.api.markRead(channelId: channelId, lastReadSeq: target) else { return }
+            _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state) }.value
+        }
+    }
+
+    /// Waits for debounced read marks (tests).
+    func flushReads() async {
+        for task in Array(pendingReads.values) { await task.value }
+        await idle()
     }
 
     func catchUp(_ channelId: String) async throws {

@@ -130,6 +130,17 @@
                 ],
                 "title": "Purpose"
               },
+              "read_state": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ReadStateOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "topic": {
                 "anyOf": [
                   {
@@ -229,6 +240,29 @@
               "muted_until"
             ],
             "title": "NotificationPreferenceOut",
+            "type": "object"
+          },
+          "ReadStateOut": {
+            "properties": {
+              "last_read_seq": {
+                "title": "Last Read Seq",
+                "type": "integer"
+              },
+              "mention_count": {
+                "title": "Mention Count",
+                "type": "integer"
+              },
+              "unread_count": {
+                "title": "Unread Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "last_read_seq",
+              "unread_count",
+              "mention_count"
+            ],
+            "title": "ReadStateOut",
             "type": "object"
           }
         },
@@ -409,6 +443,17 @@
                 ],
                 "title": "Purpose"
               },
+              "read_state": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ReadStateOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "topic": {
                 "anyOf": [
                   {
@@ -508,6 +553,29 @@
               "muted_until"
             ],
             "title": "NotificationPreferenceOut",
+            "type": "object"
+          },
+          "ReadStateOut": {
+            "properties": {
+              "last_read_seq": {
+                "title": "Last Read Seq",
+                "type": "integer"
+              },
+              "mention_count": {
+                "title": "Mention Count",
+                "type": "integer"
+              },
+              "unread_count": {
+                "title": "Unread Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "last_read_seq",
+              "unread_count",
+              "mention_count"
+            ],
+            "title": "ReadStateOut",
             "type": "object"
           }
         },
@@ -1025,6 +1093,39 @@
           "muted_until"
         ],
         "title": "NotificationPreferenceUpdatedData",
+        "type": "object"
+      }
+    },
+    "read.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_read_seq",
+          "unread_count",
+          "mention_count",
+          "channel_id"
+        ],
+        "title": "ReadUpdatedData",
         "type": "object"
       }
     },

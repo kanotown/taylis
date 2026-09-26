@@ -9,6 +9,12 @@ struct ChannelView: View {
     private var channel: ChannelState? { controller.store.channel(channelId) }
     private var messages: [MessageState] { controller.store.messages(channelId) }
 
+    /// Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
+    private func markRead() {
+        guard let channel, UIApplication.shared.applicationState == .active else { return }
+        controller.engine?.markRead(channelId, seq: channel.lastSeq)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -28,9 +34,10 @@ struct ChannelView: View {
                 }
                 .onChange(of: messages.last?.id) { _, _ in
                     withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                    controller.engine?.markSeen(channelId)
+                    markRead()
                 }
-                .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: channel?.lastSeq) { _, _ in markRead() }
+                .onAppear { proxy.scrollTo("bottom", anchor: .bottom); markRead() }
             }
             if let channel {
                 if !channel.isMember {

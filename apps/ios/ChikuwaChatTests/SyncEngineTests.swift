@@ -83,6 +83,35 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testUnreadCountsFollowReadsAcrossDevices() async throws {
+        let w = makeWorld()
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m1")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m2")
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "hey <@\(w.bob.id)>")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.unreadCount, $0.mentionCount] }, [3, 1])
+        w.engine.markRead(w.channel.id, seq: 2)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount, $0.mentionCount] }, [2, 1, 1])
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 3) // another device of bob
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount, $0.mentionCount] }, [3, 0, 0])
+        w.engine.markRead(w.channel.id, seq: 1) // stale: ignored
+        await w.engine.flushReads()
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 3)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m4")
+        await settle(w.engine)
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.send(w.channel.id, body: "mine")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount, $0.mentionCount] }, [5, 0, 0])
+        w.engine.stop()
+    }
+
     func testBootstrapLoadsLatestPageOfTheOpenedChannel() async throws {
         let w = makeWorld()
         for i in 1...5 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }

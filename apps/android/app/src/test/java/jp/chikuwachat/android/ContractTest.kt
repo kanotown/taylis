@@ -70,9 +70,13 @@ class ContractTest {
                 val sender = s.server.user(step.str("as")!!)
                 repeat(step.int("count") ?: 1) {
                     s.posted += 1
-                    s.server.post(s.channelId, sender.id, step.str("body")!!.replace("{i}", s.posted.toString()))
+                    var body = step.str("body")!!.replace("{i}", s.posted.toString())
+                    s.server.users.values.forEach { body = body.replace("{${it.username}}", it.id) }
+                    s.server.post(s.channelId, sender.id, body)
                 }
             }
+            "read" -> s.server.markRead(s.server.user(step.str("as")!!).id, s.channelId, step.int("seq")!!)
+            "client.read" -> { s.engine!!.markRead(s.channelId, step.int("seq")!!); s.engine!!.flushReads(); settle(s.engine) }
             "edit" -> {
                 val user = s.server.user(step.str("as")!!)
                 s.server.edit(s.channelId, user.id, s.server.messageByBody(s.channelId, step.str("body_of")!!).id, step.str("body")!!)
@@ -119,6 +123,9 @@ class ContractTest {
                 step.str("first_body")?.let { assertEquals(it, bodies.first()) }
                 step.str("last_body")?.let { assertEquals(it, bodies.last()) }
                 step.int("synced_seq")?.let { assertEquals(it, channel?.syncedSeq) }
+                step.int("last_read_seq")?.let { assertEquals("last_read_seq", it, channel?.lastReadSeq) }
+                step.int("unread_count")?.let { assertEquals("unread_count", it, channel?.unreadCount) }
+                step.int("mention_count")?.let { assertEquals("mention_count", it, channel?.mentionCount) }
                 step.int("catch_ups")?.let { assertEquals(it, s.engine?.catchUps) }
                 step.int("reloads")?.let { assertEquals(it, s.engine?.reloads) }
                 step.int("server_message_count")?.let { assertEquals(it, s.server.channels.getValue(s.channelId).messages.size) }

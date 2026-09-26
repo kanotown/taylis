@@ -352,6 +352,16 @@
             ],
             "title": "Purpose"
           },
+          "read_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadStateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "topic": {
             "anyOf": [
               {
@@ -1156,6 +1166,43 @@
           "user_ids"
         ],
         "title": "ReactionOut",
+        "type": "object"
+      },
+      "ReadMark": {
+        "properties": {
+          "last_read_seq": {
+            "minimum": 0.0,
+            "title": "Last Read Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_read_seq"
+        ],
+        "title": "ReadMark",
+        "type": "object"
+      },
+      "ReadStateOut": {
+        "properties": {
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_read_seq",
+          "unread_count",
+          "mention_count"
+        ],
+        "title": "ReadStateOut",
         "type": "object"
       },
       "RefreshRequest": {
@@ -2578,6 +2625,65 @@
         "summary": "Set Preference",
         "tags": [
           "notifications"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/read": {
+      "put": {
+        "description": "Advance my read position (monotonic; SYNC_PROTOCOL.md §4.5 / §10).",
+        "operationId": "mark_read_api_v1_channels__channel_id__read_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadMark"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Read",
+        "tags": [
+          "channels"
         ]
       }
     },

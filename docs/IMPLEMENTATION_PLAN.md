@@ -34,7 +34,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
 | M7 | FCM | 端末登録、トークン処理、配送 | **実装済み (2026-09-26)**: `FCMPushProvider` (HTTP v1、サービスアカウントの JWT bearer grant、data-only、応答対応表のテスト)、compose の鍵マウント、Android の `FirebaseMessagingService` / `PushCenter` (トークン登録・更新、通知の組み立て、タップで該当チャンネル)。Firebase プロジェクトでの実受信はユーザー側の設定後に確認する (infra/README.md) |
-| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。M8b (未読) / M8c (スレッド) は未着手 |
+| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。**M8b 実装済み (2026-09-26)**: `read_states` (参加時に初期化、送信者は自分の投稿を既読)、`PUT /channels/{id}/read` (単調・clamp)、`read.updated`、bootstrap の `read_state` (未読数・メンション数を seq 範囲から導出)、PushPlanner の既読チェックとバッジ、PushSender の送信直前の既読チェック、契約フィクスチャ 07 を 4 実装で通過、3 クライアントの未読バッジと既読送信 (1 秒デバウンス、楽観的更新)。M8c (スレッド) は未着手 |
 | M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
 | M10 | 運用 | backup、restore、security review、logging、deployment docs | 復元リハーサルが成功する |
 
@@ -175,6 +175,11 @@ FCM の実受信には Firebase プロジェクトが要るため、infra/README
 - **M8b 未読**: `read_states`、`PUT /channels/{id}/read`、`read.updated`、bootstrap の未読数 / メンション数、
   送信時の自動既読、PushPlanner の既読チェックとバッジ、クライアントの未読バッジと既読送信。契約テスト 7。
   2 端末で既読が収束する。
+  実装メモ (2026-09-26): `reads` は葉モジュール (ARCHITECTURE.md §5 を更新)。マイグレーション 0005 は既存メンバーを
+  全既読で初期化する。クライアントは表示中の最新 `last_seq` を 1 秒デバウンスで送り、ローカルは先に進める。
+  他人の `message.created` はローカルで未読 +1 (メンションなら +1)、自分の送信は 0 に戻す。`read.updated` は
+  サーバの値で置き換える。iOS はバッジを「DM 未読 + メンション」で更新し、既読になったチャンネルの通知を消す。
+  Android は既読になったチャンネルの通知を消す。
 - **M8c スレッド**: `parent_id`、`GET /messages/{id}/replies`、親の `reply_count` 更新、通知対象の拡張、
   Desktop の右ペイン、モバイルのスレッド画面。参加 / 退出のシステムメッセージはここで入れてもよい。
 

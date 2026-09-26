@@ -89,7 +89,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
 | `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、親の投稿者と過去の返信者を対象 (level が `none` でなければ) | M8c |
-| 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b |
+| 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b (実装済み。送信直前にも再判定し `skipped / already_read`) |
 | 別端末でアクティブ (§4.1) | 除外 | M5 |
 | `push_token` を持つ有効な端末が無い | 除外 (Desktop のみのユーザー) | M5 |
 
@@ -104,7 +104,7 @@ WS の `ping` フレームに `{ "active": true|false }` を持たせ、クラ�
 
 ### 4.2 バッジ (iOS)
 
-`badge` = 受信者の「DM の未読数 + チャンネルのメンション数」の合計を計画時に数える (M8b 以降。それまでは 1)。
+`badge` = 受信者の「DM の未読数 + チャンネルのメンション数」の合計を計画時に数える (M8b で実装。受信者ごとに payload を作る)。
 近似値でよい。アプリは起動時に bootstrap の値でバッジを上書きする。
 
 ## 5. ペイロード

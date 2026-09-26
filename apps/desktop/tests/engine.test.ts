@@ -236,3 +236,35 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
     expect(notifications).toEqual([`hey <@${bob.id}>`, "<!here> all"]);
   });
 });
+
+describe("read state (M8b)", () => {
+  it("counts unread and mentions, follows reads from other devices and clears on own sends", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    server.post(channel.id, alice.id, "m1");
+    server.post(channel.id, alice.id, "m2");
+    await engine.start();
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(2);
+    server.post(channel.id, alice.id, `hey <@${bob.id}>`);
+    await engine.idle();
+    expect([store.getChannel(channel.id)?.unreadCount, store.getChannel(channel.id)?.mentionCount]).toEqual([3, 1]);
+    engine.markRead(channel.id, 2);
+    await engine.flushReads();
+    let state = store.getChannel(channel.id)!;
+    expect([state.lastReadSeq, state.unreadCount, state.mentionCount]).toEqual([2, 1, 1]);
+    server.markRead(bob.id, channel.id, 3); // another device of bob
+    await engine.idle();
+    state = store.getChannel(channel.id)!;
+    expect([state.lastReadSeq, state.unreadCount, state.mentionCount]).toEqual([3, 0, 0]);
+    engine.markRead(channel.id, 1); // stale: ignored
+    await engine.flushReads();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(3);
+    server.post(channel.id, alice.id, "m4");
+    await engine.idle();
+    await engine.openChannel(channel.id);
+    await engine.send(channel.id, "mine");
+    await engine.idle();
+    state = store.getChannel(channel.id)!;
+    expect([state.lastReadSeq, state.unreadCount, state.mentionCount]).toEqual([5, 0, 0]);
+  });
+});

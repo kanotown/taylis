@@ -6,7 +6,7 @@
 import { ApiError, isRetryable } from "../api/errors";
 import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, MessageState, OutboxItem, ServerFrame } from "./types";
+import type { ChannelState, EventFrame, MessageState, OutboxItem, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
@@ -16,6 +16,7 @@ export interface SyncApi {
   postMessage(channelId: string, clientMsgId: string, body: string): Promise<{ message: MessageOut; created: boolean }>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
+  markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut>;
 }
 
 export interface WsLike {
@@ -36,6 +37,8 @@ export interface EngineDeps {
   getAccessToken: () => string | null;
   onSignedOut?: () => void;
   onNotify?: (message: MessageOut, channel: ChannelState) => void;
+  /** A channel became fully read (here or on another device). */
+  onRead?: (channelId: string) => void;
   isActive?: () => boolean;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
@@ -50,12 +53,16 @@ export interface EngineOptions {
   helloTimeoutMs?: number;
   reconnectMinMs?: number;
   reconnectMaxMs?: number;
+  /** §10: read marks are debounced so scrolling does not spam the server. */
+  readDebounceMs?: number;
 }
 
 export class SyncEngine {
   status: EngineStatus = "idle";
   currentChannelId: string | null = null;
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
+  private readonly pendingReads = new Map<string, Promise<void>>();
+  private readonly readCancels = new Map<string, () => void>();
   private ws: WsLike | null = null;
   private chain: Promise<void> = Promise.resolve();
   private helloResolve: (() => void) | null = null;
@@ -78,6 +85,7 @@ export class SyncEngine {
       helloTimeoutMs: options.helloTimeoutMs ?? 10_000,
       reconnectMinMs: options.reconnectMinMs ?? 1_000,
       reconnectMaxMs: options.reconnectMaxMs ?? 30_000,
+      readDebounceMs: options.readDebounceMs ?? 1_000,
     };
   }
 
@@ -312,6 +320,11 @@ export class SyncEngine {
         store.upsertUser(data.user);
         return;
       }
+      case "read.updated": {
+        const data = frame.data as { channel_id: string } & ReadStateOut;
+        this.applyReadState(data.channel_id, data);
+        return;
+      }
       case "session.revoked":
         this.signOut();
         return;
@@ -333,21 +346,56 @@ export class SyncEngine {
 
     if (channel.syncedSeq === null) {
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
-      if (isNew) this.maybeNotify(message, channel);
+      if (isNew) {
+        this.countUnread(message);
+        this.maybeNotify(message, channel);
+      }
       return;
     }
     if (seq === channel.syncedSeq + 1) {
       store.upsertMessage(message);
       store.updateChannel(channel.id, { syncedSeq: seq, lastSeq: Math.max(channel.lastSeq, seq) });
-      if (isNew) this.maybeNotify(message, channel);
+      if (isNew) {
+        this.countUnread(message);
+        this.maybeNotify(message, channel);
+      }
       return;
     }
     if (seq > channel.syncedSeq + 1) {
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
       await this.catchUp(channel.id);
-      if (isNew) this.maybeNotify(message, channel);
+      if (isNew) {
+        this.countUnread(message);
+        this.maybeNotify(message, channel);
+      }
     }
     // seq <= syncedSeq: already applied.
+  }
+
+  /** §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise. */
+  private countUnread(message: MessageOut): void {
+    const store = this.deps.store;
+    const me = store.me;
+    const channel = store.getChannel(message.channel_id);
+    if (!me || !channel) return;
+    if (message.sender_id === me.id) {
+      store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
+      return;
+    }
+    if (message.seq <= channel.lastReadSeq) return;
+    const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
+    store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
+  }
+
+  private applyReadState(channelId: string, state: ReadStateOut): void {
+    const channel = this.deps.store.getChannel(channelId);
+    if (!channel) return;
+    this.deps.store.updateChannel(channelId, {
+      lastReadSeq: Math.max(channel.lastReadSeq, state.last_read_seq),
+      unreadCount: state.unread_count,
+      mentionCount: state.mention_count,
+    });
+    if (state.unread_count === 0) this.deps.onRead?.(channelId);
   }
 
   /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
@@ -369,13 +417,43 @@ export class SyncEngine {
       const channel = this.deps.store.getChannel(channelId);
       if (!channel) return;
       if (channel.syncedSeq === null || channel.syncedSeq < channel.lastSeq) await this.catchUp(channelId);
-      this.markSeen(channelId);
+      this.markRead(channelId, this.deps.store.getChannel(channelId)?.lastSeq ?? channel.lastSeq);
     });
   }
 
-  markSeen(channelId: string): void {
-    const channel = this.deps.store.getChannel(channelId);
-    if (channel && channel.seenSeq < channel.lastSeq) this.deps.store.updateChannel(channelId, { seenSeq: channel.lastSeq });
+  /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
+  markRead(channelId: string, seq: number): void {
+    const store = this.deps.store;
+    const channel = store.getChannel(channelId);
+    if (!channel || !channel.isMember || seq <= channel.lastReadSeq) return;
+    store.updateChannel(channelId, seq >= channel.lastSeq ? { lastReadSeq: seq, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: seq });
+    this.readCancels.get(channelId)?.(); // a newer mark supersedes the pending one
+    let cancelled = false;
+    this.readCancels.set(channelId, () => {
+      cancelled = true;
+    });
+    const pending = (async () => {
+      await (this.deps.sleep ?? defaultSleep)(this.opts.readDebounceMs);
+      if (cancelled) return;
+      this.readCancels.delete(channelId);
+      const target = store.getChannel(channelId)?.lastReadSeq ?? seq;
+      try {
+        const state = await this.deps.api.markRead(channelId, target);
+        await this.enqueue(async () => this.applyReadState(channelId, state));
+      } catch {
+        // the next mark (or bootstrap) retries; the local position already moved
+      }
+    })();
+    this.pendingReads.set(channelId, pending);
+    void pending.finally(() => {
+      if (this.pendingReads.get(channelId) === pending) this.pendingReads.delete(channelId);
+    });
+  }
+
+  /** Waits for debounced read marks (tests). */
+  async flushReads(): Promise<void> {
+    await Promise.all([...this.pendingReads.values()]);
+    await this.idle();
   }
 
   async catchUp(channelId: string): Promise<void> {

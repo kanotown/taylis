@@ -20,8 +20,17 @@ export function Timeline({ controller, channel }: { controller: AppController; c
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
-    engine?.markSeen(channel.id);
-  }, [lastId, channel.id, engine]);
+  }, [lastId, channel.id]);
+
+  // Viewing the newest messages in a focused window marks them read (SYNC_PROTOCOL.md §10).
+  useEffect(() => {
+    const mark = () => {
+      if (document.hasFocus()) engine?.markRead(channel.id, channel.lastSeq);
+    };
+    mark();
+    window.addEventListener("focus", mark);
+    return () => window.removeEventListener("focus", mark);
+  }, [channel.id, channel.lastSeq, engine]);
 
   const startEdit = (message: MessageState) => {
     setEditingId(message.id);

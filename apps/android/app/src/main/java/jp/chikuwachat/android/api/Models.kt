@@ -63,6 +63,9 @@ data class MembershipOut(val role: String, val joinedAt: String)
 data class NotificationPreferenceOut(val channelId: String, val level: String, val mutedUntil: String? = null)
 
 @Serializable
+data class ReadStateOut(val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int)
+
+@Serializable
 data class ChannelOut(
     val id: String,
     val type: String,
@@ -78,6 +81,7 @@ data class ChannelOut(
     val membership: MembershipOut? = null,
     val dmUserIds: List<String>? = null,
     val notification: NotificationPreferenceOut? = null,
+    val readState: ReadStateOut? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
 }

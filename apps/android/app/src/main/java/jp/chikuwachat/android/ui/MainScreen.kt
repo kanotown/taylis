@@ -159,7 +159,17 @@ private fun EmptyHint(text: String) {
 private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(channelTitle(channel, store), fontWeight = if (channel.hasUnread) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-        if (channel.hasUnread) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+        if (channel.mentionCount > 0 || (channel.hasUnread && channel.channel.isDm)) {
+            val count = if (channel.channel.isDm) channel.unreadCount else channel.mentionCount
+            Text(
+                count.toString(),
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 7.dp, vertical = 2.dp),
+            )
+        } else if (channel.hasUnread) {
+            Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+        }
     }
 }
 

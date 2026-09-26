@@ -315,6 +315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark Read
+         * @description Advance my read position (monotonic; SYNC_PROTOCOL.md §4.5 / §10).
+         */
+        put: operations["mark_read_api_v1_channels__channel_id__read_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/sync": {
         parameters: {
             query?: never;
@@ -645,6 +665,7 @@ export interface components {
             notification?: components["schemas"]["NotificationPreferenceOut"] | null;
             /** Purpose */
             purpose: string | null;
+            read_state?: components["schemas"]["ReadStateOut"] | null;
             /** Topic */
             topic: string | null;
             /**
@@ -922,6 +943,20 @@ export interface components {
             emoji: string;
             /** User Ids */
             user_ids: string[];
+        };
+        /** ReadMark */
+        ReadMark: {
+            /** Last Read Seq */
+            last_read_seq: number;
+        };
+        /** ReadStateOut */
+        ReadStateOut: {
+            /** Last Read Seq */
+            last_read_seq: number;
+            /** Mention Count */
+            mention_count: number;
+            /** Unread Count */
+            unread_count: number;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -1757,6 +1792,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationPreferenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_read_api_v1_channels__channel_id__read_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadMark"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadStateOut"];
                 };
             };
             /** @description Validation Error */

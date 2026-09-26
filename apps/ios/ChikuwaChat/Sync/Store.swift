@@ -8,12 +8,42 @@ struct ChannelState: Codable, Identifiable, Equatable {
     /// nil: no timeline loaded yet.
     var syncedSeq: Int?
     var lastSeq: Int
-    /// Local read marker until the server read state arrives in M8b.
-    var seenSeq: Int
+    /// Server read position and counts (SYNC_PROTOCOL.md §10); counts are replaced by read.updated.
+    var lastReadSeq: Int
+    var unreadCount: Int
+    var mentionCount: Int
     var hasOlder: Bool
 
     var id: String { channel.id }
-    var hasUnread: Bool { lastSeq > seenSeq }
+    var hasUnread: Bool { unreadCount > 0 }
+    /// What the app badge shows for this channel (PUSH_NOTIFICATIONS.md §4.2).
+    var badgeContribution: Int { channel.isDm ? unreadCount : mentionCount }
+
+    enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder }
+
+    init(channel: ChannelOut, isMember: Bool, syncedSeq: Int?, lastSeq: Int, lastReadSeq: Int = 0, unreadCount: Int = 0, mentionCount: Int = 0, hasOlder: Bool) {
+        self.channel = channel
+        self.isMember = isMember
+        self.syncedSeq = syncedSeq
+        self.lastSeq = lastSeq
+        self.lastReadSeq = lastReadSeq
+        self.unreadCount = unreadCount
+        self.mentionCount = mentionCount
+        self.hasOlder = hasOlder
+    }
+
+    /// Rows persisted before M8b carry a local `seenSeq` instead of the server read state.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        channel = try c.decode(ChannelOut.self, forKey: .channel)
+        isMember = try c.decode(Bool.self, forKey: .isMember)
+        syncedSeq = try c.decodeIfPresent(Int.self, forKey: .syncedSeq)
+        lastSeq = try c.decode(Int.self, forKey: .lastSeq)
+        lastReadSeq = try c.decodeIfPresent(Int.self, forKey: .lastReadSeq) ?? 0
+        unreadCount = try c.decodeIfPresent(Int.self, forKey: .unreadCount) ?? 0
+        mentionCount = try c.decodeIfPresent(Int.self, forKey: .mentionCount) ?? 0
+        hasOlder = try c.decode(Bool.self, forKey: .hasOlder)
+    }
 }
 
 /// A message as stored locally. Pending messages have seq nil and id "local:<client_msg_id>".
@@ -185,18 +215,26 @@ final class Store {
     @discardableResult
     func upsertChannel(_ channel: ChannelOut, isMember: Bool? = nil) -> ChannelState {
         let existing = channels[channel.id]
+        let read = channel.readState
+        var stripped = channel
+        stripped.readState = nil
         let merged = ChannelState(
-            channel: channel,
+            channel: stripped,
             isMember: isMember ?? existing?.isMember ?? (channel.membership != nil),
             syncedSeq: existing?.syncedSeq,
             lastSeq: max(existing?.lastSeq ?? 0, channel.lastSeq),
-            seenSeq: existing?.seenSeq ?? 0,
+            lastReadSeq: max(existing?.lastReadSeq ?? 0, read?.lastReadSeq ?? 0),
+            unreadCount: read?.unreadCount ?? existing?.unreadCount ?? 0,
+            mentionCount: read?.mentionCount ?? existing?.mentionCount ?? 0,
             hasOlder: existing?.hasOlder ?? true
         )
         channels[channel.id] = merged
         persist { try $0.saveChannel(merged) }
         return merged
     }
+
+    /// Unread DMs + channel mentions (PUSH_NOTIFICATIONS.md §4.2).
+    var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } }
 
     func updateChannel(_ id: String, _ mutate: (inout ChannelState) -> Void) {
         guard var state = channels[id] else { return }

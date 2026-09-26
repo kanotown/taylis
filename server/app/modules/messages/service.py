@@ -28,6 +28,7 @@ from app.modules.messages.schemas import (
     MessageOut,
     to_message_out,
 )
+from app.modules.reads import service as reads
 from app.modules.users.models import User
 
 
@@ -75,6 +76,8 @@ async def create_message(
                 seq=seq,
                 payload=MessageCreatedData(message=to_message_out(message)).model_dump(mode="json"),
             )
+            # The sender has read their own message (SYNC_PROTOCOL.md §10).
+            await reads.advance_in_tx(db, actor.id, channel_id, seq, last_seq=seq)
     except IntegrityError:
         # Concurrent retry with the same client_msg_id: the savepoint (and its seq) rolled back.
         existing = await repo.get_by_client_msg_id(db, actor.id, data.client_msg_id)

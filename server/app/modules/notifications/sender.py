@@ -2,7 +2,10 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timedelta
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import Database
 from app.core.time import utcnow
@@ -64,6 +67,8 @@ class PushSender:
                 delivery.status, delivery.last_error = "skipped", "expired"
             elif not device.enabled or not device.push_registered:
                 delivery.status, delivery.last_error = "skipped", "device_disabled"
+            elif await self._already_read(session, device.user_id, delivery):
+                delivery.status, delivery.last_error = "skipped", "already_read"
             else:
                 provider = self.providers.get(device.push_provider)
                 if provider is None:
@@ -85,6 +90,17 @@ class PushSender:
                     if result is not None:
                         self.apply(delivery, device, result, now)
             await session.commit()
+
+    @staticmethod
+    async def _already_read(session: AsyncSession, user_id: uuid.UUID, delivery: object) -> bool:
+        """Read on another device since planning (PUSH_NOTIFICATIONS.md §6: 送信直前の再判定)."""
+        from app.modules.notifications.models import PushDelivery
+        from app.modules.reads import service as reads
+
+        assert isinstance(delivery, PushDelivery)
+        if delivery.channel_id is None or delivery.message_seq is None:
+            return False
+        return await reads.is_read(session, user_id, delivery.channel_id, delivery.message_seq)
 
     def apply(self, delivery: object, device: object, result: object, now: datetime) -> None:
         from app.modules.auth.models import Device

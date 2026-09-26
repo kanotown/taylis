@@ -1,15 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type {
-  BootstrapOut,
-  ChannelOut,
-  DeltaOut,
-  HistoryOut,
-  MemberOut,
-  MessageOut,
-  TokenResponse,
-  UserMe,
-  UserPublic,
-} from "./types";
+import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, TokenResponse, UserMe, UserPublic } from "./types";
 
 export interface DeviceInfo {
   platform: "desktop" | "ios" | "android";
@@ -175,6 +165,10 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body },
     );
     return { message: data, created: status === 201 };
+  }
+
+  markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut> {
+    return this.request("PUT", `/api/v1/channels/${channelId}/read`, { last_read_seq: lastReadSeq });
   }
 
   editMessage(messageId: string, body: string): Promise<MessageOut> {
