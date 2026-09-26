@@ -312,6 +312,21 @@ struct FileListOut: Codable {
     let nextCursor: String?
 }
 
+/// A message the server posts later (M12d); `status` is pending | sent | failed | cancelled.
+struct ScheduledOut: Codable, Identifiable, Equatable {
+    let id: String
+    let channelId: String
+    let parentId: String?
+    let clientMsgId: String
+    let body: String
+    let attachments: [AttachmentOut]
+    let sendAt: String
+    let status: String
+    let error: String?
+    let sentMessageId: String?
+    let createdAt: String
+}
+
 /// GET /mentions (M11h): messages that mention me or everyone, newest first.
 struct MentionListOut: Codable {
     let items: [MessageOut]
