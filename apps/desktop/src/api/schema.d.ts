@@ -514,6 +514,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/link-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Link Preview
+         * @description Open Graph data for a link in a message (M11g); cached, rate limited per user.
+         */
+        get: operations["get_link_preview_api_v1_link_previews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -1164,6 +1184,29 @@ export interface components {
             max_attachments_per_message: number;
             /** Max Message Length */
             max_message_length: number;
+        };
+        /** LinkPreviewOut */
+        LinkPreviewOut: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Site Name */
+            site_name?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "failed";
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -2696,6 +2739,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_link_preview_api_v1_link_previews_get: {
+        parameters: {
+            query: {
+                url: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkPreviewOut"];
                 };
             };
             /** @description Validation Error */
