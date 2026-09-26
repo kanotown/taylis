@@ -2,6 +2,9 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -77,10 +80,18 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
 @Composable
 private fun ThreadMessage(message: jp.chikuwachat.android.sync.MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Text(sender, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
-        AttachmentList(message.attachments, controller)
-        ReactionChips(message, store, onToggle = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } })
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Avatar(message.senderId, sender, size = 30.dp)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(sender, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
+            AttachmentList(message.attachments, controller)
+            ReactionChips(message, store, onToggle = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } })
+        }
     }
 }

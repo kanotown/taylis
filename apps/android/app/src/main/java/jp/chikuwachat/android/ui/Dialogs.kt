@@ -24,6 +24,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import jp.chikuwachat.android.api.MemberOut
+import jp.chikuwachat.android.sync.ChannelState
+import java.time.Instant
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
@@ -126,4 +135,141 @@ private fun UserPicker(users: List<UserPublic>, onPick: (UserPublic) -> Unit) {
             }
         }
     }
+}
+
+/** Channel info: topic (editable by members), notification level, members with roles. */
+@Composable
+fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismiss: () -> Unit, onAddMember: () -> Unit) {
+    val store = controller.store
+    val scope = rememberCoroutineScope()
+    val isChannel = !channel.channel.isDm
+    var members by remember { mutableStateOf<List<MemberOut>?>(null) }
+    var editingTopic by remember { mutableStateOf(false) }
+    var topic by remember { mutableStateOf(channel.channel.topic ?: "") }
+    LaunchedEffect(channel.id) { controller.memberList(channel.id).onSuccess { members = it } }
+    val level = channel.channel.notification?.level ?: if (isChannel) "mentions" else "all"
+    val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(channelTitle(channel, store)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (isChannel) {
+                    SectionLabel("トピック")
+                    if (editingTopic) {
+                        OutlinedTextField(topic, { topic = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: 週次の進捗共有") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { scope.launch { if (controller.updateTopic(channel.id, topic)) editingTopic = false } }) { Text("保存") }
+                            TextButton(onClick = { editingTopic = false; topic = channel.channel.topic ?: "" }) { Text("キャンセル") }
+                        }
+                    } else {
+                        Text(channel.channel.topic?.takeIf { it.isNotBlank() } ?: "未設定", color = if (channel.channel.topic.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                        if (channel.isMember && !channel.channel.archived) TextButton(onClick = { editingTopic = true }, contentPadding = PaddingValues(0.dp)) { Text("編集") }
+                    }
+                }
+                if (channel.isMember) {
+                    SectionLabel("通知")
+                    listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { scope.launch { controller.setNotification(channel.id, value, channel.channel.notification?.mutedUntil) } },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = level == value, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 4.dp))
+                        }
+                    }
+                    if (mute != null) {
+                        TextButton(onClick = { scope.launch { controller.setNotification(channel.id, level, null) } }, contentPadding = PaddingValues(0.dp)) { Text("ミュート解除 ($mute)") }
+                    } else {
+                        TextButton(onClick = { scope.launch { controller.setNotification(channel.id, level, Instant.now().plusSeconds(8 * 3600).toString()) } }, contentPadding = PaddingValues(0.dp)) { Text("8 時間ミュート") }
+                    }
+                }
+                SectionLabel("メンバー" + (members?.let { " (${it.size})" } ?: ""))
+                when (val list = members) {
+                    null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> list.sortedBy { store.users[it.userId]?.displayName ?: "" }.forEach { member ->
+                        val user = store.users[member.userId]
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp)
+                            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                Text(user?.displayName ?: "?")
+                                Text("@" + (user?.username ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        dismissButton = {
+            if (isChannel && channel.isMember && !channel.channel.archived) TextButton(onClick = onAddMember) { Text("メンバーを追加") }
+        },
+    )
+}
+
+/** Profile (display name), password change and logout. */
+@Composable
+fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
+    val me = controller.store.me ?: controller.me
+    val scope = rememberCoroutineScope()
+    var displayName by remember { mutableStateOf(me?.displayName ?: "") }
+    var nameSaved by remember { mutableStateOf(false) }
+    var current by remember { mutableStateOf("") }
+    var next by remember { mutableStateOf("") }
+    var repeat by remember { mutableStateOf("") }
+    var passwordMessage by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("設定") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (me != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        Avatar(me.id, me.displayName, size = 44.dp)
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text(me.displayName, style = MaterialTheme.typography.titleMedium)
+                            Text("@" + me.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                SectionLabel("表示名")
+                OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        enabled = !busy && displayName.isNotBlank() && displayName.trim() != me?.displayName,
+                        onClick = { scope.launch { busy = true; nameSaved = controller.updateDisplayName(displayName); busy = false } },
+                    ) { Text("表示名を保存") }
+                    if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                SectionLabel("パスワードの変更")
+                OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(next, { next = it }, label = { Text("新しいパスワード (8 文字以上)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                OutlinedTextField(repeat, { repeat = it }, label = { Text("新しいパスワード (確認)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                passwordMessage?.let { Text(it, color = if (it.endsWith("しました")) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)) }
+                TextButton(
+                    enabled = !busy && current.isNotEmpty() && next.length >= 8,
+                    onClick = {
+                        if (next != repeat) { passwordMessage = "新しいパスワードが一致しません"; return@TextButton }
+                        scope.launch {
+                            busy = true
+                            val error = controller.changePasswordInSession(current, next)
+                            busy = false
+                            passwordMessage = error ?: "パスワードを変更しました"
+                            if (error == null) { current = ""; next = ""; repeat = "" }
+                        }
+                    },
+                ) { Text("変更する") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        dismissButton = { TextButton(onClick = { scope.launch { controller.logout() } }) { Text("ログアウト", color = MaterialTheme.colorScheme.error) } },
+    )
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
 }
