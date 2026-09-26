@@ -1,11 +1,15 @@
+import { AlertTriangle, Search, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { MessageOut, SearchFilters, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
+import { Avatar } from "./Avatar";
+import { fullTimestamp } from "./format";
 import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
+import { Badge, Button, IconButton, Input } from "./primitives";
 
-/** The right pane: full-text search across my channels; clicking a hit opens its channel (and thread). */
+/** The right pane: full-text search across my channels; clicking a hit reveals it in its conversation. */
 export function SearchPane({ controller, onOpen, onClose }: { controller: AppController; onOpen: (message: MessageOut) => void; onClose: () => void }) {
   const store = controller.store;
   const [query, setQuery] = useState("");
@@ -38,59 +42,81 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
     event.preventDefault();
     void run(0);
   };
+  const unresolved = filters?.unresolved ?? [];
+  const applied = filters && (filters.from_username || filters.in_channel || filters.after || filters.before);
 
   return (
-    <aside className="thread-panel open search-panel">
-      <header className="channel-header">
-        <strong>検索</strong>
-        <button className="link" onClick={onClose}>
-          閉じる
-        </button>
+    <aside className="flex w-[400px] min-w-[340px] flex-col border-l border-line bg-canvas">
+      <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
+        <div className="flex-1 text-sm font-semibold">検索</div>
+        <IconButton label="閉じる (Esc)" onClick={onClose}>
+          <X size={18} />
+        </IconButton>
       </header>
-      <form className="search-form" onSubmit={submit}>
-        <input type="search" value={query} placeholder="メッセージを検索 (Enter)" onChange={(e) => setQuery(e.target.value)} autoFocus />
-        <button type="submit" disabled={busy || !query.trim()}>
+      <form className="flex items-center gap-2 px-3 pt-3" onSubmit={submit}>
+        <div className="relative flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <Input type="search" value={query} placeholder="メッセージを検索" className="pl-9" onChange={(e) => setQuery(e.target.value)} autoFocus />
+        </div>
+        <Button type="submit" disabled={busy || !query.trim()}>
           検索
-        </button>
+        </Button>
       </form>
-      <div className="muted search-hint">
-        絞り込み: <code>from:@名前</code> <code>in:#チャンネル</code> <code>before:2026-09-01</code> <code>after:</code> <code>on:</code>
+      <div className="flex flex-wrap items-center gap-1 px-3 pb-2 pt-2 text-[11px] text-muted">
+        絞り込み:
+        {["from:@名前", "in:#チャンネル", "before:2026-09-01", "after:", "on:"].map((m) => (
+          <code key={m} className="rounded bg-panel-2 px-1.5 py-0.5">{m}</code>
+        ))}
       </div>
-      <div className="timeline">
-        {filters && (filters.unresolved ?? []).length > 0 && (
-          <div className="error search-warning">見つからない条件があります: {(filters.unresolved ?? []).join(" ")}</div>
-        )}
-        {filters && (filters.from_username || filters.in_channel || filters.after || filters.before) && (
-          <div className="muted search-applied">
-            {filters.from_username && <span className="chip">from: @{filters.from_username}</span>}
-            {filters.in_channel && <span className="chip">in: #{filters.in_channel}</span>}
-            {filters.after && <span className="chip">{new Date(filters.after).toLocaleDateString()} 以降</span>}
-            {filters.before && <span className="chip">{new Date(filters.before).toLocaleDateString()} より前</span>}
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
+        {unresolved.length > 0 && (
+          <div className="mb-2 flex items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>見つからない条件があります: {unresolved.join(" ")}</span>
           </div>
         )}
-        {searched && hits.length === 0 && <div className="muted">見つかりませんでした</div>}
-        {hits.map((hit) => {
-          const message = hit.message;
-          const channel = store.getChannel(message.channel_id);
-          const text = message.body || message.attachments.map((a) => a.filename).join(", ");
-          return (
-            <article key={message.id} className="message search-hit" onClick={() => onOpen(message)}>
-              <div className="meta">
-                <strong>{channel ? channelTitle(channel, controller) : "?"}</strong>
-                <span>{store.users.get(message.sender_id)?.display_name ?? "?"}</span>
-                {message.parent_id && <span className="muted">スレッド</span>}
-                <time>{new Date(message.created_at).toLocaleString()}</time>
-              </div>
-              <div className="body">
-                {highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i}>{piece.text}</mark> : <span key={i}>{piece.text}</span>))}
-              </div>
-            </article>
-          );
-        })}
+        {applied && filters && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {filters.from_username && <Badge tone="accent">from: @{filters.from_username}</Badge>}
+            {filters.in_channel && <Badge tone="accent">in: #{filters.in_channel}</Badge>}
+            {filters.after && <Badge tone="accent">{new Date(filters.after).toLocaleDateString()} 以降</Badge>}
+            {filters.before && <Badge tone="accent">{new Date(filters.before).toLocaleDateString()} より前</Badge>}
+          </div>
+        )}
+        {searched && hits.length === 0 && <div className="py-8 text-center text-sm text-muted">見つかりませんでした</div>}
+        <div className="space-y-1">
+          {hits.map((hit) => {
+            const message = hit.message;
+            const channel = store.getChannel(message.channel_id);
+            const text = message.body || message.attachments.map((a) => a.filename).join(", ");
+            const sender = store.users.get(message.sender_id)?.display_name ?? "?";
+            return (
+              <button
+                key={message.id}
+                type="button"
+                className="block w-full rounded-xl border border-transparent px-3 py-2 text-left transition-colors hover:border-line hover:bg-panel"
+                onClick={() => onOpen(message)}
+              >
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Avatar id={message.sender_id} name={sender} size={18} className="rounded-md text-[9px]" />
+                  <span className="font-medium text-ink">{sender}</span>
+                  <span className="truncate">{channel ? channelTitle(channel, controller) : "?"}</span>
+                  {message.parent_id && <Badge>スレッド</Badge>}
+                  <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
+                </div>
+                <div className="mt-1 line-clamp-4 text-sm text-ink">
+                  {highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i}>{piece.text}</mark> : <span key={i}>{piece.text}</span>))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
         {hasMore && (
-          <button className="secondary" onClick={() => void run(hits.length)} disabled={busy}>
-            さらに読み込む
-          </button>
+          <div className="py-2 text-center">
+            <Button variant="secondary" size="sm" onClick={() => void run(hits.length)} disabled={busy}>
+              さらに読み込む
+            </Button>
+          </div>
         )}
       </div>
     </aside>

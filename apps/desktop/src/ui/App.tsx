@@ -14,7 +14,7 @@ export function App({ controller }: { controller: AppController }) {
 
   switch (controller.screen) {
     case "boot":
-      return <div className="centered muted">起動中…</div>;
+      return <div className="flex h-full items-center justify-center text-sm text-muted">起動中…</div>;
     case "login":
       return <LoginScreen controller={controller} onDone={bump} />;
     case "change_password":
