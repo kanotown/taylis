@@ -1,0 +1,48 @@
+import { describe, expect, it } from "vitest";
+
+import { continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
+
+describe("composer markdown helpers", () => {
+  it("wraps, unwraps and inserts empty marker pairs", () => {
+    expect(toggleWrap({ text: "make it bold", start: 8, end: 12 }, "**")).toEqual({ text: "make it **bold**", start: 10, end: 14 });
+    expect(toggleWrap({ text: "make it **bold**", start: 10, end: 14 }, "**")).toEqual({ text: "make it bold", start: 8, end: 12 });
+    expect(toggleWrap({ text: "make it **bold**", start: 8, end: 16 }, "**")).toEqual({ text: "make it bold", start: 8, end: 12 });
+    expect(toggleWrap({ text: "ab", start: 1, end: 1 }, "`")).toEqual({ text: "a``b", start: 2, end: 2 });
+  });
+
+  it("fences a selection on its own lines", () => {
+    expect(toggleFence({ text: "x = 1", start: 0, end: 5 })).toEqual({ text: "```\nx = 1\n```", start: 4, end: 9 });
+    expect(toggleFence({ text: "before code after", start: 7, end: 11 }).text).toBe("before \n```\ncode\n```\n after");
+  });
+
+  it("toggles line prefixes for quotes and lists", () => {
+    expect(toggleLinePrefix({ text: "a\nb", start: 0, end: 3 }, "> ")).toEqual({ text: "> a\n> b", start: 2, end: 7 });
+    expect(toggleLinePrefix({ text: "> a\n> b", start: 2, end: 7 }, "> ")).toEqual({ text: "a\nb", start: 0, end: 3 });
+    expect(toggleLinePrefix({ text: "one\ntwo", start: 0, end: 7 }, (i) => `${i + 1}. `).text).toBe("1. one\n2. two");
+    expect(toggleLinePrefix({ text: "1. one\n2. two", start: 0, end: 13 }, (i) => `${i + 1}. `).text).toBe("one\ntwo");
+  });
+
+  it("inserts a link template and selects the url", () => {
+    expect(insertLink({ text: "see docs", start: 4, end: 8 })).toEqual({ text: "see [docs](https://)", start: 11, end: 19 });
+  });
+
+  it("knows when the caret is inside a code fence", () => {
+    expect(insideFence("```\ncode", 8)).toBe(true);
+    expect(insideFence("```\ncode\n```\n", 13)).toBe(false);
+    expect(insideFence("text with ``` inline", 20)).toBe(false);
+  });
+
+  it("continues lists and quotes on Enter and ends them on an empty item", () => {
+    expect(continueStructure({ text: "- one", start: 5, end: 5 })).toEqual({ text: "- one\n- ", start: 8, end: 8 });
+    expect(continueStructure({ text: "1. one", start: 6, end: 6 })).toEqual({ text: "1. one\n2. ", start: 10, end: 10 });
+    expect(continueStructure({ text: "- one\n- ", start: 8, end: 8 })).toEqual({ text: "- one\n", start: 6, end: 6 });
+    expect(continueStructure({ text: "> q", start: 3, end: 3 })).toEqual({ text: "> q\n> ", start: 6, end: 6 });
+    expect(continueStructure({ text: "plain", start: 5, end: 5 })).toBeNull();
+  });
+
+  it("indents and outdents list lines with Tab", () => {
+    expect(indentListLine({ text: "- a", start: 3, end: 3 }, false)).toEqual({ text: "  - a", start: 5, end: 5 });
+    expect(indentListLine({ text: "  - a", start: 5, end: 5 }, true)).toEqual({ text: "- a", start: 3, end: 3 });
+    expect(indentListLine({ text: "plain", start: 2, end: 2 }, false)).toBeNull();
+  });
+});

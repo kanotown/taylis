@@ -150,4 +150,33 @@ describe("conversation UX", () => {
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
     expect(setEditing).toHaveBeenCalledTimes(1);
   });
+
+  it("applies markdown shortcuts to the selection and keeps Enter inside lists and code fences", () => {
+    const w = world();
+    render(<w.DraftComposer />);
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "make it bold" } });
+    box.setSelectionRange(8, 12);
+    fireEvent.keyDown(box, { key: "b", ctrlKey: true });
+    expect(w.store.draft(w.channel.id).text).toBe("make it **bold**");
+
+    fireEvent.change(box, { target: { value: "- one" } });
+    box.setSelectionRange(5, 5);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(w.send).not.toHaveBeenCalled();
+    expect(w.store.draft(w.channel.id).text).toBe("- one\n- ");
+    box.setSelectionRange(8, 8);
+    fireEvent.keyDown(box, { key: "Enter" }); // empty item ends the list
+    expect(w.store.draft(w.channel.id).text).toBe("- one\n");
+
+    fireEvent.change(box, { target: { value: "```\ncode" } });
+    box.setSelectionRange(8, 8);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(w.send).not.toHaveBeenCalled(); // inside the fence Enter is a newline
+
+    fireEvent.change(box, { target: { value: "```\ncode\n```" } });
+    box.setSelectionRange(12, 12);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, []);
+  });
 });
