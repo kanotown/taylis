@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.app
 
+import kotlinx.serialization.json.JsonObject
 import jp.chikuwachat.android.ui.Permalink
 import android.content.ClipboardManager
 import android.content.ClipData
@@ -486,8 +487,11 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
-    suspend fun updateProfile(fields: Map<String, String?>): Boolean = runCatching {
-        val body = buildJsonObject { fields.forEach { (key, value) -> if (value == null) put(key, JsonNull) else put(key, value) } }
+    suspend fun updateProfile(fields: Map<String, String?>): Boolean =
+        updateProfileJson(buildJsonObject { fields.forEach { (key, value) -> if (value == null) put(key, JsonNull) else put(key, value) } })
+
+    /** M12c: quiet_hours is an object, so the status dialog builds the body itself. */
+    suspend fun updateProfileJson(body: JsonObject): Boolean = runCatching {
         val updated = api!!.updateProfile(body)
         me = updated
         store.setMe(updated)

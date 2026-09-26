@@ -19,7 +19,14 @@ data class UserPublic(
     val statusText: String? = null,
     val statusEmoji: String? = null,
     val statusExpiresAt: String? = null,
+    /** Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name). */
+    val dndUntil: String? = null,
+    val quietHours: QuietHours? = null,
 )
+
+/** A daily window (in the user's zone) during which pushes are held back (M12c). */
+@Serializable
+data class QuietHours(val start: String, val end: String, val days: List<Int> = emptyList(), val tz: String)
 
 @Serializable
 data class UserMe(
@@ -36,8 +43,10 @@ data class UserMe(
     val statusText: String? = null,
     val statusEmoji: String? = null,
     val statusExpiresAt: String? = null,
+    val dndUntil: String? = null,
+    val quietHours: QuietHours? = null,
 ) {
-    val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt)
+    val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours)
 }
 
 /** A custom status (M11d) that has not expired: emoji to text; null otherwise. */

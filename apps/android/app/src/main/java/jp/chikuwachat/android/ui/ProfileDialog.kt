@@ -1,5 +1,12 @@
 package jp.chikuwachat.android.ui
 
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonNull
+import androidx.compose.material3.Switch
+import jp.chikuwachat.android.api.QuietHours
+import jp.chikuwachat.android.api.Codec
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -60,6 +67,9 @@ fun ProfileDialog(controller: AppController, userId: String, onDismiss: () -> Un
                         Text(user?.displayName ?: "?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (Dnd.isActive(user)) {
+                            Text("🔕 通知を一時停止中" + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
                 if (status != null) {
@@ -123,6 +133,20 @@ fun StatusDialog(controller: AppController, onDismiss: () -> Unit) {
     var expiry by remember { mutableStateOf("never") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // M12c: a pause applies at once; quiet hours are saved with the form.
+    val meNow = me?.let { store.users[it.id] ?: it.asPublic }
+    val pausedUntil = meNow?.dndUntil?.takeIf { raw -> runCatching { Instant.parse(raw).isAfter(Instant.now()) }.getOrDefault(false) }
+    val existingQuiet = meNow?.quietHours
+    var quietOn by remember { mutableStateOf(existingQuiet != null) }
+    var quietStart by remember { mutableStateOf(existingQuiet?.start ?: "22:00") }
+    var quietEnd by remember { mutableStateOf(existingQuiet?.end ?: "07:00") }
+    var quietDays by remember { mutableStateOf((existingQuiet?.days?.ifEmpty { null } ?: (0..6).toList()).toSet()) }
+    val timePattern = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+    val quietValid = !quietOn || (timePattern.matches(quietStart) && timePattern.matches(quietEnd) && quietDays.isNotEmpty())
+    val quietDraft = if (quietOn) QuietHours(quietStart, quietEnd, quietDays.sorted(), ZoneId.systemDefault().id) else null
+    val quietChanged = quietOn != (existingQuiet != null) ||
+        (quietDraft != null && existingQuiet != null && (quietDraft.start != existingQuiet.start || quietDraft.end != existingQuiet.end || quietDraft.days.toSet() != existingQuiet.days.toSet() || quietDraft.tz != existingQuiet.tz))
+    fun pause(until: String?) { scope.launch { busy = true; controller.updateProfile(mapOf("dnd_until" to until)); busy = false } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("ステータスを設定") },
@@ -141,15 +165,49 @@ fun StatusDialog(controller: AppController, onDismiss: () -> Unit) {
                     EXPIRY_OPTIONS.forEach { (value, label) -> FilterChip(selected = expiry == value, onClick = { expiry = value }, label = { Text(label) }) }
                 }
                 expiryLabel(expiryAt(expiry))?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                Text("通知を一時停止", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                    Dnd.PAUSE_OPTIONS.forEach { (choice, label) -> FilterChip(selected = false, enabled = !busy, onClick = { pause(Dnd.pauseUntil(choice)) }, label = { Text(label) }) }
+                    if (pausedUntil != null) FilterChip(selected = true, enabled = !busy, onClick = { pause(null) }, label = { Text("🔕 " + (expiryLabel(pausedUntil) ?: "") + " · 解除") })
+                }
+                Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = quietOn, onCheckedChange = { quietOn = it })
+                    Text("おやすみ時間 (毎日この時間帯は通知を止める)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                }
+                if (quietOn) {
+                    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(quietStart, { quietStart = it.take(5) }, modifier = Modifier.width(96.dp), singleLine = true, label = { Text("開始") }, isError = !timePattern.matches(quietStart))
+                        Text("〜", modifier = Modifier.padding(horizontal = 8.dp))
+                        OutlinedTextField(quietEnd, { quietEnd = it.take(5) }, modifier = Modifier.width(96.dp), singleLine = true, label = { Text("終了") }, isError = !timePattern.matches(quietEnd))
+                    }
+                    androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
+                        Dnd.DAY_LABELS.forEachIndexed { day, label ->
+                            FilterChip(selected = day in quietDays, onClick = { quietDays = if (day in quietDays) quietDays - day else quietDays + day }, label = { Text(label) })
+                        }
+                    }
+                    Text("タイムゾーン: " + ZoneId.systemDefault().id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && (emoji.isNotBlank() || text.isNotBlank()),
+                enabled = !busy && quietValid && (emoji.isNotBlank() || text.isNotBlank() || quietChanged),
                 onClick = {
                     scope.launch {
                         busy = true
-                        val ok = controller.updateProfile(mapOf("status_emoji" to emoji.trim().ifEmpty { null }, "status_text" to text.trim().ifEmpty { null }, "status_expires_at" to expiryAt(expiry)))
+                        val body = buildJsonObject {
+                            if (emoji.isNotBlank() || text.isNotBlank()) {
+                                emoji.trim().ifEmpty { null }.let { if (it == null) put("status_emoji", JsonNull) else put("status_emoji", it) }
+                                text.trim().ifEmpty { null }.let { if (it == null) put("status_text", JsonNull) else put("status_text", it) }
+                                expiryAt(expiry).let { if (it == null) put("status_expires_at", JsonNull) else put("status_expires_at", it) }
+                            }
+                            if (quietChanged) {
+                                val draft = quietDraft
+                                if (draft == null) put("quiet_hours", JsonNull)
+                                else put("quiet_hours", Codec.snake.encodeToJsonElement(QuietHours.serializer(), draft))
+                            }
+                        }
+                        val ok = controller.updateProfileJson(body)
                         busy = false
                         if (ok) onDismiss()
                     }
@@ -170,7 +228,8 @@ fun StatusDialog(controller: AppController, onDismiss: () -> Unit) {
 /** The status emoji next to a name when the person has an active custom status. */
 @Composable
 fun StatusEmoji(user: jp.chikuwachat.android.api.UserPublic?, modifier: Modifier = Modifier) {
-    val status = activeStatus(user) ?: return
-    if (status.first.isEmpty()) return
-    Text(status.first, style = MaterialTheme.typography.labelMedium, modifier = modifier)
+    val status = activeStatus(user)
+    val quiet = Dnd.isActive(user)
+    if ((status == null || status.first.isEmpty()) && !quiet) return
+    Text((status?.first ?: "") + (if (quiet) "🔕" else ""), style = MaterialTheme.typography.labelMedium, modifier = modifier)
 }
