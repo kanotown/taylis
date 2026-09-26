@@ -18,11 +18,20 @@ final class FakeServer {
             self.userId = userId
         }
 
+        var authed = false
+
         func send(_ text: String) async throws {
             guard let data = text.data(using: .utf8), let frame = try? JSON.plainDecoder.decode([String: JSONValue].self, from: data) else { return }
             switch frame["type"]?.stringValue {
-            case "auth": deliver(.object(["type": .string("hello"), "session_id": .string("s-" + userId), "server_time": .string(now()), "heartbeat_interval_sec": .number(30)]))
-            case "ping": deliver(.object(["type": .string("pong"), "server_time": .string(now())]))
+            case "auth":
+                authed = true
+                deliver(.object(["type": .string("hello"), "session_id": .string("s-" + userId), "server_time": .string(now()), "heartbeat_interval_sec": .number(30)]))
+                server.announcePresence(userId)
+            case "ping":
+                if case .bool(true)? = frame["active"] { server.markActive(userId) }
+                deliver(.object(["type": .string("pong"), "server_time": .string(now())]))
+            case "typing":
+                if let channelId = frame["channel_id"]?.stringValue { server.relayTyping(userId, channelId: channelId, parentId: frame["parent_id"]?.stringValue) }
             default: break
             }
         }
@@ -34,6 +43,7 @@ final class FakeServer {
             closed = true
             server.sockets.removeAll { $0 === self }
             onClose?(code)
+            if authed { server.announcePresence(userId) }
         }
 
         func deliver(_ frame: JSONValue) {
@@ -204,6 +214,38 @@ final class FakeServer {
             return state
         }
         return readState(userId: userId, channelId: channelId)
+    }
+
+    // MARK: presence / typing (SYNC_PROTOCOL.md §5.2, volatile)
+
+    /// Users whose window is "away" (set by tests); everyone connected is online otherwise.
+    var awayUsers = Set<String>()
+    private var announced: [String: String] = [:]
+
+    func presenceOf(_ userId: String) -> String {
+        guard sockets.contains(where: { $0.userId == userId && $0.authed }) else { return "offline" }
+        return awayUsers.contains(userId) ? "away" : "online"
+    }
+
+    func markActive(_ userId: String) {
+        if awayUsers.remove(userId) != nil { announcePresence(userId) }
+    }
+
+    /// Broadcast a presence frame when the user's status changed.
+    func announcePresence(_ userId: String) {
+        let status = presenceOf(userId)
+        if (announced[userId] ?? "offline") == status { return }
+        if status == "offline" { announced[userId] = nil } else { announced[userId] = status }
+        for socket in sockets where socket.authed {
+            socket.deliver(.object(["type": .string("presence"), "user_id": .string(userId), "status": .string(status)]))
+        }
+    }
+
+    func relayTyping(_ userId: String, channelId: String, parentId: String?) {
+        guard let record = channels[channelId], record.members.contains(userId) else { return }
+        for socket in sockets where socket.authed && socket.userId != userId && record.members.contains(socket.userId) {
+            socket.deliver(.object(["type": .string("typing"), "channel_id": .string(channelId), "parent_id": parentId.map(JSONValue.string) ?? .null, "user_id": .string(userId)]))
+        }
     }
 
     // MARK: threads (THREADS.md §2)
@@ -513,7 +555,8 @@ final class FakeServer {
         }
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),
-                            threads: threadSummary(for: userId))
+                            threads: threadSummary(for: userId),
+                            presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) })
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

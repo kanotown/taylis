@@ -103,7 +103,7 @@ struct ChannelListView: View {
             HStack(spacing: 12) {
                 if channel.channel.isDm {
                     let other = (channel.channel.dmUserIds ?? []).first { $0 != store.me?.id } ?? store.me?.id ?? channel.id
-                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?")
+                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", presence: store.presenceOf(other))
                 } else {
                     ChannelGlyph(channel: channel.channel)
                 }

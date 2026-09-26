@@ -83,6 +83,7 @@ struct ThreadView: View {
                     }
                 }
                 if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
+                    TypingLine(controller: controller, channelId: channelId, parentId: parentId)
                     ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
                         Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds) }
                     }

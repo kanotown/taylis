@@ -200,13 +200,15 @@ struct ChannelInfoView: View {
                         if let members {
                             ForEach(members.sorted { (store.users[$0.userId]?.displayName ?? "") < (store.users[$1.userId]?.displayName ?? "") }, id: \.userId) { member in
                                 let user = store.users[member.userId]
+                                let presence = store.presenceOf(member.userId)
                                 HStack(spacing: 10) {
-                                    AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28)
+                                    AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
                                     VStack(alignment: .leading, spacing: 0) {
                                         Text(user?.displayName ?? "?")
                                         Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
                                     }
                                     Spacer()
+                                    if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
                                     if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
                                 }
                             }
