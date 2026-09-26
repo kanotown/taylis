@@ -46,6 +46,19 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.display_name = data.display_name
     if "email" in data.model_fields_set:
         user.email = data.email
+    if "title" in data.model_fields_set:
+        user.title = (data.title or "").strip() or None
+    # Custom status (M11d): text and emoji move together; clearing both drops the expiry.
+    status_fields = {"status_text", "status_emoji", "status_expires_at"} & data.model_fields_set
+    if status_fields:
+        if "status_text" in status_fields:
+            user.status_text = (data.status_text or "").strip() or None
+        if "status_emoji" in status_fields:
+            user.status_emoji = (data.status_emoji or "").strip() or None
+        if "status_expires_at" in status_fields:
+            user.status_expires_at = data.status_expires_at
+        if user.status_text is None and user.status_emoji is None:
+            user.status_expires_at = None
     user.updated_at = utcnow()
     try:
         await db.flush()

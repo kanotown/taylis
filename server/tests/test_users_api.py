@@ -1,11 +1,14 @@
 import uuid
 from collections.abc import Callable
+from datetime import timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
+from app.events.models import OutboxEvent
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -91,3 +94,59 @@ async def test_profile_validation(
     as_user(user)
     result = await client.patch("/api/v1/users/me", json=payload)
     assert result.status_code == 422 and result.json()["error"]["code"] == "validation_error"
+
+
+async def test_custom_status_and_title_are_public_and_expire(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    later = (utcnow() + timedelta(hours=1)).isoformat()
+    updated = await client.patch(
+        "/api/v1/users/me",
+        json={
+            "title": "開発",
+            "status_text": "外出中",
+            "status_emoji": "🚌",
+            "status_expires_at": later,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert (
+        body["title"] == "開発" and body["status_text"] == "外出中" and body["status_emoji"] == "🚌"
+    )
+    assert body["status_expires_at"] is not None
+
+    # Everyone sees it (user list, profile, and the user.updated event).
+    as_user(bob)
+    listed = next(u for u in (await client.get("/api/v1/users")).json() if u["id"] == str(alice.id))
+    assert listed["status_text"] == "外出中" and listed["title"] == "開発"
+    events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
+    changed = [e for e in events if e.event_type == "user.updated"]
+    assert changed and changed[-1].payload["user"]["status_emoji"] == "🚌"
+
+    # An expired status is reported as no status; the title stays.
+    as_user(alice)
+    past = (utcnow() - timedelta(minutes=1)).isoformat()
+    expired = (await client.patch("/api/v1/users/me", json={"status_expires_at": past})).json()
+    assert expired["status_text"] is None and expired["status_emoji"] is None
+    assert expired["title"] == "開発"
+    as_user(bob)
+    seen = (await client.get(f"/api/v1/users/{alice.id}")).json()
+    assert seen["status_text"] is None and seen["status_expires_at"] is None
+    as_user(alice)
+
+    # Clearing the text and emoji drops the expiry; omitted fields keep their values.
+    await client.patch(
+        "/api/v1/users/me",
+        json={"status_text": "会議中", "status_emoji": "📅", "status_expires_at": later},
+    )
+    cleared = (
+        await client.patch("/api/v1/users/me", json={"status_text": None, "status_emoji": None})
+    ).json()
+    assert cleared["status_expires_at"] is None and cleared["display_name"] == alice.display_name
+    assert (
+        await client.patch("/api/v1/users/me", json={"status_text": "x" * 101})
+    ).status_code == 422

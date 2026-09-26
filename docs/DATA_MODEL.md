@@ -76,6 +76,10 @@ CREATE TABLE users (
   must_change_password  boolean NOT NULL DEFAULT true,    -- 管理者が設定した仮パスワードの間は true
   role                  text NOT NULL DEFAULT 'member',   -- 'admin' | 'member'
   timezone              text,
+  title                 text,                             -- M11d: 肩書 (プロフィールカード)
+  status_text           text,                             -- M11d: カスタムステータス。期限切れは無いものとして返す
+  status_emoji          text,
+  status_expires_at     timestamptz,
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)
