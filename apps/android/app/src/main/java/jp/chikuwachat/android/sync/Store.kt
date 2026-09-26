@@ -7,6 +7,9 @@ import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReactionOut
+import jp.chikuwachat.android.api.ThreadItem
+import jp.chikuwachat.android.api.ThreadState
+import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,12 +116,43 @@ interface Persistence {
 const val LOCAL_PREFIX = "local:"
 
 /** The single source of truth for the UI (ARCHITECTURE.md §11). Mutated only from the engine's thread. */
+/**
+ * One row of the threads view (THREADS.md §5): the parent and my relation to the thread. Not persisted:
+ * the badge comes with bootstrap and the list is fetched when the view opens.
+ */
+data class ThreadEntry(val parent: MessageOut, val state: ThreadState) {
+    val id: String get() = parent.id
+}
+
+/** A confirmed local row in the server shape (thread rows built from the timeline). */
+fun MessageState.toOut(): MessageOut? {
+    val seq = seq ?: return null
+    if (pending) return null
+    return MessageOut(
+        id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
+        parentId = parentId, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
+        attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
+    )
+}
+
 class Store(private val persistence: Persistence? = null) {
     var me: UserMe? = null
         private set
     val users = LinkedHashMap<String, UserPublic>()
     val channels = LinkedHashMap<String, ChannelState>()
     val outbox = ArrayList<OutboxItem>()
+    /** Followed threads (THREADS.md §5), replaced by thread.updated and GET /threads pages. */
+    val threads = LinkedHashMap<String, ThreadEntry>()
+    var threadSummary = ThreadSummary()
+        private set
+    var threadsFilter = "all"
+        private set
+    var threadsLoaded = false
+        private set
+    var threadsCursor: String? = null
+        private set
+    var threadsHasMore = false
+        private set
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -255,6 +289,63 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     fun message(channelId: String, id: String): MessageState? = bucket(channelId)[id]
+
+    // --- threads (THREADS.md §5) ------------------------------------------------------------
+
+    fun setThreadSummary(summary: ThreadSummary) {
+        if (summary == threadSummary) return
+        threadSummary = summary
+        emit()
+    }
+
+    /**
+     * A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
+     * refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
+     * elsewhere) are dropped.
+     */
+    fun setThreadPage(filter: String, items: List<ThreadItem>, cursor: String?, append: Boolean, pageSize: Int) {
+        if (!append) {
+            val listed = items.map { it.parent.id }.toSet()
+            val oldest = if (items.size >= pageSize) items.last().state.lastReplyAt ?: "" else ""
+            threads.entries.removeAll { (id, entry) ->
+                id !in listed && entry.state.following &&
+                    !(filter == "unread" && entry.state.unreadCount == 0) &&
+                    (entry.state.lastReplyAt ?: "") >= oldest
+            }
+        }
+        items.forEach { threads[it.parent.id] = ThreadEntry(it.parent, it.state) }
+        threadsFilter = filter
+        threadsLoaded = true
+        threadsCursor = cursor
+        threadsHasMore = items.size >= pageSize
+        emit()
+    }
+
+    /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
+    fun applyThreadState(state: ThreadState, parent: MessageOut? = null) {
+        val existing = threads[state.parentId]
+        val before = existing?.state
+        if (existing != null) {
+            threads[state.parentId] = ThreadEntry(existing.parent.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state)
+        } else {
+            val known = parent ?: messagesByChannel[state.channelId]?.get(state.parentId)?.toOut()
+            if (known != null) threads[state.parentId] = ThreadEntry(known.copy(replyCount = state.replyCount, lastReplyAt = state.lastReplyAt), state)
+        }
+        if (before != null) {
+            fun unread(s: ThreadState) = if (s.following && s.unreadCount > 0) 1 else 0
+            fun mention(s: ThreadState) = if (s.following && s.mentionCount > 0) 1 else 0
+            threadSummary = ThreadSummary(
+                maxOf(0, threadSummary.unreadCount + unread(state) - unread(before)),
+                maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
+            )
+        }
+        emit()
+    }
+
+    /** The rows of the threads view: followed, newest reply first, unread only when that filter is on. */
+    fun threadList(filter: String = threadsFilter): List<ThreadEntry> =
+        threads.values.filter { it.state.following && (filter == "all" || it.state.unreadCount > 0) }
+            .sortedWith(compareByDescending<ThreadEntry> { it.state.lastReplyAt ?: "" }.thenByDescending { it.parent.seq })
 
     /** The merge rule (SYNC_PROTOCOL.md §8): newer updated_seq wins; tombstones delete. */
     fun upsertMessage(message: MessageOut): Boolean = upsertMessage(MessageState.from(message))

@@ -9,6 +9,8 @@ import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReadStateOut
+import jp.chikuwachat.android.api.ThreadListOut
+import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.isRetryable
 import kotlinx.coroutines.CompletableDeferred
@@ -39,6 +41,11 @@ interface SyncApi {
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
+    /** THREADS.md §3. */
+    suspend fun threads(filter: String, cursor: String? = null, limit: Int = 50): ThreadListOut
+    suspend fun threadState(messageId: String): ThreadState
+    suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState
+    suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState
 }
 
 /** Transport as the engine sees it (OkHttp in the app, a fake in tests). Callbacks may come from any thread. */
@@ -62,6 +69,9 @@ data class EngineOptions(
     val reconnectMaxMs: Long = 30_000,
     /** §10: read marks are debounced so scrolling does not spam the server. */
     val readDebounceMs: Long = 1_000,
+    val threadPageSize: Int = 50,
+    /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
+    val threadRefreshMs: Long = 300,
     /** Injectable so tests can skip reconnect pacing. */
     val sleep: suspend (Long) -> Unit = { delay(it) },
     val random: () -> Double = { Random.nextDouble() },
@@ -114,6 +124,9 @@ class SyncEngine(
     /** Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10). */
     private val unreadHold = HashMap<String, Int>()
     fun heldUnread(channelId: String): Int? = unreadHold[channelId]
+    /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
+    private val threadReadFloor = HashMap<String, Int>()
+    private var threadRefresh: Job? = null
 
     // --- serial work queue --------------------------------------------------------------------
 
@@ -299,8 +312,10 @@ class SyncEngine(
     private fun clearTimers() {
         heartbeat?.cancel()
         pongTimeout?.cancel()
+        threadRefresh?.cancel()
         heartbeat = null
         pongTimeout = null
+        threadRefresh = null
     }
 
     private fun applyBootstrap(bootstrap: BootstrapOut) {
@@ -312,6 +327,8 @@ class SyncEngine(
             store.upsertChannel(channel, isMember = true)
         }
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { store.removeChannel(it.id) }
+        bootstrap.threads?.let { store.setThreadSummary(it) }
+        if (store.threadsLoaded) scheduleThreadRefresh() // the list may have moved while we were away
     }
 
     /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -325,6 +342,12 @@ class SyncEngine(
     private suspend fun applyEvent(frame: EventFrame) {
         when (frame.event) {
             "message.created", "message.updated", "message.deleted" -> applyTimelineEvent(frame)
+            "thread.updated" -> {
+                // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
+                // refreshed from the server shortly after, which also covers threads we do not hold.
+                store.applyThreadState(Codec.snake.decodeFromJsonElement(ThreadState.serializer(), frame.data))
+                scheduleThreadRefresh()
+            }
             "channel.created", "channel.updated" -> {
                 val channel = Codec.snake.decodeFromJsonElement(ChannelOut.serializer(), frame.data["channel"] ?: return)
                 val memberIds = (frame.data["member_ids"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
@@ -491,6 +514,71 @@ class SyncEngine(
     suspend fun flushReads() {
         pendingReads.values.toList().forEach { it.join() }
         idle()
+    }
+
+    // --- followed threads (THREADS.md §5) ------------------------------------------------------
+
+    /** The threads view opens (or switches filter): fetch the first page; `more` appends the next one. */
+    suspend fun loadThreads(filter: String, more: Boolean = false) = enqueue {
+        if (_status.value != EngineStatus.ONLINE) return@enqueue
+        val cursor = if (more && store.threadsFilter == filter) store.threadsCursor else null
+        if (more && cursor == null) return@enqueue
+        val page = api.threads(filter, cursor, options.threadPageSize)
+        store.setThreadPage(filter, page.items, page.nextCursor, append = cursor != null, pageSize = options.threadPageSize)
+        store.setThreadSummary(page.summary)
+    }
+
+    /** A thread opened from a channel: fetch my relation to it (follow flag, read position). */
+    suspend fun loadThreadState(parentId: String, parent: MessageOut? = null) = enqueue {
+        if (_status.value != EngineStatus.ONLINE) return@enqueue
+        var state = api.threadState(parentId)
+        threadReadFloor[parentId]?.let { floor -> if (floor > state.lastReadSeq) state = state.copy(lastReadSeq = floor) }
+        store.applyThreadState(state, parent)
+    }
+
+    /** The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce. */
+    fun markThreadRead(parentId: String, seq: Int) {
+        if (_status.value != EngineStatus.ONLINE || !isActive()) return
+        val current = maxOf(store.threads[parentId]?.state?.lastReadSeq ?: 0, threadReadFloor[parentId] ?: 0)
+        if (seq <= current) return
+        threadReadFloor[parentId] = seq
+        store.threads[parentId]?.state?.let { state ->
+            val newest = store.replies(state.channelId, parentId).mapNotNull { it.seq }.maxOrNull() ?: 0
+            store.applyThreadState(if (seq >= newest) state.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else state.copy(lastReadSeq = seq))
+        }
+        val key = "thread:$parentId"
+        pendingReads.remove(key)?.cancel()
+        pendingReads[key] = scope.launch {
+            options.sleep(options.readDebounceMs)
+            val target = threadReadFloor[parentId] ?: seq
+            pendingReads.remove(key)
+            runCatching { api.markThreadRead(parentId, target) }.onSuccess { post { store.applyThreadState(it) } }
+        }
+    }
+
+    suspend fun setThreadFollow(parentId: String, following: Boolean) = enqueue {
+        if (_status.value != EngineStatus.ONLINE) return@enqueue
+        store.applyThreadState(api.setThreadFollow(parentId, following))
+    }
+
+    private fun scheduleThreadRefresh() {
+        threadRefresh?.cancel()
+        threadRefresh = scope.launch {
+            options.sleep(options.threadRefreshMs)
+            if (_status.value == EngineStatus.ONLINE) refreshThreads()
+        }
+    }
+
+    /** Re-read the badge (and the open list) from the server; cheap, and always consistent. */
+    suspend fun refreshThreads() {
+        if (store.threadsLoaded) runCatching { loadThreads(store.threadsFilter) }
+        else runCatching { api.threads("unread", null, 1) }.onSuccess { store.setThreadSummary(it.summary) }
+    }
+
+    /** Waits for the debounced thread refresh and read marks (tests). */
+    suspend fun flushThreads() {
+        threadRefresh?.join()
+        flushReads()
     }
 
     suspend fun catchUp(channelId: String) {

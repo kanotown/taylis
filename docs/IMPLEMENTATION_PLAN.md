@@ -310,7 +310,7 @@ Desktop の見た目を、フリーで使える現行のフレームワークに
 
 | # | 機能 | 内容 | 状況 |
 | --- | --- | --- | --- |
-| M11a | フォロー中スレッド | THREADS.md。`thread_follows`、`GET /threads`、`PUT /messages/{id}/thread/read|follow`、`thread.updated`、bootstrap の `threads`、プッシュ対象をフォロワーに置き換え、3 端末の「スレッド」一覧とフォロー切替 | サーバ実装済み (2026-09-27、pytest 133)。クライアントは順次 |
+| M11a | フォロー中スレッド | THREADS.md。`thread_follows`、`GET /threads`、`GET/PUT /messages/{id}/thread[/read|/follow]`、`thread.updated`、bootstrap の `threads`、プッシュ対象をフォロワーに置き換え、3 端末の「スレッド」一覧・フォロー切替・スレッド既読・「新しい返信」 | **実装済み (2026-09-27)**: サーバ pytest 133、Desktop vitest 71 + ブラウザプレビューで目視、iOS XCTest 43 + スナップショット、Android JUnit 45 + Lint + assembleDebug |
 | M11b | プレゼンスと入力中表示 | WS の揮発イベント (outbox を通さない) で online / away と typing を配る。Hub が接続状態から導出、Redis は不要 | 未着手 |
 | M11c | ピン留めとブックマーク | `messages.pinned_at` + `PUT/DELETE /messages/{id}/pin` (`message.updated change=pin` は予約済み)、`bookmarks` (自分だけの保存) | 未着手 |
 | M11d | プロフィールとカスタムステータス | ユーザーのポップオーバー / シート、`users.status_text` / `status_emoji` / `status_expires_at`、`user.updated` で配る | 未着手 |
