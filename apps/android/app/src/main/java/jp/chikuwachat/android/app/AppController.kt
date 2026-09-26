@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.app
 
+import jp.chikuwachat.android.ui.Permalink
+import android.content.ClipboardManager
+import android.content.ClipData
 import android.app.Application
 import android.os.Build
 import androidx.compose.runtime.getValue
@@ -53,6 +56,8 @@ class AppController(private val app: Application) {
     var screen by mutableStateOf(Screen.BOOT)
         private set
     var error by mutableStateOf<String?>(null)
+    /** A short confirmation (「リンクをコピーしました」); null when nothing to say. */
+    var notice by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
         private set
     var me by mutableStateOf<UserMe?>(null)
@@ -65,6 +70,10 @@ class AppController(private val app: Application) {
         private set
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
+    /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
+    var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
+    /** The server we are logged into (for permalinks); null before login. */
+    val serverBase: String? get() = api?.baseUrl
     data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>)
     var messageFocus by mutableStateOf<MessageFocus?>(null)
     suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean =
@@ -344,6 +353,24 @@ class AppController(private val app: Application) {
         val api = api ?: return
         try {
             store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
+        } catch (e: Exception) { error = describe(e) }
+    }
+
+    // --- permalinks (M12b) ------------------------------------------------------------------------
+
+    fun copyPermalink(messageId: String) {
+        val base = serverBase ?: return
+        val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("ChikuwaChat", Permalink.url(base, messageId)))
+        notice = "リンクをコピーしました"
+    }
+
+    /** A permalink tapped in a body: fetch the message (membership is checked there) and hand it to the screen. */
+    suspend fun openPermalink(messageId: String) {
+        val api = api ?: return
+        try {
+            val message = api.message(messageId)
+            if (revealMessage(message)) pendingReveal = message
         } catch (e: Exception) { error = describe(e) }
     }
 

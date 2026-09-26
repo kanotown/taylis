@@ -269,9 +269,11 @@ fun MessageRow(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
+                if (message.body.isNotEmpty()) {
+                    MessageBody(message.body, store.users, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } })
+                }
                 AttachmentList(message.attachments, controller)
-                if (!message.pending) Links.first(message.body)?.let { LinkPreviewCard(controller, it) }
+                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(message, store, onToggle = onReact)
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
@@ -294,6 +296,7 @@ fun MessageRow(
             onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
+            onCopyLink = { controller.copyPermalink(message.id) },
             onMoreReactions = { pickingReaction = true },
         )
     }

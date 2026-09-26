@@ -177,6 +177,7 @@ class ApiClient(
 
     /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
     suspend fun deleteMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId")
+    suspend fun message(messageId: String): MessageOut = request("GET", "/api/v1/messages/$messageId")
 
     suspend fun addReaction(messageId: String, emoji: String): MessageOut =
         request("PUT", "/api/v1/messages/$messageId/reactions/" + URLEncoder.encode(emoji, "UTF-8"), buildJsonObject {})

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -115,6 +116,11 @@ fun MainScreen(controller: AppController) {
         snackbar.showSnackbar(message)
         if (controller.error == message) controller.error = null
     }
+    LaunchedEffect(controller.notice) {
+        val message = controller.notice ?: return@LaunchedEffect
+        snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
+        if (controller.notice == message) controller.notice = null
+    }
     // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
     LaunchedEffect(controller.pendingChannelId, version) {
         val id = controller.pendingChannelId ?: return@LaunchedEffect
@@ -159,6 +165,16 @@ fun MainScreen(controller: AppController) {
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
 
+    // A permalink tapped in a body (M12b): the controller fetched the message; show it in its conversation.
+    LaunchedEffect(controller.pendingReveal) {
+        val message = controller.pendingReveal ?: return@LaunchedEffect
+        controller.pendingReveal = null
+        pinsOpen = false
+        showFiles = false
+        threadFromList = false
+        selection = message.channelId
+        threadId = message.parentId
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
