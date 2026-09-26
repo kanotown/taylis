@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, String, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -19,6 +19,12 @@ class Device(Base):
     platform: Mapped[str] = mapped_column(String(16))
     device_name: Mapped[str | None] = mapped_column(String(80))
     app_version: Mapped[str | None] = mapped_column(String(40))
+    push_provider: Mapped[str] = mapped_column(
+        String(8), default="none", server_default="none"
+    )  # apns | fcm | none
+    push_token: Mapped[str | None] = mapped_column(Text)
+    push_environment: Mapped[str | None] = mapped_column(String(16))  # apns: sandbox | production
+    push_token_invalid_reason: Mapped[str | None] = mapped_column(String(32))
     enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     disabled_reason: Mapped[str | None] = mapped_column(String(32))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -31,7 +37,18 @@ class Device(Base):
 
     __table_args__ = (
         Index("devices_user_enabled_idx", "user_id", postgresql_where=text("enabled")),
+        Index(
+            "devices_push_token_uniq",
+            "push_provider",
+            "push_token",
+            unique=True,
+            postgresql_where=text("push_token IS NOT NULL"),
+        ),
     )
+
+    @property
+    def push_registered(self) -> bool:
+        return self.push_token is not None and self.push_provider != "none"
 
 
 class UserSession(Base):

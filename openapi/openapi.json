@@ -331,6 +331,16 @@
             ],
             "title": "Name"
           },
+          "notification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotificationPreferenceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "purpose": {
             "anyOf": [
               {
@@ -492,6 +502,50 @@
             ],
             "title": "Platform",
             "type": "string"
+          },
+          "push_environment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sandbox",
+                  "production"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Environment"
+          },
+          "push_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "apns",
+                  "fcm",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Provider"
+          },
+          "push_token": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Token"
           }
         },
         "required": [
@@ -565,6 +619,25 @@
             "title": "Platform",
             "type": "string"
           },
+          "push_environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Environment"
+          },
+          "push_provider": {
+            "title": "Push Provider",
+            "type": "string"
+          },
+          "push_registered": {
+            "title": "Push Registered",
+            "type": "boolean"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -578,6 +651,9 @@
           "app_version",
           "enabled",
           "disabled_reason",
+          "push_provider",
+          "push_environment",
+          "push_registered",
           "last_seen_at",
           "created_at",
           "updated_at"
@@ -611,6 +687,50 @@
               }
             ],
             "title": "Device Name"
+          },
+          "push_environment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sandbox",
+                  "production"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Environment"
+          },
+          "push_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "apns",
+                  "fcm",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Provider"
+          },
+          "push_token": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Token"
           }
         },
         "title": "DeviceUpdate",
@@ -878,6 +998,73 @@
           "deleted"
         ],
         "title": "MessageOut",
+        "type": "object"
+      },
+      "NotificationPreferenceIn": {
+        "properties": {
+          "level": {
+            "enum": [
+              "all",
+              "mentions",
+              "none"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "muted_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted Until"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "NotificationPreferenceIn",
+        "type": "object"
+      },
+      "NotificationPreferenceOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "all",
+              "mentions",
+              "none"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "muted_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted Until"
+          }
+        },
+        "required": [
+          "channel_id",
+          "level",
+          "muted_until"
+        ],
+        "title": "NotificationPreferenceOut",
         "type": "object"
       },
       "PasswordChange": {
@@ -2264,6 +2451,64 @@
         "summary": "Create Message",
         "tags": [
           "messages"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/notification-preference": {
+      "put": {
+        "operationId": "set_preference_api_v1_channels__channel_id__notification_preference_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferenceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Preference",
+        "tags": [
+          "notifications"
         ]
       }
     },

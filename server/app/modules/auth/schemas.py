@@ -8,6 +8,8 @@ from app.modules.auth.models import Device, UserSession
 from app.modules.users.schemas import UserMe
 
 Platform = Literal["ios", "android", "desktop"]
+PushProvider = Literal["apns", "fcm", "none"]
+PushEnvironment = Literal["sandbox", "production"]
 
 
 class DeviceUpdate(BaseModel):
@@ -15,6 +17,10 @@ class DeviceUpdate(BaseModel):
 
     device_name: str | None = Field(default=None, max_length=80)
     app_version: str | None = Field(default=None, max_length=40)
+    # Push registration (PUSH_NOTIFICATIONS.md §3). Sending push_token = null removes the token.
+    push_provider: PushProvider | None = None
+    push_token: str | None = Field(default=None, min_length=1, max_length=4096)
+    push_environment: PushEnvironment | None = None
 
 
 class DeviceCreate(DeviceUpdate):
@@ -48,6 +54,9 @@ class DeviceOut(BaseModel):
     app_version: str | None
     enabled: bool
     disabled_reason: str | None
+    push_provider: str
+    push_environment: str | None
+    push_registered: bool
     last_seen_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -81,6 +90,9 @@ def to_device_out(device: Device) -> DeviceOut:
         app_version=device.app_version,
         enabled=device.enabled,
         disabled_reason=device.disabled_reason,
+        push_provider=device.push_provider,
+        push_environment=device.push_environment,
+        push_registered=device.push_registered,
         last_seen_at=device.last_seen_at,
         created_at=device.created_at,
         updated_at=device.updated_at,

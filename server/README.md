@@ -38,7 +38,7 @@ server/
   Dockerfile             uv ベース。起動時に alembic upgrade head を実行 (RUN_MIGRATIONS=false で抑止)
   app/
     main.py              create_app() (composition root)。uvicorn は --factory で起動
-    cli.py               create-admin, create-user, export-openapi
+    cli.py               create-admin, create-user, push-test, export-openapi
     core/                settings, db, base, ids (UUIDv7), security, errors, logging, ratelimit, time, health
     models_registry.py   全モジュールの models を集約 (Alembic 用)
     events/              envelope, bus (Protocol), in_memory (InMemoryEventBus), outbox (write_outbox, OutboxRelay, purge), models
@@ -48,9 +48,10 @@ server/
       auth/              login, refresh, logout, sessions, devices, パスワード変更, 認証依存
       channels/          models, schemas, repository, service, router
       messages/          models, schemas, repository, service, router
+      notifications/     preferences (service/router), planner (outbox handler), sender, providers (APNs/Log/Fake)
       admin/             schemas, service (ユーザー作成・ロール・無効化・リセット), router (/admin/users*)
       sync/              bootstrap (/sync/bootstrap), catalog (ws-events.json 用のイベント一覧)
-  migrations/            Alembic (0001: users, devices, sessions, channels, channel_members, messages / 0002: outbox_events)
+  migrations/            Alembic (0001 基本テーブル / 0002 outbox_events / 0003 push: devices のトークン列、notification_preferences、push_deliveries)
   tests/                 conftest (テスト DB、マイグレーション、認証依存の差し替え、live uvicorn サーバ), サービス層 / API / WebSocket のテスト
     contract/            SYNC_PROTOCOL.md §13 の契約フィクスチャ (JSON)。contract_client.py が参照クライアント
 ```

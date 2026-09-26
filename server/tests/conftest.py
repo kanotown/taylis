@@ -27,6 +27,8 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test"
 )
 TABLES = [
+    "push_deliveries",
+    "notification_preferences",
     "outbox_events",
     "messages",
     "channel_members",

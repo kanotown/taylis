@@ -113,12 +113,14 @@ final class AppController {
         engine.isActive = { UIApplication.shared.applicationState == .active }
         self.engine = engine
         screen = .main
+        PushCenter.shared.attach(controller: self)
         await engine.start()
     }
 
     /// Foreground: iOS suspends sockets in the background, so reconnect and catch up (SYNC_PROTOCOL.md §7.5).
     func didBecomeActive() {
         engine?.reconnectNow()
+        PushCenter.shared.uploadTokenIfNeeded()
     }
 
     func logout() async {

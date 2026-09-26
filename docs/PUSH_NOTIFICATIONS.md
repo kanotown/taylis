@@ -241,3 +241,12 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
   通知を消す。`push_deliveries.kind = silent` の置き場所だけ用意してある。
 - 通知の詳細設定 UI (quiet hours、キーワード通知)。判定ルール (§4) と `notification_preferences` の列追加で済む。
 - Desktop への Web Push: Web クライアントを作る時に検討。
+
+## 13. 実装メモ (M5)
+
+- サーバ: `app/modules/notifications/` (planner / sender / providers / service / router)。Planner は `OutboxRelay` の
+  永続ハンドラとして `main.py` で注入され、Sender は lifespan の背景タスク。設定は `PUSH_*`。
+- `push-test` CLI: `uv run python -m app.cli push-test --user <username>` (compose では `docker compose exec app python -m app.cli push-test --user <username>`)。
+- iOS: `AppDelegate` がトークンを受け取り `PushCenter` が `PUT /devices/current` で登録する。`aps-environment` は
+  `ChikuwaChat.entitlements` で development (= sandbox)。埋め込みプロビジョニングプロファイルから環境を判定する。
+- M8 で追加するもの: メンション時の通知 (`level = mentions`)、既読チェック、バッジの正確な数。

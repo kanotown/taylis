@@ -48,6 +48,23 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
+    # Push notifications (PUSH_NOTIFICATIONS.md)
+    push_apns_enabled: bool = False
+    push_apns_key_path: str = "/run/secrets/apns_key.p8"
+    push_apns_key_id: str = ""
+    push_apns_team_id: str = ""
+    push_apns_bundle_id: str = ""
+    push_fcm_enabled: bool = False
+    push_fcm_service_account_path: str = "/run/secrets/fcm_service_account.json"
+    push_include_content: bool = True
+    push_alert_ttl_seconds: int = 600
+    push_active_window_seconds: int = 60
+    push_poll_interval_seconds: float = 1.0
+    push_batch_size: int = 50
+    push_concurrency: int = 10
+    push_lease_seconds: int = 60
+    push_retention_days: int = 7
+
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0
     ws_heartbeat_interval_seconds: int = 30

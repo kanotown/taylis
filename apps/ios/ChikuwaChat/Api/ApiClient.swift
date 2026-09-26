@@ -107,6 +107,15 @@ final class ApiClient: SyncApi {
 
     func users() async throws -> [UserPublic] { try await request("GET", "/api/v1/users") }
 
+    /// Register (or clear, with nil) this session's push token (PUSH_NOTIFICATIONS.md §3).
+    func updateDevice(pushProvider: String, pushToken: String?, pushEnvironment: String) async throws -> DeviceOut {
+        try await request("PUT", "/api/v1/devices/current", body: .object([
+            "push_provider": .string(pushProvider),
+            "push_token": pushToken.map(JSONValue.string) ?? .null,
+            "push_environment": .string(pushEnvironment),
+        ]))
+    }
+
     func bootstrap() async throws -> BootstrapOut { try await request("GET", "/api/v1/sync/bootstrap") }
 
     func channels(includePublic: Bool) async throws -> [ChannelOut] {
