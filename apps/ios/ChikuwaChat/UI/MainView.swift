@@ -86,7 +86,12 @@ struct MainView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner(status: status) }
-        .overlay(alignment: .bottom) { ErrorToast(controller: controller) }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 6) {
+                NoticeToast(controller: controller)
+                ErrorToast(controller: controller)
+            }
+        }
         .sheet(item: $sheet) { which in
             switch which {
             case .newDm: NewDmView(controller: controller) { id in selection = id }
