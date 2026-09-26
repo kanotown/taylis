@@ -258,3 +258,15 @@ data class SearchFilters(
     val before: String? = null,
     val unresolved: List<String> = emptyList(),
 )
+
+/** Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable. */
+@Serializable
+data class LinkPreviewOut(
+    val url: String,
+    val status: String,
+    val title: String? = null,
+    val description: String? = null,
+    val imageUrl: String? = null,
+    val siteName: String? = null,
+    val fetchedAt: String,
+)

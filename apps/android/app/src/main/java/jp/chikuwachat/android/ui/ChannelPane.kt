@@ -277,6 +277,7 @@ fun MessageRow(
                 }
                 if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
                 AttachmentList(message.attachments, controller)
+                if (!message.pending) Links.first(message.body)?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(message, store, onToggle = onReact)
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {

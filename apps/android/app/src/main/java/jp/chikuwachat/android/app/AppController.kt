@@ -10,6 +10,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import jp.chikuwachat.android.api.LinkPreviewOut
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonNull
@@ -307,6 +309,25 @@ class AppController(private val app: Application) {
 
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = runCatching { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = runCatching { api!!.listBookmarks(cursor) }
+
+    // --- link previews (M11g): one fetch per URL per session ------------------------------------
+
+    /** url → preview (null value = failed / none); Compose reads this map, [loadLinkPreview] fills it. */
+    val linkPreviews = mutableStateMapOf<String, LinkPreviewOut?>()
+    private val previewLoads = HashSet<String>()
+
+    suspend fun loadLinkPreview(url: String) {
+        val api = api ?: return
+        if (linkPreviews.containsKey(url) || !previewLoads.add(url)) return
+        try {
+            val preview = api.linkPreview(url)
+            linkPreviews[url] = if (preview.status == "ok") preview else null
+        } catch (e: Exception) {
+            linkPreviews[url] = null // refused or rate limited: no card this session
+        } finally {
+            previewLoads.remove(url)
+        }
+    }
 
     /** M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row. */
     suspend fun togglePin(message: MessageState) {
