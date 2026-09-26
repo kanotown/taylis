@@ -298,6 +298,31 @@ CREATE INDEX scheduled_messages_user_idx ON scheduled_messages (user_id, send_at
 - 添付は予約時に `attachments.status = 'scheduled'` に予約し、未送信アップロードの GC から外す。取消 / 失敗で
   `deleted` に戻し、GC が実体を消す。
 
+### reminders (リマインダー、M12e)
+
+```sql
+CREATE TABLE reminders (
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id),
+  message_id  uuid NOT NULL REFERENCES messages(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  note        varchar(200),
+  preview     text,                                   -- 設定時点の本文 (後で変わっても通知文はこれ)
+  remind_at   timestamptz NOT NULL,
+  status      varchar(16) NOT NULL DEFAULT 'pending', -- pending | fired | done | cancelled
+  fired_at    timestamptz,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX reminders_due_idx  ON reminders (status, remind_at);
+CREATE INDEX reminders_user_idx ON reminders (user_id, status, remind_at);
+```
+
+- 個人データ。時刻になるとワーカー (予約送信と同じループ) が `fired` にして `reminder.updated` (audience=user)
+  を書き、PushPlanner がその行から本人の端末へ `kind = reminder` のプッシュを作る (DND 中は出さない)。
+- 一覧 `GET /reminders` は fired (新しい順) → pending (時刻順)。`DELETE /reminders/{id}` は pending なら
+  `cancelled`、fired なら `done`。fired の件数はアプリのバッジに足す。
+
 ### channel_favorites (お気に入りチャンネル、M12a)
 
 ```sql

@@ -4,7 +4,7 @@ import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -237,6 +237,31 @@ export class AppController {
   setNotice(text: string | null): void {
     this.notice = text;
     this.emit();
+  }
+
+  /** M12e 「リマインド」: a nudge about the message at `at`. */
+  async setReminder(messageId: string, at: Date, note: string | null = null): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const row = await this.api.createReminder(messageId, { remind_at: at.toISOString(), note });
+      this.store.applyReminder(row);
+      this.setNotice(`${scheduleLabel(row.remind_at)} にリマインドします`);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** Cancels a pending reminder or marks a fired one done. */
+  async closeReminder(row: ReminderOut): Promise<void> {
+    if (!this.api) return;
+    try {
+      await this.api.closeReminder(row.id);
+      this.store.applyReminder({ ...row, status: row.status === "fired" ? "done" : "cancelled" });
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   /** M12d 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. */
@@ -522,6 +547,10 @@ export class AppController {
         }
       },
       onSignedOut: () => { if (this.engine === engine) void this.handleSignedOut(this.account(api.baseUrl, this.username)); },
+      onReminder: (reminder) => {
+        if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return;
+        void notify("リマインダー", (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
+      },
       onNotify: (message, channel) => {
         if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return; // M12c: paused / quiet hours
         const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";

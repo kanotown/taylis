@@ -1732,6 +1732,103 @@
         "type": "object"
       }
     },
+    "reminder.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ReminderOut": {
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "fired_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fired At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "message_id": {
+                "format": "uuid",
+                "title": "Message Id",
+                "type": "string"
+              },
+              "note": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Note"
+              },
+              "preview": {
+                "title": "Preview",
+                "type": "string"
+              },
+              "remind_at": {
+                "format": "date-time",
+                "title": "Remind At",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "fired",
+                  "done",
+                  "cancelled"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "message_id",
+              "channel_id",
+              "note",
+              "preview",
+              "remind_at",
+              "status",
+              "fired_at",
+              "created_at"
+            ],
+            "title": "ReminderOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "reminder": {
+            "$ref": "#/$defs/ReminderOut"
+          }
+        },
+        "required": [
+          "reminder"
+        ],
+        "title": "ReminderUpdatedData",
+        "type": "object"
+      }
+    },
     "scheduled.updated": {
       "audience": "user",
       "consumes_seq": false,

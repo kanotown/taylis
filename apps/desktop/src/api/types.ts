@@ -78,3 +78,7 @@ export type UserUpdate = components["schemas"]["UserUpdate"];
 /** Scheduled messages (M12d). */
 export type ScheduledOut = components["schemas"]["ScheduledOut"];
 export type ScheduledCreate = components["schemas"]["ScheduledCreate"];
+
+/** Reminders (M12e). */
+export type ReminderOut = components["schemas"]["ReminderOut"];
+export type ReminderCreate = components["schemas"]["ReminderCreate"];

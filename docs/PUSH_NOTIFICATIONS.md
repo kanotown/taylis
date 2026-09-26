@@ -86,6 +86,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | 送信者本人 | 除外 | M5 |
 | `type = system` のメッセージ | 除外 | M5 |
 | `level = none`、または `muted_until > now()` | 除外 | M5 |
+| `reminder.updated` (status=fired、M12e) | 本人の端末へ `kind = reminder` (タイトル「リマインダー」、本文はメモ + 設定時の本文、`channel_id` / `message_id` で該当メッセージを開く)。DND 中は出さない | M12e |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
 | `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |

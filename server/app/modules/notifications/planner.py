@@ -20,6 +20,8 @@ from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
 from app.modules.reads import service as reads
+from app.modules.reminders import service as reminders
+from app.modules.reminders.events import REMINDER_UPDATED
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
@@ -33,6 +35,9 @@ class PushPlanner:
         self.is_active = is_active
 
     async def handle(self, db: AsyncSession, event: OutboxEvent, audience: Audience) -> None:
+        if event.event_type == REMINDER_UPDATED:
+            await self.handle_reminder(db, event)
+            return
         if (
             event.event_type != MESSAGE_CREATED
             or audience.kind != "users"
@@ -87,6 +92,51 @@ class PushPlanner:
                 planned += 1
         log.info("planned %d push deliveries for event %s", planned, event.id)
 
+    async def handle_reminder(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """A fired reminder (M12e) nudges its owner's devices; DND is honoured like any push."""
+        reminder = event.payload.get("reminder") or {}
+        if reminder.get("status") != "fired":
+            return
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        if user is None or dnd_active(user, utcnow()):
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        note = (reminder.get("note") or "").strip()
+        preview = str(reminder.get("preview") or "")
+        body = f"{note} — {preview}" if note else preview
+        expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        channel_id = uuid.UUID(str(reminder["channel_id"]))
+        message_id = uuid.UUID(str(reminder["message_id"]))
+        payload = PushPayload(
+            kind="reminder",
+            channel_id=channel_id,
+            message_id=message_id,
+            seq=None,
+            title="リマインダー",
+            subtitle=None,
+            body=(body if self.settings.push_include_content else "リマインダーの時間です")[:240]
+            or "リマインダーの時間です",
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"reminder:{reminder.get('id')}",
+            sent_at=utcnow(),
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=channel_id,
+                message_id=message_id,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
     async def select_recipients(
         self,
         db: AsyncSession,
@@ -138,7 +188,7 @@ class PushPlanner:
             if state is None:
                 continue
             badge += state.unread_count if c.type in ("dm", "group_dm") else state.mention_count
-        return badge
+        return badge + await reminders.fired_count(db, user_id)  # M12e: nudges not yet done
 
     def build_payload(
         self,

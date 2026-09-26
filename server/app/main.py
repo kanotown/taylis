@@ -38,6 +38,8 @@ from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
 from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
+from app.modules.reminders import service as reminders
+from app.modules.reminders.router import router as reminders_router
 from app.modules.scheduled import service as scheduled
 from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
@@ -128,7 +130,7 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
 
 
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
-    """Posts scheduled messages whose time has come (M12d)."""
+    """Posts scheduled messages (M12d) and fires reminders (M12e) whose time has come."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -139,6 +141,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await scheduled.send_due(session)
             except Exception:
                 log.exception("scheduled send failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await reminders.fire_due(session)
+            except Exception:
+                log.exception("reminder firing failed")
 
 
 @asynccontextmanager
@@ -178,6 +185,7 @@ def build_api_router() -> APIRouter:
     api.include_router(bookmarks_router)
     api.include_router(favorites_router)
     api.include_router(scheduled_router)
+    api.include_router(reminders_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(search_router)

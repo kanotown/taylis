@@ -4,7 +4,7 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -22,6 +22,8 @@ export interface SyncApi {
   readAll(): Promise<ChannelReadStateOut[]>;
   /** M12d: my pending scheduled messages. */
   listScheduled(): Promise<ScheduledOut[]>;
+  /** M12e: my open reminders. */
+  listReminders(): Promise<ReminderOut[]>;
   /** THREADS.md §3. */
   threads(options: { filter: ThreadFilter; cursor?: string | null; limit?: number }): Promise<ThreadListOut>;
   threadState(messageId: string): Promise<ThreadState>;
@@ -48,6 +50,8 @@ export interface EngineDeps {
   prepareConnection?: () => Promise<void>;
   onSignedOut?: () => void;
   onNotify?: (message: MessageOut, channel: ChannelState) => void;
+  /** M12e: a reminder just fired (a nudge in the app while it is open). */
+  onReminder?: (reminder: ReminderOut) => void;
   /** A channel became fully read (here or on another device). */
   onRead?: (channelId: string) => void;
   isActive?: () => boolean;
@@ -328,6 +332,16 @@ export class SyncEngine {
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
     void this.loadScheduled();
+    void this.loadReminders();
+  }
+
+  /** M12e: open reminders; refreshed after every bootstrap. */
+  async loadReminders(): Promise<void> {
+    try {
+      this.deps.store.replaceReminders(await this.deps.api.listReminders());
+    } catch (err) {
+      console.warn("could not load reminders", err);
+    }
   }
 
   /** M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events). */
@@ -417,6 +431,13 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "reminder.updated": {
+        const data = frame.data as { reminder: ReminderOut };
+        const before = store.reminders.get(data.reminder.id)?.status;
+        store.applyReminder(data.reminder);
+        if (data.reminder.status === "fired" && before !== "fired") this.deps.onReminder?.(data.reminder);
         return;
       }
       case "scheduled.updated": {

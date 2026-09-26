@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Bookmark, CheckCheck, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -39,10 +39,15 @@ interface Props {
   filesActive?: boolean;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
+  /** M12e: reminders; listed while any is open. */
+  onReminders?: () => void;
+  remindersActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
+  const reminderCount = store.reminders.size;
+  const firedCount = store.firedReminderCount();
   const draftCount = store.listDrafts().length + store.scheduled.size;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites });
@@ -187,6 +192,25 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 <FileText size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">下書き</span>
                 <span className="text-[11px] opacity-70">{draftCount}</span>
+              </button>
+            </li>
+          )}
+          {onReminders && reminderCount > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={onReminders}
+                aria-current={remindersActive ? "page" : undefined}
+                title="リマインダー"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  remindersActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                  firedCount > 0 && !remindersActive && "font-semibold text-white",
+                )}
+              >
+                <AlarmClock size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">リマインダー</span>
+                {firedCount > 0 ? <Badge tone="danger">{firedCount}</Badge> : <span className="text-[11px] opacity-70">{reminderCount}</span>}
               </button>
             </li>
           )}

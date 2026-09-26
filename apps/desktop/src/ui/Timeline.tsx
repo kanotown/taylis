@@ -1,4 +1,4 @@
-import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -16,6 +16,7 @@ import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { firstLink } from "./links";
 import { parsePermalink } from "./permalink";
+import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 
 /** Quick reactions on the action bar; everything else comes from the emoji picker (M11f). */
 const REACTION_PALETTE = ["👍", "❤️", "😂"];
@@ -251,6 +252,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const engine = controller.engine;
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
+  const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   const [pickerOpen, setPickerOpen] = useState(false);
   const editing = controller.editing === message.id;
 
@@ -397,6 +400,30 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           <IconButton label="リンクをコピー" className="h-7 w-7 text-muted hover:text-ink" onClick={() => void controller.copyPermalink(message.id)}>
             <Link size={15} />
           </IconButton>
+          <PopoverRoot open={remindOpen} onOpenChange={setRemindOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" title="リマインド" aria-label="リマインド" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
+                <AlarmClock size={15} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-3">
+              <div className="mb-2 text-xs font-semibold text-muted">リマインド</div>
+              <ul className="space-y-0.5">
+                {reminderPresets().map((preset) => (
+                  <li key={preset.key}>
+                    <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => { setRemindOpen(false); void controller.setReminder(message.id, preset.at); }}>
+                      <span>{preset.label}</span>
+                      <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
+                <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setRemindAt(e.target.value)} />
+                <Button size="sm" variant="secondary" onClick={() => { const at = new Date(remindAt); if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; } setRemindOpen(false); void controller.setReminder(message.id, at); }}>設定</Button>
+              </div>
+            </PopoverContent>
+          </PopoverRoot>
           <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
             {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
