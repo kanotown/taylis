@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
+from app.events.envelope import Audience
+from app.events.models import OutboxEvent
+from app.events.outbox import AudienceType, write_outbox
+from app.modules.channels import events
 from app.modules.channels import repository as repo
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.channels.schemas import (
@@ -27,7 +31,7 @@ async def load_users(db: AsyncSession, user_ids: list[uuid.UUID]) -> list[User]:
     """Resolve users referenced by membership / DM requests.
 
     Read-only access to the users table is an explicit exception to the module rule
-    (ARCHITECTURE.md §5) until the users module exposes this lookup.
+    (ARCHITECTURE.md §5).
     """
     unique_ids = list(dict.fromkeys(user_ids))
     if not unique_ids:
@@ -37,6 +41,12 @@ async def load_users(db: AsyncSession, user_ids: list[uuid.UUID]) -> list[User]:
     if len(users) != len(unique_ids):
         raise not_found("user_not_found", "User not found")
     return users
+
+
+def _membership_out(membership: ChannelMember | None) -> MembershipOut | None:
+    if membership is None:
+        return None
+    return MembershipOut(role=membership.role, joined_at=membership.joined_at)
 
 
 def to_channel_out(
@@ -59,18 +69,75 @@ def to_channel_out(
     )
 
 
-def _membership_out(membership: ChannelMember | None) -> MembershipOut | None:
-    if membership is None:
-        return None
-    return MembershipOut(role=membership.role, joined_at=membership.joined_at)
-
-
 def to_member_out(member: ChannelMember) -> MemberOut:
     return MemberOut(user_id=member.user_id, role=member.role, joined_at=member.joined_at)
 
 
 def dm_key_for(user_ids: list[uuid.UUID]) -> str:
     return hashlib.sha256(",".join(str(i) for i in sorted(user_ids)).encode()).hexdigest()
+
+
+# --- events -----------------------------------------------------------------------------------
+
+
+async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audience:
+    """Injected into the OutboxRelay: turns an outbox row's audience into user / session ids."""
+    if event.audience_type == "all":
+        return Audience(kind="all")
+    if event.audience_type == "user" and event.audience_id is not None:
+        return Audience(kind="users", ids=(event.audience_id,))
+    if event.audience_type == "session" and event.audience_id is not None:
+        return Audience(kind="sessions", ids=(event.audience_id,))
+    if event.audience_type == "channel" and event.channel_id is not None:
+        members = await repo.member_ids_for_channels(db, [event.channel_id])
+        return Audience(kind="users", ids=tuple(members.get(event.channel_id, [])))
+    raise ValueError(f"unresolvable audience {event.audience_type!r} for event {event.id}")
+
+
+async def _emit_channel(
+    db: AsyncSession,
+    event_type: str,
+    channel: Channel,
+    *,
+    audience_type: AudienceType,
+    audience_id: uuid.UUID | None = None,
+) -> None:
+    member_ids = (await repo.member_ids_for_channels(db, [channel.id])).get(channel.id, [])
+    data = events.ChannelEventData(
+        channel=to_channel_out(channel, None, member_ids if channel.is_dm else None),
+        member_ids=member_ids,
+    )
+    await write_outbox(
+        db,
+        event_type=event_type,
+        audience_type=audience_type,
+        audience_id=audience_id,
+        channel_id=channel.id,
+        payload=data.model_dump(mode="json"),
+    )
+
+
+async def _emit_member(
+    db: AsyncSession,
+    event_type: str,
+    channel_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    audience_type: AudienceType,
+    audience_id: uuid.UUID | None = None,
+) -> None:
+    data = events.ChannelMemberData(channel_id=channel_id, user_id=user_id)
+    await write_outbox(
+        db,
+        event_type=event_type,
+        audience_type=audience_type,
+        audience_id=audience_id,
+        channel_id=channel_id,
+        payload=data.model_dump(mode="json"),
+    )
+
+
+# --- access checks ----------------------------------------------------------------------------
 
 
 async def require_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel:
@@ -114,17 +181,28 @@ async def _load_for_manage(
     return channel, membership
 
 
+# --- use cases --------------------------------------------------------------------------------
+
+
 async def create_channel(db: AsyncSession, actor: User, data: ChannelCreate) -> ChannelOut:
     if await repo.get_channel_by_name(db, data.name) is not None:
         raise conflict("name_taken", "A channel with this name already exists")
     channel = Channel(
         type=data.type, name=data.name, topic=data.topic, purpose=data.purpose, created_by=actor.id
     )
-    db.add(channel)
-    await db.flush()
     membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="owner")
-    db.add(membership)
     try:
+        db.add(channel)
+        await db.flush()
+        membership.channel_id = channel.id
+        db.add(membership)
+        await db.flush()
+        await _emit_channel(
+            db,
+            events.CHANNEL_CREATED,
+            channel,
+            audience_type="all" if channel.type == "public" else "channel",
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -171,6 +249,8 @@ async def update_channel(
         channel.purpose = data.purpose
     channel.updated_at = utcnow()
     try:
+        await db.flush()
+        await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -184,6 +264,14 @@ async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
     if not channel.is_archived:
         channel.archived_at = utcnow()
         channel.updated_at = channel.archived_at
+        await db.flush()
+        await write_outbox(
+            db,
+            event_type=events.CHANNEL_ARCHIVED,
+            audience_type="channel",
+            channel_id=channel.id,
+            payload=events.ChannelArchivedData(channel_id=channel.id).model_dump(mode="json"),
+        )
         await db.commit()
     return to_channel_out(channel, membership, None)
 
@@ -198,6 +286,14 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
         membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="member")
         db.add(membership)
         try:
+            await db.flush()
+            await _emit_member(
+                db, events.CHANNEL_MEMBER_ADDED, channel.id, actor.id, audience_type="channel"
+            )
+            # The joiner's other devices learn about the channel this way.
+            await _emit_channel(
+                db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=actor.id
+            )
             await db.commit()
         except IntegrityError:
             await db.rollback()
@@ -210,6 +306,17 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
 async def leave_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> None:
     channel, membership = await require_member(db, actor.id, channel_id)
     _require_not_dm(channel)
+    await _emit_member(
+        db, events.CHANNEL_MEMBER_REMOVED, channel.id, actor.id, audience_type="channel"
+    )
+    await _emit_member(
+        db,
+        events.CHANNEL_MEMBER_REMOVED,
+        channel.id,
+        actor.id,
+        audience_type="user",
+        audience_id=actor.id,
+    )
     await db.delete(membership)
     await db.commit()
 
@@ -233,6 +340,13 @@ async def add_member(
     membership = ChannelMember(channel_id=channel_id, user_id=target.id, role="member")
     db.add(membership)
     try:
+        await db.flush()
+        await _emit_member(
+            db, events.CHANNEL_MEMBER_ADDED, channel.id, target.id, audience_type="channel"
+        )
+        await _emit_channel(
+            db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=target.id
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -251,6 +365,17 @@ async def remove_member(
     membership = await repo.get_membership(db, channel_id, target_user_id)
     if membership is None:
         raise not_found("member_not_found", "User is not a member of this channel")
+    await _emit_member(
+        db, events.CHANNEL_MEMBER_REMOVED, channel.id, target_user_id, audience_type="channel"
+    )
+    await _emit_member(
+        db,
+        events.CHANNEL_MEMBER_REMOVED,
+        channel.id,
+        target_user_id,
+        audience_type="user",
+        audience_id=target_user_id,
+    )
     await db.delete(membership)
     await db.commit()
 
@@ -283,6 +408,7 @@ async def get_or_create_dm(
                     for uid in user_ids
                 )
                 await db.flush()
+                await _emit_channel(db, events.CHANNEL_CREATED, channel, audience_type="channel")
             await db.commit()
             created = True
         except IntegrityError:

@@ -1,0 +1,994 @@
+{
+  "close_codes": {
+    "auth_failed": 4001,
+    "reconnect": 4000,
+    "session_revoked": 4003
+  },
+  "events": {
+    "channel.archived": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "title": "ChannelArchivedData",
+        "type": "object"
+      }
+    },
+    "channel.created": {
+      "audience": "channel (public: all)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ChannelOut": {
+            "properties": {
+              "archived": {
+                "title": "Archived",
+                "type": "boolean"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Created By"
+              },
+              "dm_user_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Dm User Ids"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "last_message_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Last Message At"
+              },
+              "last_seq": {
+                "title": "Last Seq",
+                "type": "integer"
+              },
+              "membership": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MembershipOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Name"
+              },
+              "purpose": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Purpose"
+              },
+              "topic": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Topic"
+              },
+              "type": {
+                "enum": [
+                  "public",
+                  "private",
+                  "dm",
+                  "group_dm"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "name",
+              "topic",
+              "purpose",
+              "archived",
+              "created_by",
+              "last_seq",
+              "last_message_at",
+              "created_at",
+              "updated_at",
+              "membership",
+              "dm_user_ids"
+            ],
+            "title": "ChannelOut",
+            "type": "object"
+          },
+          "MembershipOut": {
+            "properties": {
+              "joined_at": {
+                "format": "date-time",
+                "title": "Joined At",
+                "type": "string"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "joined_at"
+            ],
+            "title": "MembershipOut",
+            "type": "object"
+          }
+        },
+        "description": "``channel`` carries no per-recipient membership; ``member_ids`` lets a client tell\nwhether it is a member (public channels are broadcast to everyone).",
+        "properties": {
+          "channel": {
+            "$ref": "#/$defs/ChannelOut"
+          },
+          "member_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Member Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel",
+          "member_ids"
+        ],
+        "title": "ChannelEventData",
+        "type": "object"
+      }
+    },
+    "channel.member_added": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "user_id"
+        ],
+        "title": "ChannelMemberData",
+        "type": "object"
+      }
+    },
+    "channel.member_removed": {
+      "audience": "channel + user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "user_id"
+        ],
+        "title": "ChannelMemberData",
+        "type": "object"
+      }
+    },
+    "channel.updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ChannelOut": {
+            "properties": {
+              "archived": {
+                "title": "Archived",
+                "type": "boolean"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Created By"
+              },
+              "dm_user_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Dm User Ids"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "last_message_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Last Message At"
+              },
+              "last_seq": {
+                "title": "Last Seq",
+                "type": "integer"
+              },
+              "membership": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MembershipOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Name"
+              },
+              "purpose": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Purpose"
+              },
+              "topic": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Topic"
+              },
+              "type": {
+                "enum": [
+                  "public",
+                  "private",
+                  "dm",
+                  "group_dm"
+                ],
+                "title": "Type",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "name",
+              "topic",
+              "purpose",
+              "archived",
+              "created_by",
+              "last_seq",
+              "last_message_at",
+              "created_at",
+              "updated_at",
+              "membership",
+              "dm_user_ids"
+            ],
+            "title": "ChannelOut",
+            "type": "object"
+          },
+          "MembershipOut": {
+            "properties": {
+              "joined_at": {
+                "format": "date-time",
+                "title": "Joined At",
+                "type": "string"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "joined_at"
+            ],
+            "title": "MembershipOut",
+            "type": "object"
+          }
+        },
+        "description": "``channel`` carries no per-recipient membership; ``member_ids`` lets a client tell\nwhether it is a member (public channels are broadcast to everyone).",
+        "properties": {
+          "channel": {
+            "$ref": "#/$defs/ChannelOut"
+          },
+          "member_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Member Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel",
+          "member_ids"
+        ],
+        "title": "ChannelEventData",
+        "type": "object"
+      }
+    },
+    "message.created": {
+      "audience": "channel",
+      "consumes_seq": true,
+      "data": {
+        "$defs": {
+          "MessageOut": {
+            "properties": {
+              "body": {
+                "title": "Body",
+                "type": "string"
+              },
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "client_msg_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Client Msg Id"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deleted": {
+                "title": "Deleted",
+                "type": "boolean"
+              },
+              "edited_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Edited At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              },
+              "seq": {
+                "title": "Seq",
+                "type": "integer"
+              },
+              "updated_seq": {
+                "title": "Updated Seq",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "sender_id",
+              "seq",
+              "updated_seq",
+              "client_msg_id",
+              "body",
+              "created_at",
+              "edited_at",
+              "deleted"
+            ],
+            "title": "MessageOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "message": {
+            "$ref": "#/$defs/MessageOut"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "MessageCreatedData",
+        "type": "object"
+      }
+    },
+    "session.revoked": {
+      "audience": "session",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "SessionRevokedData",
+        "type": "object"
+      }
+    },
+    "user.created": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "UserPublic": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deactivated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Deactivated At"
+              },
+              "display_name": {
+                "title": "Display Name",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "username": {
+                "title": "Username",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "display_name",
+              "role",
+              "deactivated_at",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "UserPublic",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "user": {
+            "$ref": "#/$defs/UserPublic"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "UserEventData",
+        "type": "object"
+      }
+    },
+    "user.deactivated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "UserPublic": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deactivated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Deactivated At"
+              },
+              "display_name": {
+                "title": "Display Name",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "username": {
+                "title": "Username",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "display_name",
+              "role",
+              "deactivated_at",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "UserPublic",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "user": {
+            "$ref": "#/$defs/UserPublic"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "UserEventData",
+        "type": "object"
+      }
+    },
+    "user.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "UserPublic": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deactivated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Deactivated At"
+              },
+              "display_name": {
+                "title": "Display Name",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "username": {
+                "title": "Username",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "display_name",
+              "role",
+              "deactivated_at",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "UserPublic",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "user": {
+            "$ref": "#/$defs/UserPublic"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "UserEventData",
+        "type": "object"
+      }
+    }
+  },
+  "frames": {
+    "client": {
+      "$defs": {
+        "AuthFrame": {
+          "properties": {
+            "token": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Token",
+              "type": "string"
+            },
+            "type": {
+              "const": "auth",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "token"
+          ],
+          "title": "AuthFrame",
+          "type": "object"
+        },
+        "PingFrame": {
+          "properties": {
+            "active": {
+              "default": false,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "type": {
+              "const": "ping",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "PingFrame",
+          "type": "object"
+        }
+      },
+      "discriminator": {
+        "mapping": {
+          "auth": "#/$defs/AuthFrame",
+          "ping": "#/$defs/PingFrame"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AuthFrame"
+        },
+        {
+          "$ref": "#/$defs/PingFrame"
+        }
+      ]
+    },
+    "server": {
+      "$defs": {
+        "ErrorFrame": {
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "type": {
+              "const": "error",
+              "default": "error",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "title": "ErrorFrame",
+          "type": "object"
+        },
+        "EventFrame": {
+          "properties": {
+            "channel_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel Id"
+            },
+            "data": {
+              "additionalProperties": true,
+              "title": "Data",
+              "type": "object"
+            },
+            "event": {
+              "title": "Event",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "seq": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seq"
+            },
+            "ts": {
+              "format": "date-time",
+              "title": "Ts",
+              "type": "string"
+            },
+            "type": {
+              "const": "event",
+              "default": "event",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "event",
+            "ts",
+            "channel_id",
+            "seq",
+            "data"
+          ],
+          "title": "EventFrame",
+          "type": "object"
+        },
+        "HelloFrame": {
+          "properties": {
+            "heartbeat_interval_sec": {
+              "title": "Heartbeat Interval Sec",
+              "type": "integer"
+            },
+            "server_time": {
+              "format": "date-time",
+              "title": "Server Time",
+              "type": "string"
+            },
+            "session_id": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "hello",
+              "default": "hello",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "session_id",
+            "server_time",
+            "heartbeat_interval_sec"
+          ],
+          "title": "HelloFrame",
+          "type": "object"
+        },
+        "PongFrame": {
+          "properties": {
+            "server_time": {
+              "format": "date-time",
+              "title": "Server Time",
+              "type": "string"
+            },
+            "type": {
+              "const": "pong",
+              "default": "pong",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_time"
+          ],
+          "title": "PongFrame",
+          "type": "object"
+        }
+      },
+      "discriminator": {
+        "mapping": {
+          "error": "#/$defs/ErrorFrame",
+          "event": "#/$defs/EventFrame",
+          "hello": "#/$defs/HelloFrame",
+          "pong": "#/$defs/PongFrame"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HelloFrame"
+        },
+        {
+          "$ref": "#/$defs/PongFrame"
+        },
+        {
+          "$ref": "#/$defs/ErrorFrame"
+        },
+        {
+          "$ref": "#/$defs/EventFrame"
+        }
+      ]
+    }
+  }
+}

@@ -24,6 +24,14 @@ def cmd_export_openapi(args: argparse.Namespace) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(spec, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
     print(f"wrote {out}")
+
+    from app.modules.sync.catalog import ws_events_document
+
+    ws_out = out.parent / "ws-events.json"
+    ws_out.write_text(
+        json.dumps(ws_events_document(), indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    )
+    print(f"wrote {ws_out}")
     return 0
 
 

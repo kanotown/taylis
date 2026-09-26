@@ -1,0 +1,11 @@
+{
+  "name": "ライブ: 連続した seq のイベントをそのまま適用する",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob"},
+    {"op": "post", "as": "alice", "count": 3, "body": "m{i}"},
+    {"op": "client.receive", "count": 3},
+    {"op": "expect", "messages": ["m1", "m2", "m3"], "synced_seq": 3, "catch_ups": 1}
+  ]
+}

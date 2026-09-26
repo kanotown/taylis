@@ -164,6 +164,44 @@
         "title": "AdminUserUpdate",
         "type": "object"
       },
+      "BootstrapOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "me": {
+            "$ref": "#/components/schemas/UserMe"
+          },
+          "server_time": {
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/UserPublic"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "server_time",
+          "me",
+          "users",
+          "channels",
+          "limits"
+        ],
+        "title": "BootstrapOut",
+        "type": "object"
+      },
       "ChannelCreate": {
         "properties": {
           "name": {
@@ -393,6 +431,32 @@
         "title": "ChannelUpdate",
         "type": "object"
       },
+      "DeltaOut": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "next_since_seq": {
+            "title": "Next Since Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "messages",
+          "next_since_seq",
+          "has_more"
+        ],
+        "title": "DeltaOut",
+        "type": "object"
+      },
       "DeviceCreate": {
         "additionalProperties": false,
         "properties": {
@@ -608,6 +672,29 @@
           "has_more"
         ],
         "title": "HistoryOut",
+        "type": "object"
+      },
+      "Limits": {
+        "properties": {
+          "max_attachment_bytes": {
+            "title": "Max Attachment Bytes",
+            "type": "integer"
+          },
+          "max_attachments_per_message": {
+            "title": "Max Attachments Per Message",
+            "type": "integer"
+          },
+          "max_message_length": {
+            "title": "Max Message Length",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_message_length",
+          "max_attachment_bytes",
+          "max_attachments_per_message"
+        ],
+        "title": "Limits",
         "type": "object"
       },
       "LoginRequest": {
@@ -2180,6 +2267,77 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/sync": {
+      "get": {
+        "operationId": "list_delta_api_v1_channels__channel_id__sync_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeltaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Delta",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/v1/devices/current": {
       "put": {
         "operationId": "update_device_api_v1_devices_current_put",
@@ -2317,6 +2475,32 @@
         "summary": "Get Message",
         "tags": [
           "messages"
+        ]
+      }
+    },
+    "/api/v1/sync/bootstrap": {
+      "get": {
+        "operationId": "bootstrap_api_v1_sync_bootstrap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bootstrap",
+        "tags": [
+          "sync"
         ]
       }
     },

@@ -1,11 +1,14 @@
 import asyncio
 import os
+import socket
 import threading
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import asyncpg
 import pytest
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
@@ -23,7 +26,15 @@ SERVER_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test"
 )
-TABLES = ["messages", "channel_members", "channels", "sessions", "devices", "users"]
+TABLES = [
+    "outbox_events",
+    "messages",
+    "channel_members",
+    "channels",
+    "sessions",
+    "devices",
+    "users",
+]
 
 
 def _run_in_thread(fn: Callable[[], None]) -> None:
@@ -120,3 +131,55 @@ def as_user(app: FastAPI) -> Callable[[User], None]:
         app.dependency_overrides[get_current_user] = lambda: user
 
     return _apply
+
+
+@dataclass
+class LiveServer:
+    """A real uvicorn server (with background tasks) for WebSocket and contract tests."""
+
+    app: FastAPI
+    base_url: str
+    ws_url: str
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+@pytest.fixture
+async def live(test_settings: Settings, migrated_database: str) -> AsyncIterator[LiveServer]:
+    settings = test_settings.model_copy(
+        update={
+            "run_background_tasks": True,
+            "outbox_poll_interval_seconds": 0.2,
+            "ws_heartbeat_interval_seconds": 1,
+            "ws_auth_timeout_seconds": 0.5,
+        }
+    )
+    application = create_app(settings)
+    port = _free_port()
+    config = uvicorn.Config(
+        application, host="127.0.0.1", port=port, log_config=None, access_log=False, lifespan="on"
+    )
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    for _ in range(500):
+        if server.started:
+            break
+        await asyncio.sleep(0.02)
+    else:
+        raise RuntimeError("uvicorn did not start")
+    try:
+        yield LiveServer(
+            app=application,
+            base_url=f"http://127.0.0.1:{port}",
+            ws_url=f"ws://127.0.0.1:{port}/api/v1/ws",
+        )
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, timeout=15)
+        async with application.state.db.engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE"))
+        await application.state.db.dispose()

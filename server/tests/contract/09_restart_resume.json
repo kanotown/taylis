@@ -1,0 +1,14 @@
+{
+  "name": "再起動後は永続化した synced_seq から再開して欠落しない",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob"},
+    {"op": "post", "as": "alice", "count": 2, "body": "m{i}"},
+    {"op": "client.receive", "count": 2},
+    {"op": "client.stop"},
+    {"op": "post", "as": "alice", "count": 2, "body": "m{i}"},
+    {"op": "client.restart"},
+    {"op": "expect", "messages": ["m1", "m2", "m3", "m4"], "synced_seq": 4}
+  ]
+}

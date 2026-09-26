@@ -1,0 +1,10 @@
+{
+  "name": "WS イベントが REST 応答より先に届いても重複しない",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob"},
+    {"op": "client.send_event_first", "body": "race", "key": "k1"},
+    {"op": "expect", "messages": ["race"], "synced_seq": 1, "message_count": 1}
+  ]
+}
