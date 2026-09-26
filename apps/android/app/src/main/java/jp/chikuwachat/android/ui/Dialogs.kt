@@ -151,6 +151,13 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
     }
     var editingTopic by remember { mutableStateOf(false) }
     var topic by remember { mutableStateOf(channel.channel.topic ?: "") }
+    // M11h: purpose editor and channel management (leave; rename / archive for owners and admins).
+    var editingPurpose by remember { mutableStateOf(false) }
+    var purpose by remember { mutableStateOf(channel.channel.purpose ?: "") }
+    var renaming by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf<String?>(null) }
+    val canManage = channel.channel.membership?.role == "owner" || store.me?.role == "admin"
     LaunchedEffect(channel.id) { controller.memberList(channel.id).onSuccess { members = it } }
     val level = channel.channel.notification?.level ?: if (isChannel) "mentions" else "all"
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
@@ -171,6 +178,17 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                     } else {
                         Text(channel.channel.topic?.takeIf { it.isNotBlank() } ?: "未設定", color = if (channel.channel.topic.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                         if (channel.isMember && !channel.channel.archived) TextButton(onClick = { editingTopic = true }, contentPadding = PaddingValues(0.dp)) { Text("編集") }
+                    }
+                    SectionLabel("説明")
+                    if (editingPurpose) {
+                        OutlinedTextField(purpose, { purpose = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: デザインレビューの依頼と結果を共有する") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { scope.launch { if (controller.updatePurpose(channel.id, purpose)) editingPurpose = false } }) { Text("保存") }
+                            TextButton(onClick = { editingPurpose = false; purpose = channel.channel.purpose ?: "" }) { Text("キャンセル") }
+                        }
+                    } else {
+                        Text(channel.channel.purpose?.takeIf { it.isNotBlank() } ?: "未設定", color = if (channel.channel.purpose.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                        if (channel.isMember && !channel.channel.archived) TextButton(onClick = { editingPurpose = true }, contentPadding = PaddingValues(0.dp)) { Text("編集") }
                     }
                 }
                 if (channel.isMember) {
@@ -207,6 +225,37 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                             }
                             if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                             if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (isChannel && channel.isMember) {
+                    SectionLabel("管理")
+                    if (renaming) {
+                        OutlinedTextField(newName, { newName = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("新しい名前") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(enabled = newName.isNotBlank(), onClick = { scope.launch { if (controller.renameChannel(channel.id, newName)) renaming = false } }) { Text("変更") }
+                            TextButton(onClick = { renaming = false }) { Text("キャンセル") }
+                        }
+                    }
+                    when (confirm) {
+                        "leave" -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("このチャンネルを退出しますか？", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { scope.launch { if (controller.leaveChannel(channel.id)) onDismiss() } }) { Text("退出", color = MaterialTheme.colorScheme.error) }
+                            TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                        }
+                        "archive" -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("アーカイブすると読み取り専用になります。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { scope.launch { if (controller.archiveChannel(channel.id)) onDismiss() } }) { Text("アーカイブ", color = MaterialTheme.colorScheme.error) }
+                            TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                        }
+                    }
+                    if (confirm == null && !renaming) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (canManage && !channel.channel.archived) {
+                                TextButton(onClick = { newName = channel.channel.name ?: ""; renaming = true }, contentPadding = PaddingValues(0.dp)) { Text("名前を変更") }
+                                TextButton(onClick = { confirm = "archive" }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブ") }
+                            }
+                            TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text("退出", color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }

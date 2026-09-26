@@ -177,6 +177,16 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
     fun uploading(channelId: String, parentId: String? = null) = uploads[draftKey(channelId, parentId)] ?: 0
+
+    /** A conversation with unsent text or attachments (M11h 「下書き」). */
+    data class DraftEntry(val channelId: String, val parentId: String?, val draft: Draft)
+
+    /** Every draft with text or attachments, in the order they were started. */
+    fun listDrafts(): List<DraftEntry> = drafts.entries.mapNotNull { (key, draft) ->
+        val parts = key.split(":", limit = 3)
+        if (parts.size != 3 || (draft.text.isBlank() && draft.attachments.isEmpty())) return@mapNotNull null
+        DraftEntry(parts[1], parts[2].ifEmpty { null }, draft)
+    }
     fun trackUpload(channelId: String, parentId: String? = null, delta: Int) {
         val key = draftKey(channelId, parentId)
         uploads[key] = maxOf(0, (uploads[key] ?: 0) + delta)
@@ -237,8 +247,13 @@ class Store(private val persistence: Persistence? = null) {
         val existing = channels[channel.id]
         val read = channel.readState
         val merged = ChannelState(
-            // channel.updated events carry no per-user preference: keep the one we know.
-            channel = channel.copy(readState = null, notification = channel.notification ?: existing?.channel?.notification),
+            // channel.updated events carry no per-user preference, membership or count (M11h): keep the ones we know.
+            channel = channel.copy(
+                readState = null,
+                notification = channel.notification ?: existing?.channel?.notification,
+                membership = channel.membership ?: existing?.channel?.membership,
+                memberCount = channel.memberCount ?: existing?.channel?.memberCount,
+            ),
             isMember = isMember ?: existing?.isMember ?: (channel.membership != null),
             syncedSeq = existing?.syncedSeq,
             lastSeq = maxOf(existing?.lastSeq ?: 0, channel.lastSeq),

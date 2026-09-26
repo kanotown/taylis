@@ -161,13 +161,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                     }
                 } else if (focus == null) {
                     item(key = "start") {
-                        Text(
-                            "ここが会話の始まりです",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        )
+                        controller.store.channel(channelId)?.let { ChannelIntro(it, controller.store) }
                     }
                 }
             }
@@ -194,7 +188,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
             TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
         } else {
             TypingLine(controller, channelId, version = version)
-            ConversationComposer(controller, channelId)
+            ConversationComposer(controller, channelId, version)
         }
     }
 }
@@ -310,11 +304,15 @@ fun MessageRow(
 }
 
 
-/** Shared composer: drafts and in-flight uploads stay bound to the original conversation. */
+/**
+ * Shared composer: drafts and in-flight uploads stay bound to the original conversation.
+ * The draft lives in the Store, so `version` must change for the field to show what was typed
+ * (strong skipping would otherwise skip this composable: `controller` is always the same instance).
+ */
 @Composable
-fun ConversationComposer(controller: AppController, channelId: String, parentId: String? = null) {
+fun ConversationComposer(controller: AppController, channelId: String, version: Int, parentId: String? = null) {
     val store = controller.store
-    val state = store.draft(channelId, parentId)
+    val state = remember(version, channelId, parentId) { store.draft(channelId, parentId) }
     val draft = state.text
     val pendingUploads = state.attachments
     val uploading = store.uploading(channelId, parentId)

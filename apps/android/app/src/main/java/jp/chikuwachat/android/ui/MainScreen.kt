@@ -6,6 +6,10 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.activity.compose.BackHandler
@@ -67,7 +71,7 @@ import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 import java.time.Instant
 
-enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, CHANNEL_INFO, SETTINGS }
+enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, CHANNEL_INFO, SETTINGS, BROWSE }
 
 /** Channel list first; a selected channel opens as its own page (compact-width layout, like the iOS app). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,6 +93,11 @@ fun MainScreen(controller: AppController) {
     // M11c: 「保存済み」 replaces the channel list; the pins pane replaces the open channel's timeline.
     var showSaved by rememberSaveable { mutableStateOf(false) }
     var pinsOpen by rememberSaveable { mutableStateOf(false) }
+    // M11h: 「メンション」 and 「下書き」 replace the channel list the same way.
+    var showMentions by rememberSaveable { mutableStateOf(false) }
+    var showDrafts by rememberSaveable { mutableStateOf(false) }
+    val listReplaced = showThreads || showSaved || showMentions || showDrafts
+    val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -122,13 +131,14 @@ fun MainScreen(controller: AppController) {
     BackHandler(enabled = !searching && pinsOpen && selectedChannel != null) { pinsOpen = false }
     BackHandler(enabled = !searching && !pinsOpen && threadId != null) { closeThread() }
     BackHandler(enabled = threadId == null && !pinsOpen && selectedChannel != null) { selection = null }
-    BackHandler(enabled = !searching && selectedChannel == null && (showThreads || showSaved)) { showThreads = false; showSaved = false }
+    BackHandler(enabled = !searching && selectedChannel == null && listReplaced) { closeLists() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
         scope.launch {
             if (controller.revealMessage(message)) {
                 pinsOpen = false
                 showSaved = false
+                showMentions = false
                 threadFromList = false
                 selection = message.channelId
                 threadId = message.parentId
@@ -156,6 +166,8 @@ fun MainScreen(controller: AppController) {
                         }
                         showThreads -> Text("スレッド")
                         showSaved -> Text("保存済み")
+                        showMentions -> Text("メンション")
+                        showDrafts -> Text("下書き")
                         else -> Text("ChikuwaChat")
                     }
                 },
@@ -165,7 +177,7 @@ fun MainScreen(controller: AppController) {
                         selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (threadId != null) closeThread() else selection = null }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                         }
-                        showThreads || showSaved -> IconButton(onClick = { showThreads = false; showSaved = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
+                        listReplaced -> IconButton(onClick = closeLists) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
                         me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
                     }
                 },
@@ -222,6 +234,7 @@ fun MainScreen(controller: AppController) {
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
                         DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                        DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
                         if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
                             DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
                         }
@@ -255,6 +268,17 @@ fun MainScreen(controller: AppController) {
                     SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
+                } else if (showMentions) {
+                    MentionsPane(controller, version, onOpen = ::reveal)
+                } else if (showDrafts) {
+                    // A draft row opens its conversation (the composer restores the text); back returns to the list.
+                    DraftsPane(controller, version) { channelId, parentId ->
+                        controller.messageFocus = null
+                        threadFromList = false
+                        showDrafts = false
+                        selection = channelId
+                        threadId = parentId
+                    }
                 } else if (showThreads) {
                     ThreadsPane(controller, version) { entry ->
                         controller.messageFocus = null
@@ -269,6 +293,9 @@ fun MainScreen(controller: AppController) {
                         onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } },
                         onThreads = { showThreads = true },
                         onSaved = { showSaved = true },
+                        onMentions = { showMentions = true },
+                        onDrafts = { showDrafts = true },
+                        onBrowse = { dialog = MainDialog.BROWSE },
                     )
                 }
             }
@@ -281,6 +308,11 @@ fun MainScreen(controller: AppController) {
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
         MainDialog.CHANNEL_INFO -> selectedChannel?.let { ChannelInfoDialog(controller, it, onDismiss = { dialog = null }, onAddMember = { dialog = MainDialog.ADD_MEMBER }) }
         MainDialog.SETTINGS -> SettingsDialog(controller, onDismiss = { dialog = null })
+        MainDialog.BROWSE -> ChannelBrowserDialog(
+            controller, version, onDismiss = { dialog = null },
+            onOpen = { controller.messageFocus = null; threadFromList = false; selection = it },
+            onCreate = { dialog = MainDialog.NEW_CHANNEL },
+        )
         null -> Unit
     }
 }
@@ -314,8 +346,12 @@ private fun ChannelList(
     onJoin: (String) -> Unit,
     onThreads: () -> Unit,
     onSaved: () -> Unit,
+    onMentions: () -> Unit,
+    onDrafts: () -> Unit,
+    onBrowse: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
+    val draftCount = remember(version) { store.listDrafts().size }
     val channels = sections.channels
     val dms = sections.dms
     val browsable = sections.browse
@@ -327,10 +363,13 @@ private fun ChannelList(
             }
         }
         item { ThreadsRow(store, onClick = onThreads) }
+        item { ListRow(Icons.Default.AlternateEmail, "メンション", onClick = onMentions) }
+        if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
         item { SavedRow(store, onClick = onSaved) }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
+        if (!unreadOnly) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
         item { SectionHeader("ダイレクトメッセージ") }
         items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
@@ -376,6 +415,25 @@ private fun ThreadsRow(store: Store, onClick: () -> Unit) {
                     .padding(horizontal = 7.dp, vertical = 2.dp),
             )
         }
+    }
+}
+
+/** A plain sidebar entry (M11h: 「メンション」, 「下書き」, 「チャンネルを探す」). */
+@Composable
+private fun ListRow(icon: ImageVector, label: String, trailing: String? = null, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f))
+        if (trailing != null) Text(trailing, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

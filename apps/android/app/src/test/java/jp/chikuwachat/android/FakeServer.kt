@@ -107,7 +107,7 @@ class FakeServer {
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
-            channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null) }
+            channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
         override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut { maybeFail(); return this@FakeServer.threads(userId, filter, cursor, limit) }
         override suspend fun threadState(messageId: String): ThreadState { maybeFail(); return this@FakeServer.threadState(userId, messageId) }
         override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState { maybeFail(); return this@FakeServer.markThreadRead(userId, messageId, lastReadSeq) }
@@ -447,7 +447,7 @@ class FakeServer {
         val record = channels[channelId] ?: return
         emit(record.members, event("channel.member_added", channelId, null, buildJsonObject { put("channel_id", channelId); put("user_id", userId) }))
         emit(setOf(userId), event("channel.created", channelId, null, buildJsonObject {
-            put("channel", Codec.snake.encodeToJsonElement(ChannelOut.serializer(), record.channel.copy(membership = null)))
+            put("channel", Codec.snake.encodeToJsonElement(ChannelOut.serializer(), record.channel.copy(membership = null, memberCount = record.members.size)))
             put("member_ids", buildJsonArray { record.members.forEach { add(JsonPrimitive(it)) } })
         }))
     }
@@ -467,7 +467,7 @@ class FakeServer {
         val user = users.getValue(userId)
         val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false)
         val mine = channels.values.filter { userId in it.members }.map { record ->
-            record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id))
+            record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id), memberCount = record.members.size)
         }
         val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
         return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it)) }, bookmarks[userId]?.toList() ?: emptyList())

@@ -111,7 +111,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         val channel = store.channel(channelId)
         if (parent != null && channel?.isMember == true && !channel.channel.archived) {
             TypingLine(controller, channelId, parentId, version)
-            ConversationComposer(controller, channelId, parentId)
+            ConversationComposer(controller, channelId, version, parentId)
         }
     }
 }

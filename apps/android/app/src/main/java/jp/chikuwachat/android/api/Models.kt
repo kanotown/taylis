@@ -104,6 +104,8 @@ data class ChannelOut(
     val dmUserIds: List<String>? = null,
     val notification: NotificationPreferenceOut? = null,
     val readState: ReadStateOut? = null,
+    /** How many members the channel has (M11h); lists, single-channel responses and channel events carry it. */
+    val memberCount: Int? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
 }
@@ -197,6 +199,10 @@ data class BookmarkItem(val message: MessageOut, val createdAt: String)
 /** `nextCursor` goes back as `cursor` for the next page; null when the page was empty. */
 @Serializable
 data class BookmarkListOut(val items: List<BookmarkItem>, val nextCursor: String? = null)
+
+/** GET /mentions (M11h): messages that mention me or everyone, newest first. */
+@Serializable
+data class MentionListOut(val items: List<MessageOut>, val nextCursor: String? = null)
 
 @Serializable
 data class PresenceEntry(val userId: String, val status: String)
