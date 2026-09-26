@@ -16,6 +16,8 @@ import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
 import { Toast } from "./Toast";
+import { TypingIndicator } from "./Typing";
+import { presenceLabel } from "./Avatar";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | null;
 
@@ -262,6 +264,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </button>
                 )}
                 {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{dmOther.length + 1} 人</span>}
+                {!isChannel && dmOther.length === 1 && dmOther[0] && (
+                  <span className="flex items-center gap-1.5 text-xs text-muted" title="プレゼンス">
+                    <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
+                    {presenceLabel(store.presenceOf(dmOther[0]))}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-0.5">
                 {isChannel && (
@@ -308,6 +316,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+            {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
             {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />}
             {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
           </>

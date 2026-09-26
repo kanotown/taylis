@@ -37,13 +37,20 @@ class FakeSocket implements WsLike {
 
   send(data: string): void {
     this.sent.push(data);
-    const frame = JSON.parse(data) as { type: string; token?: string };
+    const frame = JSON.parse(data) as { type: string; token?: string; active?: boolean; channel_id?: string; parent_id?: string | null };
     if (frame.type === "auth") {
+      this.authed = true;
       this.deliver({ type: "hello", session_id: "s-" + this.userId, server_time: now(), heartbeat_interval_sec: 30 });
+      this.server.announcePresence(this.userId);
     } else if (frame.type === "ping") {
+      if (frame.active) this.server.markActive(this.userId);
       this.deliver({ type: "pong", server_time: now() });
+    } else if (frame.type === "typing" && frame.channel_id) {
+      this.server.relayTyping(this.userId, frame.channel_id, frame.parent_id ?? null);
     }
   }
+
+  authed = false;
 
   close(): void {
     this.closeRemote(1000);
@@ -54,6 +61,7 @@ class FakeSocket implements WsLike {
     this.closed = true;
     this.server.sockets.delete(this);
     this.closeHandler?.(code);
+    if (this.authed) this.server.announcePresence(this.userId);
   }
 
   onMessage(handler: (data: string) => void): void {
@@ -389,6 +397,40 @@ export class FakeServer {
     return { message: updated, changed: true };
   }
 
+  // --- presence / typing (SYNC_PROTOCOL.md §5.2, volatile) ---------------------------------
+
+  /** Users whose window is "away" (set by tests); everyone connected is online otherwise. */
+  readonly awayUsers = new Set<string>();
+  private readonly announced = new Map<string, string>();
+
+  presenceOf(userId: string): "online" | "away" | "offline" {
+    if (![...this.sockets].some((s) => s.userId === userId && s.authed)) return "offline";
+    return this.awayUsers.has(userId) ? "away" : "online";
+  }
+
+  markActive(userId: string): void {
+    if (this.awayUsers.delete(userId)) this.announcePresence(userId);
+  }
+
+  /** Broadcast a presence frame when the user's status changed. */
+  announcePresence(userId: string): void {
+    const status = this.presenceOf(userId);
+    if ((this.announced.get(userId) ?? "offline") === status) return;
+    if (status === "offline") this.announced.delete(userId);
+    else this.announced.set(userId, status);
+    for (const socket of [...this.sockets]) if (socket.authed) socket.deliver({ type: "presence", user_id: userId, status });
+  }
+
+  relayTyping(userId: string, channelId: string, parentId: string | null): void {
+    const record = this.channels.get(channelId);
+    if (!record || !record.members.has(userId)) return;
+    for (const socket of [...this.sockets]) {
+      if (socket.authed && socket.userId !== userId && record.members.has(socket.userId)) {
+        socket.deliver({ type: "typing", channel_id: channelId, parent_id: parentId, user_id: userId });
+      }
+    }
+  }
+
   private emit(userIds: Set<string>, frame: EventFrame): void {
     if (this.holdEvents) {
       this.held.push({ userIds: new Set(userIds), frame });
@@ -462,6 +504,7 @@ export class FakeServer {
           channels,
           limits: { max_message_length: 20000, max_attachment_bytes: 1, max_attachments_per_message: 10 },
           threads: this.threadSummary(userId),
+          presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {
