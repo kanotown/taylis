@@ -42,6 +42,13 @@ async def list_threads(
     return await service.list_threads(db, user.id, parents, rows)
 
 
+@router.get("/messages/{message_id}/thread", response_model=ThreadState)
+async def get_thread_state(message_id: UUID, user: CurrentUser, db: Db) -> ThreadState:
+    """My relation to one thread (follow flag, read position, counts); `following=false` and
+    `last_read_seq=0` when I never touched it."""
+    return await service.state_for(db, await _parent(db, user, message_id), user.id)
+
+
 @router.put("/messages/{message_id}/thread/read", response_model=ThreadState)
 async def mark_thread_read(
     message_id: UUID, user: CurrentUser, db: Db, body: ThreadRead

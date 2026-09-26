@@ -4,13 +4,15 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
 let counter = 0;
 const nextId = (): string => `00000000-0000-7000-8000-${String(++counter).padStart(12, "0")}`;
-const now = (): string => new Date().toISOString();
+// Strictly increasing so that timestamp cursors (threads) never tie inside one test.
+let clock = Date.now();
+const now = (): string => new Date(++clock).toISOString();
 const MENTION_USER = /<@([0-9a-f-]{36})>/g;
 const MENTION_ALL = /<!(channel|here)>/;
 const mentionedIds = (body: string): string[] => [...new Set([...body.matchAll(MENTION_USER)].map((m) => m[1] ?? ""))];
@@ -142,6 +144,102 @@ export class FakeServer {
     return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
   }
 
+  // --- threads (THREADS.md §2) ---------------------------------------------------------------
+
+  /** "parent:user" → follow row; insertion order doubles as created_at. */
+  readonly threadFollows = new Map<string, { parentId: string; userId: string; following: boolean; lastReadSeq: number }>();
+
+  private followers(parentId: string): string[] {
+    return [...this.threadFollows.values()].filter((f) => f.parentId === parentId && f.following).map((f) => f.userId);
+  }
+
+  private autoFollow(parentId: string, userIds: string[]): void {
+    for (const userId of userIds) {
+      const key = `${parentId}:${userId}`;
+      if (!this.threadFollows.has(key)) this.threadFollows.set(key, { parentId, userId, following: true, lastReadSeq: 0 });
+    }
+  }
+
+  private threadParent(messageId: string): { record: ChannelRecord; parent: MessageOut } {
+    for (const record of this.channels.values()) {
+      const message = record.messages.find((m) => m.id === messageId && !m.deleted);
+      if (!message) continue;
+      const parent = message.parent_id ? record.messages.find((m) => m.id === message.parent_id)! : message;
+      return { record, parent };
+    }
+    throw new ApiError(404, "message_not_found", "not found");
+  }
+
+  threadState(userId: string, parentId: string): ThreadState {
+    const { record, parent } = this.threadParent(parentId);
+    this.requireMember(record.channel.id, userId);
+    const row = this.threadFollows.get(`${parent.id}:${userId}`);
+    const lastReadSeq = row?.lastReadSeq ?? 0;
+    const unread = record.messages.filter((m) => m.parent_id === parent.id && !m.deleted && m.seq > lastReadSeq && m.sender_id !== userId);
+    return {
+      parent_id: parent.id,
+      channel_id: record.channel.id,
+      following: row?.following ?? false,
+      last_read_seq: lastReadSeq,
+      unread_count: unread.length,
+      mention_count: unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length,
+      reply_count: parent.reply_count,
+      last_reply_at: parent.last_reply_at ?? null,
+      participant_ids: this.followers(parent.id),
+    };
+  }
+
+  private emitThread(parentId: string, userIds: string[], reason: "reply" | "deleted" | "read" | "follow"): void {
+    for (const userId of userIds) {
+      const state = this.threadState(userId, parentId);
+      this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "thread.updated", ts: now(), channel_id: state.channel_id, seq: null, data: { reason, ...state } });
+    }
+  }
+
+  threadSummary(userId: string): ThreadSummary {
+    const states = [...this.threadFollows.values()].filter((f) => f.userId === userId && f.following).map((f) => this.threadState(userId, f.parentId));
+    return { unread_count: states.filter((s) => s.unread_count > 0).length, mention_count: states.filter((s) => s.mention_count > 0).length };
+  }
+
+  threads(userId: string, filter: ThreadFilter, cursor: string | null, limit: number): ThreadListOut {
+    let items = [...this.threadFollows.values()]
+      .filter((f) => f.userId === userId && f.following)
+      .map((f) => ({ parent: this.threadParent(f.parentId).parent, state: this.threadState(userId, f.parentId) }))
+      .filter((i) => !i.parent.deleted && i.parent.reply_count > 0)
+      .sort((a, b) => (b.parent.last_reply_at ?? "").localeCompare(a.parent.last_reply_at ?? "") || b.parent.seq - a.parent.seq);
+    if (cursor) items = items.filter((i) => (i.parent.last_reply_at ?? "") < cursor);
+    if (filter === "unread") items = items.filter((i) => i.state.unread_count > 0);
+    items = items.slice(0, limit);
+    return { items, next_cursor: items.length > 0 ? items[items.length - 1]!.parent.last_reply_at ?? null : null, summary: this.threadSummary(userId) };
+  }
+
+  markThreadRead(userId: string, messageId: string, seq: number): ThreadState {
+    const { record, parent } = this.threadParent(messageId);
+    this.requireMember(record.channel.id, userId);
+    const newest = Math.max(0, ...record.messages.filter((m) => m.parent_id === parent.id && !m.deleted).map((m) => m.seq));
+    const target = Math.min(seq, newest);
+    const key = `${parent.id}:${userId}`;
+    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following: true, lastReadSeq: 0 };
+    if (!this.threadFollows.has(key)) this.threadFollows.set(key, row);
+    if (target > row.lastReadSeq) {
+      row.lastReadSeq = target;
+      this.emitThread(parent.id, [userId], "read");
+    }
+    return this.threadState(userId, parent.id);
+  }
+
+  setThreadFollow(userId: string, messageId: string, following: boolean): ThreadState {
+    const { record, parent } = this.threadParent(messageId);
+    this.requireMember(record.channel.id, userId);
+    const key = `${parent.id}:${userId}`;
+    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following, lastReadSeq: 0 };
+    const changed = !this.threadFollows.has(key) || row.following !== following;
+    row.following = following;
+    this.threadFollows.set(key, row);
+    if (changed) this.emitThread(parent.id, [userId], "follow");
+    return this.threadState(userId, parent.id);
+  }
+
   /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
   markRead(userId: string, channelId: string, seq: number, mode: "advance" | "set" = "advance"): ReadStateOut {
     const record = this.requireMember(channelId, userId);
@@ -212,9 +310,11 @@ export class FakeServer {
       const old = record.messages[parentIndex]!;
       const parent: MessageOut = { ...old, reply_count: old.reply_count + 1, last_reply_at: message.created_at, updated_seq: seq };
       record.messages[parentIndex] = parent;
-      const participants = [parent.sender_id];
-      for (const reply of record.messages) if (reply.parent_id === parent.id && !reply.deleted && !participants.includes(reply.sender_id)) participants.push(reply.sender_id);
-      parentThread = { id: parent.id, reply_count: parent.reply_count, last_reply_at: parent.last_reply_at ?? null, updated_seq: seq, participant_ids: participants };
+      // THREADS.md §2: auto-follow, the replier has read their own reply, followers are the push targets.
+      this.autoFollow(parent.id, [parent.sender_id, senderId, ...(parent.mentioned_user_ids ?? []), ...message.mentioned_user_ids]);
+      const own = this.threadFollows.get(`${parent.id}:${senderId}`)!;
+      own.lastReadSeq = Math.max(own.lastReadSeq, seq);
+      parentThread = { id: parent.id, reply_count: parent.reply_count, last_reply_at: parent.last_reply_at ?? null, updated_seq: seq, participant_ids: this.followers(parent.id) };
     }
     this.emit(record.members, {
       type: "event",
@@ -226,6 +326,7 @@ export class FakeServer {
       data: parentThread ? { message, parent_thread: parentThread } : { message },
     });
     this.markRead(senderId, channelId, seq); // the sender has read their own message (§10)
+    if (parentThread) this.emitThread(parentThread.id, this.followers(parentThread.id), "reply");
     return { message, created: true };
   }
 
@@ -360,6 +461,7 @@ export class FakeServer {
           users: [...this.users.values()],
           channels,
           limits: { max_message_length: 20000, max_attachment_bytes: 1, max_attachments_per_message: 10 },
+          threads: this.threadSummary(userId),
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {
@@ -394,6 +496,22 @@ export class FakeServer {
       markRead: async (channelId, lastReadSeq, mode = "advance"): Promise<ReadStateOut> => {
         maybeFail();
         return this.markRead(userId, channelId, lastReadSeq, mode);
+      },
+      threads: async ({ filter, cursor = null, limit = 50 }): Promise<ThreadListOut> => {
+        maybeFail();
+        return this.threads(userId, filter, cursor, limit);
+      },
+      threadState: async (messageId): Promise<ThreadState> => {
+        maybeFail();
+        return this.threadState(userId, messageId);
+      },
+      markThreadRead: async (messageId, lastReadSeq): Promise<ThreadState> => {
+        maybeFail();
+        return this.markThreadRead(userId, messageId, lastReadSeq);
+      },
+      setThreadFollow: async (messageId, following): Promise<ThreadState> => {
+        maybeFail();
+        return this.setThreadFollow(userId, messageId, following);
       },
       publicChannels: async (): Promise<ChannelOut[]> =>
         [...this.channels.values()]

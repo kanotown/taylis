@@ -29,3 +29,12 @@ export type SearchHit = components["schemas"]["SearchHit"];
 export type SearchOut = components["schemas"]["SearchOut"];
 export type SearchFilters = components["schemas"]["SearchFilters"];
 export type ReadMode = components["schemas"]["ReadMark"]["mode"];
+
+/** Followed threads (THREADS.md §3). */
+export type ThreadState = components["schemas"]["ThreadState"];
+export type ThreadItem = components["schemas"]["ThreadItem"];
+export type ThreadListOut = components["schemas"]["ThreadListOut"];
+export type ThreadSummary = components["schemas"]["ThreadSummary"];
+export type ThreadFilter = "all" | "unread";
+/** thread.updated payload: the state plus why it changed (SYNC_PROTOCOL.md §6). */
+export type ThreadUpdated = ThreadState & { reason: "reply" | "deleted" | "read" | "follow" };

@@ -1,5 +1,23 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ReadStateOut, SearchOut, TokenResponse, UserMe, UserPublic } from "./types";
+import type {
+  AttachmentOut,
+  BootstrapOut,
+  ChannelOut,
+  DeltaOut,
+  HistoryOut,
+  MemberOut,
+  MessageOut,
+  NotificationLevel,
+  NotificationPreferenceOut,
+  ReadStateOut,
+  SearchOut,
+  ThreadFilter,
+  ThreadListOut,
+  ThreadState,
+  TokenResponse,
+  UserMe,
+  UserPublic,
+} from "./types";
 
 export interface DeviceInfo {
   platform: "desktop" | "ios" | "android";
@@ -183,6 +201,27 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- threads (THREADS.md §3) -----------------------------------------------------------
+
+  /** GET /threads: the threads I follow, newest reply first; `cursor` is the previous page's next_cursor. */
+  threads(options: { filter?: ThreadFilter; cursor?: string | null; limit?: number } = {}): Promise<ThreadListOut> {
+    const params = new URLSearchParams({ filter: options.filter ?? "all", limit: String(options.limit ?? 50) });
+    if (options.cursor) params.set("cursor", options.cursor);
+    return this.request("GET", `/api/v1/threads?${params}`);
+  }
+
+  threadState(messageId: string): Promise<ThreadState> {
+    return this.request("GET", `/api/v1/messages/${messageId}/thread`);
+  }
+
+  markThreadRead(messageId: string, lastReadSeq: number): Promise<ThreadState> {
+    return this.request("PUT", `/api/v1/messages/${messageId}/thread/read`, { last_read_seq: lastReadSeq });
+  }
+
+  setThreadFollow(messageId: string, following: boolean): Promise<ThreadState> {
+    return this.request("PUT", `/api/v1/messages/${messageId}/thread/follow`, { following });
   }
 
   /** GET /search/messages: full-text search across my channels (the server applies the membership filter). */

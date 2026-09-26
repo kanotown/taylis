@@ -548,6 +548,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Thread State
+         * @description My relation to one thread (follow flag, read position, counts); `following=false` and
+         *     `last_read_seq=0` when I never touched it.
+         */
+        get: operations["get_thread_state_api_v1_messages__message_id__thread_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/thread/follow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Thread Follow
+         * @description false removes the thread from the list and from the reply pushes; auto-follow never
+         *     flips it back.
+         */
+        put: operations["set_thread_follow_api_v1_messages__message_id__thread_follow_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/thread/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark Thread Read
+         * @description Monotonic: the newest reply `seq` the client has shown (THREADS.md §3).
+         */
+        put: operations["mark_thread_read_api_v1_messages__message_id__thread_read_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/messages": {
         parameters: {
             query?: never;
@@ -574,6 +636,27 @@ export interface paths {
         };
         /** Bootstrap */
         get: operations["bootstrap_api_v1_sync_bootstrap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Threads
+         * @description Threads I follow, newest reply first (THREADS.md §3). `cursor` is the previous page's
+         *     `next_cursor`.
+         */
+        get: operations["list_threads_api_v1_threads_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -790,6 +873,13 @@ export interface components {
              * Format: date-time
              */
             server_time: string;
+            /**
+             * @default {
+             *       "mention_count": 0,
+             *       "unread_count": 0
+             *     }
+             */
+            threads: components["schemas"]["ThreadSummary"];
             /** Users */
             users: components["schemas"]["UserPublic"][];
         };
@@ -1231,6 +1321,72 @@ export interface components {
         TemporaryPasswordOut: {
             /** Temporary Password */
             temporary_password: string;
+        };
+        /** ThreadFollowIn */
+        ThreadFollowIn: {
+            /** Following */
+            following: boolean;
+        };
+        /** ThreadItem */
+        ThreadItem: {
+            parent: components["schemas"]["MessageOut"];
+            state: components["schemas"]["ThreadState"];
+        };
+        /** ThreadListOut */
+        ThreadListOut: {
+            /** Items */
+            items: components["schemas"]["ThreadItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            summary: components["schemas"]["ThreadSummary"];
+        };
+        /** ThreadRead */
+        ThreadRead: {
+            /** Last Read Seq */
+            last_read_seq: number;
+        };
+        /**
+         * ThreadState
+         * @description One user's view of one thread (THREADS.md §3).
+         */
+        ThreadState: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Following */
+            following: boolean;
+            /** Last Read Seq */
+            last_read_seq: number;
+            /** Last Reply At */
+            last_reply_at: string | null;
+            /** Mention Count */
+            mention_count: number;
+            /**
+             * Parent Id
+             * Format: uuid
+             */
+            parent_id: string;
+            /**
+             * Participant Ids
+             * @default []
+             */
+            participant_ids: string[];
+            /** Reply Count */
+            reply_count: number;
+            /** Unread Count */
+            unread_count: number;
+        };
+        /**
+         * ThreadSummary
+         * @description Followed threads with unread replies / unread mentions (sidebar badge, bootstrap).
+         */
+        ThreadSummary: {
+            /** Mention Count */
+            mention_count: number;
+            /** Unread Count */
+            unread_count: number;
         };
         /** TokenResponse */
         TokenResponse: {
@@ -2560,6 +2716,107 @@ export interface operations {
             };
         };
     };
+    get_thread_state_api_v1_messages__message_id__thread_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_thread_follow_api_v1_messages__message_id__thread_follow_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadFollowIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_thread_read_api_v1_messages__message_id__thread_read_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_messages_api_v1_search_messages_get: {
         parameters: {
             query: {
@@ -2614,6 +2871,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapOut"];
+                };
+            };
+        };
+    };
+    list_threads_api_v1_threads_get: {
+        parameters: {
+            query?: {
+                filter?: "all" | "unread";
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

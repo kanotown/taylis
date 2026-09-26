@@ -213,6 +213,8 @@ async def test_replies_auto_follow_and_count_unread(
 
     # The parent author follows with one unread reply.
     as_user(alice)
+    single = await client.get(f"/api/v1/messages/{reply['id']}/thread")  # a reply id resolves
+    assert single.status_code == 200 and single.json()["unread_count"] == 1
     page = await _threads(client)
     assert len(page["items"]) == 1
     item = page["items"][0]
@@ -307,6 +309,11 @@ async def test_thread_read_is_monotonic_and_clamped(
     dave = await make_user(db, "dave")
     as_user(dave)
     assert (await client.put(read, json={"last_read_seq": 1})).status_code == 403
+    assert (await client.get(f"/api/v1/messages/{parent['id']}/thread")).status_code == 403
+    # A member who never touched the thread gets the empty state.
+    as_user(bob)
+    untouched = (await client.get(f"/api/v1/messages/{parent['id']}/thread")).json()
+    assert untouched["following"] is True  # bob replied, so he follows
 
 
 async def test_unfollow_removes_thread_from_list_and_from_push_targets(

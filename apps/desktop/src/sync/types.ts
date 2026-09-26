@@ -1,6 +1,12 @@
-import type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
+import type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
-export type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic };
+export type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
+
+/** One row of the threads view: the parent message and my relation to the thread (THREADS.md §5). */
+export interface ThreadEntry {
+  parent: MessageOut;
+  state: ThreadState;
+}
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */
 export interface ChannelState extends ChannelOut {
