@@ -9,6 +9,7 @@ import type {
   BookmarkStateOut,
   BootstrapOut,
   ChannelOut,
+  FileListOut,
   LinkPreviewOut,
   MentionListOut,
   DeltaOut,
@@ -218,6 +219,16 @@ export class ApiClient {
     const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
     if (options.cursor) params.set("cursor", options.cursor);
     return this.request("GET", `/api/v1/mentions?${params}`);
+  }
+
+  // --- files (M11i) ----------------------------------------------------------------------
+
+  listFiles(options: { channelId?: string | null; q?: string | null; cursor?: string | null; limit?: number } = {}): Promise<FileListOut> {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+    if (options.channelId) params.set("channel_id", options.channelId);
+    if (options.q) params.set("q", options.q);
+    if (options.cursor) params.set("cursor", options.cursor);
+    return this.request("GET", `/api/v1/files?${params}`);
   }
 
   // --- link previews (M11g) --------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Users } from "lucide-react";
+import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -15,6 +15,7 @@ import { QuickSwitcher } from "./QuickSwitcher";
 import { PinsPane } from "./PinsPane";
 import { MentionsView } from "./MentionsView";
 import { DraftsView } from "./DraftsView";
+import { FilesView } from "./FilesView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { SavedView } from "./SavedView";
 import { SearchPane } from "./SearchPane";
@@ -47,7 +48,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts">("channel");
+  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files">("channel");
+  /** M11i: the channel the files view is scoped to (null: all my channels). */
+  const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -131,6 +134,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
       setThreadChannelId(message.channel_id);
       setThreadId(message.parent_id ?? null);
     });
+  };
+
+  const openFiles = (channelId: string | null) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setSearching(false);
+    setPinsOpen(false);
+    setFilesChannelId(channelId);
+    setView("files");
   };
 
   const openView = (next: "mentions" | "drafts") => {
@@ -287,6 +301,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         mentionsActive={view === "mentions"}
         onDrafts={() => openView("drafts")}
         draftsActive={view === "drafts"}
+        onFiles={() => (view === "files" ? setView("channel") : openFiles(null))}
+        filesActive={view === "files"}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -313,6 +329,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <SavedView controller={controller} onOpen={revealFromList} />
         ) : view === "mentions" ? (
           <MentionsView controller={controller} onOpen={revealFromList} />
+        ) : view === "files" ? (
+          <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
         ) : view === "drafts" ? (
           <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
         ) : current ? (
@@ -349,9 +367,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
               <div className="flex items-center gap-0.5">
                 {current.isMember && (
-                  <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
-                    <Pin size={18} />
-                  </IconButton>
+                  <>
+                    <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
+                      <Pin size={18} />
+                    </IconButton>
+                    <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
+                      <Files size={18} />
+                    </IconButton>
+                  </>
                 )}
                 {isChannel && (
                   <IconButton label="メンバー" onClick={() => setDialog("members")}>

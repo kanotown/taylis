@@ -152,3 +152,22 @@ describe("administration and channel management (M11e)", () => {
     expect(calls[3]!.body).toEqual({ deactivated: true });
   });
 });
+
+describe("files (M11i)", () => {
+  it("builds the files query from the scope, the filter and the cursor", async () => {
+    const paths: string[] = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input) => {
+        paths.push(String(input).replace("http://server", ""));
+        return jsonResponse(200, { items: [], next_cursor: null });
+      },
+    });
+    client.accessToken = "a";
+    await client.listFiles();
+    await client.listFiles({ channelId: "c1", q: "報告 書", cursor: "2026-09-27T00:00:00+00:00|a1", limit: 10 });
+    expect(paths).toEqual([
+      "/api/v1/files?limit=50",
+      "/api/v1/files?limit=10&channel_id=c1&q=%E5%A0%B1%E5%91%8A+%E6%9B%B8&cursor=2026-09-27T00%3A00%3A00%2B00%3A00%7Ca1",
+    ]);
+  });
+});

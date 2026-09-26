@@ -63,3 +63,7 @@ export type LinkPreviewOut = components["schemas"]["LinkPreviewOut"];
 
 /** Recent mentions (M11h). */
 export type MentionListOut = components["schemas"]["MentionListOut"];
+
+/** Files list (M11i). */
+export type FileItem = components["schemas"]["FileItem"];
+export type FileListOut = components["schemas"]["FileListOut"];

@@ -514,6 +514,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Files
+         * @description M11i: attached files in my channels (optionally one channel), newest first.
+         */
+        get: operations["list_files_api_v1_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/link-previews": {
         parameters: {
             query?: never;
@@ -1183,6 +1203,42 @@ export interface components {
         DmCreate: {
             /** User Ids */
             user_ids: string[];
+        };
+        /**
+         * FileItem
+         * @description One row of the files list (M11i): the attachment and where it was posted.
+         */
+        FileItem: {
+            /**
+             * Attached At
+             * Format: date-time
+             */
+            attached_at: string;
+            attachment: components["schemas"]["AttachmentOut"];
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Uploader Id
+             * Format: uuid
+             */
+            uploader_id: string;
+        };
+        /** FileListOut */
+        FileListOut: {
+            /** Items */
+            items: components["schemas"]["FileItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2771,6 +2827,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_files_api_v1_files_get: {
+        parameters: {
+            query?: {
+                channel_id?: string | null;
+                q?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileListOut"];
                 };
             };
             /** @description Validation Error */

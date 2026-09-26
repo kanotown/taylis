@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
 from app.modules.attachments import service
-from app.modules.attachments.schemas import AttachmentOut, to_attachment_out
+from app.modules.attachments.schemas import AttachmentOut, FileListOut, to_attachment_out
 from app.modules.auth.deps import CurrentUser
 
 router = APIRouter(tags=["attachments"])
@@ -21,6 +21,21 @@ async def upload(
     if not limiter.try_acquire(key):
         raise rate_limited(limiter.retry_after_seconds(key))
     return await service.upload(db, user, file, request.app.state.settings, request.app.state.blobs)
+
+
+@router.get("/files", response_model=FileListOut)
+async def list_files(
+    user: CurrentUser,
+    db: Db,
+    channel_id: UUID | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> FileListOut:
+    """M11i: attached files in my channels (optionally one channel), newest first."""
+    return await service.list_files(
+        db, user, channel_id=channel_id, query=q, cursor=cursor, limit=limit
+    )
 
 
 @router.get("/attachments/{attachment_id}", response_model=AttachmentOut)
