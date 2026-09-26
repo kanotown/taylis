@@ -22,7 +22,7 @@ function world() {
   store.upsertChannel(other, { isMember: true });
   const send = vi.fn(async () => {});
   const markRead = vi.fn();
-  const controller = { store, engine: { send, markRead, status: "online", unreadHold: new Map<string, number>() }, api: { uploadAttachment: vi.fn() }, setError: vi.fn(), messageFocus: null } as unknown as AppController;
+  const controller = { store, engine: { send, markRead, status: "online", unreadHold: new Map<string, number>() }, api: { uploadAttachment: vi.fn() }, setError: vi.fn(), messageFocus: null, sendKey: "shift-enter" } as unknown as AppController;
   function DraftComposer({ id = channel.id, parentId = null }: { id?: string; parentId?: string | null }) {
     useSyncExternalStore(store.subscribe.bind(store), () => store.version);
     return <Composer controller={controller} channel={store.getChannel(id)!} parentId={parentId} />;
@@ -54,17 +54,17 @@ describe("conversation UX", () => {
     const view = render(<w.DraftComposer />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "with file" } });
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["note"], "note.txt")] } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(w.send).not.toHaveBeenCalled();
     view.rerender(<w.DraftComposer id={w.other.id} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "other conversation" } });
     await act(async () => { complete(attachment); });
     expect(w.store.draft(w.other.id).attachments).toEqual([]);
     expect(w.store.draft(w.channel.id).attachments).toEqual([attachment]);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(w.send).toHaveBeenLastCalledWith(w.other.id, "other conversation", undefined, null, []);
     view.rerender(<w.DraftComposer />);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(w.send).toHaveBeenLastCalledWith(w.channel.id, "with file", undefined, null, ["a1"]);
     expect(w.store.draft(w.channel.id)).toEqual({ text: "", attachments: [] });
   });
@@ -74,7 +74,7 @@ describe("conversation UX", () => {
     vi.mocked(w.controller.api!.uploadAttachment).mockRejectedValue(new Error("offline"));
     const view = render(<w.DraftComposer />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "日本語" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", isComposing: true });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true, isComposing: true });
     expect(w.send).not.toHaveBeenCalled();
     await act(async () => { fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["note"], "note.txt")] } }); });
     expect(w.store.draft(w.channel.id).text).toBe("日本語");
@@ -169,11 +169,23 @@ describe("conversation UX", () => {
     fireEvent.keyDown(box, { key: "Enter" }); // empty item ends the list
     expect(w.store.draft(w.channel.id).text).toBe("- one\n");
 
+    fireEvent.change(box, { target: { value: "```\ncode\n```" } });
+    box.setSelectionRange(12, 12);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(w.send).not.toHaveBeenCalled(); // Enter is a newline by default
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, []);
+  });
+
+  it("with Enter as the send key, Enter sends except inside an open code fence", () => {
+    const w = world();
+    (w.controller as unknown as { sendKey: string }).sendKey = "enter";
+    render(<w.DraftComposer />);
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "```\ncode" } });
     box.setSelectionRange(8, 8);
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(w.send).not.toHaveBeenCalled(); // inside the fence Enter is a newline
-
+    expect(w.send).not.toHaveBeenCalled();
     fireEvent.change(box, { target: { value: "```\ncode\n```" } });
     box.setSelectionRange(12, 12);
     fireEvent.keyDown(box, { key: "Enter" });

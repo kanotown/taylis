@@ -8,6 +8,7 @@ import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { MessageBody } from "./MessageBody";
+import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
@@ -192,17 +193,19 @@ export function Composer({
       }
       return;
     }
-    if (event.key !== "Enter" || event.shiftKey) return;
+    if (event.key !== "Enter") return;
     if (imeEnter) return; // confirming a Japanese conversion, not sending
-    const el = area.current;
-    const position = el?.selectionStart ?? text.length;
-    if (insideFence(text, position)) return; // a newline inside ``` … ```; the closing fence sends as usual
-    if (edit((s) => continueStructure(s))) {
-      event.preventDefault(); // next list item / quote line, or the end of the list on an empty item
+    const sendKey = controller.sendKey ?? "shift-enter";
+    if (isSendKey(event, sendKey)) {
+      const el = area.current;
+      // With Enter as the send key, Enter inside an open ``` fence is still a newline.
+      if (sendKey === "enter" && insideFence(text, el?.selectionStart ?? text.length)) return;
+      event.preventDefault();
+      send();
       return;
     }
-    event.preventDefault();
-    send();
+    // Newline: continue a list / quote (or end it on an empty item); otherwise the plain newline.
+    if (edit((s) => continueStructure(s))) event.preventDefault();
   };
 
   return (
@@ -296,7 +299,7 @@ export function Composer({
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1 text-[11px] text-muted lg:flex">
-              <Kbd>Enter</Kbd> 送信 <Kbd>Shift+Enter</Kbd> 改行
+              <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").newline}</Kbd> 改行
             </span>
             <Button size="sm" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
               <SendHorizontal size={14} /> 送信

@@ -14,6 +14,17 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const parent = store.message(channel.id, parentId) ?? controller.messageFocus?.context.find((m) => m.id === parentId);
   const replies = store.replies(channel.id, parentId);
   const focused = useRef<string | null>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const lastReplyId = replies[replies.length - 1]?.id;
+
+  // My own reply (or a reply arriving while I am at the bottom) shows the newest message.
+  useEffect(() => {
+    const el = list.current;
+    const last = replies[replies.length - 1];
+    if (!el || !last) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom || (last.sender_id === store.me?.id && last.pending)) el.scrollTop = el.scrollHeight;
+  }, [lastReplyId]);
 
   useEffect(() => {
     void controller.engine?.loadReplies(channel.id, parentId).catch((error) => controller.setError(error));
@@ -38,7 +49,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <X size={18} />
         </IconButton>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {parent ? (
           <>
             <MessageRow thread message={parent} controller={controller} />

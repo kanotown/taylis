@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { buildTimeline, fullTimestamp, timeLabel } from "./format";
 import { decodeMentions, encodeMentions } from "./mentions";
 import { MessageBody } from "./MessageBody";
+import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 
 const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥", "😢", "😮", "💯", "🚀", "👏", "🤔", "😍", "😅", "🙌", "💪", "☕", "🍵", "🎂", "🥳", "😴", "🫡"];
@@ -101,7 +102,11 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   }, [channel.id, focus?.messageId, messages.length]);
 
   useEffect(() => {
-    if (!focus && atBottom.current && positioned.current) {
+    const last = messages[messages.length - 1];
+    const mine = !!last && last.sender_id === me?.id && (last.pending || last.seq === channel.lastSeq);
+    if (!focus && positioned.current && (atBottom.current || mine)) {
+      // New messages while at the bottom, and my own sends from anywhere, show the newest message.
+      atBottom.current = true;
       scrollToBottom();
       markSeen();
     }
@@ -400,7 +405,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           if (e.key === "Escape") {
             e.preventDefault();
             finish();
-          } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
+          } else if (isSendKey(e, controller.sendKey ?? "shift-enter") && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
             e.preventDefault();
             if (draft.trim()) save();
           }
@@ -414,7 +419,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           キャンセル
         </Button>
         <span className="flex items-center gap-1 text-[11px] text-muted">
-          <Kbd>Enter</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
+          <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
         </span>
       </div>
     </div>

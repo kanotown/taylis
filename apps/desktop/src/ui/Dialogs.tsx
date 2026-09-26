@@ -5,6 +5,7 @@ import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
 interface DialogProps {
@@ -309,6 +310,28 @@ export function SettingsDialog({ controller, onClose }: { controller: AppControl
             {savedName && <span className="text-xs text-muted">保存しました</span>}
           </div>
         </form>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">送信キー</h3>
+          <div className="flex gap-2">
+            {(
+              [
+                ["shift-enter", "Shift+Enter で送信", "Enter は改行"],
+                ["enter", "Enter で送信", "Shift+Enter は改行"],
+              ] as Array<[SendKey, string, string]>
+            ).map(([value, title, text]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={controller.sendKey === value}
+                onClick={() => controller.setSendKey(value)}
+                className={cn("flex-1 rounded-xl border p-3 text-left transition-colors", controller.sendKey === value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel")}
+              >
+                <span className="block text-sm font-medium">{title}</span>
+                <span className="block text-xs text-muted">{text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <form className="space-y-3" onSubmit={savePassword}>
           <h3 className="text-sm font-semibold">パスワードの変更</h3>
           <Field label="現在のパスワード">
@@ -347,7 +370,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Esc", "パネルを閉じる。何も開いていなければ表示中のチャンネルを既読にする"],
   ["↑ (空の入力欄)", "自分の最後のメッセージを編集"],
   ["Shift + ↑ (空の入力欄)", "最後のメッセージにスレッドで返信"],
-  ["Enter / Shift + Enter", "送信 / 改行"],
+  ["Shift + Enter / Enter", "送信 / 改行 (設定で入れ替え可能)"],
   ["Alt/⌥ + クリック", "そのメッセージから未読にする"],
   ["Ctrl/⌘ + B / I", "太字 / 斜体"],
   ["Ctrl/⌘ + Shift + X / C", "取り消し線 / コード"],
