@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ReadStateOut, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -120,11 +120,40 @@ export class FakeServer {
       dm_user_ids: null,
     };
     this.channels.set(channel.id, { channel, members: new Set([ownerId]), messages: [] });
+    this.readPositions.set(`${ownerId}:${channel.id}`, 0);
     return channel;
   }
 
   join(channelId: string, userId: string): void {
-    this.record(channelId).members.add(userId);
+    const record = this.record(channelId);
+    record.members.add(userId);
+    const key = `${userId}:${channelId}`;
+    if (!this.readPositions.has(key)) this.readPositions.set(key, record.channel.last_seq); // history before the join is read
+  }
+
+  /** "user:channel" → last_read_seq (DATA_MODEL.md read_states). */
+  readonly readPositions = new Map<string, number>();
+
+  readState(userId: string, channelId: string): ReadStateOut {
+    const record = this.record(channelId);
+    const position = this.readPositions.get(`${userId}:${channelId}`) ?? 0;
+    const unread = record.messages.filter((m) => m.seq > position && !m.deleted);
+    const mentions = unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length;
+    return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
+  }
+
+  /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
+  markRead(userId: string, channelId: string, seq: number): ReadStateOut {
+    const record = this.requireMember(channelId, userId);
+    const key = `${userId}:${channelId}`;
+    const target = Math.min(seq, record.channel.last_seq);
+    if (target > (this.readPositions.get(key) ?? 0)) {
+      this.readPositions.set(key, target);
+      const state = this.readState(userId, channelId);
+      this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "read.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, ...state } });
+      return state;
+    }
+    return this.readState(userId, channelId);
   }
 
   private record(channelId: string): ChannelRecord {
@@ -176,6 +205,7 @@ export class FakeServer {
       seq,
       data: { message },
     });
+    this.markRead(senderId, channelId, seq); // the sender has read their own message (§10)
     return { message, created: true };
   }
 
@@ -299,7 +329,11 @@ export class FakeServer {
         const me: UserMe = { ...user, email: null, must_change_password: false };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
-          .map((r) => ({ ...r.channel, membership: { role: r.channel.created_by === userId ? "owner" : "member", joined_at: now() } }));
+          .map((r) => ({
+            ...r.channel,
+            membership: { role: r.channel.created_by === userId ? "owner" : "member", joined_at: now() },
+            read_state: this.readState(userId, r.channel.id),
+          }));
         return {
           server_time: now(),
           me,
@@ -329,6 +363,10 @@ export class FakeServer {
       postMessage: async (channelId, clientMsgId, body) => {
         maybeFail();
         return this.post(channelId, userId, body, clientMsgId);
+      },
+      markRead: async (channelId, lastReadSeq): Promise<ReadStateOut> => {
+        maybeFail();
+        return this.markRead(userId, channelId, lastReadSeq);
       },
       publicChannels: async (): Promise<ChannelOut[]> =>
         [...this.channels.values()]

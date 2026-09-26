@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.modules.notifications.schemas import NotificationPreferenceOut
+from app.modules.reads.schemas import ReadStateOut
 
 ChannelType = Literal["public", "private", "dm", "group_dm"]
 CHANNEL_NAME_PATTERN = r"^[^\s#@/]{1,80}$"
@@ -46,6 +47,7 @@ class ChannelOut(BaseModel):
     dm_user_ids: list[UUID] | None
     # Filled by the sync module for the requesting user (bootstrap); None elsewhere.
     notification: NotificationPreferenceOut | None = None
+    read_state: ReadStateOut | None = None
 
 
 class MemberOut(BaseModel):

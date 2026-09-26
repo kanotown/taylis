@@ -47,6 +47,20 @@ final class PushCenter {
         }
     }
 
+    /// read.updated said the channel is fully read: drop its delivered notifications (thread-id = channel).
+    func clearNotifications(channelId: String) {
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let ids = delivered.filter { $0.request.content.threadIdentifier == channelId }.map { $0.request.identifier }
+            if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
+        }
+    }
+
+    /// Bootstrap / read updates overwrite whatever the last push set (PUSH_NOTIFICATIONS.md §9).
+    func setBadge(_ count: Int) {
+        UNUserNotificationCenter.current().setBadgeCount(count) { _ in }
+    }
+
     func pushReceived() {
         controller?.engine?.reconnectNow()
     }

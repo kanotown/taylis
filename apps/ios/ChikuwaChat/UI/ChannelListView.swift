@@ -34,11 +34,18 @@ struct ChannelListView: View {
     }
 
     private func row(_ channel: ChannelState) -> some View {
-        NavigationLink(value: channel.id) {
+        let badge = channel.badgeContribution
+        let unread = channel.hasUnread && channel.id != selection
+        return NavigationLink(value: channel.id) {
             HStack {
-                Text(channelTitle(channel, store: controller.store))
+                Text(channelTitle(channel, store: controller.store)).fontWeight(unread ? .semibold : .regular)
                 Spacer()
-                if channel.hasUnread && channel.id != selection {
+                if unread && badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption2).bold().foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.accentColor, in: Capsule())
+                } else if unread {
                     Circle().fill(.blue).frame(width: 8, height: 8)
                 }
             }

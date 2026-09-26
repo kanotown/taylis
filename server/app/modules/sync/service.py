@@ -6,6 +6,7 @@ from app.core.time import utcnow
 from app.modules.channels import service as channels
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
+from app.modules.reads import service as reads
 from app.modules.sync.schemas import BootstrapOut, Limits
 from app.modules.users import service as users
 from app.modules.users.models import User
@@ -18,12 +19,14 @@ MAX_ATTACHMENTS_PER_MESSAGE = 10
 async def bootstrap(db: AsyncSession, actor: User) -> BootstrapOut:
     listed = await channels.list_channels(db, actor, include_public=False)
     prefs = await notifications.preferences_for(db, actor.id)
+    read_states = await reads.states_for_user(db, actor.id, [c.id for c in listed])
     with_prefs = [
         c.model_copy(
             update={
                 "notification": notifications.to_out(
                     c.id, prefs.get(c.id), "all" if c.type in ("dm", "group_dm") else "mentions"
-                )
+                ),
+                "read_state": read_states.get(c.id),
             }
         )
         for c in listed

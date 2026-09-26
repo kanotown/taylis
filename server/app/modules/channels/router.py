@@ -14,6 +14,7 @@ from app.modules.channels.schemas import (
     MemberAdd,
     MemberOut,
 )
+from app.modules.reads.schemas import ReadMark, ReadStateOut
 
 router = APIRouter(tags=["channels"])
 
@@ -83,3 +84,9 @@ async def get_or_create_dm(
     channel, created = await service.get_or_create_dm(db, user, participants)
     response.status_code = 201 if created else 200
     return channel
+
+
+@router.put("/channels/{channel_id}/read", response_model=ReadStateOut)
+async def mark_read(channel_id: UUID, user: CurrentUser, body: ReadMark, db: Db) -> ReadStateOut:
+    """Advance my read position (monotonic; SYNC_PROTOCOL.md §4.5 / §10)."""
+    return await service.mark_read(db, user, channel_id, body)

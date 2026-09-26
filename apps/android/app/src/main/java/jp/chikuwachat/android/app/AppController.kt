@@ -170,6 +170,7 @@ class AppController(private val app: Application) {
         )
         engine.onSignedOut = { scope.launch { handleSignedOut(account) } }
         engine.isActive = { foreground }
+        engine.onRead = { channelId -> notifier.clear(channelId) }
         engine.onNotify = { message, channel ->
             val sender = store.users[message.senderId]?.displayName ?: "?"
             val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender

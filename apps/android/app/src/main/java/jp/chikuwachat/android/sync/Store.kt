@@ -18,12 +18,14 @@ data class ChannelState(
     /** null: no timeline loaded yet. */
     val syncedSeq: Int? = null,
     val lastSeq: Int = 0,
-    /** Local read marker until the server read state arrives in M8b. */
-    val seenSeq: Int = 0,
+    /** Server read position and counts (SYNC_PROTOCOL.md §10); counts are replaced by read.updated. */
+    val lastReadSeq: Int = 0,
+    val unreadCount: Int = 0,
+    val mentionCount: Int = 0,
     val hasOlder: Boolean = true,
 ) {
     val id: String get() = channel.id
-    val hasUnread: Boolean get() = lastSeq > seenSeq
+    val hasUnread: Boolean get() = unreadCount > 0
 }
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
@@ -147,12 +149,15 @@ class Store(private val persistence: Persistence? = null) {
     /** Merge server fields into the local channel, keeping the local cursor. */
     fun upsertChannel(channel: ChannelOut, isMember: Boolean? = null): ChannelState {
         val existing = channels[channel.id]
+        val read = channel.readState
         val merged = ChannelState(
-            channel = channel,
+            channel = channel.copy(readState = null),
             isMember = isMember ?: existing?.isMember ?: (channel.membership != null),
             syncedSeq = existing?.syncedSeq,
             lastSeq = maxOf(existing?.lastSeq ?: 0, channel.lastSeq),
-            seenSeq = existing?.seenSeq ?: 0,
+            lastReadSeq = maxOf(existing?.lastReadSeq ?: 0, read?.lastReadSeq ?: 0),
+            unreadCount = read?.unreadCount ?: existing?.unreadCount ?: 0,
+            mentionCount = read?.mentionCount ?: existing?.mentionCount ?: 0,
             hasOlder = existing?.hasOlder ?: true,
         )
         channels[channel.id] = merged

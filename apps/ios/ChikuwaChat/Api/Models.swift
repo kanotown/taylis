@@ -65,8 +65,16 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     let updatedAt: String
     let membership: MembershipOut?
     let dmUserIds: [String]?
+    /// Filled by bootstrap for the requesting user (M8b); nil elsewhere.
+    var readState: ReadStateOut? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
+}
+
+struct ReadStateOut: Codable, Equatable {
+    let lastReadSeq: Int
+    let unreadCount: Int
+    let mentionCount: Int
 }
 
 struct ReactionOut: Codable, Equatable {

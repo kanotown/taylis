@@ -88,6 +88,11 @@ final class FakeServer {
         func publicChannels() async throws -> [ChannelOut] {
             server.channels.values.filter { $0.channel.type == "public" && !$0.members.contains(userId) }.map { $0.channel }
         }
+
+        func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
+            try maybeFail()
+            return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq)
+        }
     }
 
     struct ChannelRecord {
@@ -98,6 +103,8 @@ final class FakeServer {
 
     var users: [String: UserPublic] = [:]
     var channels: [String: ChannelRecord] = [:]
+    /// "user:channel" → last_read_seq (DATA_MODEL.md read_states).
+    var readPositions: [String: Int] = [:]
     var sockets: [Socket] = []
     var holdEvents = false
     private var held: [(Set<String>, JSONValue)] = []
@@ -127,10 +134,41 @@ final class FakeServer {
         let channel = ChannelOut(id: nextId(), type: type, name: type == "dm" || type == "group_dm" ? nil : name, topic: nil, purpose: nil, archived: false,
                                  createdBy: ownerId, lastSeq: 0, lastMessageAt: nil, createdAt: now(), updatedAt: now(), membership: nil, dmUserIds: nil)
         channels[channel.id] = ChannelRecord(channel: channel, members: [ownerId], messages: [])
+        readPositions["\(ownerId):\(channel.id)"] = 0
         return channel
     }
 
-    func join(_ channelId: String, _ userId: String) { channels[channelId]?.members.insert(userId) }
+    func join(_ channelId: String, _ userId: String) {
+        guard let record = channels[channelId] else { return }
+        channels[channelId]?.members.insert(userId)
+        if readPositions["\(userId):\(channelId)"] == nil { readPositions["\(userId):\(channelId)"] = record.channel.lastSeq } // history before the join is read
+    }
+
+    func readState(userId: String, channelId: String) -> ReadStateOut {
+        let record = channels[channelId]!
+        let position = readPositions["\(userId):\(channelId)"] ?? 0
+        let unread = record.messages.filter { $0.seq > position && !$0.deleted }
+        return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count)
+    }
+
+    /// PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change.
+    @discardableResult
+    func markRead(userId: String, channelId: String, seq: Int) throws -> ReadStateOut {
+        let record = try requireMember(channelId, userId)
+        let key = "\(userId):\(channelId)"
+        let target = min(seq, record.channel.lastSeq)
+        if target > (readPositions[key] ?? 0) {
+            readPositions[key] = target
+            let state = readState(userId: userId, channelId: channelId)
+            eventId += 1
+            emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("read.updated"), "ts": .string(now()),
+                                    "channel_id": .string(channelId), "seq": .null,
+                                    "data": .object(["channel_id": .string(channelId), "last_read_seq": .number(Double(state.lastReadSeq)),
+                                                     "unread_count": .number(Double(state.unreadCount)), "mention_count": .number(Double(state.mentionCount))])]))
+            return state
+        }
+        return readState(userId: userId, channelId: channelId)
+    }
 
     private func requireMember(_ channelId: String, _ userId: String) throws -> ChannelRecord {
         guard let record = channels[channelId] else { throw ApiError.api(status: 404, code: "channel_not_found", message: "not found") }
@@ -159,6 +197,7 @@ final class FakeServer {
         let payload: JSONValue = .object(["message": try! JSONValue.from(message)])
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
+        _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) // the sender has read their own message (§10)
         return (message, true)
     }
 
@@ -303,7 +342,8 @@ final class FakeServer {
             ChannelOut(id: record.channel.id, type: record.channel.type, name: record.channel.name, topic: nil, purpose: nil, archived: false,
                        createdBy: record.channel.createdBy, lastSeq: record.channel.lastSeq, lastMessageAt: record.channel.lastMessageAt,
                        createdAt: record.channel.createdAt, updatedAt: record.channel.updatedAt,
-                       membership: MembershipOut(role: record.channel.createdBy == userId ? "owner" : "member", joinedAt: now()), dmUserIds: nil)
+                       membership: MembershipOut(role: record.channel.createdBy == userId ? "owner" : "member", joinedAt: now()), dmUserIds: nil,
+                       readState: readState(userId: userId, channelId: record.channel.id))
         }
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10))

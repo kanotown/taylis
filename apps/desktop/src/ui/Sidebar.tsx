@@ -19,14 +19,18 @@ export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNew
   const browse = channels.filter((c) => !c.isMember && c.type === "public" && !c.archived);
   const status = engine?.status ?? "idle";
 
-  const item = (channel: ChannelState) => (
-    <li key={channel.id} className={channel.id === currentId ? "active" : ""}>
-      <button onClick={() => onOpen(channel.id)}>
-        <span>{channelTitle(channel, controller)}</span>
-        {channel.lastSeq > channel.seenSeq && channel.id !== currentId && <span className="dot" />}
-      </button>
-    </li>
-  );
+  const item = (channel: ChannelState) => {
+    const unread = channel.unreadCount > 0 && channel.id !== currentId;
+    const badge = channel.type === "dm" || channel.type === "group_dm" ? channel.unreadCount : channel.mentionCount;
+    return (
+      <li key={channel.id} className={`${channel.id === currentId ? "active" : ""}${unread ? " unread" : ""}`}>
+        <button onClick={() => onOpen(channel.id)}>
+          <span>{channelTitle(channel, controller)}</span>
+          {unread && badge > 0 ? <span className="badge">{badge}</span> : unread ? <span className="dot" /> : null}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <nav className="sidebar">

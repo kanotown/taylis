@@ -111,6 +111,8 @@ final class AppController {
         )
         engine.onSignedOut = { [weak self] in self?.handleSignedOut(account: account) }
         engine.isActive = { UIApplication.shared.applicationState == .active }
+        engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
+        engine.onBadge = { count in PushCenter.shared.setBadge(count) }
         self.engine = engine
         screen = .main
         PushCenter.shared.attach(controller: self)

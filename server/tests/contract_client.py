@@ -36,8 +36,15 @@ class ReferenceClient:
         self.gap_limit = gap_limit
         # §7.1 persisted state: cursor per channel plus the messages we hold.
         self.store: dict[str, Any] = store or {
-            "channel": {"last_seq": 0, "synced_seq": None},
+            "channel": {
+                "last_seq": 0,
+                "synced_seq": None,
+                "last_read_seq": 0,
+                "unread_count": 0,
+                "mention_count": 0,
+            },
             "messages": {},  # id -> message (server shape) or local placeholder
+            "me": None,
         }
         self.ws: websockets.ClientConnection | None = None
         self._buffer: list[dict[str, Any]] = []
@@ -45,6 +52,7 @@ class ReferenceClient:
         self._drop_next = 0
         self.catch_ups = 0
         self.reloads = 0
+        self.log: list[dict[str, Any]] = []  # every frame seen (diagnostics)
 
     # --- helpers --------------------------------------------------------------------------
 
@@ -95,9 +103,12 @@ class ReferenceClient:
         self._buffering = True  # events arriving before bootstrap is applied are buffered
         async with self._http() as http:
             bootstrap = (await http.get("/api/v1/sync/bootstrap")).json()
+        self.store["me"] = bootstrap["me"]["id"]
         for channel in bootstrap["channels"]:
             if channel["id"] == self.channel_id:
                 self.store["channel"]["last_seq"] = channel["last_seq"]
+                if channel.get("read_state"):
+                    self.apply_read_state(channel["read_state"])
         self._buffering = False
         for frame in self._buffer:
             await self._apply_frame(frame)
@@ -166,9 +177,14 @@ class ReferenceClient:
         consumed = 0
         while consumed < count:
             frame = json.loads(await asyncio.wait_for(self.ws.recv(), wait))
+            self.log.append(frame)
             if frame["type"] != "event":
                 continue
-            timeline = self._is_timeline_event(frame)
+            # Only events newer than the cursor count: an event relayed after we connected but
+            # already covered by bootstrap / catch_up is applied (ignored by §7.4) but not counted.
+            timeline = self._is_timeline_event(frame) and (
+                self.synced_seq is None or int(frame["seq"]) > self.synced_seq
+            )
             if timeline:
                 consumed += 1
                 if self._drop_next > 0:
@@ -179,18 +195,63 @@ class ReferenceClient:
             else:
                 await self._apply_frame(frame)
 
+    # --- §8 / §10 read state ---------------------------------------------------------------
+
+    def apply_read_state(self, state: dict[str, Any]) -> None:
+        channel = self.store["channel"]
+        channel["last_read_seq"] = max(int(channel["last_read_seq"]), int(state["last_read_seq"]))
+        channel["unread_count"] = int(state["unread_count"])
+        channel["mention_count"] = int(state["mention_count"])
+
+    def _count_unread(self, message: dict[str, Any]) -> None:
+        """§7.4: a live message from someone else is unread until read.updated says otherwise."""
+        channel = self.store["channel"]
+        me = self.store.get("me")
+        if message.get("sender_id") == me:
+            channel["last_read_seq"] = max(int(channel["last_read_seq"]), int(message["seq"]))
+            channel["unread_count"] = 0
+            channel["mention_count"] = 0
+            return
+        if int(message["seq"]) <= int(channel["last_read_seq"]):
+            return
+        channel["unread_count"] += 1
+        if message.get("mention_all") or me in (message.get("mentioned_user_ids") or []):
+            channel["mention_count"] += 1
+
+    async def mark_read(self, seq: int) -> dict[str, Any]:
+        """PUT /channels/{id}/read; the local position moves first (optimistic, monotonic)."""
+        channel = self.store["channel"]
+        channel["last_read_seq"] = max(int(channel["last_read_seq"]), seq)
+        async with self._http() as http:
+            response = await http.put(
+                f"/api/v1/channels/{self.channel_id}/read", json={"last_read_seq": seq}
+            )
+        assert response.status_code == 200, response.text
+        state: dict[str, Any] = response.json()
+        self.apply_read_state(state)
+        return state
+
     async def _apply_frame(self, frame: dict[str, Any]) -> None:
-        if frame["channel_id"] != self.channel_id or frame["seq"] is None:
-            return  # other channels / non-timeline events are out of scope for the reference client
+        if frame["channel_id"] != self.channel_id:
+            return  # other channels are out of scope for the reference client
+        if frame["event"] == "read.updated":
+            self.apply_read_state(frame["data"])
+            return
+        if frame["seq"] is None:
+            return  # membership events etc.
         channel = self.store["channel"]
         seq = int(frame["seq"])
         if channel["synced_seq"] is None:
             channel["last_seq"] = max(channel["last_seq"], seq)
+            if frame["event"] == "message.created":
+                self._count_unread(frame["data"]["message"])
             return
         if seq == channel["synced_seq"] + 1:
             self.upsert(frame["data"]["message"])
             channel["synced_seq"] = seq
             channel["last_seq"] = max(channel["last_seq"], seq)
+            if frame["event"] == "message.created":
+                self._count_unread(frame["data"]["message"])
         elif seq > channel["synced_seq"] + 1:
             channel["last_seq"] = max(channel["last_seq"], seq)
             await self.catch_up()
@@ -220,4 +281,9 @@ class ReferenceClient:
         assert response.status_code in (200, 201), response.text
         message: dict[str, Any] = response.json()
         self.upsert(message)
+        # §10: the server marks my own message read inside the send transaction; mirror it.
+        channel = self.store["channel"]
+        channel["last_read_seq"] = max(int(channel["last_read_seq"]), int(message["seq"]))
+        channel["unread_count"] = 0
+        channel["mention_count"] = 0
         return message

@@ -195,6 +195,25 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun unreadCountsFollowReadsAcrossDevices() = runBlocking {
+        val w = world()
+        w.server.post(w.channelId, w.alice, "m1"); w.server.post(w.channelId, w.alice, "m2")
+        w.engine.start(); settle(w.engine)
+        assertEquals(2, w.store.channel(w.channelId)?.unreadCount)
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
+        assertEquals(3 to 1, w.store.channel(w.channelId)!!.let { it.unreadCount to it.mentionCount })
+        w.engine.markRead(w.channelId, 2); w.engine.flushReads(); settle(w.engine)
+        assertEquals(Triple(2, 1, 1), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.mentionCount) })
+        w.server.markRead(w.bob, w.channelId, 3); settle(w.engine) // another device of bob
+        assertEquals(Triple(3, 0, 0), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.mentionCount) })
+        w.engine.markRead(w.channelId, 1); w.engine.flushReads(); settle(w.engine) // stale: ignored
+        assertEquals(3, w.store.channel(w.channelId)?.lastReadSeq)
+        w.server.post(w.channelId, w.alice, "m4"); settle(w.engine)
+        w.engine.openChannel(w.channelId); w.engine.send(w.channelId, "mine"); settle(w.engine)
+        assertEquals(Triple(5, 0, 0), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.mentionCount) })
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

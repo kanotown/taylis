@@ -7,6 +7,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.isRetryable
 import kotlinx.coroutines.CompletableDeferred
@@ -34,6 +35,7 @@ interface SyncApi {
     suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut
     suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
+    suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
 }
 
 /** Transport as the engine sees it (OkHttp in the app, a fake in tests). Callbacks may come from any thread. */
@@ -55,6 +57,8 @@ data class EngineOptions(
     val helloTimeoutMs: Long = 10_000,
     val reconnectMinMs: Long = 1_000,
     val reconnectMaxMs: Long = 30_000,
+    /** §10: read marks are debounced so scrolling does not spam the server. */
+    val readDebounceMs: Long = 1_000,
     /** Injectable so tests can skip reconnect pacing. */
     val sleep: suspend (Long) -> Unit = { delay(it) },
     val random: () -> Double = { Random.nextDouble() },
@@ -82,6 +86,8 @@ class SyncEngine(
         private set
     var onSignedOut: (() -> Unit)? = null
     var onNotify: ((MessageOut, ChannelState) -> Unit)? = null
+    /** A channel became fully read (here or on another device): dismiss its notification. */
+    var onRead: ((String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
     var catchUps = 0
         private set
@@ -100,6 +106,7 @@ class SyncEngine(
     private var stopped = false
     private var flushing = false
     private var reconnectAttempt = 0
+    private val pendingReads = HashMap<String, Job>()
 
     // --- serial work queue --------------------------------------------------------------------
 
@@ -322,6 +329,10 @@ class SyncEngine(
                 val user = Codec.snake.decodeFromJsonElement(UserPublic.serializer(), frame.data["user"] ?: return)
                 store.upsertUser(user)
             }
+            "read.updated" -> {
+                val channelId = frame.data.str("channel_id") ?: return
+                applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data))
+            }
             "session.revoked" -> signOut()
         }
     }
@@ -338,20 +349,40 @@ class SyncEngine(
         when {
             synced == null -> {
                 store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
-                if (isNew) maybeNotify(message, channel)
+                if (isNew) { countUnread(message); maybeNotify(message, channel) }
             }
             seq == synced + 1 -> {
                 store.upsertMessage(message)
                 store.updateChannel(channelId) { it.copy(syncedSeq = seq, lastSeq = maxOf(it.lastSeq, seq)) }
-                if (isNew) maybeNotify(message, channel)
+                if (isNew) { countUnread(message); maybeNotify(message, channel) }
             }
             seq > synced + 1 -> {
                 store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
                 catchUp(channelId)
-                if (isNew) maybeNotify(message, channel)
+                if (isNew) { countUnread(message); maybeNotify(message, channel) }
             }
             // seq <= synced: already applied
         }
+    }
+
+    /** §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise. */
+    private fun countUnread(message: MessageOut) {
+        val me = store.me ?: return
+        if (message.senderId == me.id) {
+            store.updateChannel(message.channelId) { it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0) }
+            return
+        }
+        store.updateChannel(message.channelId) { channel ->
+            if (message.seq <= channel.lastReadSeq) channel
+            else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id)) 1 else 0)
+        }
+    }
+
+    private fun applyReadState(channelId: String, state: ReadStateOut) {
+        val updated = store.updateChannel(channelId) {
+            it.copy(lastReadSeq = maxOf(it.lastReadSeq, state.lastReadSeq), unreadCount = state.unreadCount, mentionCount = state.mentionCount)
+        } ?: return
+        if (updated.unreadCount == 0) onRead?.invoke(channelId)
     }
 
     /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
@@ -370,13 +401,30 @@ class SyncEngine(
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)
-            markSeen(channelId)
+            markRead(channelId, store.channel(channelId)?.lastSeq ?: channel.lastSeq)
         }
     }
 
-    fun markSeen(channelId: String) {
+    /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
+    fun markRead(channelId: String, seq: Int) {
         val channel = store.channel(channelId) ?: return
-        if (channel.seenSeq < channel.lastSeq) store.updateChannel(channelId) { it.copy(seenSeq = it.lastSeq) }
+        if (!channel.isMember || seq <= channel.lastReadSeq) return
+        store.updateChannel(channelId) {
+            if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else it.copy(lastReadSeq = seq)
+        }
+        pendingReads.remove(channelId)?.cancel()
+        pendingReads[channelId] = scope.launch {
+            options.sleep(options.readDebounceMs)
+            val target = store.channel(channelId)?.lastReadSeq ?: return@launch
+            pendingReads.remove(channelId)
+            runCatching { api.markRead(channelId, target) }.onSuccess { post { applyReadState(channelId, it) } }
+        }
+    }
+
+    /** Waits for debounced read marks (tests). */
+    suspend fun flushReads() {
+        pendingReads.values.toList().forEach { it.join() }
+        idle()
     }
 
     suspend fun catchUp(channelId: String) {

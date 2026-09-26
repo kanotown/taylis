@@ -1,0 +1,32 @@
+{
+  "name": "2 端末の既読が単調に収束する (§10): 楽観的更新、他端末からの read.updated、自分の送信は既読",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "post", "as": "alice", "count": 3, "body": "m{i}"},
+    {"op": "client.start", "as": "bob", "page_size": 50},
+    {"op": "expect", "messages": ["m1", "m2", "m3"], "last_read_seq": 0, "unread_count": 3, "mention_count": 0},
+    {"op": "client.read", "seq": 2},
+    {"op": "expect", "last_read_seq": 2, "unread_count": 1},
+    {"op": "read", "as": "bob", "seq": 1},
+    {"op": "post", "as": "alice", "body": "m4"},
+    {"op": "client.receive"},
+    {"op": "expect", "last_read_seq": 2, "unread_count": 2},
+    {"op": "read", "as": "bob", "seq": 4},
+    {"op": "post", "as": "alice", "body": "m5"},
+    {"op": "client.receive"},
+    {"op": "expect", "last_read_seq": 4, "unread_count": 1},
+    {"op": "client.read", "seq": 3},
+    {"op": "expect", "last_read_seq": 4, "unread_count": 1},
+    {"op": "client.send", "body": "mine", "key": "1"},
+    {"op": "expect", "last_read_seq": 6, "unread_count": 0},
+    {"op": "client.receive"},
+    {"op": "expect", "last_read_seq": 6, "unread_count": 0, "messages": ["m1", "m2", "m3", "m4", "m5", "mine"]},
+    {"op": "post", "as": "alice", "body": "m7"},
+    {"op": "post", "as": "alice", "body": "hey <@{bob}>"},
+    {"op": "client.receive", "count": 2},
+    {"op": "expect", "last_read_seq": 6, "unread_count": 2, "mention_count": 1},
+    {"op": "client.read", "seq": 8},
+    {"op": "expect", "last_read_seq": 8, "unread_count": 0, "mention_count": 0}
+  ]
+}

@@ -22,6 +22,8 @@ from app.modules.channels.schemas import (
     MemberOut,
     MembershipOut,
 )
+from app.modules.reads import service as reads
+from app.modules.reads.schemas import ReadMark, ReadStateOut
 from app.modules.users.models import User
 
 MAX_DM_MEMBERS = 9
@@ -197,6 +199,7 @@ async def create_channel(db: AsyncSession, actor: User, data: ChannelCreate) -> 
         membership.channel_id = channel.id
         db.add(membership)
         await db.flush()
+        await reads.initialize_in_tx(db, actor.id, channel.id, channel.last_seq)
         await _emit_channel(
             db,
             events.CHANNEL_CREATED,
@@ -284,6 +287,7 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
     membership = await repo.get_membership(db, channel_id, actor.id)
     if membership is None:
         membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="member")
+        await reads.initialize_in_tx(db, actor.id, channel.id, channel.last_seq)
         db.add(membership)
         try:
             await db.flush()
@@ -338,6 +342,7 @@ async def add_member(
     if existing is not None:
         return to_member_out(existing)
     membership = ChannelMember(channel_id=channel_id, user_id=target.id, role="member")
+    await reads.initialize_in_tx(db, target.id, channel_id, channel.last_seq)
     db.add(membership)
     try:
         await db.flush()
@@ -408,6 +413,8 @@ async def get_or_create_dm(
                     for uid in user_ids
                 )
                 await db.flush()
+                for uid in user_ids:
+                    await reads.initialize_in_tx(db, uid, channel.id, 0)
                 await _emit_channel(db, events.CHANNEL_CREATED, channel, audience_type="channel")
             await db.commit()
             created = True
@@ -418,3 +425,15 @@ async def get_or_create_dm(
                 raise
     membership = await repo.get_membership(db, channel.id, actor.id)
     return to_channel_out(channel, membership, user_ids), created
+
+
+async def mark_read(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, data: ReadMark
+) -> ReadStateOut:
+    """PUT /channels/{id}/read (SYNC_PROTOCOL.md §4.5): monotonic, clamped to last_seq."""
+    channel, _ = await require_member(db, actor.id, channel_id)
+    state = await reads.advance_in_tx(
+        db, actor.id, channel_id, data.last_read_seq, last_seq=channel.last_seq
+    )
+    await db.commit()
+    return state

@@ -148,6 +148,9 @@ class ApiClient(
     suspend fun removeReaction(messageId: String, emoji: String): MessageOut =
         request("DELETE", "/api/v1/messages/$messageId/reactions/" + URLEncoder.encode(emoji, "UTF-8"))
 
+    override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut =
+        request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq) })
+
     override suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",

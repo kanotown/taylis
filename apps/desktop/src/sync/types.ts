@@ -1,6 +1,6 @@
-import type { ChannelOut, MessageOut, ReactionOut, UserMe, UserPublic } from "../api/types";
+import type { ChannelOut, MessageOut, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
 
-export type { ChannelOut, MessageOut, ReactionOut, UserMe, UserPublic };
+export type { ChannelOut, MessageOut, ReactionOut, ReadStateOut, UserMe, UserPublic };
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */
 export interface ChannelState extends ChannelOut {
@@ -8,8 +8,10 @@ export interface ChannelState extends ChannelOut {
   /** null: no timeline loaded yet. */
   syncedSeq: number | null;
   lastSeq: number;
-  /** Local read marker until the server read state arrives in M8b. */
-  seenSeq: number;
+  /** Server read position and counts (SYNC_PROTOCOL.md §10); counts are replaced by read.updated. */
+  lastReadSeq: number;
+  unreadCount: number;
+  mentionCount: number;
   hasOlder: boolean;
 }
 

@@ -93,7 +93,9 @@ export class Store {
       isMember: existing?.isMember ?? channel.membership !== null,
       syncedSeq: existing?.syncedSeq ?? null,
       lastSeq: Math.max(existing?.lastSeq ?? 0, channel.last_seq),
-      seenSeq: existing?.seenSeq ?? 0,
+      lastReadSeq: Math.max(existing?.lastReadSeq ?? 0, channel.read_state?.last_read_seq ?? 0),
+      unreadCount: channel.read_state?.unread_count ?? existing?.unreadCount ?? 0,
+      mentionCount: channel.read_state?.mention_count ?? existing?.mentionCount ?? 0,
       hasOlder: existing?.hasOlder ?? true,
       ...patch,
     };

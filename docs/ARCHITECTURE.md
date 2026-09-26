@@ -179,14 +179,18 @@ server/
    例外は明示的に許可する: `search` は `messages` / `attachments` を読み取り専用でクエリしてよい。
    `sync` は各モジュールの repository の read-only 関数を呼んでよい。`channels` はメンバー追加 / DM の
    対象ユーザー解決のため `users` を読み取り専用でクエリしてよい (`load_users`)。
+   `reads` は未読数・メンション数の集計のため `messages` を読み取り専用でクエリしてよい (DATA_MODEL.md の COUNT)。
 2. 副作用の連鎖 (「メッセージが作られたらプッシュを計画する」) はイベントで結ぶ。`messages` が
    `notifications` を直接呼ばない。
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。
    同一トランザクション内での付随更新も service 呼び出しでよい。例: `messages` → `reads.advance_in_tx()`。
 4. 依存方向は一方向に保つ:
-   `auth → users`、`admin → users, auth`、`channels → users`、`messages → channels, users, attachments, reads`、
-   `reads → channels`、`attachments → channels`、`search → channels (+ 読み取り例外)`、
+   `auth → users`、`admin → users, auth`、`channels → users, reads`、`messages → channels, users, attachments, reads`、
+   `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
+   `reads` は葉 (どのモジュールにも依存しない): 参加時の既読位置の初期化は `channels` が、送信者の既読は
+   `messages` が同一トランザクション内で呼ぶ。`PUT /channels/{id}/read` は `channels` の router に置く
+   (メンバー判定が `channels` にあるため。M8b で `reads → channels` から変更)。
    `events/` と `realtime/` は modules に依存しない。配信先 (audience) の解決に必要な関数は
    `main.py` で `OutboxRelay` に注入する。
 5. `core/` はどのモジュールにも依存しない。

@@ -10,6 +10,7 @@ import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ReactionOut
+import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.CLOSE_SESSION_REVOKED
@@ -79,6 +80,7 @@ class FakeServer {
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
         override suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId) }
+        override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null) }
     }
@@ -87,6 +89,8 @@ class FakeServer {
 
     val users = LinkedHashMap<String, UserPublic>()
     val channels = LinkedHashMap<String, ChannelRecord>()
+    /** "user:channel" → last_read_seq (DATA_MODEL.md read_states). */
+    val readPositions = HashMap<String, Int>()
     val sockets = ArrayList<Socket>()
     var holdEvents = false
     private val held = ArrayList<Pair<Set<String>, JsonObject>>()
@@ -111,10 +115,39 @@ class FakeServer {
             createdBy = ownerId, lastSeq = 0, createdAt = now(), updatedAt = now(),
         )
         channels[channel.id] = ChannelRecord(channel, mutableSetOf(ownerId), ArrayList())
+        readPositions["$ownerId:${channel.id}"] = 0
         return channel
     }
 
-    fun join(channelId: String, userId: String) { channels[channelId]?.members?.add(userId) }
+    fun join(channelId: String, userId: String) {
+        val record = channels[channelId] ?: return
+        record.members.add(userId)
+        readPositions.putIfAbsent("$userId:$channelId", record.channel.lastSeq) // history before the join is read
+    }
+
+    fun readState(userId: String, channelId: String): ReadStateOut {
+        val record = channels.getValue(channelId)
+        val position = readPositions["$userId:$channelId"] ?: 0
+        val unread = record.messages.filter { it.seq > position && !it.deleted }
+        return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) })
+    }
+
+    /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
+    fun markRead(userId: String, channelId: String, seq: Int): ReadStateOut {
+        val record = requireMember(channelId, userId)
+        val key = "$userId:$channelId"
+        val target = minOf(seq, record.channel.lastSeq)
+        val current = readPositions[key] ?: 0
+        if (target > current) {
+            readPositions[key] = target
+            val state = readState(userId, channelId)
+            emit(setOf(userId), event("read.updated", channelId, null, buildJsonObject {
+                put("channel_id", channelId); put("last_read_seq", state.lastReadSeq); put("unread_count", state.unreadCount); put("mention_count", state.mentionCount)
+            }))
+            return state
+        }
+        return readState(userId, channelId)
+    }
 
     private fun requireMember(channelId: String, userId: String): ChannelRecord {
         val record = channels[channelId] ?: throw ApiException.Api(404, "channel_not_found", "not found")
@@ -139,6 +172,7 @@ class FakeServer {
         record.messages.add(message)
         byClientKey["$senderId:$key"] = message
         emit(record.members, event("message.created", channelId, seq, buildJsonObject { put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message)) }))
+        markRead(senderId, channelId, seq) // the sender has read their own message (§10)
         return message to true
     }
 
@@ -237,7 +271,7 @@ class FakeServer {
         val user = users.getValue(userId)
         val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false)
         val mine = channels.values.filter { userId in it.members }.map { record ->
-            record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()))
+            record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id))
         }
         return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10))
     }

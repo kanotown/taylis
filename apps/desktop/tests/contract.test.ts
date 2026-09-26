@@ -50,10 +50,21 @@ class Scenario {
         const sender = this.server.userByName(step["as"] as string);
         for (let i = 0; i < Number(step["count"] ?? 1); i++) {
           this.posted += 1;
-          this.server.post(this.channelId, sender.id, String(step["body"]).replace("{i}", String(this.posted)));
+          let body = String(step["body"]).replace("{i}", String(this.posted));
+          for (const user of this.server.users.values()) body = body.replace(`{${user.username}}`, user.id);
+          this.server.post(this.channelId, sender.id, body);
         }
         return;
       }
+      case "read": {
+        const user = this.server.userByName(step["as"] as string);
+        this.server.markRead(user.id, this.channelId, Number(step["seq"]));
+        return;
+      }
+      case "client.read":
+        this.engine!.markRead(this.channelId, Number(step["seq"]));
+        await this.engine!.flushReads();
+        return;
       case "edit": {
         const user = this.server.userByName(step["as"] as string);
         const target = this.server.messageByBody(this.channelId, step["body_of"] as string);
@@ -127,6 +138,9 @@ class Scenario {
         if (step["first_body"] !== undefined) expect(bodies[0]).toBe(step["first_body"]);
         if (step["last_body"] !== undefined) expect(bodies[bodies.length - 1]).toBe(step["last_body"]);
         if (step["synced_seq"] !== undefined) expect(channel?.syncedSeq).toBe(step["synced_seq"]);
+        if (step["last_read_seq"] !== undefined) expect(channel?.lastReadSeq, "last_read_seq").toBe(step["last_read_seq"]);
+        if (step["unread_count"] !== undefined) expect(channel?.unreadCount, "unread_count").toBe(step["unread_count"]);
+        if (step["mention_count"] !== undefined) expect(channel?.mentionCount, "mention_count").toBe(step["mention_count"]);
         if (step["catch_ups"] !== undefined) expect(this.engine?.stats.catchUps).toBe(step["catch_ups"]);
         if (step["reloads"] !== undefined) expect(this.engine?.stats.reloads).toBe(step["reloads"]);
         if (step["reactions"] !== undefined) {

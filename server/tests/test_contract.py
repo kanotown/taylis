@@ -55,6 +55,13 @@ class Scenario:
                     f"/api/v1/channels/{self.channel_id}/join", headers=self._auth(member)
                 )
 
+    def _body(self, step: dict[str, Any], index: int) -> str:
+        """Bodies may use {i} (running number) and {name} (that user's id, for mentions)."""
+        values: dict[str, Any] = {"i": index}
+        for name, tokens in self.tokens.items():
+            values[name] = tokens["user"]["id"]
+        return str(step["body"]).format(**values)
+
     async def op_post(self, step: dict[str, Any]) -> None:
         name = step["as"]
         async with httpx.AsyncClient(base_url=self.live.base_url) as http:
@@ -63,10 +70,7 @@ class Scenario:
                 index = sum(self.posted.values())
                 response = await http.post(
                     f"/api/v1/channels/{self.channel_id}/messages",
-                    json={
-                        "client_msg_id": str(uuid.uuid4()),
-                        "body": str(step["body"]).format(i=index),
-                    },
+                    json={"client_msg_id": str(uuid.uuid4()), "body": self._body(step, index)},
                     headers=self._auth(name),
                 )
                 assert response.status_code == 201, response.text
@@ -133,6 +137,19 @@ class Scenario:
         assert self.client is not None
         self.client.drop_next(int(step["count"]))
 
+    async def op_read(self, step: dict[str, Any]) -> None:
+        """Another device of the same user reports a read position over REST."""
+        await self._change(
+            step,
+            "PUT",
+            f"/api/v1/channels/{self.channel_id}/read",
+            json={"last_read_seq": step["seq"]},
+        )
+
+    async def op_client_read(self, step: dict[str, Any]) -> None:
+        assert self.client is not None
+        await self.client.mark_read(int(step["seq"]))
+
     async def op_client_send(self, step: dict[str, Any]) -> None:
         assert self.client is not None
         key = str(uuid.uuid5(uuid.NAMESPACE_URL, str(step["key"])))
@@ -179,6 +196,9 @@ class Scenario:
             assert self.client.catch_ups == step["catch_ups"]
         if "reloads" in step:
             assert self.client.reloads == step["reloads"]
+        for key in ("last_read_seq", "unread_count", "mention_count"):
+            if key in step:
+                assert self.client.store["channel"][key] == step[key], (key, step)
         if "reactions" in step:
             by_body = {str(m["body"]): m for m in self.client.messages()}
             for body, emojis in step["reactions"].items():

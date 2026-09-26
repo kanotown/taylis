@@ -18,6 +18,7 @@ from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
+from app.modules.reads import service as reads
 from app.modules.users import service as users
 from app.modules.users.models import User
 
@@ -49,10 +50,16 @@ class PushPlanner:
         if not devices:
             return
         sender = await users.get_user(db, sender_id)
-        payload = self.build_payload(channel, sender, message, event.seq)
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
         planned = 0
+        payloads: dict[uuid.UUID, dict[str, Any]] = {}
         for device in devices:
+            if device.user_id not in payloads:
+                badge = await self.badge_for(db, device.user_id)
+                payload = self.build_payload(channel, sender, message, event.seq, badge=badge)
+                payloads[device.user_id] = payload.model_dump(mode="json") | {
+                    "expires_at": expires_at.isoformat()
+                }
             if await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -62,7 +69,7 @@ class PushPlanner:
                 channel_id=channel.id,
                 message_id=uuid.UUID(str(message["id"])),
                 message_seq=event.seq,
-                payload=payload.model_dump(mode="json") | {"expires_at": expires_at.isoformat()},
+                payload=payloads[device.user_id],
                 expires_at=expires_at,
             ):
                 planned += 1
@@ -81,6 +88,8 @@ class PushPlanner:
         default = default_level(channel)
         mentioned = {uuid.UUID(str(uid)) for uid in (message or {}).get("mentioned_user_ids", [])}
         mention_all = bool((message or {}).get("mention_all"))
+        seq = (message or {}).get("seq")
+        positions = await reads.last_read_seqs(db, recipients, channel.id)
         targets: list[uuid.UUID] = []
         for user_id in recipients:
             pref = prefs.get(user_id)
@@ -91,13 +100,36 @@ class PushPlanner:
                 continue
             if level == "mentions" and not (mention_all or user_id in mentioned):
                 continue
+            if seq is not None and positions.get(user_id, 0) >= int(seq):
+                continue  # already read on another device (§4)
             if self.is_active(user_id):
                 continue  # the user is looking at another device right now (§4.1)
             targets.append(user_id)
         return targets
 
+    async def badge_for(self, db: AsyncSession, user_id: uuid.UUID) -> int:
+        """Unread DMs + channel mentions (PUSH_NOTIFICATIONS.md §4.2); an approximation is fine."""
+        user = await users.get_user(db, user_id)
+        if user is None:
+            return 1
+        listed = await channels.list_channels(db, user, include_public=False)
+        states = await reads.states_for_user(db, user_id, [c.id for c in listed])
+        badge = 0
+        for c in listed:
+            state = states.get(c.id)
+            if state is None:
+                continue
+            badge += state.unread_count if c.type in ("dm", "group_dm") else state.mention_count
+        return badge
+
     def build_payload(
-        self, channel: Channel, sender: User | None, message: dict[str, object], seq: int | None
+        self,
+        channel: Channel,
+        sender: User | None,
+        message: dict[str, object],
+        seq: int | None,
+        *,
+        badge: int = 1,
     ) -> PushPayload:
         sender_name = sender.display_name if sender else "Someone"
         if channel.type == "dm":
@@ -119,7 +151,7 @@ class PushPlanner:
             title=title,
             subtitle=subtitle,
             body=body or "新しいメッセージ",
-            badge=1,  # M8b: unread DMs + mentions
+            badge=max(badge, 1),
             collapse_key=str(channel.id),
             sent_at=utcnow(),
         )

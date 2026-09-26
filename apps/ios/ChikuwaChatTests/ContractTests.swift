@@ -82,8 +82,17 @@ final class ContractTests: XCTestCase {
             let sender = s.server.user(named: step["as"]?.stringValue ?? "")
             for _ in 0..<Int(step["count"]?.doubleValue ?? 1) {
                 s.posted += 1
-                try s.server.post(channelId: s.channelId, senderId: sender.id, body: (step["body"]?.stringValue ?? "").replacingOccurrences(of: "{i}", with: String(s.posted)))
+                var body = (step["body"]?.stringValue ?? "").replacingOccurrences(of: "{i}", with: String(s.posted))
+                for user in s.server.users.values { body = body.replacingOccurrences(of: "{\(user.username)}", with: user.id) }
+                try s.server.post(channelId: s.channelId, senderId: sender.id, body: body)
             }
+        case "read":
+            let user = s.server.user(named: step["as"]?.stringValue ?? "")
+            try s.server.markRead(userId: user.id, channelId: s.channelId, seq: Int(step["seq"]?.doubleValue ?? 0))
+        case "client.read":
+            s.engine?.markRead(s.channelId, seq: Int(step["seq"]?.doubleValue ?? 0))
+            await s.engine?.flushReads()
+            await settle(s.engine)
         case "edit":
             let user = s.server.user(named: step["as"]?.stringValue ?? "")
             let target = try s.server.messageByBody(s.channelId, step["body_of"]?.stringValue ?? "")
@@ -139,6 +148,9 @@ final class ContractTests: XCTestCase {
             if let first = step["first_body"]?.stringValue { XCTAssertEqual(bodies.first, first) }
             if let last = step["last_body"]?.stringValue { XCTAssertEqual(bodies.last, last) }
             if let synced = step["synced_seq"]?.doubleValue { XCTAssertEqual(channel?.syncedSeq, Int(synced)) }
+            if let value = step["last_read_seq"]?.doubleValue { XCTAssertEqual(channel?.lastReadSeq, Int(value), "last_read_seq") }
+            if let value = step["unread_count"]?.doubleValue { XCTAssertEqual(channel?.unreadCount, Int(value), "unread_count") }
+            if let value = step["mention_count"]?.doubleValue { XCTAssertEqual(channel?.mentionCount, Int(value), "mention_count") }
             if let catchUps = step["catch_ups"]?.doubleValue { XCTAssertEqual(s.engine?.catchUps, Int(catchUps)) }
             if let reloads = step["reloads"]?.doubleValue { XCTAssertEqual(s.engine?.reloads, Int(reloads)) }
             if let serverCount = step["server_message_count"]?.doubleValue { XCTAssertEqual(s.server.channels[s.channelId]?.messages.count, Int(serverCount)) }
