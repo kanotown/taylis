@@ -3,21 +3,32 @@ import SwiftUI
 struct ChannelListView: View {
     @Bindable var controller: AppController
     @Binding var selection: String?
+    @AppStorage("sidebar.unreadOnly") private var unreadOnly = false
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
-    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
-    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
-    private var browse: [ChannelState] { channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+    /// The unread filter keeps the open conversation so the selection never disappears.
+    private func keep(_ channel: ChannelState) -> Bool { !unreadOnly || channel.id == selection || channel.showsUnread }
+    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
+    private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
     var body: some View {
         List(selection: $selection) {
+            Section {
+                Picker("表示", selection: $unreadOnly) {
+                    Text("すべて").tag(false)
+                    Text("未読").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+            }
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
-                if mine.isEmpty { hint("参加中のチャンネルはありません。＋ から作成できます。") }
+                if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
             }
             Section("ダイレクトメッセージ") {
                 ForEach(dms) { row($0) }
-                if dms.isEmpty { hint("＋ の「ダイレクトメッセージ」から相手を選べます。") }
+                if dms.isEmpty { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
             }
             if !browse.isEmpty {
                 Section("参加できるチャンネル") {
@@ -60,7 +71,8 @@ struct ChannelListView: View {
 
     private func row(_ channel: ChannelState) -> some View {
         let badge = channel.badgeContribution
-        let unread = channel.hasUnread && channel.id != selection
+        let muted = channel.isMuted
+        let unread = channel.showsUnread && channel.id != selection
         let store = controller.store
         return NavigationLink(value: channel.id) {
             HStack(spacing: 12) {
@@ -77,7 +89,7 @@ struct ChannelListView: View {
                     }
                 }
                 Spacer()
-                if isMuted(channel) { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
+                if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
                 if unread && badge > 0 {
                     Text("\(badge)")
                         .font(.caption2).bold().foregroundStyle(.white)
@@ -88,6 +100,7 @@ struct ChannelListView: View {
                 }
             }
             .padding(.vertical, 2)
+            .opacity(muted && !unread ? 0.6 : 1)
         }
     }
 }

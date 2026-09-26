@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -46,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +74,7 @@ fun MainScreen(controller: AppController) {
     var dialog by remember { mutableStateOf<MainDialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
+    var unreadOnly by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -192,7 +195,11 @@ fun MainScreen(controller: AppController) {
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
                 } else {
-                    ChannelList(store, version, onSelect = { controller.messageFocus = null; selection = it }, onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } })
+                    ChannelList(
+                        store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly },
+                        onSelect = { controller.messageFocus = null; selection = it },
+                        onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } },
+                    )
                 }
             }
         }
@@ -228,19 +235,31 @@ fun ConnectionBanner(status: EngineStatus) {
 }
 
 @Composable
-private fun ChannelList(store: Store, version: Int, onSelect: (String) -> Unit, onJoin: (String) -> Unit) {
-    val all = remember(version) { store.channels.values.toList() }
-    val channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.archived }.sortedBy { it.channel.name ?: "" }
-    val dms = all.filter { it.isMember && it.channel.isDm }.sortedByDescending { it.channel.lastMessageAt ?: "" }
-    val browsable = all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" }
+private fun ChannelList(
+    store: Store,
+    version: Int,
+    unreadOnly: Boolean,
+    onToggleUnreadOnly: () -> Unit,
+    onSelect: (String) -> Unit,
+    onJoin: (String) -> Unit,
+) {
+    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
+    val channels = sections.channels
+    val dms = sections.dms
+    val browsable = sections.browse
 
     LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = unreadOnly, onClick = onToggleUnreadOnly, label = { Text("未読のみ") })
+            }
+        }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
-        if (channels.isEmpty()) item { EmptyHint("参加中のチャンネルはありません。メニューから作成できます。") }
+        if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
         item { SectionHeader("ダイレクトメッセージ") }
         items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
-        if (dms.isEmpty()) item { EmptyHint("メニューの「ダイレクトメッセージ」から相手を選べます") }
+        if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
         if (browsable.isNotEmpty()) {
             item { SectionHeader("参加できるチャンネル") }
             items(browsable, key = { "browse:" + it.id }) { channel ->
@@ -280,8 +299,13 @@ private fun ChannelGlyph(channel: ChannelState) {
 @Composable
 private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit) {
     val title = channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") }
-    val muted = channel.channel.notification?.level == "none" || Timeline.muteLabel(channel.channel.notification?.mutedUntil) != null
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val muted = Channels.isMuted(channel)
+    val unread = Channels.hasUnread(channel)
+    val badge = Channels.badgeCount(channel)
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (channel.channel.isDm) {
             val other = (channel.channel.dmUserIds ?: emptyList()).firstOrNull { it != store.me?.id } ?: store.me?.id ?: channel.id
             Avatar(other, store.users[other]?.displayName ?: title, size = 36.dp)
@@ -290,20 +314,19 @@ private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = if (channel.hasUnread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val subtitle = channel.channel.topic?.takeIf { it.isNotBlank() && !channel.channel.isDm }
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (muted) Text("🔕", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
-        if (channel.mentionCount > 0 || (channel.hasUnread && channel.channel.isDm)) {
-            val count = if (channel.channel.isDm) channel.unreadCount else channel.mentionCount
+        if (unread && badge > 0) {
             Text(
-                count.toString(),
+                badge.toString(),
                 color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 7.dp, vertical = 2.dp),
             )
-        } else if (channel.hasUnread) {
+        } else if (unread) {
             Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
         }
     }

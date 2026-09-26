@@ -236,6 +236,27 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
     await engine.idle();
     expect(notifications).toEqual([`hey <@${bob.id}>`, "<!here> all"]);
   });
+
+  it("follows the channel notification level: all notifies everything, none and a mute silence mentions", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    await engine.start();
+    await engine.idle();
+    store.setNotification(channel.id, "all", null);
+    server.post(channel.id, alice.id, "every message");
+    await engine.idle();
+    expect(notifications).toEqual(["every message"]);
+    store.setNotification(channel.id, "none", null);
+    server.post(channel.id, alice.id, `silenced <@${bob.id}>`);
+    await engine.idle();
+    store.setNotification(channel.id, "mentions", new Date(Date.now() + 3600_000).toISOString());
+    server.post(channel.id, alice.id, `muted <@${bob.id}>`);
+    await engine.idle();
+    expect(notifications).toEqual(["every message"]);
+    store.setNotification(channel.id, "mentions", new Date(Date.now() - 1000).toISOString());
+    server.post(channel.id, alice.id, `expired mute <@${bob.id}>`);
+    await engine.idle();
+    expect(notifications).toEqual(["every message", `expired mute <@${bob.id}>`]);
+  });
 });
 
 describe("read state (M8b)", () => {

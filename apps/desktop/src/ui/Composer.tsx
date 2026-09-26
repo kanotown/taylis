@@ -15,11 +15,14 @@ export function Composer({
   channel,
   parentId = null,
   placeholder = "メッセージを入力 (Enter で送信、Shift+Enter で改行、@ でメンション)",
+  onReplyLast,
 }: {
   controller: AppController;
   channel: ChannelState;
   parentId?: string | null;
   placeholder?: string;
+  /** Shift+↑ in an empty composer: reply in a thread to the newest message (Slack / Mattermost). */
+  onReplyLast?: () => void;
 }) {
   const store = controller.store;
   const { text, attachments: pending } = store.draft(channel.id, parentId);
@@ -106,6 +109,29 @@ export function Composer({
         if (candidate) pick(candidate);
         return;
       }
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "u") {
+      event.preventDefault();
+      fileInput.current?.click();
+      return;
+    }
+    if (event.key === "ArrowUp" && text === "" && !imeEnter) {
+      if (event.shiftKey) {
+        if (onReplyLast) {
+          event.preventDefault();
+          onReplyLast();
+        }
+        return;
+      }
+      // ↑ in an empty composer edits my newest message in this conversation.
+      const me = store.me;
+      const pool = parentId ? store.replies(channel.id, parentId) : store.messages(channel.id);
+      const mine = pool.filter((m) => m.sender_id === me?.id && !m.pending && !m.deleted).at(-1);
+      if (mine) {
+        event.preventDefault();
+        controller.setEditing(mine.id);
+      }
+      return;
     }
     if (event.key !== "Enter" || event.shiftKey) return;
     if (imeEnter) return; // confirming a Japanese conversion, not sending

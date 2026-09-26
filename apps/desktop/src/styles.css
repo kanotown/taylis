@@ -210,3 +210,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 .message.highlighted { animation: message-highlight 4s ease-out; }
 @keyframes message-highlight { from { background: var(--mark); } to { background: transparent; } }
 .message:focus-within .actions { display: inline-flex; }
+
+/* sidebar tools, muted rows */
+.sidebar .tools-row { display: flex; gap: 6px; margin: 8px 8px 4px; }
+.sidebar .tools-row .switcher-hint { flex: 1; margin: 0; width: auto; }
+.sidebar .filter { background: rgba(255, 255, 255, 0.08); color: var(--sidebar-fg); font-size: 12px; padding: 6px 10px; }
+.sidebar .filter:hover { background: rgba(255, 255, 255, 0.14); }
+.sidebar .filter.active { background: var(--sidebar-active); color: #fff; }
+.sidebar li.muted-channel button { opacity: 0.6; }
+.sidebar li.muted-channel.unread button { opacity: 1; }
+.jump.fresh { background: var(--accent); font-weight: 600; }
+.editor .hint { font-size: 11px; align-self: center; }
+.shortcuts table { width: 100%; border-collapse: collapse; }
+.shortcuts td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.shortcuts kbd { border-color: var(--border); background: var(--surface-2); color: var(--fg); white-space: nowrap; }

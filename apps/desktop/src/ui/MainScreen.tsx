@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
+import { hasUnread, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
-import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, TopicDialog } from "./Dialogs";
+import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { SearchPane } from "./SearchPane";
@@ -12,7 +13,17 @@ import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
 import { Toast } from "./Toast";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | null;
+
+const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
+
+function readUnreadOnly(): boolean {
+  try {
+    return localStorage.getItem(UNREAD_ONLY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
@@ -23,10 +34,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [searching, setSearching] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
   const status = engine?.status ?? "idle";
+
+  // The keyboard handler is registered once and reads the latest state through this ref.
+  const state = useRef({ currentId, dialog, threadId, searching, switcher });
+  state.current = { currentId, dialog, threadId, searching, switcher };
 
   useEffect(() => {
     if (!currentId && channels.length > 0) {
@@ -39,21 +55,65 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (currentId && engine) void engine.openChannel(currentId).catch((error) => controller.setError(error));
   }, [currentId, engine]);
 
-  // Keyboard: Ctrl/⌘+K quick switcher, Ctrl/⌘+F search, Esc closes the right pane / dialogs.
+  const open = (id: string) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setCurrentId(id);
+    setThreadId(null);
+    setSwitcher(false);
+  };
+
+  const toggleUnreadOnly = () => {
+    setUnreadOnly((value) => {
+      try {
+        localStorage.setItem(UNREAD_ONLY_KEY, value ? "0" : "1");
+      } catch {
+        /* per-viewer convenience only */
+      }
+      return !value;
+    });
+  };
+
   useEffect(() => {
+    const navigationOrder = () => {
+      const all = [...controller.store.channels.values()];
+      const sections = sectionChannels(all, (c) => channelTitle(c, controller));
+      return [...sections.channels, ...sections.dms];
+    };
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
-      if (mod && event.key.toLowerCase() === "k") {
+      const key = event.key.toLowerCase();
+      const s = state.current;
+      if (mod && !event.shiftKey && key === "k") {
         event.preventDefault();
         setSwitcher(true);
-      } else if (mod && event.key.toLowerCase() === "f") {
+      } else if (mod && event.shiftKey && key === "k") {
+        event.preventDefault();
+        setDialog("dm");
+      } else if (mod && !event.shiftKey && key === "f") {
         event.preventDefault();
         setSearching(true);
+      } else if (mod && event.shiftKey && key === "l") {
+        event.preventDefault();
+        document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
+      } else if (mod && key === "/") {
+        event.preventDefault();
+        setDialog((d) => (d === "shortcuts" ? null : "shortcuts"));
+      } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        const next = stepChannel(navigationOrder(), s.currentId, event.key === "ArrowDown" ? 1 : -1, { unreadOnly: event.shiftKey });
+        if (next) open(next.id);
       } else if (event.key === "Escape") {
-        if (switcher) setSwitcher(false);
-        else if (dialog) setDialog(null);
-        else if (searching) setSearching(false);
-        else if (threadId) setThreadId(null);
+        if (s.switcher) setSwitcher(false);
+        else if (s.dialog) setDialog(null);
+        else if (s.searching) setSearching(false);
+        else if (s.threadId) setThreadId(null);
+        else if (controller.editing) controller.setEditing(null);
+        else if (s.currentId) {
+          // Nothing to close: Esc marks the open conversation read (Mattermost).
+          const channel = controller.store.getChannel(s.currentId);
+          if (channel && hasUnread(channel)) controller.engine?.markRead(channel.id, channel.lastSeq);
+        }
         setBellOpen(false);
       }
     };
@@ -64,14 +124,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("chikuwa:quick-switch", onSwitch);
     };
-  }, [switcher, dialog, searching, threadId]);
-
-  const open = (id: string) => {
-    controller.clearMessageFocus();
-    setCurrentId(id);
-    setThreadId(null);
-    setSwitcher(false);
-  };
+  }, [controller]);
 
   const join = async (id: string) => {
     if (!controller.api) return;
@@ -84,6 +137,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
     }
   };
 
+  const replyToLast = () => {
+    if (!current) return;
+    const last = store.messages(current.id).filter((m) => !m.pending && !m.deleted).at(-1);
+    if (last) setThreadId(last.id);
+  };
+
   const muteLabel = current ? formatMuted(current.mutedUntil) : null;
   const level: NotificationLevel = current?.notificationLevel ?? (current && (current.type === "dm" || current.type === "group_dm") ? "all" : "mentions");
   const isChannel = current?.type === "public" || current?.type === "private";
@@ -94,6 +153,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         controller={controller}
         channels={channels}
         currentId={currentId}
+        unreadOnly={unreadOnly}
+        onToggleUnreadOnly={toggleUnreadOnly}
         onOpen={open}
         onJoin={(id) => void join(id)}
         onNewDm={() => setDialog("dm")}
@@ -162,6 +223,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
                     )}
                   </span>
                 )}
+                <button className="icon" title="キーボードショートカット (Ctrl/⌘+/)" onClick={() => setDialog("shortcuts")}>
+                  ⌨️
+                </button>
                 {!current.isMember && (
                   <button className="secondary" onClick={() => void join(current.id)}>
                     参加する
@@ -170,7 +234,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
-            {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} />}
+            {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />}
             {current.archived && <div className="muted archived-note">アーカイブされたチャンネルには投稿できません</div>}
           </>
         ) : (
@@ -207,6 +271,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "add-member" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog("members")} />}
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
     </div>
   );
 }

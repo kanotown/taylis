@@ -127,4 +127,27 @@ describe("conversation UX", () => {
     expect(reopened.draft("c").text).toBe("");
     expect(reopened.draft("c", "thread").text).toBe("reply");
   });
+
+  it("edits my newest message with ↑ and replies to the newest message with Shift+↑", () => {
+    const w = world();
+    const setEditing = vi.fn();
+    (w.controller as unknown as { setEditing: unknown }).setEditing = setEditing;
+    const onReplyLast = vi.fn();
+    w.store.setMe({ ...w.me, email: null, must_change_password: false });
+    const bob = w.server.addUser("bob");
+    w.server.join(w.channel.id, bob.id);
+    w.store.upsertUser(bob);
+    const mine = w.server.post(w.channel.id, w.me.id, "mine").message;
+    w.store.upsertMessage(mine);
+    w.store.upsertMessage(w.server.post(w.channel.id, bob.id, "theirs").message);
+    render(<Composer controller={w.controller} channel={w.store.getChannel(w.channel.id)!} onReplyLast={onReplyLast} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
+    expect(setEditing).toHaveBeenCalledWith(mine.id);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp", shiftKey: true });
+    expect(onReplyLast).toHaveBeenCalledTimes(1);
+    // With text in the field ↑ is ordinary cursor movement.
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "typing" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
+    expect(setEditing).toHaveBeenCalledTimes(1);
+  });
 });

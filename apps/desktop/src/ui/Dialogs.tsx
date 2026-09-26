@@ -322,3 +322,45 @@ export function SettingsDialog({ controller, onClose }: { controller: AppControl
     </div>
   );
 }
+
+const SHORTCUTS: Array<[string, string]> = [
+  ["Ctrl/⌘ + K", "チャンネルや DM に移動"],
+  ["Ctrl/⌘ + Shift + K", "新しい DM"],
+  ["Ctrl/⌘ + F", "検索"],
+  ["Alt/⌥ + ↑ / ↓", "前 / 次のチャンネル"],
+  ["Alt/⌥ + Shift + ↑ / ↓", "前 / 次の未読チャンネル"],
+  ["Esc", "パネルを閉じる。何も開いていなければ表示中のチャンネルを既読にする"],
+  ["↑ (空の入力欄)", "自分の最後のメッセージを編集"],
+  ["Shift + ↑ (空の入力欄)", "最後のメッセージにスレッドで返信"],
+  ["Enter / Shift + Enter", "送信 / 改行"],
+  ["Ctrl/⌘ + U", "ファイルを添付"],
+  ["Ctrl/⌘ + Shift + L", "入力欄にフォーカス"],
+  ["Ctrl/⌘ + /", "この一覧"],
+];
+
+export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal shortcuts" onClick={(e) => e.stopPropagation()}>
+        <h2>キーボードショートカット</h2>
+        <table>
+          <tbody>
+            {SHORTCUTS.map(([keys, what]) => (
+              <tr key={keys}>
+                <td>
+                  <kbd>{keys}</kbd>
+                </td>
+                <td>{what}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="row">
+          <button className="secondary" onClick={onClose}>
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

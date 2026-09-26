@@ -16,6 +16,8 @@ struct ChannelView: View {
     @State private var loadingOlder = false
     /// Read position when the channel was opened; the 「新着メッセージ」 divider stays there.
     @State private var unreadMark: Int?
+    /// Newest seq the reader has had on screen at the bottom; later messages from others are "new".
+    @State private var seenSeq: Int?
 
     enum ChannelSheet: Identifiable {
         case info, addMember
@@ -34,6 +36,15 @@ struct ChannelView: View {
         return controller.store.messages(channelId)
     }
     private var items: [TimelineItem] { Timeline.build(messages, firstUnreadAfterSeq: unreadMark, meId: controller.store.me?.id) }
+    private var unseenBelow: Int {
+        guard focus == nil, let seenSeq else { return 0 }
+        let me = controller.store.me?.id
+        return messages.filter { ($0.seq ?? 0) > seenSeq && $0.senderId != me }.count
+    }
+    private func markSeen() {
+        let newest = messages.compactMap(\.seq).max() ?? 0
+        if newest > (seenSeq ?? 0) { seenSeq = newest }
+    }
 
     private func markRead() {
         guard positioned, focus == nil, thread == nil, scenePhase == .active else { return }
@@ -126,14 +137,26 @@ struct ChannelView: View {
                     .overlay(alignment: .bottomTrailing) {
                         if !atBottom && focus == nil {
                             Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
-                                Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                                if unseenBelow > 0 {
+                                    Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
+                                        .font(.footnote.bold())
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .background(Color.accentColor, in: Capsule())
+                                        .foregroundStyle(.white)
+                                } else {
+                                    Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                                }
                             }
-                            .accessibilityLabel("最新のメッセージへ")
+                            .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
                             .padding(12)
                         }
                     }
+                    .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
                     .onChange(of: messages.last?.id) { _, _ in
-                        if positioned && atBottom && focus == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                        if positioned && atBottom && focus == nil {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                            markSeen()
+                        }
                     }
                     .task(id: messages.count) { await Task.yield(); position(proxy) }
                     .onChange(of: focus?.messageId) { _, _ in
@@ -144,6 +167,7 @@ struct ChannelView: View {
                     .onChange(of: scenePhase) { _, _ in markRead() }
                     .onAppear {
                         if unreadMark == nil, let channel, channel.unreadCount > 0 { unreadMark = channel.lastReadSeq }
+                        if seenSeq == nil { seenSeq = channel?.lastReadSeq ?? 0 }
                     }
                 }
             }
