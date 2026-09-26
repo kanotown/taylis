@@ -253,6 +253,10 @@ class ApiClient(
 
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 
+    // --- link previews (M11g) -------------------------------------------------------------------
+
+    suspend fun linkPreview(url: String): LinkPreviewOut = request("GET", "/api/v1/link-previews?url=" + Enc.encode(url, "UTF-8"))
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------
 
     suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")
