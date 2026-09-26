@@ -33,7 +33,14 @@ import jp.chikuwachat.android.api.UserPublic
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
 @Composable
-fun MessageBody(text: String, users: Map<String, UserPublic>, modifier: Modifier = Modifier) {
+fun MessageBody(
+    text: String,
+    users: Map<String, UserPublic>,
+    modifier: Modifier = Modifier,
+    /** M12b: links on this server (`<base>/m/<id>`) open the message in place instead of a browser. */
+    internalBase: String? = null,
+    onOpenMessage: ((String) -> Unit)? = null,
+) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -46,9 +53,16 @@ fun MessageBody(text: String, users: Map<String, UserPublic>, modifier: Modifier
                 is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(Emoji.replaceShortcodes(token.text)) }
                 is BodyToken.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(token.text) }
                 is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(token.text) }
-                is BodyToken.Link -> withLink(
+                is BodyToken.Link -> {
+                    val internal = internalBase?.let { Permalink.messageId(it, token.url) }
+                    if (internal != null && onOpenMessage != null) {
+                        withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
+                            append("💬 " + (token.label?.takeIf { it != token.url } ?: "メッセージを表示"))
+                        }
+                    } else withLink(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),
                 ) { append(token.label ?: token.url) }
+                }
                 is BodyToken.Mention -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) {
                     append("@" + (users[token.userId]?.displayName ?: "unknown"))
                 }
