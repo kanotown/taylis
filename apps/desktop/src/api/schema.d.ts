@@ -298,6 +298,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/notification-preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Preference */
+        put: operations["set_preference_api_v1_channels__channel_id__notification_preference_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/sync": {
         parameters: {
             query?: never;
@@ -602,6 +619,7 @@ export interface components {
             membership: components["schemas"]["MembershipOut"] | null;
             /** Name */
             name: string | null;
+            notification?: components["schemas"]["NotificationPreferenceOut"] | null;
             /** Purpose */
             purpose: string | null;
             /** Topic */
@@ -646,6 +664,12 @@ export interface components {
              * @enum {string}
              */
             platform: "ios" | "android" | "desktop";
+            /** Push Environment */
+            push_environment?: ("sandbox" | "production") | null;
+            /** Push Provider */
+            push_provider?: ("apns" | "fcm" | "none") | null;
+            /** Push Token */
+            push_token?: string | null;
         };
         /** DeviceOut */
         DeviceOut: {
@@ -671,6 +695,12 @@ export interface components {
             last_seen_at: string | null;
             /** Platform */
             platform: string;
+            /** Push Environment */
+            push_environment: string | null;
+            /** Push Provider */
+            push_provider: string;
+            /** Push Registered */
+            push_registered: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -683,6 +713,12 @@ export interface components {
             app_version?: string | null;
             /** Device Name */
             device_name?: string | null;
+            /** Push Environment */
+            push_environment?: ("sandbox" | "production") | null;
+            /** Push Provider */
+            push_provider?: ("apns" | "fcm" | "none") | null;
+            /** Push Token */
+            push_token?: string | null;
         };
         /** DmCreate */
         DmCreate: {
@@ -797,6 +833,31 @@ export interface components {
             seq: number;
             /** Updated Seq */
             updated_seq: number;
+        };
+        /** NotificationPreferenceIn */
+        NotificationPreferenceIn: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "all" | "mentions" | "none";
+            /** Muted Until */
+            muted_until?: string | null;
+        };
+        /** NotificationPreferenceOut */
+        NotificationPreferenceOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "all" | "mentions" | "none";
+            /** Muted Until */
+            muted_until: string | null;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -1604,6 +1665,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_preference_api_v1_channels__channel_id__notification_preference_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferenceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferenceOut"];
                 };
             };
             /** @description Validation Error */

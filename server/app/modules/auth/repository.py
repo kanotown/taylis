@@ -29,6 +29,22 @@ async def get_device(db: AsyncSession, device_id: uuid.UUID) -> Device | None:
     return await db.get(Device, device_id)
 
 
+async def release_push_token(
+    db: AsyncSession, provider: str, token: str, *, except_device_id: uuid.UUID
+) -> None:
+    """A push token belongs to one device row; clear it wherever else it is registered."""
+    await db.execute(
+        update(Device)
+        .where(
+            Device.push_provider == provider,
+            Device.push_token == token,
+            Device.id != except_device_id,
+        )
+        .values(push_token=None)
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def list_sessions(
     db: AsyncSession, user_id: uuid.UUID, now: datetime
 ) -> list[tuple[UserSession, Device]]:

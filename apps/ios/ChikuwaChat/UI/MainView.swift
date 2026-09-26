@@ -43,6 +43,13 @@ struct MainView: View {
         .onChange(of: selection) { _, id in
             if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
+        .onChange(of: PushCenter.shared.pendingChannelId, initial: true) { _, id in
+            // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
+            if let id, controller.store.channel(id) != nil {
+                selection = id
+                PushCenter.shared.pendingChannelId = nil
+            }
+        }
     }
 }
 

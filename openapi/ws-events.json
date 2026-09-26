@@ -108,6 +108,17 @@
                 ],
                 "title": "Name"
               },
+              "notification": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NotificationPreferenceOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "purpose": {
                 "anyOf": [
                   {
@@ -181,6 +192,43 @@
               "joined_at"
             ],
             "title": "MembershipOut",
+            "type": "object"
+          },
+          "NotificationPreferenceOut": {
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "all",
+                  "mentions",
+                  "none"
+                ],
+                "title": "Level",
+                "type": "string"
+              },
+              "muted_until": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Muted Until"
+              }
+            },
+            "required": [
+              "channel_id",
+              "level",
+              "muted_until"
+            ],
+            "title": "NotificationPreferenceOut",
             "type": "object"
           }
         },
@@ -339,6 +387,17 @@
                 ],
                 "title": "Name"
               },
+              "notification": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NotificationPreferenceOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "purpose": {
                 "anyOf": [
                   {
@@ -412,6 +471,43 @@
               "joined_at"
             ],
             "title": "MembershipOut",
+            "type": "object"
+          },
+          "NotificationPreferenceOut": {
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "all",
+                  "mentions",
+                  "none"
+                ],
+                "title": "Level",
+                "type": "string"
+              },
+              "muted_until": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Muted Until"
+              }
+            },
+            "required": [
+              "channel_id",
+              "level",
+              "muted_until"
+            ],
+            "title": "NotificationPreferenceOut",
             "type": "object"
           }
         },
@@ -530,6 +626,40 @@
           "message"
         ],
         "title": "MessageCreatedData",
+        "type": "object"
+      }
+    },
+    "notification_preference.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "muted_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted Until"
+          }
+        },
+        "required": [
+          "channel_id",
+          "level",
+          "muted_until"
+        ],
+        "title": "NotificationPreferenceUpdatedData",
         "type": "object"
       }
     },

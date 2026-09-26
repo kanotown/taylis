@@ -47,9 +47,9 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:${APP_HOST_PORT:-8000}:8000"
-    # M5 で APNs 鍵をマウントする:
-    # volumes:
-    #   - ./secrets/AuthKey_XXXXXXXXXX.p8:/run/secrets/apns_key.p8:ro
+    volumes:
+      # APNs 認証キー (infra/.env の APNS_KEY_FILE で指定。未設定なら存在しないダミーパス)
+      - ${APNS_KEY_FILE:-./secrets/apns_key.p8}:/run/secrets/apns_key.p8:ro
     restart: unless-stopped
 
   caddy:

@@ -219,6 +219,20 @@ async def update_device(db: AsyncSession, context: AuthContext, data: DeviceUpda
         device.device_name = data.device_name
     if "app_version" in data.model_fields_set:
         device.app_version = data.app_version
+    if "push_token" in data.model_fields_set or "push_provider" in data.model_fields_set:
+        provider = data.push_provider or (
+            device.push_provider if device.push_provider != "none" else "apns"
+        )
+        if data.push_token is None:
+            device.push_token = None
+        else:
+            # The same physical device registered again (new login): move the token here.
+            await repo.release_push_token(db, provider, data.push_token, except_device_id=device.id)
+            device.push_token = data.push_token
+            device.push_token_invalid_reason = None
+        device.push_provider = provider if device.push_token is not None else "none"
+    if "push_environment" in data.model_fields_set:
+        device.push_environment = data.push_environment
     device.last_seen_at = utcnow()
     device.updated_at = device.last_seen_at
     await db.commit()

@@ -20,7 +20,11 @@ targets:
     platform: iOS
     sources:
       - path: ChikuwaChat
-        excludes: ["Info.plist"]
+        excludes: ["Info.plist", "ChikuwaChat.entitlements"]
+    entitlements:
+      path: ChikuwaChat/ChikuwaChat.entitlements
+      properties:
+        aps-environment: development
     info:
       path: ChikuwaChat/Info.plist
       properties:

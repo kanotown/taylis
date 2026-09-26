@@ -31,7 +31,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M2 | 信頼できる同期 | channel sequence と idempotency の保証、outbox、WebSocket、再接続同期、bootstrap | **完了 (2026-09-26)**。outbox + Relay (LISTEN/NOTIFY)、InMemoryEventBus、WebSocket Hub、差分 API、bootstrap、ws-events.json。pytest 75 件 (実 uvicorn + WebSocket の統合テスト、SYNC_PROTOCOL §13 の契約フィクスチャ 1/2/3/5/6/8/9 を参照クライアントで実行) がすべて成功 |
 | M3 | Desktop クライアント | login、channel list、message list、send、リアルタイム更新 | **実装済み (2026-09-26)**: Tauri 2 + React + TS、SQLite ストア、Keychain、SYNC_PROTOCOL の同期エンジン、DM 通知、契約フィクスチャ 7 本と実サーバに対するライブテストが通過。macOS で `tauri build` 済み。Windows ビルドは CI (windows runner) で行う |
 | M4 | iOS クライアント | login、channel list、messages、send、リアルタイム同期 | **実装済み (2026-09-26)**: SwiftUI、Keychain、SQLite3 ラッパ、Desktop と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (シミュレータ) が通過。実機での通し確認は Xcode からのインストール後に行う |
-| M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | 実機で通知を受け、タップして同期済みの画面が開く |
+| M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | エミュレータで会話できる |
 | M7 | FCM | 端末登録、トークン処理、配送 | エミュレータで通知を受ける |
 | M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | 3 クライアントで動作し、差分同期で回復する |

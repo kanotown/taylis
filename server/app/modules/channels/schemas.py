@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.modules.notifications.schemas import NotificationPreferenceOut
+
 ChannelType = Literal["public", "private", "dm", "group_dm"]
 CHANNEL_NAME_PATTERN = r"^[^\s#@/]{1,80}$"
 
@@ -42,6 +44,8 @@ class ChannelOut(BaseModel):
     updated_at: datetime
     membership: MembershipOut | None
     dm_user_ids: list[UUID] | None
+    # Filled by the sync module for the requesting user (bootstrap); None elsewhere.
+    notification: NotificationPreferenceOut | None = None
 
 
 class MemberOut(BaseModel):

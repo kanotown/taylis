@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct ChikuwaChatApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var controller = AppController()
     @Environment(\.scenePhase) private var scenePhase
 

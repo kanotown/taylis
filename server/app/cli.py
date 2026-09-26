@@ -111,6 +111,63 @@ def cmd_create_user(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _push_test(username: str, body: str) -> int:
+    from sqlalchemy import select
+
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.core.time import utcnow
+    from app.modules.auth.models import Device
+    from app.modules.notifications.providers import build_providers
+    from app.modules.notifications.schemas import PushPayload
+    from app.modules.users.models import User
+
+    settings = get_settings()
+    providers = build_providers(settings)
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            user = (
+                await session.execute(select(User).where(User.username == username))
+            ).scalar_one_or_none()
+            if user is None:
+                raise SystemExit(f"error: user '{username}' not found")
+            devices = list(
+                (
+                    await session.execute(
+                        select(Device).where(
+                            Device.user_id == user.id,
+                            Device.enabled.is_(True),
+                            Device.push_token.is_not(None),
+                        )
+                    )
+                ).scalars()
+            )
+            if not devices:
+                print(f"no push-registered devices for '{username}'")
+                return 1
+            payload = PushPayload(
+                kind="test", title="ChikuwaChat", body=body, sent_at=utcnow()
+            ).model_dump(mode="json")
+            for device in devices:
+                provider = providers[device.push_provider]
+                result = await provider.send(device, payload)
+                label = f"{device.platform} {device.push_provider} ({device.push_environment})"
+                print(f"{label} -> {result.outcome} {result.detail or ''}")
+                if result.outcome == "invalid_token":
+                    device.push_token = None
+                    device.push_token_invalid_reason = result.detail or "invalid_token"
+            await session.commit()
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_push_test(args: argparse.Namespace) -> int:
+    """Send a test notification to every push-registered device of a user."""
+    return asyncio.run(_push_test(args.username, args.body))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -126,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     user.add_argument("--display-name")
     user.add_argument("--role", choices=["member", "admin"], default="member")
     user.set_defaults(func=cmd_create_user)
+
+    push = sub.add_parser("push-test", help="send a test push notification to a user's devices")
+    push.add_argument("--user", dest="username", required=True)
+    push.add_argument("--body", default="テスト通知です")
+    push.set_defaults(func=cmd_push_test)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))
