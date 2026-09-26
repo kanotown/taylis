@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.app
 
+import jp.chikuwachat.android.ui.Dnd
+import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
 import java.time.ZonedDateTime
 import jp.chikuwachat.android.ui.Schedule
@@ -223,6 +225,12 @@ class AppController(private val app: Application) {
         engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) handleSignedOut(account) } }
         engine.isActive = { appForeground }
         engine.onRead = { channelId -> notifier.clear(channelId) }
+        // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up.
+        engine.onReminder = { row ->
+            val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
+            notice = "⏰ $text"
+            if (!Dnd.isActive(store.me?.let { store.users[it.id] ?: it.asPublic })) notifier.notifyMessage(row.channelId, "リマインダー", text)
+        }
         engine.onNotify = { message, channel ->
             val sender = store.users[message.senderId]?.displayName ?: "?"
             val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
@@ -358,6 +366,26 @@ class AppController(private val app: Application) {
         val api = api ?: return
         try {
             store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
+        } catch (e: Exception) { error = describe(e) }
+    }
+
+    // --- reminders (M12e) -------------------------------------------------------------------------
+
+    suspend fun setReminder(messageId: String, at: ZonedDateTime, note: String? = null): Boolean {
+        val api = api ?: return false
+        return try {
+            store.applyReminder(api.createReminder(messageId, at.toInstant().toString(), note))
+            notice = Schedule.label(at) + " にリマインドします"
+            true
+        } catch (e: Exception) { error = describe(e); false }
+    }
+
+    /** Cancels a pending reminder or marks a fired one done. */
+    suspend fun closeReminder(row: ReminderOut) {
+        val api = api ?: return
+        try {
+            api.closeReminder(row.id)
+            store.applyReminder(row.copy(status = if (row.status == "fired") "done" else "cancelled"))
         } catch (e: Exception) { error = describe(e) }
     }
 

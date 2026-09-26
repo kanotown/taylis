@@ -233,6 +233,20 @@ data class FileItem(
 @Serializable
 data class FileListOut(val items: List<FileItem>, val nextCursor: String? = null)
 
+/** A personal reminder about a message (M12e); `status` is pending | fired | done | cancelled. */
+@Serializable
+data class ReminderOut(
+    val id: String,
+    val messageId: String,
+    val channelId: String,
+    val note: String? = null,
+    val preview: String = "",
+    val remindAt: String,
+    val status: String,
+    val firedAt: String? = null,
+    val createdAt: String,
+)
+
 /** A message the server posts later (M12d); `status` is pending | sent | failed | cancelled. */
 @Serializable
 data class ScheduledOut(

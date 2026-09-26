@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Lock
@@ -105,8 +106,9 @@ fun MainScreen(controller: AppController) {
     // M11i: 「ファイル」 replaces the list (all channels) or the open channel's timeline (that channel only).
     var showFiles by rememberSaveable { mutableStateOf(false) }
     var filesChannelId by rememberSaveable { mutableStateOf<String?>(null) }
-    val listReplaced = showThreads || showSaved || showMentions || showDrafts || showFiles
-    val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false; showFiles = false }
+    var showReminders by rememberSaveable { mutableStateOf(false) }
+    val listReplaced = showThreads || showSaved || showMentions || showDrafts || showFiles || showReminders
+    val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false; showFiles = false; showReminders = false }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -195,6 +197,7 @@ fun MainScreen(controller: AppController) {
                         showMentions -> Text("メンション")
                         showDrafts -> Text("下書き")
                         showFiles -> Text("ファイル")
+                        showReminders -> Text("リマインダー")
                         else -> Text("ChikuwaChat")
                     }
                 },
@@ -315,6 +318,8 @@ fun MainScreen(controller: AppController) {
                     SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
+                } else if (showReminders) {
+                    RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
                 } else if (showMentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (showDrafts) {
@@ -343,6 +348,7 @@ fun MainScreen(controller: AppController) {
                         onMentions = { showMentions = true },
                         onDrafts = { showDrafts = true },
                         onFiles = { filesChannelId = null; showFiles = true },
+                        onReminders = { showReminders = true },
                         onBrowse = { dialog = MainDialog.BROWSE },
                     )
                 }
@@ -398,6 +404,7 @@ private fun ChannelList(
     onDrafts: () -> Unit,
     onBrowse: () -> Unit,
     onFiles: () -> Unit,
+    onReminders: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites) }
     val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
@@ -414,6 +421,9 @@ private fun ChannelList(
         item { ThreadsRow(store, onClick = onThreads) }
         item { ListRow(Icons.Default.AlternateEmail, "メンション", onClick = onMentions) }
         if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
+        val reminderCount = store.reminders.size
+        val firedCount = store.firedReminderCount()
+        if (reminderCount > 0) item { ListRow(Icons.Default.Alarm, "リマインダー", trailing = if (firedCount > 0) "$firedCount 件" else reminderCount.toString(), onClick = onReminders) }
         item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
         item { SavedRow(store, onClick = onSaved) }
         if (sections.favorites.isNotEmpty()) {

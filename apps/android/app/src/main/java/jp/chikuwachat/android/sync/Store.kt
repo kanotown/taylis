@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelOut
@@ -170,6 +171,8 @@ class Store(private val persistence: Persistence? = null) {
     val favorites = HashSet<String>()
     /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
     val scheduled = LinkedHashMap<String, ScheduledOut>()
+    /** My open reminders (M12e): fired ones wait for 完了, pending ones for their time. */
+    val reminders = LinkedHashMap<String, ReminderOut>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -371,6 +374,27 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    // --- reminders (M12e) --------------------------------------------------------------------
+
+    /** Fired first (newest nudge on top), then pending by time. */
+    fun listReminders(): List<ReminderOut> =
+        reminders.values.sortedWith(compareBy<ReminderOut> { if (it.status == "fired") 0 else 1 }.thenComparator { a, b ->
+            if (a.status == "fired") b.remindAt.compareTo(a.remindAt) else a.remindAt.compareTo(b.remindAt)
+        })
+
+    fun firedReminderCount(): Int = reminders.values.count { it.status == "fired" }
+
+    fun replaceReminders(rows: List<ReminderOut>) {
+        reminders.clear()
+        rows.filter { it.status == "pending" || it.status == "fired" }.forEach { reminders[it.id] = it }
+        emit()
+    }
+
+    fun applyReminder(row: ReminderOut) {
+        if (row.status == "pending" || row.status == "fired") reminders[row.id] = row else reminders.remove(row.id)
         emit()
     }
 
