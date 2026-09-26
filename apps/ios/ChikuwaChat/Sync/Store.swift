@@ -235,6 +235,8 @@ final class Store {
         let read = channel.readState
         var stripped = channel
         stripped.readState = nil
+        // channel.updated events carry no per-user preference: keep the one we know.
+        stripped.notification = channel.notification ?? existing?.channel.notification
         let merged = ChannelState(
             channel: stripped,
             isMember: isMember ?? existing?.isMember ?? (channel.membership != nil),
@@ -252,6 +254,12 @@ final class Store {
 
     /// Unread DMs + channel mentions (PUSH_NOTIFICATIONS.md §4.2).
     var badgeCount: Int { channels.values.reduce(0) { $0 + $1.badgeContribution } }
+
+    func setNotification(_ channelId: String, level: String, mutedUntil: String?) {
+        updateChannel(channelId) { state in
+            state.channel.notification = NotificationPreferenceOut(channelId: channelId, level: level, mutedUntil: mutedUntil)
+        }
+    }
 
     func updateChannel(_ id: String, _ mutate: (inout ChannelState) -> Void) {
         guard var state = channels[id] else { return }

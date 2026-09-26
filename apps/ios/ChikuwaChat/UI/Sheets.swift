@@ -32,7 +32,7 @@ struct NewDmView: View {
                                 controller.store.upsertChannel(channel, isMember: true)
                                 onOpen(channel.id)
                                 dismiss()
-                            } catch { self.error = "\(error)" }
+                            } catch { self.error = controller.describe(error) }
                         }
                     }
                     .disabled(selected.isEmpty || selected.count > 8)
@@ -70,7 +70,7 @@ struct NewChannelView: View {
                                 controller.store.upsertChannel(channel, isMember: true)
                                 onOpen(channel.id)
                                 dismiss()
-                            } catch { self.error = "\(error)" }
+                            } catch { self.error = controller.describe(error) }
                         }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -116,7 +116,7 @@ struct AddMemberView: View {
                             do {
                                 for userId in selected { _ = try await api.addMember(channelId: channelId, userId: userId) }
                                 dismiss()
-                            } catch { self.error = "\(error)" }
+                            } catch { self.error = controller.describe(error) }
                         }
                     }
                     .disabled(selected.isEmpty)
@@ -127,6 +127,177 @@ struct AddMemberView: View {
                 members = Set(list.map(\.userId))
             }
             if let error { Text(error).foregroundStyle(.red).font(.footnote).padding() }
+        }
+    }
+}
+
+/// Channel info: topic (editable by members), notification level, members with roles.
+struct ChannelInfoView: View {
+    @Bindable var controller: AppController
+    let channelId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var members: [MemberOut]?
+    @State private var topic = ""
+    @State private var editingTopic = false
+    @State private var showAddMember = false
+
+    private var channel: ChannelState? { controller.store.channel(channelId) }
+
+    private func loadMembers() async {
+        guard let api = controller.api else { return }
+        do { members = try await api.members(channelId: channelId) } catch { controller.error = controller.describe(error) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let channel {
+                    let store = controller.store
+                    let isChannel = !channel.channel.isDm
+                    let canEdit = channel.isMember && !channel.channel.archived
+                    if isChannel {
+                        Section("トピック") {
+                            if editingTopic {
+                                TextField("例: 週次の進捗共有", text: $topic)
+                                HStack {
+                                    Button("保存") { Task { if await controller.updateTopic(channelId, topic: topic) { editingTopic = false } } }
+                                    Spacer()
+                                    Button("キャンセル", role: .cancel) { editingTopic = false }
+                                }
+                            } else {
+                                if let current = channel.channel.topic, !current.isEmpty {
+                                    Text(current)
+                                } else {
+                                    Text("未設定").foregroundStyle(.secondary)
+                                }
+                                if canEdit { Button("編集") { topic = channel.channel.topic ?? ""; editingTopic = true } }
+                            }
+                        }
+                    }
+                    if channel.isMember {
+                        let level = channel.channel.notification?.level ?? (isChannel ? "mentions" : "all")
+                        Section("通知") {
+                            Picker("通知", selection: Binding(get: { level }, set: { value in
+                                Task { await controller.setNotification(channelId, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
+                            })) {
+                                Text("すべてのメッセージ").tag("all")
+                                Text("メンションのみ").tag("mentions")
+                                Text("通知しない").tag("none")
+                            }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                            if let mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil) {
+                                Button("ミュート解除 (\(mute))") { Task { await controller.setNotification(channelId, level: level, mutedUntil: nil) } }
+                            } else {
+                                Button("8 時間ミュート") {
+                                    let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
+                                    Task { await controller.setNotification(channelId, level: level, mutedUntil: until) }
+                                }
+                            }
+                        }
+                    }
+                    Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
+                        if let members {
+                            ForEach(members.sorted { (store.users[$0.userId]?.displayName ?? "") < (store.users[$1.userId]?.displayName ?? "") }, id: \.userId) { member in
+                                let user = store.users[member.userId]
+                                HStack(spacing: 10) {
+                                    AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28)
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(user?.displayName ?? "?")
+                                        Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }
+                        } else {
+                            ProgressView()
+                        }
+                        if isChannel && canEdit {
+                            Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
+                        }
+                    }
+                } else {
+                    Text("チャンネルが見つかりません").foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
+            .task { await loadMembers() }
+            .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
+                AddMemberView(controller: controller, channelId: channelId)
+            }
+        }
+    }
+}
+
+/// Profile (display name), password change and logout.
+struct SettingsView: View {
+    @Bindable var controller: AppController
+    @Environment(\.dismiss) private var dismiss
+    @State private var displayName = ""
+    @State private var nameSaved = false
+    @State private var current = ""
+    @State private var next = ""
+    @State private var repeated = ""
+    @State private var passwordMessage: String?
+    @State private var busy = false
+
+    private var me: UserMe? { controller.store.me ?? controller.me }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let me {
+                    Section {
+                        HStack(spacing: 12) {
+                            AvatarView(id: me.id, name: me.displayName, size: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(me.displayName).font(.headline)
+                                Text("@\(me.username)").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Section("表示名") {
+                        TextField("表示名", text: $displayName)
+                            .onChange(of: displayName) { _, _ in nameSaved = false }
+                        HStack {
+                            Button("表示名を保存") {
+                                Task { busy = true; nameSaved = await controller.updateDisplayName(displayName); busy = false }
+                            }
+                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || displayName.trimmingCharacters(in: .whitespaces) == me.displayName)
+                            if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+                Section("パスワードの変更") {
+                    SecureField("現在のパスワード", text: $current)
+                    SecureField("新しいパスワード (8 文字以上)", text: $next)
+                    SecureField("新しいパスワード (確認)", text: $repeated)
+                    if let passwordMessage {
+                        Text(passwordMessage).font(.footnote).foregroundStyle(passwordMessage.hasSuffix("しました") ? .secondary : Color.red)
+                    }
+                    Button("変更する") {
+                        guard next == repeated else { passwordMessage = "新しいパスワードが一致しません"; return }
+                        Task {
+                            busy = true
+                            let error = await controller.changePasswordInSession(current: current, new: next)
+                            busy = false
+                            passwordMessage = error ?? "パスワードを変更しました"
+                            if error == nil { current = ""; next = ""; repeated = "" }
+                        }
+                    }
+                    .disabled(busy || current.isEmpty || next.count < 8)
+                }
+                Section {
+                    Button("ログアウト", role: .destructive) { Task { await controller.logout() } }
+                }
+            }
+            .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
+            .onAppear { displayName = me?.displayName ?? "" }
         }
     }
 }

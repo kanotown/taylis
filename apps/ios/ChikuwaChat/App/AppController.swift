@@ -172,6 +172,41 @@ final class AppController {
         } catch { self.error = describe(error) }
     }
 
+    // MARK: channel info & settings (UI brush-up)
+
+    func updateTopic(_ channelId: String, topic: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.updateChannel(id: channelId, topic: topic.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func setNotification(_ channelId: String, level: String, mutedUntil: String? = nil) async -> Bool {
+        guard let api else { return false }
+        do {
+            let pref = try await api.setNotificationPreference(channelId: channelId, level: level, mutedUntil: mutedUntil)
+            store.setNotification(channelId, level: pref.level, mutedUntil: pref.mutedUntil)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func updateDisplayName(_ displayName: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            let updated = try await api.updateMe(displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines))
+            me = updated
+            store.setMe(updated)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// Password change from the settings sheet; returns the error text or nil.
+    func changePasswordInSession(current: String, new: String) async -> String? {
+        guard let api else { return "ログインしていません" }
+        do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
+    }
+
     func logout() async {
         engine?.stop()
         engine = nil
@@ -187,9 +222,17 @@ final class AppController {
         screen = .login
     }
 
-    private func describe(_ error: Error) -> String {
-        if case ApiError.api(_, let code, let message) = error { return "\(message) (\(code))" }
-        if case ApiError.network(let inner) = error { return "ネットワークエラー: \(inner.localizedDescription)" }
+    func describe(_ error: Error) -> String {
+        if case ApiError.api(_, let code, let message) = error {
+            switch code {
+            case "invalid_credentials": return "ユーザー名またはパスワードが違います"
+            case "rate_limited": return "しばらく待ってからやり直してください"
+            case "password_too_short": return "パスワードが短すぎます"
+            case "invalid_password": return "現在のパスワードが違います"
+            default: return message.isEmpty ? code : message
+            }
+        }
+        if case ApiError.network = error { return "サーバに接続できません" }
         return error.localizedDescription
     }
 }

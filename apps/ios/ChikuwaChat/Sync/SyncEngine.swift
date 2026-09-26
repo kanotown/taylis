@@ -294,7 +294,8 @@ final class SyncEngine {
                     state.channel = ChannelOut(id: state.channel.id, type: state.channel.type, name: state.channel.name, topic: state.channel.topic,
                                                purpose: state.channel.purpose, archived: true, createdBy: state.channel.createdBy, lastSeq: state.channel.lastSeq,
                                                lastMessageAt: state.channel.lastMessageAt, createdAt: state.channel.createdAt, updatedAt: state.channel.updatedAt,
-                                               membership: state.channel.membership, dmUserIds: state.channel.dmUserIds)
+                                               membership: state.channel.membership, dmUserIds: state.channel.dmUserIds,
+                                               notification: state.channel.notification)
                 }
             }
         case "channel.member_removed":
@@ -304,6 +305,10 @@ final class SyncEngine {
             store.upsertUser(try frame.data.decode(Payload.self).user)
         case "read.updated":
             if let id = frame.data["channel_id"]?.stringValue { applyReadState(id, try frame.data.decode(ReadStateOut.self)) }
+        case "notification_preference.updated":
+            if let id = frame.data["channel_id"]?.stringValue {
+                store.setNotification(id, level: frame.data["level"]?.stringValue ?? "mentions", mutedUntil: frame.data["muted_until"]?.stringValue)
+            }
         case "session.revoked":
             signOut()
         default:
