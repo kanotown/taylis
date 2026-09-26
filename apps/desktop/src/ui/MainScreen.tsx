@@ -7,6 +7,7 @@ import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels
 import { Composer } from "./Composer";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
+import { readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writeSidebarWidth } from "./prefs";
 import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { SearchPane } from "./SearchPane";
@@ -36,6 +37,30 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [searching, setSearching] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+
+  // Drag the strip between the sidebar and the conversation to resize; double-click resets.
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let width = startWidth;
+    const move = (e: PointerEvent) => {
+      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
+      setSidebarWidth(width);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      writeSidebarWidth(width);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
@@ -150,7 +175,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];
 
   return (
-    <div className="grid h-full grid-cols-[260px_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)] overflow-hidden bg-canvas text-ink">
+    <div
+      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
+      style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <Sidebar
         controller={controller}
         channels={channels}
@@ -166,6 +194,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="サイドバーの幅"
+          title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+          onPointerDown={startResize}
+          onDoubleClick={() => {
+            setSidebarWidth(SIDEBAR_DEFAULT);
+            writeSidebarWidth(SIDEBAR_DEFAULT);
+          }}
+          className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
+        />
         {status !== "online" && status !== "idle" && (
           <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
             {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}

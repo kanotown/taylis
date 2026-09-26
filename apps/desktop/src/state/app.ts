@@ -11,6 +11,7 @@ import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
+import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -27,6 +28,13 @@ export class AppController {
   me: UserMe | null = null;
   messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[] } | null = null;
 
+  /** Which key sends a message; the other inserts a newline. Stored per device. */
+  sendKey: SendKey = readSendKey();
+  setSendKey(value: SendKey): void {
+    this.sendKey = value;
+    writeSendKey(value);
+    this.emit();
+  }
   /** Message in inline edit mode (Timeline / ThreadPane); ↑ in an empty composer sets it. */
   editing: string | null = null;
   setEditing(id: string | null): void { this.editing = id; this.emit(); }
