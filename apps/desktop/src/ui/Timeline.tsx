@@ -1,4 +1,4 @@
-import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -15,6 +15,7 @@ import { channelTitle } from "./MainScreen";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { firstLink } from "./links";
+import { parsePermalink } from "./permalink";
 
 /** Quick reactions on the action bar; everything else comes from the emoji picker (M11f). */
 const REACTION_PALETTE = ["👍", "❤️", "😂"];
@@ -260,7 +261,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const highlighted = controller.messageFocus?.messageId === message.id;
   const size = thread ? 30 : 36;
   const saved = store.isBookmarked(message.id);
-  const link = message.body ? firstLink(message.body) : null;
+  const rawLink = message.body ? firstLink(message.body) : null;
+  const link = rawLink && controller.api && parsePermalink(controller.api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   return (
     <article
@@ -320,7 +322,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           <MessageEditor controller={controller} message={message} />
         ) : (
           <>
-            {message.body && <MessageBody body={message.body} users={store.users} />}
+            {message.body && (
+              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} />
+            )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
           </>
@@ -390,6 +394,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
               <MessageSquare size={15} />
             </IconButton>
           )}
+          <IconButton label="リンクをコピー" className="h-7 w-7 text-muted hover:text-ink" onClick={() => void controller.copyPermalink(message.id)}>
+            <Link size={15} />
+          </IconButton>
           <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
             {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
