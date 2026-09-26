@@ -3,7 +3,7 @@ import SwiftUI
 /// Full-text search: the server filters by membership; we highlight the keywords it matched.
 struct SearchView: View {
     @Bindable var controller: AppController
-    let onOpen: (_ channelId: String, _ parentId: String?) -> Void
+    let onOpen: (MessageOut) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var hits: [SearchHit] = []
@@ -18,8 +18,7 @@ struct SearchView: View {
                 ForEach(hits) { hit in
                     let message = hit.message
                     Button {
-                        onOpen(message.channelId, message.parentId)
-                        dismiss()
+                        onOpen(message)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {

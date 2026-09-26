@@ -6,9 +6,10 @@ struct ThreadView: View {
     let channelId: String
     let parentId: String
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
 
-    private var parent: MessageState? { controller.store.message(channelId, id: parentId) }
+    @State private var positioned = false
+    @State private var atBottom = true
+    private var parent: MessageState? { controller.store.message(channelId, id: parentId) ?? controller.messageFocus?.context.first { $0.id == parentId } }
     private var replies: [MessageState] { controller.store.replies(channelId, parentId: parentId) }
 
     var body: some View {
@@ -27,19 +28,35 @@ struct ThreadView: View {
                                 Text("メッセージが見つかりません").foregroundStyle(.secondary)
                             }
                             Color.clear.frame(height: 1).id("bottom")
+                                .onAppear { atBottom = true }
+                                .onDisappear { atBottom = false }
                         }
                         .padding()
                     }
-                    .onChange(of: replies.last?.id) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    .onChange(of: replies.last?.id) { _, _ in
+                        if positioned && atBottom && controller.messageFocus?.parentId != parentId {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                    .task(id: replies.count) {
+                        guard !positioned, !replies.isEmpty else { return }
+                        await Task.yield()
+                        if let focus = controller.messageFocus, focus.parentId == parentId {
+                            proxy.scrollTo(focus.messageId, anchor: .center)
+                        } else { proxy.scrollTo("bottom", anchor: .bottom) }
+                        positioned = true
+                    }
                 }
-                ComposerView(text: $draft, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
-                    Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds) }
+                if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
+                    ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
+                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds) }
+                    }
                 }
             }
             .navigationTitle("スレッド")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
-            .task { await controller.engine?.loadReplies(channelId, parentId: parentId) }
+            .task(id: controller.engine?.status) { await controller.engine?.loadReplies(channelId, parentId: parentId) }
         }
     }
 }

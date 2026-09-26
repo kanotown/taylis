@@ -78,3 +78,34 @@ describe("ApiClient", () => {
     expect(new ApiClient("http://127.0.0.1:8000/").wsUrl).toBe("ws://127.0.0.1:8000/api/v1/ws");
   });
 });
+
+
+it("refreshes a restored session before issuing an authenticated request", async () => {
+  const paths: string[] = [];
+  const client = new ApiClient("http://server", { fetchImpl: async (input, init) => {
+    paths.push(String(input));
+    if (String(input).endsWith("/auth/refresh")) return jsonResponse(200, tokens(2));
+    expect((init?.headers as Record<string, string>)["Authorization"]).toBe("Bearer access-2");
+    return jsonResponse(200, tokens(2).user);
+  } });
+  client.refreshToken = "refresh-1";
+  await client.me();
+  expect(paths).toEqual(["http://server/api/v1/auth/refresh", "http://server/api/v1/users/me"]);
+});
+
+it("does not resurrect credentials when a refresh finishes after sign-out", async () => {
+  let complete!: (response: Response) => void;
+  const saved: string[] = [];
+  const client = new ApiClient("http://server", {
+    fetchImpl: () => new Promise((resolve) => { complete = resolve; }),
+    onTokens: (response) => saved.push(response.refresh_token),
+  });
+  client.refreshToken = "refresh-1";
+  const refresh = client.refresh();
+  client.signOut();
+  complete(jsonResponse(200, tokens(2)));
+  await expect(refresh).rejects.toMatchObject({ code: "session_changed" });
+  expect(client.refreshToken).toBeNull();
+  expect(client.accessToken).toBeNull();
+  expect(saved).toEqual([]);
+});

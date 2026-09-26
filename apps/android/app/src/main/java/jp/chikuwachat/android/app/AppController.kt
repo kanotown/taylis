@@ -58,6 +58,17 @@ class AppController(private val app: Application) {
         private set
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
+    data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>)
+    var messageFocus by mutableStateOf<MessageFocus?>(null)
+    suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean {
+        val api = api ?: return false
+        return try {
+            val context = api.messageContext(message.id)
+            message.parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
+            messageFocus = MessageFocus(message.channelId, message.id, message.parentId, context.map { MessageState.from(it) })
+            true
+        } catch (e: Exception) { error = describe(e); false }
+    }
     var savedServer = DEFAULT_SERVER
         private set
     var savedUsername = ""
@@ -71,7 +82,8 @@ class AppController(private val app: Application) {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     private var api: ApiClient? = null
     private var persistence: RoomPersistence? = null
-    private var foreground = false
+    var appForeground by mutableStateOf(false)
+        private set
     private var booted = false
 
     private fun account(server: String, username: String) = "$server|$username"
@@ -80,7 +92,7 @@ class AppController(private val app: Application) {
         val account = account(server, username)
         val api = ApiClient(server, http)
         api.onTokens = { tokens -> scope.launch { secrets.putSecret(account, tokens.refreshToken) } }
-        api.onSignedOut = { scope.launch { handleSignedOut(account) } }
+        api.onSignedOut = { scope.launch { if (this@AppController.api === api) handleSignedOut(account) } }
         return api
     }
 
@@ -97,6 +109,8 @@ class AppController(private val app: Application) {
         }
         val api = makeApi(savedServer, savedUsername)
         api.refreshToken = refreshToken
+        this.api = api
+        if (startEngine(api, restoring = true)) return
         busy = true
         try {
             val tokens = api.refresh()
@@ -158,8 +172,9 @@ class AppController(private val app: Application) {
         startEngine(api)
     }
 
-    private suspend fun startEngine(api: ApiClient) {
+    private suspend fun startEngine(api: ApiClient, restoring: Boolean = false): Boolean {
         engine?.stop()
+        messageFocus = null
         persistence?.close()
         val account = account(api.baseUrl, savedUsername)
         val persistence = withContext(Dispatchers.IO) { runCatching { RoomPersistence.open(app, account) }.getOrNull() }
@@ -167,6 +182,11 @@ class AppController(private val app: Application) {
         withContext(Dispatchers.IO) { store.load() }
         this.persistence = persistence
         this.store = store
+        if (restoring) {
+            val cached = store.me ?: return false
+            if (cached.mustChangePassword) return false
+            me = cached
+        } else me?.let { store.setMe(it) }
         val engine = SyncEngine(
             api = api,
             connect = { url, _ -> OkHttpWsTransport.connect(http, url) },
@@ -175,8 +195,8 @@ class AppController(private val app: Application) {
             getAccessToken = { api.accessToken },
             scope = scope,
         )
-        engine.onSignedOut = { scope.launch { handleSignedOut(account) } }
-        engine.isActive = { foreground }
+        engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) handleSignedOut(account) } }
+        engine.isActive = { appForeground }
         engine.onRead = { channelId -> notifier.clear(channelId) }
         engine.onNotify = { message, channel ->
             val sender = store.users[message.senderId]?.displayName ?: "?"
@@ -184,10 +204,22 @@ class AppController(private val app: Application) {
             notifier.notifyMessage(channel.id, title, message.body)
         }
         this.engine = engine
-        scope.launch { engine.status.collect { engineStatus = it } }
+        scope.launch { engine.status.collect { if (this@AppController.engine === engine) engineStatus = it } }
+        engine.prepareConnection = prepare@{
+            val tokens = api.refresh()
+            if (this.api !== api || this.engine !== engine) return@prepare
+            me = tokens.user
+            store.setMe(tokens.user)
+            if (tokens.user.mustChangePassword) {
+                engine.stop()
+                screen = Screen.CHANGE_PASSWORD
+                throw IllegalStateException("Password change required")
+            }
+            push.attach()
+        }
         screen = Screen.MAIN
         scope.launch { engine.start() }
-        push.attach()
+        return true
     }
 
     /**
@@ -196,7 +228,7 @@ class AppController(private val app: Application) {
      */
     fun handlePush(message: PushMessage) {
         scope.launch {
-            val live = foreground && engineStatus == EngineStatus.ONLINE
+            val live = appForeground && engineStatus == EngineStatus.ONLINE
             if (!message.isSilent && !live && message.channelId != null) {
                 notifier.notifyMessage(message.channelId, message.title, message.body)
             }
@@ -206,7 +238,7 @@ class AppController(private val app: Application) {
 
     /** Foreground / background from the activity: drives push suppression and reconnects (§7.5). */
     fun setForeground(active: Boolean) {
-        foreground = active
+        appForeground = active
         if (active) {
             engine?.reconnectNow()
             if (api != null) push.refresh()
@@ -214,8 +246,7 @@ class AppController(private val app: Application) {
     }
 
     suspend fun openChannel(channelId: String) {
-        notifier.clear(channelId)
-        engine?.openChannel(channelId)
+        runCatching { engine?.openChannel(channelId) }.onFailure { error = describe(it) }
     }
 
     fun closeChannel() {
@@ -287,13 +318,14 @@ class AppController(private val app: Application) {
 
     /** Read a picked content URI and upload it; the id is bound when the message is sent. */
     suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = runCatching {
+        val api = api ?: error("ログインが必要です")
         val resolver = app.contentResolver
         var name = "file"
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) name = cursor.getString(0) ?: name
         }
         val bytes = withContext(Dispatchers.IO) { resolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("読み込めませんでした")
-        api!!.uploadAttachment(bytes, name, resolver.getType(uri))
+        api.uploadAttachment(bytes, name, resolver.getType(uri))
     }.onFailure { error = describe(it) }
 
     fun openAttachment(attachment: AttachmentOut) {

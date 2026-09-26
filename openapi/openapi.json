@@ -3442,6 +3442,70 @@
         ]
       }
     },
+    "/api/v1/messages/{message_id}/context": {
+      "get": {
+        "operationId": "message_context_api_v1_messages__message_id__context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response Message Context Api V1 Messages  Message Id  Context Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Message Context",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/v1/messages/{message_id}/reactions/{emoji}": {
       "delete": {
         "operationId": "remove_reaction_api_v1_messages__message_id__reactions__emoji__delete",

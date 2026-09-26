@@ -72,6 +72,22 @@ async def list_delta(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_context(db: AsyncSession, message: Message, limit: int) -> list[Message]:
+    """A bounded window around a top-level message, independent of the sync cursor."""
+    base = select(Message).where(
+        Message.channel_id == message.channel_id,
+        Message.parent_id.is_(None),
+        Message.deleted_at.is_(None),
+    )
+    before = await db.scalars(
+        base.where(Message.seq < message.seq).order_by(Message.seq.desc()).limit(limit)
+    )
+    after = await db.scalars(
+        base.where(Message.seq >= message.seq).order_by(Message.seq).limit(limit + 1)
+    )
+    return list(reversed(before.all())) + list(after.all())
+
+
 async def reactions_for(
     db: AsyncSession, message_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[Reaction]]:

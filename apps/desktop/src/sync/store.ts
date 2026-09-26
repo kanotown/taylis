@@ -1,4 +1,4 @@
-import type { ChannelOut, ChannelState, MessageState, NotificationLevel, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, MessageState, NotificationLevel, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -27,6 +27,8 @@ export function emptySnapshot(): Snapshot {
   return { meta: {}, users: [], channels: [], messages: [], outbox: [] };
 }
 
+export interface Draft { text: string; attachments: AttachmentOut[] }
+
 /** The single source of truth for the UI (ARCHITECTURE.md §11). */
 export class Store {
   me: UserMe | null = null;
@@ -34,6 +36,35 @@ export class Store {
   readonly channels = new Map<string, ChannelState>();
   readonly outbox: OutboxItem[] = [];
   version = 0;
+  private readonly drafts = new Map<string, Draft>();
+  private readonly uploads = new Map<string, number>();
+  private writeQueue = Promise.resolve();
+
+  private draftKey(channelId: string, parentId: string | null): string { return `draft:${channelId}:${parentId ?? ""}`; }
+  draft(channelId: string, parentId: string | null = null): Draft {
+    return this.drafts.get(this.draftKey(channelId, parentId)) ?? { text: "", attachments: [] };
+  }
+  setDraft(channelId: string, parentId: string | null, patch: Partial<Draft>): void {
+    const key = this.draftKey(channelId, parentId);
+    const draft = { ...this.draft(channelId, parentId), ...patch };
+    if (!draft.text && !draft.attachments.length) this.drafts.delete(key);
+    else this.drafts.set(key, draft);
+    const encoded = this.drafts.has(key) ? JSON.stringify(draft) : null;
+    this.persist((p) => p.saveMeta(key, encoded));
+    this.emit();
+  }
+  uploading(channelId: string, parentId: string | null = null): number { return this.uploads.get(this.draftKey(channelId, parentId)) ?? 0; }
+  trackUpload(channelId: string, parentId: string | null, delta: number): void {
+    const key = this.draftKey(channelId, parentId);
+    this.uploads.set(key, Math.max(0, (this.uploads.get(key) ?? 0) + delta));
+    this.emit();
+  }
+  private loadDrafts(meta: Record<string, string>): void {
+    for (const [key, value] of Object.entries(meta)) if (key.startsWith("draft:")) {
+      try { this.drafts.set(key, JSON.parse(value) as Draft); } catch { /* Ignore a corrupt local draft. */ }
+    }
+  }
+  flushPersistence(): Promise<void> { return this.writeQueue; }
   private readonly messagesByChannel = new Map<string, Map<string, MessageState>>();
   private readonly listeners = new Set<() => void>();
 
@@ -42,6 +73,7 @@ export class Store {
   async load(): Promise<void> {
     if (!this.persistence) return;
     const snapshot = await this.persistence.loadAll();
+    this.loadDrafts(snapshot.meta);
     const me = snapshot.meta["me"];
     this.me = me ? (JSON.parse(me) as UserMe) : null;
     for (const user of snapshot.users) this.users.set(user.id, user);
@@ -62,7 +94,8 @@ export class Store {
   }
 
   private persist(work: (p: Persistence) => Promise<void>): void {
-    if (this.persistence) void work(this.persistence).catch((err: unknown) => console.error("persist failed", err));
+    const persistence = this.persistence;
+    if (persistence) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => console.error("persist failed", err));
   }
 
   // --- me / users -------------------------------------------------------------------------
@@ -238,7 +271,7 @@ export class Store {
   /** Persisted state for tests / diagnostics. */
   snapshot(): Snapshot {
     return {
-      meta: this.me ? { me: JSON.stringify(this.me) } : {},
+      meta: { ...Object.fromEntries([...this.drafts].map(([key, value]) => [key, JSON.stringify(value)])), ...(this.me ? { me: JSON.stringify(this.me) } : {}) },
       users: [...this.users.values()],
       channels: [...this.channels.values()],
       messages: [...this.messagesByChannel.values()].flatMap((b) => [...b.values()]),
@@ -248,6 +281,7 @@ export class Store {
 
   static fromSnapshot(snapshot: Snapshot, persistence: Persistence | null = null): Store {
     const store = new Store(persistence);
+    store.loadDrafts(snapshot.meta);
     const me = snapshot.meta["me"];
     store.me = me ? (JSON.parse(me) as UserMe) : null;
     for (const user of snapshot.users) store.users.set(user.id, user);

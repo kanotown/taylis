@@ -21,24 +21,29 @@ export function Composer({
   parentId?: string | null;
   placeholder?: string;
 }) {
-  const [text, setText] = useState("");
+  const store = controller.store;
+  const { text, attachments: pending } = store.draft(channel.id, parentId);
+  const uploading = store.uploading(channel.id, parentId);
+  const setText = (text: string) => store.setDraft(channel.id, parentId, { text });
+  const setPending = (update: AttachmentOut[] | ((items: AttachmentOut[]) => AttachmentOut[])) => {
+    const items = store.draft(channel.id, parentId).attachments;
+    store.setDraft(channel.id, parentId, { attachments: typeof update === "function" ? update(items) : update });
+  };
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
-  const [pending, setPending] = useState<AttachmentOut[]>([]);
-  const [uploading, setUploading] = useState(0);
+
   const fileInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
   const composedAt = useRef(0);
   const area = useRef<HTMLTextAreaElement>(null);
-  const store = controller.store;
-
   const query = mentionQuery(text, caret);
   const candidates = query ? mentionCandidates(query.query, [...store.users.values()]) : [];
   const active = Math.min(selected, Math.max(candidates.length - 1, 0));
 
   const send = () => {
     const body = encodeMentions(text.trim(), store.users.values());
-    if ((!body && pending.length === 0) || !controller.engine) return;
+    if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
+    if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError("添付は10件、本文は20,000文字までです"); return; }
     const ids = pending.map((a) => a.id);
     setText("");
     setPending([]);
@@ -46,16 +51,19 @@ export function Composer({
   };
 
   const pickFiles = async (files: FileList | null) => {
-    if (!files || !controller.api) return;
-    for (const file of Array.from(files)) {
-      setUploading((n) => n + 1);
+    const api = controller.api;
+    if (!files || !api) return;
+    const batch = Array.from(files);
+    if (pending.length + uploading + batch.length > 10) { controller.setError("添付は10件までです"); return; }
+    store.trackUpload(channel.id, parentId, batch.length);
+    for (const file of batch) {
       try {
-        const uploaded = await controller.api.uploadAttachment(file, file.name);
+        const uploaded = await api.uploadAttachment(file, file.name);
         setPending((items) => [...items, uploaded]);
       } catch (error) {
         controller.setError(error);
       } finally {
-        setUploading((n) => n - 1);
+        store.trackUpload(channel.id, parentId, -1);
       }
     }
   };
@@ -106,7 +114,9 @@ export function Composer({
   };
 
   return (
-    <div className="composer-wrap">
+    <div className="composer-wrap" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+      event.preventDefault(); void pickFiles(event.dataTransfer.files);
+    }}>
       {candidates.length > 0 && (
         <ul className="mention-suggestions">
           {candidates.map((candidate, index) => (
@@ -123,6 +133,7 @@ export function Composer({
           ))}
         </ul>
       )}
+      {uploading > 0 && <div className="muted" role="status">添付をアップロード中… 完了後に送信できます</div>}
       <PendingAttachments items={pending} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
       <div className="composer">
         <input
@@ -147,6 +158,8 @@ export function Composer({
             setText(e.target.value);
             syncCaret(e.target);
           }}
+          onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(event.clipboardData.files); } }}
+          aria-label={parentId ? "スレッドの返信" : "メッセージ"}
           onKeyDown={onKeyDown}
           onKeyUp={(e) => syncCaret(e.currentTarget)}
           onClick={(e) => syncCaret(e.currentTarget)}
@@ -159,7 +172,7 @@ export function Composer({
           }}
           rows={2}
         />
-        <button onClick={send} disabled={!text.trim() && pending.length === 0}>
+        <button onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
           送信
         </button>
       </div>

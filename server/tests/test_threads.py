@@ -132,3 +132,43 @@ async def test_thread_participants_are_push_targets(
     participants = {alice.id, bob.id}
     targets = await planner.select_recipients(db, record, [alice.id, carol.id], reply, participants)
     assert targets == [alice.id]
+
+
+async def test_search_context_is_bounded_ordered_and_anchored_to_thread_parent(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = (await client.post("/api/v1/channels", json={"name": "context"})).json()["id"]
+    before = await _post(client, cid, "before")
+    deleted = await _post(client, cid, "deleted")
+    parent = await _post(client, cid, "anchor")
+    reply = await _post(client, cid, "reply", parent["id"])
+    await client.delete(f"/api/v1/messages/{deleted['id']}")
+    after = await _post(client, cid, "after")
+    await _post(client, cid, "outside window")
+    for anchor in (parent, reply):
+        response = await client.get(f"/api/v1/messages/{anchor['id']}/context", params={"limit": 1})
+        assert response.status_code == 200
+        rows = response.json()
+        assert [row["id"] for row in rows] == [before["id"], parent["id"], after["id"]]
+        assert rows[1]["reply_count"] == 1
+        assert all(row["parent_id"] is None for row in rows)
+    assert (
+        await client.get(f"/api/v1/messages/{parent['id']}/context", params={"limit": 101})
+    ).status_code == 422
+    assert (await client.get(f"/api/v1/messages/{deleted['id']}/context")).status_code == 404
+
+
+async def test_search_context_requires_channel_membership(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    cid = (await client.post("/api/v1/channels", json={"name": "context"})).json()["id"]
+    parent = await _post(client, cid, "private content")
+    reply = await _post(client, cid, "private reply", parent["id"])
+    as_user(bob)
+    for anchor in (parent, reply):
+        assert (await client.get(f"/api/v1/messages/{anchor['id']}/context")).status_code == 403

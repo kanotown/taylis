@@ -44,6 +44,68 @@ final class SyncEngineTests: XCTestCase {
         }
     }
 
+    func testConversationDraftsPersistSeparatelyIncludingAttachments() {
+        let store = Store()
+        let attachment = AttachmentOut(id: "a", filename: "note.txt", contentType: "text/plain", sizeBytes: 4,
+            width: nil, height: nil, hasThumbnail: false, status: "pending", createdAt: "")
+        store.setDraft("c1") { $0.text = "channel"; $0.attachments = [attachment] }
+        store.setDraft("c1", parentId: "p1") { $0.text = "thread" }
+        store.setDraft("c2") { $0.text = "other" }
+        store.trackUpload("c1", delta: 1)
+        let restored = Store.fromSnapshot(store.snapshot())
+        XCTAssertEqual(restored.draft("c1").attachments, [attachment])
+        XCTAssertEqual(restored.draft("c1", parentId: "p1").text, "thread")
+        XCTAssertEqual(restored.draft("c2").text, "other")
+        XCTAssertEqual(restored.uploading("c1"), 0)
+        restored.setDraft("c1") { $0 = Draft() }
+        XCTAssertEqual(Store.fromSnapshot(restored.snapshot()).draft("c1"), Draft())
+        XCTAssertEqual(restored.draft("c1", parentId: "p1").text, "thread")
+    }
+
+    func testOpeningDoesNotReadAndBackgroundReadIsIgnored() async throws {
+        let w = makeWorld()
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "unseen")
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 1)
+        w.engine.markRead(w.channel.id, seq: 1)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 0)
+        w.engine.stop()
+        w.engine.isActive = { true }
+        w.engine.markRead(w.channel.id, seq: 1)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 0)
+        await w.engine.send(w.channel.id, body: "offline send")
+        XCTAssertEqual(w.store.outbox.count, 1)
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.outbox.count, 0)
+        w.engine.stop()
+    }
+
+    func testSessionRestorationRetriesTemporaryFailure() async {
+        let w = makeWorld()
+        var attempts = 0
+        w.store.setDraft("c1") { $0.text = "offline draft" }
+        w.engine.prepareConnection = {
+            attempts += 1
+            if attempts == 1 { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        }
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.engine.status, .online)
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(w.store.draft("c1").text, "offline draft")
+        w.engine.stop()
+    }
+
+    func testRevokedSessionDuringRestorationSignsOut() async {
+        let w = makeWorld()
+        w.engine.prepareConnection = { throw ApiError.api(status: 401, code: "session_revoked", message: "revoked") }
+        await w.engine.start()
+        XCTAssertEqual(w.engine.status, .signedOut)
+        w.engine.stop()
+    }
+
     func testAppliesLiveEditsDeletionsAndReactions() async throws {
         let w = makeWorld()
         await w.engine.start()
@@ -85,6 +147,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testUnreadCountsFollowReadsAcrossDevices() async throws {
         let w = makeWorld()
+        w.engine.isActive = { true }
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m1")
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m2")
         await w.engine.start()

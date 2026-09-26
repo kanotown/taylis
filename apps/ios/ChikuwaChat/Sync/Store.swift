@@ -154,6 +154,11 @@ struct OutboxItem: Codable, Identifiable, Equatable {
     var id: String { clientMsgId }
 }
 
+struct Draft: Codable, Equatable {
+    var text = ""
+    var attachments: [AttachmentOut] = []
+}
+
 struct Snapshot: Codable {
     var meta: [String: String] = [:]
     var users: [UserPublic] = []
@@ -186,6 +191,24 @@ final class Store {
     var users: [String: UserPublic] = [:]
     var channels: [String: ChannelState] = [:]
     var outbox: [OutboxItem] = []
+    private var drafts: [String: Draft] = [:]
+    private var uploads: [String: Int] = [:]
+
+    private func draftKey(_ channelId: String, _ parentId: String?) -> String { "draft:\(channelId):\(parentId ?? "")" }
+    func draft(_ channelId: String, parentId: String? = nil) -> Draft { drafts[draftKey(channelId, parentId)] ?? Draft() }
+    func setDraft(_ channelId: String, parentId: String? = nil, _ mutate: (inout Draft) -> Void) {
+        let key = draftKey(channelId, parentId)
+        var value = draft(channelId, parentId: parentId)
+        mutate(&value)
+        drafts[key] = value.text.isEmpty && value.attachments.isEmpty ? nil : value
+        let encoded = drafts[key].flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: key, value: encoded) }
+    }
+    func uploading(_ channelId: String, parentId: String? = nil) -> Int { uploads[draftKey(channelId, parentId)] ?? 0 }
+    func trackUpload(_ channelId: String, parentId: String? = nil, delta: Int) {
+        let key = draftKey(channelId, parentId)
+        uploads[key] = max(0, (uploads[key] ?? 0) + delta)
+    }
     private var messagesByChannel: [String: [String: MessageState]] = [:]
     private let persistence: Persistence?
 
@@ -199,6 +222,9 @@ final class Store {
     }
 
     private func apply(_ snapshot: Snapshot) {
+        for (key, value) in snapshot.meta where key.hasPrefix("draft:") {
+            if let data = value.data(using: .utf8), let draft = try? JSON.plainDecoder.decode(Draft.self, from: data) { drafts[key] = draft }
+        }
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
         for user in snapshot.users { users[user.id] = user }
         for channel in snapshot.channels { channels[channel.id] = channel }
@@ -378,6 +404,9 @@ final class Store {
 
     func snapshot() -> Snapshot {
         var snapshot = Snapshot()
+        for (key, value) in drafts {
+            if let data = try? JSON.plainEncoder.encode(value) { snapshot.meta[key] = String(data: data, encoding: .utf8) }
+        }
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
         snapshot.users = Array(users.values)
         snapshot.channels = Array(channels.values)

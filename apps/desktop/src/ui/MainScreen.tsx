@@ -36,7 +36,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   }, [currentId, channels.length]);
 
   useEffect(() => {
-    if (currentId && engine) void engine.openChannel(currentId);
+    if (currentId && engine) void engine.openChannel(currentId).catch((error) => controller.setError(error));
   }, [currentId, engine]);
 
   // Keyboard: Ctrl/⌘+K quick switcher, Ctrl/⌘+F search, Esc closes the right pane / dialogs.
@@ -67,6 +67,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   }, [switcher, dialog, searching, threadId]);
 
   const open = (id: string) => {
+    controller.clearMessageFocus();
     setCurrentId(id);
     setThreadId(null);
     setSwitcher(false);
@@ -169,7 +170,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
-            {current.isMember && !current.archived && <Composer controller={controller} channel={current} />}
+            {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} />}
             {current.archived && <div className="muted archived-note">アーカイブされたチャンネルには投稿できません</div>}
           </>
         ) : (
@@ -185,10 +186,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <SearchPane
           controller={controller}
           onClose={() => setSearching(false)}
-          onOpen={(channelId, parentId) => {
-            setCurrentId(channelId);
-            setThreadId(parentId);
-            setSearching(false);
+          onOpen={(message) => {
+            void controller.revealMessage(message).then((ok) => {
+              if (ok) { setCurrentId(message.channel_id); setThreadId(message.parent_id ?? null); setSearching(false); }
+            });
           }}
         />
       ) : current && threadId ? (

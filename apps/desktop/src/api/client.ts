@@ -19,6 +19,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 export class ApiClient {
+  private sessionVersion = 0;
   accessToken: string | null = null;
   refreshToken: string | null = null;
   private refreshing: Promise<TokenResponse> | null = null;
@@ -50,6 +51,7 @@ export class ApiClient {
 
   async refresh(): Promise<TokenResponse> {
     if (this.refreshing) return this.refreshing;
+    const version = this.sessionVersion;
     const token = this.refreshToken;
     if (!token) throw new ApiError(401, "missing_token", "No refresh token");
     this.refreshing = this.request<TokenResponse>(
@@ -59,11 +61,12 @@ export class ApiClient {
       { auth: false },
     )
       .then((tokens) => {
+        if (version !== this.sessionVersion) throw new ApiError(401, "session_changed", "Session changed");
         this.applyTokens(tokens);
         return tokens;
       })
       .catch((err: unknown) => {
-        if (err instanceof ApiError && err.isAuth) this.signOut();
+        if (version === this.sessionVersion && err instanceof ApiError && err.isAuth) this.signOut();
         throw err;
       })
       .finally(() => {
@@ -82,6 +85,7 @@ export class ApiClient {
   }
 
   signOut(): void {
+    this.sessionVersion += 1;
     this.accessToken = null;
     this.refreshToken = null;
     this.options.onSignedOut?.();
@@ -190,6 +194,7 @@ export class ApiClient {
 
   /** POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent. */
   async uploadAttachment(file: Blob, filename: string): Promise<AttachmentOut> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
     const form = new FormData();
     form.append("file", file, filename);
     const send = async (): Promise<Response> =>
@@ -209,6 +214,7 @@ export class ApiClient {
 
   /** Authenticated GET returning the raw body (thumbnails, downloads). */
   async fetchBlob(path: string): Promise<Blob> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
     const send = async (): Promise<Response> =>
       this.fetchImpl(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
     let response = await send();
@@ -231,6 +237,10 @@ export class ApiClient {
       // not JSON
     }
     return new ApiError(response.status, code, message);
+  }
+
+  messageContext(messageId: string): Promise<MessageOut[]> {
+    return this.request("GET", `/api/v1/messages/${messageId}/context`);
   }
 
   replies(messageId: string): Promise<MessageOut[]> {
@@ -276,6 +286,7 @@ export class ApiClient {
     options: { auth?: boolean; retry401?: boolean } = {},
   ): Promise<{ data: T; status: number }> {
     const auth = options.auth ?? true;
+    if (auth && !this.accessToken && this.refreshToken) await this.refresh();
     const headers: Record<string, string> = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth && this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;

@@ -6,10 +6,13 @@ struct ChannelView: View {
     @Bindable var controller: AppController
     let channelId: String
     @Binding var pendingThreadId: String?
-    @State private var draft = ""
     @State private var sheet: ChannelSheet?
     @State private var thread: ThreadTarget?
-    @State private var atBottom = true
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var atBottom = false
+    @State private var positioned = false
+    @State private var visibleFrames: [String: CGRect] = [:]
+    @State private var viewportHeight: CGFloat = 0
     @State private var loadingOlder = false
     /// Read position when the channel was opened; the 「新着メッセージ」 divider stays there.
     @State private var unreadMark: Int?
@@ -20,13 +23,36 @@ struct ChannelView: View {
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
-    private var messages: [MessageState] { controller.store.messages(channelId) }
+    private var focus: AppController.MessageFocus? { controller.messageFocus.flatMap { $0.channelId == channelId ? $0 : nil } }
+    private var messages: [MessageState] {
+        if let focus {
+            return focus.context.map { message in
+                let cached = controller.store.message(channelId, id: message.id)
+                return cached.map { $0.updatedSeq >= message.updatedSeq ? $0 : message } ?? message
+            }.filter { !$0.deleted }
+        }
+        return controller.store.messages(channelId)
+    }
     private var items: [TimelineItem] { Timeline.build(messages, firstUnreadAfterSeq: unreadMark, meId: controller.store.me?.id) }
 
-    /// Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
     private func markRead() {
-        guard let channel, atBottom, UIApplication.shared.applicationState == .active else { return }
-        controller.engine?.markRead(channelId, seq: channel.lastSeq)
+        guard positioned, focus == nil, thread == nil, scenePhase == .active else { return }
+        let seq = messages.compactMap { message -> Int? in
+            guard let frame = visibleFrames[message.id], frame.maxY > 0,
+                  frame.minY < viewportHeight,
+                  (frame.minY >= 0 && frame.maxY <= viewportHeight || frame.height > viewportHeight) else { return nil }
+            return message.seq
+        }.max()
+        if let seq { controller.engine?.markRead(channelId, seq: seq) }
+    }
+
+    private func position(_ proxy: ScrollViewProxy) {
+        guard !positioned, !messages.isEmpty else { return }
+        let target = focus.map { $0.parentId ?? $0.messageId }
+            ?? messages.first(where: { message in unreadMark.map { (message.seq ?? 0) > $0 } ?? false })?.id
+        if let target { proxy.scrollTo(target, anchor: focus == nil ? .top : .center) }
+        else { proxy.scrollTo("bottom", anchor: .bottom) }
+        positioned = true
     }
 
     private func loadOlder() {
@@ -40,63 +66,85 @@ struct ChannelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if focus != nil {
+                HStack {
+                    Text("検索位置の前後の会話").font(.caption)
+                    Spacer()
+                    Button("最新の会話へ") { controller.messageFocus = nil; unreadMark = nil }
+                }.padding(10)
+            }
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if let channel {
-                            if channel.hasOlder, channel.syncedSeq != nil {
-                                Button(action: loadOlder) {
-                                    if loadingOlder { ProgressView().controlSize(.small) } else { Text("以前のメッセージを読み込む") }
+                GeometryReader { viewport in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            if let channel {
+                                if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
+                                    Button(action: loadOlder) {
+                                        if loadingOlder { ProgressView().controlSize(.small) } else { Text("以前のメッセージを読み込む") }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .font(.footnote)
+                                    .padding(.vertical, 8)
+                                } else if messages.isEmpty {
+                                    ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
+                                                           description: Text("最初のメッセージを送ってみましょう。"))
+                                        .padding(.top, 40)
+                                } else if focus == nil {
+                                    Text("ここが会話の始まりです").font(.caption).foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 8)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .font(.footnote)
-                                .padding(.vertical, 8)
-                            } else if messages.isEmpty {
-                                ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
-                                                       description: Text("最初のメッセージを送ってみましょう。"))
-                                    .padding(.top, 40)
-                            } else {
-                                Text("ここが会話の始まりです").font(.caption).foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
                             }
-                        }
-                        ForEach(items) { item in
-                            switch item {
-                            case .date(let label, _):
-                                DaySeparator(label: label)
-                            case .unread:
-                                UnreadSeparator()
-                            case .message(let message, let compact):
-                                MessageRow(message: message, controller: controller, compact: compact,
-                                           onOpenThread: { thread = ThreadTarget(id: message.id) })
-                                    .id(message.id)
+                            ForEach(items) { item in
+                                switch item {
+                                case .date(let label, _):
+                                    DaySeparator(label: label)
+                                case .unread:
+                                    UnreadSeparator()
+                                case .message(let message, let compact):
+                                    MessageRow(message: message, controller: controller, compact: compact,
+                                               onOpenThread: { thread = ThreadTarget(id: message.id) })
+                                        .id(message.id)
+                                        .background(GeometryReader { geometry in
+                                            Color.clear.preference(key: VisibleMessageFrames.self,
+                                                value: [message.id: geometry.frame(in: .named("conversation"))])
+                                        })
+                                }
                             }
+                            Color.clear.frame(height: 1).id("bottom")
+                                .onAppear { atBottom = true }
+                                .onDisappear { atBottom = false }
                         }
-                        Color.clear.frame(height: 1).id("bottom")
-                            .onAppear { atBottom = true; markRead() }
-                            .onDisappear { atBottom = false }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if !atBottom {
-                        Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
-                            Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                    .coordinateSpace(name: "conversation")
+                    .onPreferenceChange(VisibleMessageFrames.self) { frames in
+                        visibleFrames = frames
+                        viewportHeight = viewport.size.height
+                        markRead()
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if !atBottom && focus == nil {
+                            Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+                                Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                            }
+                            .accessibilityLabel("最新のメッセージへ")
+                            .padding(12)
                         }
-                        .accessibilityLabel("最新のメッセージへ")
-                        .padding(12)
                     }
-                }
-                .onChange(of: messages.last?.id) { _, _ in
-                    if atBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
-                    markRead()
-                }
-                .onChange(of: channel?.lastSeq) { _, _ in markRead() }
-                .onAppear {
-                    if unreadMark == nil, let channel, channel.unreadCount > 0 { unreadMark = channel.lastReadSeq }
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                    markRead()
+                    .onChange(of: messages.last?.id) { _, _ in
+                        if positioned && atBottom && focus == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                    .task(id: messages.count) { await Task.yield(); position(proxy) }
+                    .onChange(of: focus?.messageId) { _, _ in
+                        positioned = false
+                        position(proxy)
+                    }
+                    .onChange(of: controller.engine?.status) { _, _ in markRead() }
+                    .onChange(of: scenePhase) { _, _ in markRead() }
+                    .onAppear {
+                        if unreadMark == nil, let channel, channel.unreadCount > 0 { unreadMark = channel.lastReadSeq }
+                    }
                 }
             }
             if let channel {
@@ -115,7 +163,7 @@ struct ChannelView: View {
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
-                    ComposerView(text: $draft, users: Array(controller.store.users.values), controller: controller) { body, attachmentIds in
+                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), controller: controller) { body, attachmentIds in
                         Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds) }
                     }
                 }
@@ -291,6 +339,7 @@ struct MessageRow: View {
         }
         .padding(.vertical, compact ? 1 : 5)
         .opacity(message.pending && !message.failed ? 0.6 : 1)
+        .background(controller.messageFocus?.messageId == message.id ? Color.yellow.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { if compact { showTime.toggle() } }
         .contextMenu {
@@ -354,15 +403,20 @@ func parseIsoDate(_ iso: String) -> Date? {
 }
 
 struct ComposerView: View {
-    @Binding var text: String
+    let channelId: String
+    var parentId: String? = nil
     let users: [UserPublic]
     var placeholder = "メッセージを入力"
     var controller: AppController? = nil
     let onSend: (String, [String]) -> Void
-    @State private var pending: [AttachmentOut] = []
+    private var text: String { controller?.store.draft(channelId, parentId: parentId).text ?? "" }
+    private var pending: [AttachmentOut] { controller?.store.draft(channelId, parentId: parentId).attachments ?? [] }
+    private var uploading: Int { controller?.store.uploading(channelId, parentId: parentId) ?? 0 }
+    private var textBinding: Binding<String> { Binding(get: { text }, set: { value in
+        controller?.store.setDraft(channelId, parentId: parentId) { $0.text = value }
+    }) }
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showFileImporter = false
-    @State private var uploading = 0
 
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
@@ -373,19 +427,24 @@ struct ComposerView: View {
 
     private func upload(data: Data, filename: String, contentType: String) async {
         guard let controller else { return }
-        uploading += 1
-        defer { uploading -= 1 }
-        if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) { pending.append(uploaded) }
+        let store = controller.store
+        guard pending.count < 10 else { controller.error = "添付は10件までです"; return }
+        if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) {
+            store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            PendingAttachmentsView(items: pending) { item in pending.removeAll { $0.id == item.id } }
+            PendingAttachmentsView(items: pending) { item in
+                controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
+            }
+            if uploading > 0 { Text("添付をアップロード中…").font(.caption).foregroundStyle(.secondary) }
             if !candidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(candidates) { candidate in
-                            Button("@\(candidate.username)  \(candidate.label)") { text = Mentions.complete(text, username: candidate.username) }
+                            Button("@\(candidate.username)  \(candidate.label)") { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                         }
@@ -404,19 +463,19 @@ struct ComposerView: View {
                     }
                     .disabled(uploading > 0)
                 }
-                TextField(placeholder, text: $text, axis: .vertical)
+                TextField(placeholder, text: textBinding, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
                 Button("送信", systemImage: "paperplane.fill") {
                     let body = Mentions.encode(trimmed, users: users)
-                    guard !body.isEmpty || !pending.isEmpty else { return }
+                    guard uploading == 0, !body.isEmpty || !pending.isEmpty else { return }
+                    guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
                     let ids = pending.map(\.id)
-                    text = ""
-                    pending = []
+                    controller?.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
                     onSend(body, ids)
                 }
                 .labelStyle(.iconOnly)
-                .disabled(trimmed.isEmpty && pending.isEmpty)
+                .disabled(uploading > 0 || (trimmed.isEmpty && pending.isEmpty))
             }
             .padding()
         }
@@ -424,7 +483,9 @@ struct ComposerView: View {
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             photoItems = []
+            controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
             Task {
+                defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
                 for item in items {
                     guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
                     let type = item.supportedContentTypes.first
@@ -434,7 +495,9 @@ struct ComposerView: View {
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
+            controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
             Task {
+                defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
                 for url in urls {
                     let accessed = url.startAccessingSecurityScopedResource()
                     defer { if accessed { url.stopAccessingSecurityScopedResource() } }
@@ -444,5 +507,12 @@ struct ComposerView: View {
                 }
             }
         }
+    }
+}
+
+private struct VisibleMessageFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
     }
 }

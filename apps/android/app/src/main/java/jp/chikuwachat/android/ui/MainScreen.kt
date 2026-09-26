@@ -178,17 +178,21 @@ fun MainScreen(controller: AppController) {
             val openThread = threadId
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (searching) {
-                    SearchPane(controller) { channelId, _, parentId ->
-                        searching = false
-                        selection = channelId
-                        threadId = parentId
+                    SearchPane(controller) { message ->
+                        scope.launch {
+                            if (controller.revealMessage(message)) {
+                                selection = message.channelId
+                                threadId = message.parentId
+                                searching = false
+                            }
+                        }
                     }
                 } else if (selectedChannel != null && openThread != null) {
                     ThreadPane(controller, selectedChannel.id, openThread, version)
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
                 } else {
-                    ChannelList(store, version, onSelect = { selection = it }, onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } })
+                    ChannelList(store, version, onSelect = { controller.messageFocus = null; selection = it }, onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } })
                 }
             }
         }

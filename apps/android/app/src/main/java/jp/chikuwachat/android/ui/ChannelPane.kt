@@ -2,6 +2,10 @@ package jp.chikuwachat.android.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -40,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,23 +61,49 @@ import kotlinx.coroutines.launch
 fun ChannelPane(controller: AppController, channelId: String, version: Int, onOpenThread: (String) -> Unit = {}) {
     val store = controller.store
     val channel = store.channel(channelId) ?: return
-    val messages = remember(version, channelId) { store.messages(channelId) }
+    val focus = controller.messageFocus?.takeIf { it.channelId == channelId }
+    val messages = remember(version, channelId, focus) {
+        focus?.context?.map { message ->
+            store.message(channelId, message.id)?.takeIf { it.updatedSeq >= message.updatedSeq } ?: message
+        }?.filter { !it.deleted } ?: store.messages(channelId)
+    }
+    var loadingOlder by remember(channelId) { mutableStateOf(false) }
+    var positioned by remember(channelId, focus?.messageId) { mutableStateOf(false) }
     // The 「新着メッセージ」 divider stays where it was when the channel was opened.
-    val unreadMark = remember(channelId) { channel.lastReadSeq.takeIf { channel.unreadCount > 0 } }
-    val items = remember(version, channelId) { Timeline.build(messages, unreadMark, store.me?.id).asReversed() }
+    var unreadMark by remember(channelId) { mutableStateOf(channel.lastReadSeq.takeIf { channel.unreadCount > 0 }) }
+    val items = remember(messages, channelId, focus, unreadMark) { Timeline.build(messages, unreadMark, store.me?.id).asReversed() }
     val listState = rememberLazyListState()
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
     val scope = rememberCoroutineScope()
-    var draft by rememberSaveable(channelId) { mutableStateOf("") }
-    var loadingOlder by remember { mutableStateOf(false) }
-    var pendingUploads by remember(channelId) { mutableStateOf(listOf<AttachmentOut>()) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        uris.forEach { uri -> scope.launch { controller.uploadAttachment(uri).onSuccess { pendingUploads = pendingUploads + it } } }
+    LaunchedEffect(channelId, focus?.messageId, items.isEmpty()) {
+        if (items.isEmpty() || positioned) return@LaunchedEffect
+        val target = focus?.let { it.parentId ?: it.messageId }
+            ?: messages.firstOrNull { message -> unreadMark?.let { (message.seq ?: 0) > it } == true }?.id
+        val index = items.indexOfFirst { it.key == target }.coerceAtLeast(0)
+        listState.scrollToItem(index)
+        positioned = true
     }
-    // Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
-    LaunchedEffect(channel.lastSeq) { controller.engine?.markRead(channelId, channel.lastSeq) }
+    LaunchedEffect(channelId, focus?.messageId, positioned, controller.engineStatus, controller.appForeground, items) {
+        if (!positioned || focus != null) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo }.collectLatest { layout ->
+            val seq = layout.visibleItemsInfo.mapNotNull { visible ->
+                val fullyVisible = visible.offset >= layout.viewportStartOffset &&
+                    visible.offset + visible.size <= layout.viewportEndOffset
+                val tall = visible.size > layout.viewportEndOffset - layout.viewportStartOffset
+                if (!fullyVisible && !tall) null
+                else (items.getOrNull(visible.index) as? TimelineItem.Message)?.message?.seq
+            }.maxOrNull()
+            if (seq != null) controller.engine?.markRead(channelId, seq)
+        }
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
+        if (focus != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { unreadMark = null; controller.messageFocus = null; scope.launch { listState.scrollToItem(0) } }) { Text("最新の会話へ") }
+            }
+        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(items, key = { it.key }) { item ->
@@ -97,12 +126,14 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                         }
                     }
                 }
-                if (channel.hasOlder && channel.syncedSeq != null) {
+                if (focus == null && channel.hasOlder && channel.syncedSeq != null) {
                     item(key = "older") {
-                        LaunchedEffect(messages.size) {
-                            if (loadingOlder) return@LaunchedEffect
+                        LaunchedEffect(messages.size, controller.engineStatus) {
+                            if (controller.engineStatus != jp.chikuwachat.android.sync.EngineStatus.ONLINE || loadingOlder) return@LaunchedEffect
                             loadingOlder = true
-                            try { controller.engine?.loadOlder(channelId) } finally { loadingOlder = false }
+                            try { controller.engine?.loadOlder(channelId) }
+                            catch (e: Exception) { controller.error = controller.describe(e) }
+                            finally { loadingOlder = false }
                         }
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                     }
@@ -113,7 +144,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                             Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                } else {
+                } else if (focus == null) {
                     item(key = "start") {
                         Text(
                             "ここが会話の始まりです",
@@ -125,7 +156,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                     }
                 }
             }
-            if (showJump) {
+            if (showJump && focus == null) {
                 SmallFloatingActionButton(
                     onClick = { scope.launch { listState.animateScrollToItem(0) } },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
@@ -138,33 +169,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         } else if (!channel.isMember) {
             TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
         } else {
-            val query = Mentions.query(draft)
-            val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
-            if (candidates.isNotEmpty()) {
-                LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(candidates, key = { it.username }) { candidate ->
-                        Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { draft = Mentions.complete(draft, candidate.username) }) {
-                            Text("@" + candidate.username + "  " + candidate.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                        }
-                    }
-                }
-            }
-            PendingAttachments(pendingUploads) { removed -> pendingUploads = pendingUploads - removed }
-            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = { picker.launch("*/*") }) { Text("📎") }
-                OutlinedTextField(draft, { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("メッセージ") }, maxLines = 6)
-                IconButton(
-                    onClick = {
-                        val body = Mentions.encode(draft.trim(), store.users.values)
-                        val ids = pendingUploads.map { it.id }
-                        if (body.isEmpty() && ids.isEmpty()) return@IconButton
-                        draft = ""
-                        pendingUploads = emptyList()
-                        scope.launch { controller.engine?.send(channelId, body, attachmentIds = ids) }
-                    },
-                    enabled = draft.isNotBlank() || pendingUploads.isNotEmpty(),
-                ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }
-            }
+            ConversationComposer(controller, channelId)
         }
     }
 }
@@ -190,11 +195,11 @@ private fun UnreadSeparator() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageRow(
+fun MessageRow(
     message: MessageState,
     store: Store,
     controller: AppController,
-    compact: Boolean,
+    compact: Boolean = false,
     canEdit: Boolean,
     canDelete: Boolean,
     onRetry: () -> Unit,
@@ -202,14 +207,14 @@ private fun MessageRow(
     onReact: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDelete: () -> Unit,
-    onOpenThread: () -> Unit,
+    onOpenThread: (() -> Unit)? = null,
 ) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxWidth().combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
+    Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp)
             Spacer(Modifier.width(10.dp))
@@ -230,7 +235,7 @@ private fun MessageRow(
                 if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
                 AttachmentList(message.attachments, controller)
                 ReactionChips(message, store, onToggle = onReact)
-                if (message.replyCount > 0) {
+                if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
                         Text("💬 ${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
                     }
@@ -251,4 +256,59 @@ private fun MessageRow(
     }
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
+}
+
+
+/** Shared composer: drafts and in-flight uploads stay bound to the original conversation. */
+@Composable
+fun ConversationComposer(controller: AppController, channelId: String, parentId: String? = null) {
+    val store = controller.store
+    val state = store.draft(channelId, parentId)
+    val draft = state.text
+    val pendingUploads = state.attachments
+    val uploading = store.uploading(channelId, parentId)
+    fun setText(value: String) { store.setDraft(channelId, parentId) { it.copy(text = value) } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (pendingUploads.size + uploading + uris.size > 10) controller.error = "添付は10件までです"
+        else {
+            store.trackUpload(channelId, parentId, uris.size)
+            uris.forEach { uri -> controller.scope.launch {
+                try {
+                    controller.uploadAttachment(uri).onSuccess { attachment ->
+                        store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments + attachment) }
+                    }
+                } finally { store.trackUpload(channelId, parentId, -1) }
+            } }
+        }
+    }
+    Column {
+        if (uploading > 0) Text("添付をアップロード中…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp))
+        val query = Mentions.query(draft)
+        val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
+        if (candidates.isNotEmpty()) {
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(candidates, key = { it.username }) { candidate ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText(Mentions.complete(draft, candidate.username)) }) {
+                        Text("@" + candidate.username + "  " + candidate.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                }
+            }
+        }
+        PendingAttachments(pendingUploads) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
+            IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Text("📎") }
+            OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
+            IconButton(
+                onClick = {
+                    val body = Mentions.encode(draft.trim(), store.users.values)
+                    val ids = pendingUploads.map { it.id }
+                    if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
+                    if (body.length > 20_000) { controller.error = "本文は20,000文字までです"; return@IconButton }
+                    store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                    controller.scope.launch { controller.engine?.send(channelId, body, parentId = parentId, attachmentIds = ids) }
+                },
+                enabled = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty()),
+            ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }
+        }
+    }
 }

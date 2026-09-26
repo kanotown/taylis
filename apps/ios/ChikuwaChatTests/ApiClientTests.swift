@@ -82,6 +82,43 @@ final class ApiClientTests: XCTestCase {
         XCTAssertNil(client.accessToken)
     }
 
+    func testRestoredSessionRefreshesBeforeAuthenticatedRequest() async throws {
+        var paths: [String] = []
+        StubProtocol.handler = { [self] request in
+            paths.append(request.url!.path)
+            if request.url!.path.hasSuffix("/auth/refresh") { return (200, tokens(2)) }
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-2")
+            return (200, Data(#"{"id":"u","username":"alice","display_name":"Alice","role":"member","created_at":"","updated_at":"","must_change_password":false}"#.utf8))
+        }
+        let client = makeClient()
+        client.refreshToken = "refresh-1"
+        _ = try await client.me()
+        XCTAssertEqual(paths, ["/api/v1/auth/refresh", "/api/v1/users/me"])
+    }
+
+    func testLateRefreshDoesNotRestoreSignedOutCredentials() async {
+        let received = expectation(description: "refresh requested")
+        let gate = DispatchSemaphore(value: 0)
+        let response = tokens(2)
+        StubProtocol.handler = { _ in
+            received.fulfill()
+            _ = gate.wait(timeout: .now() + 5)
+            return (200, response)
+        }
+        let client = makeClient()
+        client.refreshToken = "refresh-1"
+        var saved = false
+        client.onTokens = { _ in saved = true }
+        let task = Task { try await client.refresh() }
+        await fulfillment(of: [received], timeout: 3)
+        client.signOut()
+        gate.signal()
+        do { _ = try await task.value; XCTFail("expected cancelled session") } catch {}
+        XCTAssertNil(client.accessToken)
+        XCTAssertNil(client.refreshToken)
+        XCTAssertFalse(saved)
+    }
+
     func testErrorClassification() {
         XCTAssertTrue(ApiError.network(URLError(.notConnectedToInternet)).isRetryable)
         XCTAssertTrue(ApiError.api(status: 503, code: "unavailable", message: "").isRetryable)

@@ -91,6 +91,7 @@ class SyncEngine(
     /** A channel became fully read (here or on another device): dismiss its notification. */
     var onRead: ((String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
+    var prepareConnection: (suspend () -> Unit)? = null
     var catchUps = 0
         private set
     var reloads = 0
@@ -156,6 +157,12 @@ class SyncEngine(
     }
 
     private suspend fun connectSocket() {
+        if (stopped || _status.value == EngineStatus.CONNECTING || _status.value == EngineStatus.ONLINE) return
+        _status.value = EngineStatus.CONNECTING
+        try { prepareConnection?.invoke() } catch (e: Exception) {
+            if (e is ApiException.Api && e.isAuth) signOut() else scheduleReconnect()
+            return
+        }
         if (stopped) return
         val token = getAccessToken()
         if (token == null) {
@@ -406,6 +413,7 @@ class SyncEngine(
 
     /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
     suspend fun loadReplies(channelId: String, parentId: String) = enqueue {
+        if (_status.value != EngineStatus.ONLINE) return@enqueue
         api.replies(parentId).forEach { store.upsertMessage(it) }
     }
 
@@ -413,15 +421,17 @@ class SyncEngine(
 
     suspend fun openChannel(channelId: String) {
         currentChannelId = channelId
+        if (_status.value != EngineStatus.ONLINE) return
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)
-            markRead(channelId, store.channel(channelId)?.lastSeq ?: channel.lastSeq)
+            // Only the visible timeline advances read state.
         }
     }
 
     /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
     fun markRead(channelId: String, seq: Int) {
+        if (_status.value != EngineStatus.ONLINE || !isActive()) return
         val channel = store.channel(channelId) ?: return
         if (!channel.isMember || seq <= channel.lastReadSeq) return
         store.updateChannel(channelId) {
@@ -469,6 +479,7 @@ class SyncEngine(
 
     /** Scroll-up pagination: older messages by seq cursor. */
     suspend fun loadOlder(channelId: String) = enqueue {
+        if (_status.value != EngineStatus.ONLINE) return@enqueue
         val channel = store.channel(channelId) ?: return@enqueue
         if (!channel.hasOlder) return@enqueue
         val oldest = store.messages(channelId).firstNotNullOfOrNull { it.seq }
@@ -500,7 +511,7 @@ class SyncEngine(
 
     /** Sends queued messages one at a time, in order (§9). Stops on temporary failures. */
     suspend fun flushOutbox() {
-        if (flushing) return
+        if (flushing || _status.value != EngineStatus.ONLINE) return
         flushing = true
         try {
             for (item in store.outbox.toList()) {

@@ -205,3 +205,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 /* toast */
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--error); color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); display: flex; gap: 12px; align-items: center; z-index: 30; max-width: 80vw; }
 .toast .link { color: #fff; text-decoration: none; }
+
+.context-notice { padding: 10px; background: var(--accent-soft); position: sticky; top: 0; z-index: 2; }
+.message.highlighted { animation: message-highlight 4s ease-out; }
+@keyframes message-highlight { from { background: var(--mark); } to { background: transparent; } }
+.message:focus-within .actions { display: inline-flex; }
