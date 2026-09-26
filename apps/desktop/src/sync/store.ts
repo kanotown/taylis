@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, MessageState, NotificationLevel, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -35,6 +35,13 @@ export class Store {
   readonly users = new Map<string, UserPublic>();
   readonly channels = new Map<string, ChannelState>();
   readonly outbox: OutboxItem[] = [];
+  /** Followed threads (THREADS.md §5): fetched when the view opens, replaced by thread.updated; not persisted. */
+  readonly threads = new Map<string, ThreadEntry>();
+  threadSummary: ThreadSummary = { unread_count: 0, mention_count: 0 };
+  threadsFilter: ThreadFilter = "all";
+  threadsLoaded = false;
+  threadsCursor: string | null = null;
+  threadsHasMore = false;
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -209,6 +216,67 @@ export class Store {
 
   getMessage(channelId: string, id: string): MessageState | undefined {
     return this.bucket(channelId).get(id);
+  }
+
+  // --- threads (THREADS.md §5) -----------------------------------------------------------
+
+  setThreadSummary(summary: ThreadSummary): void {
+    if (summary.unread_count === this.threadSummary.unread_count && summary.mention_count === this.threadSummary.mention_count) return;
+    this.threadSummary = summary;
+    this.emit();
+  }
+
+  /**
+   * A page of GET /threads. Rows are merged so an open thread keeps its state across filter changes
+   * and refreshes; on a first page, rows the server would have listed but did not (unfollowed or
+   * deleted elsewhere) are dropped.
+   */
+  setThreadPage(filter: ThreadFilter, items: ThreadItem[], cursor: string | null, options: { append: boolean; pageSize: number }): void {
+    if (!options.append) {
+      const listed = new Set(items.map((i) => i.parent.id));
+      const full = items.length >= options.pageSize;
+      const oldest = full ? (items[items.length - 1]?.state.last_reply_at ?? "") : "";
+      for (const [id, entry] of this.threads) {
+        if (listed.has(id) || !entry.state.following) continue;
+        if (filter === "unread" && entry.state.unread_count === 0) continue;
+        if ((entry.state.last_reply_at ?? "") >= oldest) this.threads.delete(id);
+      }
+    }
+    for (const item of items) this.threads.set(item.parent.id, { parent: item.parent, state: item.state });
+    this.threadsFilter = filter;
+    this.threadsLoaded = true;
+    this.threadsCursor = cursor;
+    this.threadsHasMore = items.length >= options.pageSize;
+    this.emit();
+  }
+
+  /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
+  applyThreadState(state: ThreadState, parent?: MessageOut): void {
+    const entry = this.threads.get(state.parent_id);
+    const before = entry?.state;
+    if (entry) {
+      entry.state = state;
+      entry.parent = { ...entry.parent, reply_count: state.reply_count, last_reply_at: state.last_reply_at };
+    } else {
+      const known: MessageState | undefined = parent ?? this.bucket(state.channel_id).get(state.parent_id);
+      if (known && known.seq !== null && !known.pending) this.threads.set(state.parent_id, { parent: { ...(known as MessageOut), reply_count: state.reply_count, last_reply_at: state.last_reply_at }, state });
+    }
+    if (before) {
+      const unread = (state.following && state.unread_count > 0 ? 1 : 0) - (before.following && before.unread_count > 0 ? 1 : 0);
+      const mention = (state.following && state.mention_count > 0 ? 1 : 0) - (before.following && before.mention_count > 0 ? 1 : 0);
+      this.threadSummary = {
+        unread_count: Math.max(0, this.threadSummary.unread_count + unread),
+        mention_count: Math.max(0, this.threadSummary.mention_count + mention),
+      };
+    }
+    this.emit();
+  }
+
+  /** The rows of the threads view: followed, newest reply first, unread only when that filter is on. */
+  threadList(filter: ThreadFilter = this.threadsFilter): ThreadEntry[] {
+    return [...this.threads.values()]
+      .filter((e) => e.state.following && (filter === "all" || e.state.unread_count > 0))
+      .sort((a, b) => (b.state.last_reply_at ?? "").localeCompare(a.state.last_reply_at ?? "") || b.parent.seq - a.parent.seq);
   }
 
   /** The merge rule (SYNC_PROTOCOL.md §8): newer updated_seq wins; tombstones delete. */

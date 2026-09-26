@@ -436,3 +436,117 @@ describe("conversation safety", () => {
     engine.stop();
   });
 });
+
+describe("followed threads (M11a)", () => {
+  it("lists followed threads, counts unread replies and marks them read", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
+    await engine.start();
+    await engine.openChannel(channel.id);
+    expect(store.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+
+    // bob's own topic: alice's reply makes it a followed, unread thread (badge via thread.updated).
+    await engine.send(channel.id, "topic");
+    await engine.idle();
+    const parent = server.messageByBody(channel.id, "topic");
+    server.post(channel.id, alice.id, `<@${bob.id}> reply 1`, undefined, parent.id);
+    await engine.flushThreads();
+    expect(store.threadSummary).toEqual({ unread_count: 1, mention_count: 1 });
+    expect(store.threadsLoaded).toBe(false); // only the badge until the view opens
+
+    await engine.loadThreads("all");
+    const rows = store.threadList();
+    expect(rows.map((r) => r.parent.body)).toEqual(["topic"]);
+    expect(rows[0]!.state).toMatchObject({ following: true, last_read_seq: 0, unread_count: 1, mention_count: 1, reply_count: 1, participant_ids: [bob.id, alice.id] });
+
+    // Showing the reply marks the thread read (debounced PUT); the badge drops at once.
+    const reply = server.messageByBody(channel.id, `<@${bob.id}> reply 1`);
+    await engine.loadReplies(channel.id, parent.id);
+    engine.markThreadRead(parent.id, reply.seq);
+    expect(store.threads.get(parent.id)?.state).toMatchObject({ last_read_seq: reply.seq, unread_count: 0 });
+    expect(store.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+    await engine.flushThreads();
+    expect(server.threadState(bob.id, parent.id).last_read_seq).toBe(reply.seq);
+    expect(store.threadList("unread")).toEqual([]);
+
+    // A newer reply arriving while the list is open shows up as unread again.
+    server.post(channel.id, alice.id, "reply 2", undefined, parent.id);
+    await engine.flushThreads();
+    expect(store.threads.get(parent.id)?.state).toMatchObject({ unread_count: 1, mention_count: 0, reply_count: 2 });
+    expect(store.threadSummary).toEqual({ unread_count: 1, mention_count: 0 });
+    engine.stop();
+  });
+
+  it("unfollowing drops the thread from the list and from notifications; a thread opened from a channel loads its state", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const { message: parent } = server.post(channel.id, alice.id, "alice topic");
+    await engine.idle();
+    await engine.send(channel.id, "my reply", undefined, parent.id); // bob follows by replying
+    await engine.flushThreads();
+    expect(store.threads.get(parent.id)?.state).toMatchObject({ following: true, unread_count: 0 }); // thread.updated
+
+    // A fresh client (nothing fetched yet) asks for the state when the thread pane opens.
+    const fresh = new Store();
+    const second = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: fresh, getAccessToken: () => "t", sleep: async () => {} }, {});
+    await second.start();
+    await second.openChannel(channel.id);
+    await second.idle();
+    expect(fresh.threads.get(parent.id)).toBeUndefined();
+    await second.loadThreadState(parent.id);
+    expect(fresh.threads.get(parent.id)?.state).toMatchObject({ following: true, last_read_seq: 2, unread_count: 0, reply_count: 1 });
+    second.stop();
+
+    await engine.setThreadFollow(parent.id, false);
+    expect(store.threads.get(parent.id)?.state.following).toBe(false);
+    await engine.loadThreads("all");
+    expect(store.threadList()).toEqual([]);
+    server.post(channel.id, alice.id, "alice again", undefined, parent.id);
+    await engine.flushThreads();
+    expect(notifications).toEqual([]); // no longer a participant
+    expect(store.threadSummary).toEqual({ unread_count: 0, mention_count: 0 });
+
+    await engine.setThreadFollow(parent.id, true);
+    await engine.flushThreads();
+    expect(store.threadList().map((r) => r.parent.id)).toEqual([parent.id]);
+    expect(store.threads.get(parent.id)?.state).toMatchObject({ following: true, unread_count: 1 });
+    engine.stop();
+  });
+
+  it("pages the list and reloads it after reconnecting", async () => {
+    const { server, alice, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    for (let i = 1; i <= 3; i++) {
+      await engine.send(channel.id, `topic ${i}`);
+      await engine.idle();
+      server.post(channel.id, alice.id, `re ${i}`, undefined, server.messageByBody(channel.id, `topic ${i}`).id);
+    }
+    await engine.flushThreads();
+    // thread.updated created the rows (the parents are in the timeline): pages merge into what is known.
+    expect(store.threadList().map((r) => r.parent.body)).toEqual(["topic 3", "topic 2", "topic 1"]);
+    const me = store.me!.id;
+    engine.stop();
+
+    const fresh = new Store();
+    const paged = new SyncEngine({ api: server.apiFor(me), connect: server.connectorFor(me), store: fresh, getAccessToken: () => "t", sleep: async () => {} }, { threadPageSize: 2 });
+    await paged.start();
+    await paged.loadThreads("all");
+    expect(fresh.threadList().map((r) => r.parent.body)).toEqual(["topic 3", "topic 2"]);
+    expect(fresh.threadsHasMore).toBe(true);
+    await paged.loadThreads("all", { more: true });
+    expect(fresh.threadList().map((r) => r.parent.body)).toEqual(["topic 3", "topic 2", "topic 1"]);
+    expect(fresh.threadsHasMore).toBe(false);
+
+    // A thread unfollowed elsewhere disappears from the next first page; older rows stay.
+    server.setThreadFollow(me, server.messageByBody(channel.id, "topic 3").id, false);
+    await paged.flushThreads();
+    server.disconnect(me);
+    await paged.idle();
+    await paged.flushThreads();
+    expect(fresh.threadsLoaded).toBe(true);
+    expect(fresh.threadList().map((r) => r.parent.body)).toEqual(["topic 2", "topic 1"]);
+    expect(fresh.threadSummary.unread_count).toBe(2);
+    paged.stop();
+  });
+});

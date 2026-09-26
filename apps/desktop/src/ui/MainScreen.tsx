@@ -2,7 +2,7 @@ import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, Users } fr
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { ChannelState, NotificationLevel } from "../sync/types";
+import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -13,6 +13,7 @@ import { QuickSwitcher } from "./QuickSwitcher";
 import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
+import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
 import { Toast } from "./Toast";
 
@@ -34,6 +35,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
+  const [view, setView] = useState<"channel" | "threads">("channel");
+  const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
@@ -64,11 +68,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
+  // The thread pane belongs to the current channel, or to the channel of the row picked in the threads view.
+  const threadChannel: ChannelState | undefined = view === "threads" ? (threadChannelId ? store.getChannel(threadChannelId) : undefined) : current;
   const status = engine?.status ?? "idle";
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searching, switcher });
-  state.current = { currentId, dialog, threadId, searching, switcher };
+  const state = useRef({ currentId, dialog, threadId, searching, switcher, view });
+  state.current = { currentId, dialog, threadId, searching, switcher, view };
 
   useEffect(() => {
     if (!currentId && channels.length > 0) {
@@ -86,7 +92,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.setEditing(null);
     setCurrentId(id);
     setThreadId(null);
+    setThreadChannelId(null);
+    setView("channel");
     setSwitcher(false);
+  };
+
+  const openThreads = () => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setSearching(false);
+    setView((v) => (v === "threads" ? "channel" : "threads"));
+  };
+
+  const openThreadEntry = (entry: ThreadEntry) => {
+    controller.clearMessageFocus();
+    setThreadChannelId(entry.state.channel_id);
+    setThreadId(entry.parent.id);
   };
 
   const toggleUnreadOnly = () => {
@@ -119,6 +142,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       } else if (mod && !event.shiftKey && key === "f") {
         event.preventDefault();
         setSearching(true);
+      } else if (mod && event.shiftKey && key === "t") {
+        event.preventDefault();
+        openThreads();
       } else if (mod && event.shiftKey && key === "l") {
         event.preventDefault();
         document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
@@ -135,6 +161,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         else if (s.searching) setSearching(false);
         else if (s.threadId) setThreadId(null);
         else if (controller.editing) controller.setEditing(null);
+        else if (s.view === "threads") setView("channel");
         else if (s.currentId) {
           // Nothing to close: Esc marks the open conversation read (Mattermost).
           const channel = controller.store.getChannel(s.currentId);
@@ -191,6 +218,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onNewChannel={() => setDialog("channel")}
         onSearch={() => setSearching(true)}
         onSettings={() => setDialog("settings")}
+        onThreads={openThreads}
+        threadsActive={view === "threads"}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -211,7 +240,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
             {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
           </div>
         )}
-        {current ? (
+        {view === "threads" ? (
+          <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
+        ) : current ? (
           <>
             <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -276,7 +307,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 )}
               </div>
             </header>
-            <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
+            <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
             {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />}
             {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
           </>
@@ -300,8 +331,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             });
           }}
         />
-      ) : current && threadId ? (
-        <ThreadPane controller={controller} channel={current} parentId={threadId} onClose={() => setThreadId(null)} />
+      ) : threadId && threadChannel ? (
+        <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
       ) : null}
       <Toast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}

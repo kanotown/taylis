@@ -4,7 +4,7 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -18,6 +18,11 @@ export interface SyncApi {
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
+  /** THREADS.md §3. */
+  threads(options: { filter: ThreadFilter; cursor?: string | null; limit?: number }): Promise<ThreadListOut>;
+  threadState(messageId: string): Promise<ThreadState>;
+  markThreadRead(messageId: string, lastReadSeq: number): Promise<ThreadState>;
+  setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
 }
 
 export interface WsLike {
@@ -57,6 +62,9 @@ export interface EngineOptions {
   reconnectMaxMs?: number;
   /** §10: read marks are debounced so scrolling does not spam the server. */
   readDebounceMs?: number;
+  threadPageSize?: number;
+  /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
+  threadRefreshMs?: number;
 }
 
 export class SyncEngine {
@@ -67,6 +75,10 @@ export class SyncEngine {
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
   private readonly pendingReads = new Map<string, Promise<void>>();
   private readonly readCancels = new Map<string, () => void>();
+  /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
+  private readonly threadReadFloor = new Map<string, number>();
+  private threadRefreshCancel: (() => void) | null = null;
+  private threadRefresh: Promise<void> | null = null;
   private ws: WsLike | null = null;
   private chain: Promise<void> = Promise.resolve();
   private helloResolve: (() => void) | null = null;
@@ -90,6 +102,8 @@ export class SyncEngine {
       reconnectMinMs: options.reconnectMinMs ?? 1_000,
       reconnectMaxMs: options.reconnectMaxMs ?? 30_000,
       readDebounceMs: options.readDebounceMs ?? 1_000,
+      threadPageSize: options.threadPageSize ?? 50,
+      threadRefreshMs: options.threadRefreshMs ?? 300,
     };
   }
 
@@ -279,6 +293,8 @@ export class SyncEngine {
     for (const channel of [...store.channels.values()]) {
       if (channel.isMember && !seen.has(channel.id)) store.removeChannel(channel.id); // no longer a member
     }
+    if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
+    if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
   }
 
   /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -339,6 +355,14 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "thread.updated": {
+        // THREADS.md §4: the row (if loaded) takes the new state now; the badge and the list are
+        // refreshed from the server shortly after, which also covers threads we do not hold.
+        const data = frame.data as ThreadUpdated;
+        store.applyThreadState(data);
+        this.scheduleThreadRefresh();
         return;
       }
       case "session.revoked":
@@ -519,6 +543,110 @@ export class SyncEngine {
   async flushReads(): Promise<void> {
     await Promise.all([...this.pendingReads.values()]);
     await this.idle();
+  }
+
+  // --- followed threads (THREADS.md §5) ---------------------------------------------------
+
+  /** The threads view opens (or switches filter): fetch the first page; `more` appends the next one. */
+  loadThreads(filter: ThreadFilter, options: { more?: boolean } = {}): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.status !== "online") return;
+      const store = this.deps.store;
+      const cursor = options.more && store.threadsFilter === filter ? store.threadsCursor : null;
+      if (options.more && !cursor) return;
+      const page = await this.deps.api.threads({ filter, cursor, limit: this.opts.threadPageSize });
+      store.setThreadPage(filter, page.items, page.next_cursor ?? null, { append: cursor !== null, pageSize: this.opts.threadPageSize });
+      store.setThreadSummary(page.summary);
+    });
+  }
+
+  /** A thread opened from a channel: fetch my relation to it (follow flag, read position). */
+  loadThreadState(parentId: string, parent?: MessageOut): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.status !== "online") return;
+      const state = await this.deps.api.threadState(parentId);
+      const floor = this.threadReadFloor.get(parentId) ?? 0;
+      this.deps.store.applyThreadState(floor > state.last_read_seq ? { ...state, last_read_seq: floor } : state, parent);
+    });
+  }
+
+  /** The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce. */
+  markThreadRead(parentId: string, seq: number): void {
+    if (this.status !== "online" || this.deps.isActive?.() === false) return;
+    const store = this.deps.store;
+    const entry = store.threads.get(parentId);
+    const current = Math.max(entry?.state.last_read_seq ?? 0, this.threadReadFloor.get(parentId) ?? 0);
+    if (seq <= current) return;
+    this.threadReadFloor.set(parentId, seq);
+    if (entry) {
+      const newest = Math.max(0, ...store.replies(entry.state.channel_id, parentId).map((r) => r.seq ?? 0));
+      store.applyThreadState(seq >= newest ? { ...entry.state, last_read_seq: seq, unread_count: 0, mention_count: 0 } : { ...entry.state, last_read_seq: seq });
+    }
+    const key = "thread:" + parentId;
+    this.readCancels.get(key)?.();
+    let cancelled = false;
+    this.readCancels.set(key, () => {
+      cancelled = true;
+    });
+    const pending = (async () => {
+      await (this.deps.sleep ?? defaultSleep)(this.opts.readDebounceMs);
+      if (cancelled) return;
+      this.readCancels.delete(key);
+      const target = this.threadReadFloor.get(parentId) ?? seq;
+      try {
+        const state = await this.deps.api.markThreadRead(parentId, target);
+        await this.enqueue(async () => store.applyThreadState(state));
+      } catch {
+        // the next mark (or the refresh) retries; the local position already moved
+      }
+    })();
+    this.pendingReads.set(key, pending);
+    void pending.finally(() => {
+      if (this.pendingReads.get(key) === pending) this.pendingReads.delete(key);
+    });
+  }
+
+  setThreadFollow(parentId: string, following: boolean): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.status !== "online") return;
+      const state = await this.deps.api.setThreadFollow(parentId, following);
+      this.deps.store.applyThreadState(state);
+    });
+  }
+
+  private scheduleThreadRefresh(): void {
+    this.threadRefreshCancel?.();
+    let cancelled = false;
+    this.threadRefreshCancel = () => {
+      cancelled = true;
+    };
+    this.threadRefresh = (async () => {
+      await (this.deps.sleep ?? defaultSleep)(this.opts.threadRefreshMs);
+      if (cancelled || this.status !== "online") return;
+      this.threadRefreshCancel = null;
+      await this.refreshThreads();
+    })();
+  }
+
+  /** Re-read the badge (and the open list) from the server; cheap, and always consistent. */
+  async refreshThreads(): Promise<void> {
+    const store = this.deps.store;
+    try {
+      if (store.threadsLoaded) {
+        await this.loadThreads(store.threadsFilter);
+      } else {
+        const page = await this.deps.api.threads({ filter: "unread", limit: 1 });
+        store.setThreadSummary(page.summary);
+      }
+    } catch {
+      // bootstrap (next reconnect) or the next event refreshes again
+    }
+  }
+
+  /** Waits for the debounced thread refresh (tests). */
+  async flushThreads(): Promise<void> {
+    await this.threadRefresh;
+    await this.flushReads();
   }
 
   async catchUp(channelId: string): Promise<void> {

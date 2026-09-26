@@ -49,6 +49,7 @@ WHERE parent_id = $parent AND seq > $last_read_seq AND sender_id <> $me;
 | 操作 | エンドポイント | 備考 |
 | --- | --- | --- |
 | 一覧 | `GET /threads?filter=all|unread&limit&cursor` | `following=true` で返信が 1 件以上ある親を `last_reply_at` の新しい順に。各行は `{ parent: MessageOut, state: ThreadState }`。応答の `next_cursor` (最後の行の `last_reply_at`) をそのまま `cursor` に渡すと次ページ。`summary` (下記) も同梱 |
+| 状態 | `GET /messages/{id}/thread` | 自分の `ThreadState` 1 件。スレッドパネルのフォロー表示と「新しい返信」の区切りに使う。行が無ければ `following=false, last_read_seq=0` |
 | 既読 | `PUT /messages/{id}/thread/read {last_read_seq}` | 単調、最新の返信の `seq` で clamp。スレッドを開いて表示できた返信の最大 `seq` を 1 秒デバウンスで送る。`id` は返信の id でもよい (親に解決する) |
 | フォロー | `PUT /messages/{id}/thread/follow {following}` | false で一覧と通知から外れる。自動フォローは false を上書きしない |
 | bootstrap | `threads: { unread_count, mention_count }` | 未読の返信があるフォロー中スレッドの数と、そのうち未読メンションがあるものの数。サイドバーの「スレッド」バッジ用 |

@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Hash, Lock, Plus, Search, Settings } from "lucide-react";
+import { AtSign, BellOff, Hash, Lock, MessagesSquare, Plus, Search, Settings } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -19,9 +19,12 @@ interface Props {
   onNewChannel: () => void;
   onSearch?: () => void;
   onSettings?: () => void;
+  /** The threads view (THREADS.md §5); `threadsActive` highlights its entry instead of a channel. */
+  onThreads?: () => void;
+  threadsActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false }: Props) {
   const store = controller.store;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
@@ -104,6 +107,32 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           未読
         </button>
       </div>
+
+      {onThreads && (
+        <ul className="mt-1 space-y-px">
+          <li>
+            <button
+              type="button"
+              onClick={onThreads}
+              aria-current={threadsActive ? "page" : undefined}
+              title={`スレッド (${modKey()}+Shift+T)`}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                threadsActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                store.threadSummary.unread_count > 0 && "font-semibold text-white",
+              )}
+            >
+              <MessagesSquare size={15} className="shrink-0 opacity-70" />
+              <span className="flex-1 truncate">スレッド</span>
+              {store.threadSummary.unread_count > 0 && (
+                <Badge tone={store.threadSummary.mention_count > 0 ? "danger" : "neutral"} className={store.threadSummary.mention_count > 0 ? undefined : "bg-white/20 text-white"}>
+                  {store.threadSummary.unread_count}
+                </Badge>
+              )}
+            </button>
+          </li>
+        </ul>
+      )}
 
       <Section
         title="チャンネル"
