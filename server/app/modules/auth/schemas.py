@@ -37,7 +37,8 @@ class PasswordChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_password: str = Field(max_length=128, repr=False)
-    new_password: str = Field(min_length=12, max_length=128, repr=False)
+    # The minimum length is a server setting (password_min_length) checked in the service.
+    new_password: str = Field(min_length=1, max_length=128, repr=False)
 
 
 class DeviceOut(BaseModel):

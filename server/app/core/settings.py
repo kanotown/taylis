@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     refresh_token_max_days: int = 180
     refresh_grace_seconds: int = 30
 
-    password_min_length: int = 12
+    password_min_length: int = 8  # NIST SP 800-63B minimum; raise via PASSWORD_MIN_LENGTH
     login_rate_limit_per_ip: int = 10  # attempts per minute
     login_rate_limit_per_account: int = 5  # attempts per minute
 
