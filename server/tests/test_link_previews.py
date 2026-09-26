@@ -1,6 +1,5 @@
 """Link previews (M11g): Open Graph parsing, SSRF guard, caching and the rate limit."""
 
-import hashlib
 from collections.abc import Callable
 from datetime import timedelta
 
@@ -108,7 +107,8 @@ async def test_previews_are_fetched_once_cached_and_rate_limited(
     await client.get("/api/v1/link-previews", params={"url": "https://wiki.example.com/pages/1"})
     assert calls.count("https://wiki.example.com/pages/1") == 2
 
-    # Redirects into private space are refused (400) and never cached; local targets never reach the fetcher.
+    # Redirects into private space are refused (400) and never cached; local targets never reach
+    # the fetcher.
     refused = await client.get(
         "/api/v1/link-previews", params={"url": "https://redirect.example.com/"}
     )
