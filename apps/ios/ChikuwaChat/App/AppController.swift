@@ -206,6 +206,24 @@ final class AppController {
         do { _ = store.upsertMessage(try await api.deleteMessage(id: messageId)) } catch { self.error = describe(error) }
     }
 
+    // MARK: link previews (M11g): one fetch per URL per session
+
+    /// url → preview (nil = failed / none). Views read this; `loadLinkPreview` fills it.
+    var linkPreviews: [String: LinkPreviewOut?] = [:]
+    private var previewLoads: Set<String> = []
+
+    func loadLinkPreview(_ url: String) async {
+        guard let api, linkPreviews[url] == nil, !previewLoads.contains(url) else { return }
+        previewLoads.insert(url)
+        defer { previewLoads.remove(url) }
+        do {
+            let preview = try await api.linkPreview(url: url)
+            linkPreviews[url] = .some(preview.status == "ok" ? preview : nil)
+        } catch {
+            linkPreviews[url] = .some(nil) // refused or rate limited: no card this session
+        }
+    }
+
     /// M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row.
     func togglePin(_ message: MessageState) async {
         guard let api else { return }

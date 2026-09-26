@@ -381,6 +381,7 @@ struct MessageRow: View {
                 }
                 if !message.body.isEmpty { MessageBodyView(text: message.body, users: store.users) }
                 if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
+                if !message.pending, let link = Links.first(in: message.body) { LinkPreviewCard(controller: controller, url: link) }
                 if !message.reactions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in

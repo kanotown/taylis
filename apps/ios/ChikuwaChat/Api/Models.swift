@@ -344,3 +344,14 @@ struct SearchOut: Codable {
     let offset: Int
     let hasMore: Bool
 }
+
+/// Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable.
+struct LinkPreviewOut: Codable, Equatable {
+    let url: String
+    let status: String
+    let title: String?
+    let description: String?
+    let imageUrl: String?
+    let siteName: String?
+    let fetchedAt: String
+}

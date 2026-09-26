@@ -189,6 +189,15 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    // MARK: link previews (M11g)
+
+    func linkPreview(url: String) async throws -> LinkPreviewOut {
+        var components = URLComponents()
+        components.path = "/api/v1/link-previews"
+        components.queryItems = [URLQueryItem(name: "url", value: url)]
+        return try await request("GET", components.string ?? "/api/v1/link-previews")
+    }
+
     // MARK: pins and bookmarks (M11c)
 
     func listPins(channelId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/channels/\(channelId)/pins") }
