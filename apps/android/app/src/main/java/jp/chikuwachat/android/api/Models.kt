@@ -124,6 +124,9 @@ data class MessageOut(
     val createdAt: String,
     val editedAt: String? = null,
     val deleted: Boolean,
+    /** Pinned in the channel (M11c); both null when not pinned. */
+    val pinnedAt: String? = null,
+    val pinnedBy: String? = null,
 ) {
     fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
     val isReply: Boolean get() = parentId != null
@@ -159,7 +162,19 @@ data class BootstrapOut(
     val threads: ThreadSummary? = null,
     /** Who is connected right now (SYNC_PROTOCOL.md §5.2 presence); users not listed are offline. */
     val presence: List<PresenceEntry> = emptyList(),
+    /** My saved messages (M11c): ids only, newest first; the list itself is GET /bookmarks. */
+    val bookmarks: List<String> = emptyList(),
 )
+
+@Serializable
+data class BookmarkStateOut(val messageId: String, val bookmarked: Boolean)
+
+@Serializable
+data class BookmarkItem(val message: MessageOut, val createdAt: String)
+
+/** `nextCursor` goes back as `cursor` for the next page; null when the page was empty. */
+@Serializable
+data class BookmarkListOut(val items: List<BookmarkItem>, val nextCursor: String? = null)
 
 @Serializable
 data class PresenceEntry(val userId: String, val status: String)

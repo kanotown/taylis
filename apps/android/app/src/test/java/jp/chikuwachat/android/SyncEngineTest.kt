@@ -429,6 +429,29 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun pinsTravelAsMessageUpdatesAndBookmarksFollowTheUserEvent() = runBlocking {
+        val w = world()
+        val (message, _) = w.server.post(w.channelId, w.alice, "keep this")
+        w.server.setBookmark(w.bob, message.id, true) // saved on another device before this one started
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        assertTrue(w.store.isBookmarked(message.id))
+
+        // A pin is an ordinary seq-consuming update: the row gets pinnedBy without a resync.
+        w.server.pin(w.channelId, w.alice, message.id, true); settle(w.engine)
+        assertEquals(w.alice, w.store.message(w.channelId, message.id)?.pinnedBy)
+        assertEquals(2, w.store.message(w.channelId, message.id)?.updatedSeq)
+        assertEquals(2, w.store.channel(w.channelId)?.syncedSeq)
+        w.server.pin(w.channelId, w.bob, message.id, false); settle(w.engine)
+        assertNull(w.store.message(w.channelId, message.id)?.pinnedAt)
+
+        // Another device removes the bookmark: the flag follows the user event.
+        w.server.setBookmark(w.bob, message.id, false); settle(w.engine)
+        assertEquals(false, w.store.isBookmarked(message.id))
+        w.server.setBookmark(w.bob, message.id, true); settle(w.engine)
+        assertTrue(w.store.isBookmarked(message.id))
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun attachmentIdsTravelWithTheOutbox() = runBlocking {
         val w = world()
         w.engine.start(); w.engine.openChannel(w.channelId)

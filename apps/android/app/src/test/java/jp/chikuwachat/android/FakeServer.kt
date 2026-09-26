@@ -184,6 +184,30 @@ class FakeServer {
         return readState(userId, channelId)
     }
 
+    // --- pins and bookmarks (M11c) --------------------------------------------------------------------
+
+    /** PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin). */
+    fun pin(channelId: String, userId: String, messageId: String, pinned: Boolean): MessageOut {
+        val (record, message) = live(channelId, userId, messageId)
+        if ((message.pinnedAt != null) == pinned) return message
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq, pinnedAt = if (pinned) now() else null, pinnedBy = if (pinned) userId else null)
+        replace(record, updated, "message.updated", "pin")
+        return updated
+    }
+
+    /** user → saved message ids, newest first. */
+    val bookmarks = HashMap<String, MutableList<String>>()
+
+    fun setBookmark(userId: String, messageId: String, on: Boolean) {
+        val list = bookmarks.getOrPut(userId) { ArrayList() }
+        if (on == (messageId in list)) return
+        if (on) list.add(0, messageId) else list.remove(messageId)
+        val channelId = channels.values.firstOrNull { r -> r.messages.any { it.id == messageId } }?.channel?.id
+        emit(setOf(userId), event("bookmark.updated", channelId, null, buildJsonObject { put("message_id", messageId); put("channel_id", channelId); put("bookmarked", on) }))
+    }
+
     // --- presence / typing (SYNC_PROTOCOL.md §5.2, volatile) --------------------------------------
 
     /** Users whose window is "away" (set by tests); everyone connected is online otherwise. */
@@ -446,7 +470,7 @@ class FakeServer {
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id))
         }
         val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
-        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it)) })
+        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it)) }, bookmarks[userId]?.toList() ?: emptyList())
     }
 
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
