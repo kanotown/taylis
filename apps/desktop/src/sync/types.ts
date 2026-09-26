@@ -26,7 +26,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -37,6 +37,9 @@ export interface MessageState
   reply_count?: number;
   last_reply_at?: string | null;
   attachments?: AttachmentOut[];
+  /** M11c: pinned in the channel; rows persisted earlier lack the fields. */
+  pinned_at?: string | null;
+  pinned_by?: string | null;
   pending?: boolean;
   failed?: boolean;
 }

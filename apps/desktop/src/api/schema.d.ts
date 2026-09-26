@@ -246,6 +246,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Bookmarks
+         * @description My saved messages, newest saved first; `cursor` is the previous page's `next_cursor`.
+         */
+        get: operations["list_bookmarks_api_v1_bookmarks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels": {
         parameters: {
             query?: never;
@@ -403,6 +423,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pins
+         * @description Pinned messages, most recently pinned first (M11c).
+         */
+        get: operations["list_pins_api_v1_channels__channel_id__pins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/read": {
         parameters: {
             query?: never;
@@ -496,6 +536,24 @@ export interface paths {
         patch: operations["edit_message_api_v1_messages__message_id__patch"];
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/bookmark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add Bookmark */
+        put: operations["add_bookmark_api_v1_messages__message_id__bookmark_put"];
+        post?: never;
+        /** Remove Bookmark */
+        delete: operations["remove_bookmark_api_v1_messages__message_id__bookmark_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/context": {
         parameters: {
             query?: never;
@@ -508,6 +566,24 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Pin Message */
+        put: operations["pin_message_api_v1_messages__message_id__pin_put"];
+        post?: never;
+        /** Unpin Message */
+        delete: operations["unpin_message_api_v1_messages__message_id__pin_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -862,8 +938,39 @@ export interface components {
             /** File */
             file: string;
         };
+        /** BookmarkItem */
+        BookmarkItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            message: components["schemas"]["MessageOut"];
+        };
+        /** BookmarkListOut */
+        BookmarkListOut: {
+            /** Items */
+            items: components["schemas"]["BookmarkItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** BookmarkStateOut */
+        BookmarkStateOut: {
+            /** Bookmarked */
+            bookmarked: boolean;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+        };
         /** BootstrapOut */
         BootstrapOut: {
+            /**
+             * Bookmarks
+             * @default []
+             */
+            bookmarks: string[];
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
             limits: components["schemas"]["Limits"];
@@ -1165,6 +1272,10 @@ export interface components {
             mentioned_user_ids: string[];
             /** Parent Id */
             parent_id?: string | null;
+            /** Pinned At */
+            pinned_at?: string | null;
+            /** Pinned By */
+            pinned_by?: string | null;
             /**
              * Reactions
              * @default []
@@ -1953,6 +2064,38 @@ export interface operations {
             };
         };
     };
+    list_bookmarks_api_v1_bookmarks_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_channels_api_v1_channels_get: {
         parameters: {
             query?: {
@@ -2374,6 +2517,39 @@ export interface operations {
             };
         };
     };
+    list_pins_api_v1_channels__channel_id__pins_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     mark_read_api_v1_channels__channel_id__read_put: {
         parameters: {
             query?: never;
@@ -2606,6 +2782,68 @@ export interface operations {
             };
         };
     };
+    add_bookmark_api_v1_messages__message_id__bookmark_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_bookmark_api_v1_messages__message_id__bookmark_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     message_context_api_v1_messages__message_id__context_get: {
         parameters: {
             query?: {
@@ -2626,6 +2864,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_message_api_v1_messages__message_id__pin_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpin_message_api_v1_messages__message_id__pin_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
                 };
             };
             /** @description Validation Error */

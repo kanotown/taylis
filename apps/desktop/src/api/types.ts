@@ -45,3 +45,8 @@ export interface PresenceEntry {
   user_id: string;
   status: PresenceStatus;
 }
+
+/** Saved messages (M11c). */
+export type BookmarkStateOut = components["schemas"]["BookmarkStateOut"];
+export type BookmarkItem = components["schemas"]["BookmarkItem"];
+export type BookmarkListOut = components["schemas"]["BookmarkListOut"];

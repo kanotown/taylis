@@ -1,6 +1,8 @@
 import { ApiError, NetworkError } from "./errors";
 import type {
   AttachmentOut,
+  BookmarkListOut,
+  BookmarkStateOut,
   BootstrapOut,
   ChannelOut,
   DeltaOut,
@@ -201,6 +203,34 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- pins and bookmarks (M11c) ---------------------------------------------------------
+
+  listPins(channelId: string): Promise<MessageOut[]> {
+    return this.request("GET", `/api/v1/channels/${channelId}/pins`);
+  }
+
+  pinMessage(messageId: string): Promise<MessageOut> {
+    return this.request("PUT", `/api/v1/messages/${messageId}/pin`);
+  }
+
+  unpinMessage(messageId: string): Promise<MessageOut> {
+    return this.request("DELETE", `/api/v1/messages/${messageId}/pin`);
+  }
+
+  listBookmarks(options: { cursor?: string | null; limit?: number } = {}): Promise<BookmarkListOut> {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+    if (options.cursor) params.set("cursor", options.cursor);
+    return this.request("GET", `/api/v1/bookmarks?${params}`);
+  }
+
+  bookmarkMessage(messageId: string): Promise<BookmarkStateOut> {
+    return this.request("PUT", `/api/v1/messages/${messageId}/bookmark`);
+  }
+
+  unbookmarkMessage(messageId: string): Promise<BookmarkStateOut> {
+    return this.request("DELETE", `/api/v1/messages/${messageId}/bookmark`);
   }
 
   // --- threads (THREADS.md §3) -----------------------------------------------------------

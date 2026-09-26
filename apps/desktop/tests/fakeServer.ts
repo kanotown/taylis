@@ -309,6 +309,8 @@ export class FakeServer {
       created_at: now(),
       edited_at: null,
       deleted: false,
+      pinned_at: null,
+      pinned_by: null,
     };
     record.messages.push(message);
     record.channel.last_message_at = message.created_at;
@@ -370,7 +372,7 @@ export class FakeServer {
   delete(channelId: string, userId: string, messageId: string): MessageOut {
     const { record, message } = this.live(channelId, userId, messageId);
     const seq = ++record.channel.last_seq;
-    const tombstone: MessageOut = { ...message, body: "", deleted: true, updated_seq: seq, reactions: [], mentioned_user_ids: [], mention_all: false };
+    const tombstone: MessageOut = { ...message, body: "", deleted: true, updated_seq: seq, reactions: [], mentioned_user_ids: [], mention_all: false, pinned_at: null, pinned_by: null };
     this.replace(record, tombstone, "message.deleted");
     return tombstone;
   }
@@ -429,6 +431,29 @@ export class FakeServer {
         socket.deliver({ type: "typing", channel_id: channelId, parent_id: parentId, user_id: userId });
       }
     }
+  }
+
+  // --- pins and bookmarks (M11c) ----------------------------------------------------------
+
+  /** PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin). */
+  pin(channelId: string, userId: string, messageId: string, pinned: boolean): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    if ((message.pinned_at !== null) === pinned) return message;
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, updated_seq: seq, pinned_at: pinned ? now() : null, pinned_by: pinned ? userId : null };
+    this.replace(record, updated, "message.updated", "pin");
+    return updated;
+  }
+
+  /** "user" → saved message ids, newest first. */
+  readonly bookmarks = new Map<string, string[]>();
+
+  setBookmark(userId: string, messageId: string, on: boolean): void {
+    const list = this.bookmarks.get(userId) ?? [];
+    if (on ? list.includes(messageId) : !list.includes(messageId)) return;
+    this.bookmarks.set(userId, on ? [messageId, ...list] : list.filter((id) => id !== messageId));
+    const record = [...this.channels.values()].find((r) => r.messages.some((m) => m.id === messageId));
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "bookmark.updated", ts: now(), channel_id: record?.channel.id ?? null, seq: null, data: { message_id: messageId, channel_id: record?.channel.id ?? null, bookmarked: on } });
   }
 
   private emit(userIds: Set<string>, frame: EventFrame): void {
@@ -505,6 +530,7 @@ export class FakeServer {
           limits: { max_message_length: 20000, max_attachment_bytes: 1, max_attachments_per_message: 10 },
           threads: this.threadSummary(userId),
           presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
+          bookmarks: this.bookmarks.get(userId) ?? [],
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {

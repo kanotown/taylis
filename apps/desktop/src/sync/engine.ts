@@ -321,6 +321,7 @@ export class SyncEngine {
     if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
     if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
     store.replacePresence(bootstrap.presence ?? []);
+    store.replaceBookmarks(bootstrap.bookmarks ?? []);
   }
 
   /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -381,6 +382,11 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "bookmark.updated": {
+        const data = frame.data as { message_id: string; bookmarked: boolean };
+        store.setBookmarked(data.message_id, data.bookmarked);
         return;
       }
       case "thread.updated": {
