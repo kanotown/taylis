@@ -226,6 +226,25 @@ refresh(token):
 | Web クライアント | cookie (`HttpOnly`, `Secure`, `SameSite=Strict`) + CSRF トークン、CORS 許可リスト、WS の Origin 検証 |
 | E2E 暗号化 | 範囲外 (検索・プッシュ本文・AI 機能と両立しない) |
 
+## 14. リンクプレビューと SSRF (M11g)
+
+メッセージ中の URL の Open Graph 情報はサーバが取りに行く (`GET /link-previews?url=`)。外部へ勝手に接続する
+唯一の機能なので、次の制限を `app/modules/link_previews/fetcher.py` に集めている。
+
+- スキームは http / https のみ。URL に認証情報 (`user:pass@`) があれば拒否。
+- ホスト名は DNS 解決した **すべての** アドレスが公開アドレスであること (private / loopback / link-local /
+  multicast / reserved、IPv4-mapped IPv6 を含む) を要求する。IP リテラルも同じ判定。`localhost` / `*.localhost` /
+  `*.local` は解決せずに拒否。クラウドのメタデータ (169.254.169.254) もこれで弾く。
+- リダイレクトは 3 回まで、**各ホップで同じ判定**をやり直す (公開ホストから内部へ飛ばす攻撃への対策)。
+- タイムアウト 5 秒、本文は先頭 512 KB まで (`<head>` があれば十分)、Content-Type が HTML 以外は捨てる。
+  HTML は標準ライブラリの `HTMLParser` で `<head>` だけ読む。
+- 結果 (失敗も) は `link_previews` にキャッシュし (成功 7 日、失敗 1 日)、ユーザーごとに 1 分 60 回に制限する。
+  拒否 (400 `url_not_allowed`) はキャッシュしない。
+- 残る既知のリスク: DNS リバインディング (解決時と接続時で答えが変わる)。数十人の社内利用では受け入れ、
+  必要なら解決した IP に直接接続して Host / SNI を付ける実装に置き換える。
+- プレビュー画像はクライアントが直接読み込む (サーバは URL を返すだけ)。プロキシが必要になったら添付と同じ
+  BlobStore に取り込む。
+
 ## 12. M1 レビュー用チェックリスト
 
 2026-09-26 に M1 の実装に対して確認済み (pytest と compose 上の通し確認による)。
