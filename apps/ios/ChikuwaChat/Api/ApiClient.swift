@@ -204,6 +204,12 @@ final class ApiClient: SyncApi {
         return try await request("GET", components.string ?? "/api/v1/link-previews")
     }
 
+    // MARK: favorites and read-all (M12a)
+
+    func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }
+    func unfavoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("DELETE", "/api/v1/channels/\(id)/favorite") }
+    func readAll() async throws -> [ChannelReadStateOut] { try await request("POST", "/api/v1/channels/read-all", body: .object([:])) }
+
     // MARK: pins and bookmarks (M11c)
 
     func listPins(channelId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/channels/\(channelId)/pins") }

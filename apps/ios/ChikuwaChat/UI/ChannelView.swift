@@ -226,6 +226,13 @@ struct ChannelView: View {
                 }
             }
             if let channel, channel.isMember {
+                ToolbarItem(placement: .topBarTrailing) {
+                    let starred = controller.store.isFavorite(channelId)
+                    Button(starred ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred ? "star.fill" : "star") {
+                        Task { await controller.toggleFavorite(channelId) }
+                    }
+                    .tint(starred ? .yellow : nil)
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button("ピン留め", systemImage: "pin") { sheet = .pins } }
                 ToolbarItem(placement: .topBarTrailing) { NotificationMenu(controller: controller, channel: channel) }
             }

@@ -10,6 +10,8 @@ protocol SyncApi: AnyObject {
     func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
+    /// M12a: every channel read to its end; returns the new states.
+    func readAll() async throws -> [ChannelReadStateOut]
     func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
     /// THREADS.md §3.
@@ -301,6 +303,7 @@ final class SyncEngine {
         if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
         store.replacePresence(bootstrap.presence ?? [])
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
+        store.replaceFavorites(bootstrap.favorites ?? [])
         onBadge?(store.badgeCount)
     }
 
@@ -367,6 +370,10 @@ final class SyncEngine {
             if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
                 store.setBookmarked(id, on: on)
             }
+        case "favorite.updated":
+            if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["favorite"] {
+                store.setFavorite(id, on: on)
+            }
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
             // refreshed from the server shortly after, which also covers threads we do not hold.
@@ -427,6 +434,14 @@ final class SyncEngine {
                 state.unreadCount += 1
                 if message.mentions(me.id) { state.mentionCount += 1 }
             }
+        }
+        onBadge?(store.badgeCount)
+    }
+
+    /// 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated.
+    func markAllRead() async throws {
+        for row in try await api.readAll() {
+            applyReadState(row.channelId, ReadStateOut(lastReadSeq: row.lastReadSeq, unreadCount: row.unreadCount, mentionCount: row.mentionCount))
         }
         onBadge?(store.badgeCount)
     }

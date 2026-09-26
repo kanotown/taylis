@@ -9,8 +9,14 @@ struct ChannelListView: View {
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     /// The unread filter keeps the open conversation so the selection never disappears.
     private func keep(_ channel: ChannelState) -> Bool { !unreadOnly || channel.id == selection || channel.showsUnread }
-    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
-    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
+    private func starred(_ channel: ChannelState) -> Bool { controller.store.favorites.contains(channel.id) }
+    /// 「お気に入り」 (M12a): starred conversations, out of the other sections.
+    private var favorites: [ChannelState] {
+        channels.filter { $0.isMember && !$0.channel.archived && starred($0) && keep($0) }
+            .sorted { channelTitle($0, store: controller.store) < channelTitle($1, store: controller.store) }
+    }
+    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && !starred($0) && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
     private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
     var body: some View {
@@ -29,6 +35,11 @@ struct ChannelListView: View {
                 draftsRow
                 filesRow
                 savedRow
+            }
+            if !favorites.isEmpty {
+                Section("お気に入り") {
+                    ForEach(favorites) { row($0) }
+                }
             }
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
@@ -202,6 +213,12 @@ struct ChannelListView: View {
             }
             .padding(.vertical, 2)
             .opacity(muted && !unread ? 0.6 : 1)
+        }
+        .swipeActions(edge: .leading) {
+            Button(starred(channel) ? "お気に入りから外す" : "お気に入り", systemImage: starred(channel) ? "star.slash" : "star") {
+                Task { await controller.toggleFavorite(channel.id) }
+            }
+            .tint(.yellow)
         }
     }
 }
