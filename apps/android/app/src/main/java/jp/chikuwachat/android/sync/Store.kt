@@ -3,6 +3,7 @@ package jp.chikuwachat.android.sync
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
@@ -46,8 +47,12 @@ data class MessageState(
     val reactions: List<ReactionOut> = emptyList(),
     val mentionedUserIds: List<String> = emptyList(),
     val mentionAll: Boolean = false,
+    val parentId: String? = null,
+    val replyCount: Int = 0,
+    val lastReplyAt: String? = null,
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
+    val isReply: Boolean get() = parentId != null
 
     companion object {
         fun from(message: MessageOut) = MessageState(
@@ -55,17 +60,25 @@ data class MessageState(
             updatedSeq = message.updatedSeq, clientMsgId = message.clientMsgId, body = message.body,
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
+            parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt,
         )
 
-        fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String) = MessageState(
+        fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null) = MessageState(
             id = LOCAL_PREFIX + clientMsgId, channelId = channelId, senderId = senderId, seq = null, updatedSeq = -1,
-            clientMsgId = clientMsgId, body = body, createdAt = createdAt, pending = true,
+            clientMsgId = clientMsgId, body = body, createdAt = createdAt, pending = true, parentId = parentId,
         )
     }
 }
 
 @Serializable
-data class OutboxItem(val clientMsgId: String, val channelId: String, val body: String, val createdAt: String, val failed: String? = null)
+data class OutboxItem(
+    val clientMsgId: String,
+    val channelId: String,
+    val body: String,
+    val createdAt: String,
+    val failed: String? = null,
+    val parentId: String? = null,
+)
 
 @Serializable
 data class Snapshot(
@@ -186,12 +199,27 @@ class Store(private val persistence: Persistence? = null) {
 
     private fun bucket(channelId: String): LinkedHashMap<String, MessageState> = messagesByChannel.getOrPut(channelId) { LinkedHashMap() }
 
-    /** Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
-    fun messages(channelId: String): List<MessageState> {
-        val all = bucket(channelId).values
+    /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
+    fun messages(channelId: String): List<MessageState> = ordered(bucket(channelId).values.filter { !it.isReply })
+
+    /** A thread: the replies of one parent, oldest first (pending ones last). */
+    fun replies(channelId: String, parentId: String): List<MessageState> =
+        ordered(bucket(channelId).values.filter { it.parentId == parentId })
+
+    private fun ordered(all: Collection<MessageState>): List<MessageState> {
         val confirmed = all.filter { it.seq != null }.sortedBy { it.seq }
         val pending = all.filter { it.seq == null }.sortedBy { it.createdAt }
         return confirmed + pending
+    }
+
+    /** A reply moved the parent's counters (message.created / message.deleted with parent_thread). */
+    fun applyParentThread(channelId: String, thread: ParentThread) {
+        val parent = bucket(channelId)[thread.id] ?: return
+        if (thread.updatedSeq <= parent.updatedSeq) return
+        val updated = parent.copy(replyCount = thread.replyCount, lastReplyAt = thread.lastReplyAt, updatedSeq = thread.updatedSeq)
+        bucket(channelId)[parent.id] = updated
+        persist { it.saveMessage(updated) }
+        emit()
     }
 
     fun message(channelId: String, id: String): MessageState? = bucket(channelId)[id]

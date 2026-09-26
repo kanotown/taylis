@@ -98,13 +98,45 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var mentionedUserIds: [String] = []
     var mentionAll: Bool = false
     var reactions: [ReactionOut] = []
+    var parentId: String? = nil
+    var replyCount: Int = 0
+    var lastReplyAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
-        case type, mentionedUserIds, mentionAll, reactions
+        case type, mentionedUserIds, mentionAll, reactions, parentId, replyCount, lastReplyAt
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
+    var isReply: Bool { parentId != nil }
+}
+
+/// The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6).
+struct ParentThread: Codable, Equatable {
+    let id: String
+    let replyCount: Int
+    let lastReplyAt: String?
+    let updatedSeq: Int
+    var participantIds: [String] = []
+
+    enum CodingKeys: String, CodingKey { case id, replyCount, lastReplyAt, updatedSeq, participantIds }
+
+    init(id: String, replyCount: Int, lastReplyAt: String?, updatedSeq: Int, participantIds: [String] = []) {
+        self.id = id
+        self.replyCount = replyCount
+        self.lastReplyAt = lastReplyAt
+        self.updatedSeq = updatedSeq
+        self.participantIds = participantIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        replyCount = try c.decode(Int.self, forKey: .replyCount)
+        lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
+        updatedSeq = try c.decode(Int.self, forKey: .updatedSeq)
+        participantIds = try c.decodeIfPresent([String].self, forKey: .participantIds) ?? []
+    }
 }
 
 extension MessageOut {
@@ -125,6 +157,9 @@ extension MessageOut {
         mentionedUserIds = try c.decodeIfPresent([String].self, forKey: .mentionedUserIds) ?? []
         mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
         reactions = try c.decodeIfPresent([ReactionOut].self, forKey: .reactions) ?? []
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
+        lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
     }
 }
 

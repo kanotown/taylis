@@ -151,13 +151,20 @@ class ApiClient(
     override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut =
         request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq) })
 
-    override suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean> {
+    override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",
-            buildJsonObject { put("client_msg_id", clientMsgId); put("body", body) }, auth = true, retry401 = true,
+            buildJsonObject {
+                put("client_msg_id", clientMsgId)
+                put("body", body)
+                put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
+            },
+            auth = true, retry401 = true,
         )
         return Codec.snake.decodeFromString(MessageOut.serializer(), text) to (status == 201)
     }
+
+    override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 
     // --- transport --------------------------------------------------------------------------
 

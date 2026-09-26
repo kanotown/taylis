@@ -63,15 +63,20 @@ struct MessageState: Codable, Identifiable, Equatable {
     var reactions: [ReactionOut] = []
     var mentionedUserIds: [String] = []
     var mentionAll: Bool = false
+    var parentId: String? = nil
+    var replyCount: Int = 0
+    var lastReplyAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
-        case reactions, mentionedUserIds, mentionAll
+        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
         reactions.contains { $0.emoji == emoji && $0.userIds.contains(userId) }
     }
+
+    var isReply: Bool { parentId != nil }
 
     init(_ message: MessageOut) {
         id = message.id
@@ -89,6 +94,9 @@ struct MessageState: Codable, Identifiable, Equatable {
         reactions = message.reactions
         mentionedUserIds = message.mentionedUserIds
         mentionAll = message.mentionAll
+        parentId = message.parentId
+        replyCount = message.replyCount
+        lastReplyAt = message.lastReplyAt
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -109,9 +117,12 @@ struct MessageState: Codable, Identifiable, Equatable {
         reactions = try c.decodeIfPresent([ReactionOut].self, forKey: .reactions) ?? []
         mentionedUserIds = try c.decodeIfPresent([String].self, forKey: .mentionedUserIds) ?? []
         mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
+        lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
     }
 
-    init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String) {
+    init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil) {
         id = localPrefix + clientMsgId
         self.channelId = channelId
         self.senderId = senderId
@@ -124,6 +135,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         deleted = false
         pending = true
         failed = false
+        self.parentId = parentId
     }
 }
 
@@ -133,6 +145,7 @@ struct OutboxItem: Codable, Identifiable, Equatable {
     var body: String
     var createdAt: String
     var failed: String?
+    var parentId: String? = nil
 
     var id: String { clientMsgId }
 }
@@ -255,14 +268,35 @@ final class Store {
     // MARK: messages
 
     /// Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
+    /// Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
     func messages(_ channelId: String) -> [MessageState] {
-        let all = Array((messagesByChannel[channelId] ?? [:]).values)
+        ordered((messagesByChannel[channelId] ?? [:]).values.filter { !$0.isReply })
+    }
+
+    /// A thread: the replies of one parent, oldest first (pending ones last).
+    func replies(_ channelId: String, parentId: String) -> [MessageState] {
+        ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.parentId == parentId })
+    }
+
+    private func ordered(_ all: some Collection<MessageState>) -> [MessageState] {
         let confirmed = all.filter { $0.seq != nil }.sorted { ($0.seq ?? 0) < ($1.seq ?? 0) }
         let pending = all.filter { $0.seq == nil }.sorted { $0.createdAt < $1.createdAt }
         return confirmed + pending
     }
 
     func message(_ channelId: String, _ id: String) -> MessageState? { messagesByChannel[channelId]?[id] }
+    func message(_ channelId: String, id: String) -> MessageState? { messagesByChannel[channelId]?[id] }
+
+    /// A reply moved the parent's counters (message.created / message.deleted with parent_thread).
+    func applyParentThread(_ channelId: String, _ thread: ParentThread) {
+        guard var bucket = messagesByChannel[channelId], var parent = bucket[thread.id], thread.updatedSeq > parent.updatedSeq else { return }
+        parent.replyCount = thread.replyCount
+        parent.lastReplyAt = thread.lastReplyAt
+        parent.updatedSeq = thread.updatedSeq
+        bucket[parent.id] = parent
+        messagesByChannel[channelId] = bucket
+        persist { try $0.saveMessage(parent) }
+    }
 
     /// The merge rule (SYNC_PROTOCOL.md §8): newer updated_seq wins; tombstones delete.
     @discardableResult

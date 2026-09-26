@@ -39,6 +39,7 @@ fun MessageMenu(
     onReact: (String) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onReply: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -46,7 +47,8 @@ fun MessageMenu(
                 Text(emoji, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onReact(emoji); onDismiss() }.padding(6.dp))
             }
         }
-        if (canEdit || canDelete) HorizontalDivider()
+        HorizontalDivider()
+        if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
         if (canEdit) DropdownMenuItem(text = { Text("編集") }, onClick = { onDismiss(); onEdit() })
         if (canDelete) DropdownMenuItem(text = { Text("削除") }, onClick = { onDismiss(); onDelete() })
     }

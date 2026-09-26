@@ -6,14 +6,15 @@
 import { ApiError, isRetryable } from "../api/errors";
 import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, MessageState, OutboxItem, ReadStateOut, ServerFrame } from "./types";
+import type { ChannelState, EventFrame, MessageState, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
   bootstrap(): Promise<BootstrapOut>;
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
-  postMessage(channelId: string, clientMsgId: string, body: string): Promise<{ message: MessageOut; created: boolean }>;
+  postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null): Promise<{ message: MessageOut; created: boolean }>;
+  replies(messageId: string): Promise<MessageOut[]>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
   markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut>;
@@ -342,22 +343,24 @@ export class SyncEngine {
     if (!channel) return;
     const seq = frame.seq;
     const message = frame.data["message"] as MessageOut;
+    const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
 
     if (channel.syncedSeq === null) {
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
       if (isNew) {
         this.countUnread(message);
-        this.maybeNotify(message, channel);
+        this.maybeNotify(message, channel, thread);
       }
       return;
     }
     if (seq === channel.syncedSeq + 1) {
       store.upsertMessage(message);
+      if (thread) store.applyParentThread(channel.id, thread);
       store.updateChannel(channel.id, { syncedSeq: seq, lastSeq: Math.max(channel.lastSeq, seq) });
       if (isNew) {
         this.countUnread(message);
-        this.maybeNotify(message, channel);
+        this.maybeNotify(message, channel, thread);
       }
       return;
     }
@@ -366,7 +369,7 @@ export class SyncEngine {
       await this.catchUp(channel.id);
       if (isNew) {
         this.countUnread(message);
-        this.maybeNotify(message, channel);
+        this.maybeNotify(message, channel, thread);
       }
     }
     // seq <= syncedSeq: already applied.
@@ -382,6 +385,7 @@ export class SyncEngine {
       store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
       return;
     }
+    if (message.parent_id) return; // replies are not unread items (DATA_MODEL.md read_states)
     if (message.seq <= channel.lastReadSeq) return;
     const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
     store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
@@ -398,13 +402,14 @@ export class SyncEngine {
     if (state.unread_count === 0) this.deps.onRead?.(channelId);
   }
 
-  /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
-  private maybeNotify(message: MessageOut, channel: ChannelState): void {
+  /** DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4). */
+  private maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread | null = null): void {
     const me = this.deps.store.me;
     if (!me || message.sender_id === me.id) return;
     const isDm = channel.type === "dm" || channel.type === "group_dm";
     const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
-    if (!isDm && !mentioned) return;
+    const involved = mentioned || (thread?.participant_ids ?? []).includes(me.id);
+    if (!isDm && !involved) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
   }
@@ -503,11 +508,11 @@ export class SyncEngine {
 
   // --- §9 optimistic send ---------------------------------------------------------------
 
-  send(channelId: string, body: string, clientMsgId?: string): Promise<void> {
+  send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null): Promise<void> {
     clientMsgId = clientMsgId ?? (this.deps.newId ?? defaultId)();
     const createdAt = (this.deps.now ?? (() => new Date().toISOString()))();
     const me = this.deps.store.me;
-    const item: OutboxItem = { client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt };
+    const item: OutboxItem = { client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt, parent_id: parentId };
     this.deps.store.addOutbox(item);
     this.deps.store.putPlaceholder({
       id: LOCAL_PREFIX + clientMsgId,
@@ -521,8 +526,16 @@ export class SyncEngine {
       edited_at: null,
       deleted: false,
       pending: true,
+      parent_id: parentId,
     });
     return this.flushOutbox();
+  }
+
+  /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
+  loadReplies(_channelId: string, parentId: string): Promise<void> {
+    return this.enqueue(async () => {
+      for (const reply of await this.deps.api.replies(parentId)) this.deps.store.upsertMessage(reply);
+    });
   }
 
   retryFailed(): Promise<void> {
@@ -551,7 +564,7 @@ export class SyncEngine {
       for (const item of [...this.deps.store.outbox]) {
         if (item.failed) continue;
         try {
-          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body);
+          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null);
           this.deps.store.upsertMessage(result.message);
           this.deps.store.removeOutbox(item.client_msg_id);
         } catch (err) {

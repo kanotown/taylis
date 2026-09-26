@@ -72,6 +72,7 @@ async def counts(
     stmt = select(func.count(), func.count().filter(mentioned)).where(
         Message.channel_id == channel_id,
         Message.seq > last_read_seq,
+        Message.parent_id.is_(None),
         Message.deleted_at.is_(None),
         Message.type == "user",
     )

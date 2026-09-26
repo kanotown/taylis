@@ -43,7 +43,9 @@ class PushPlanner:
         if not recipients:
             return
         channel = await channels.require_channel(db, event.channel_id)
-        targets = await self.select_recipients(db, channel, recipients, message)
+        thread = event.payload.get("parent_thread") or {}
+        participants = {uuid.UUID(str(uid)) for uid in thread.get("participant_ids", [])}
+        targets = await self.select_recipients(db, channel, recipients, message, participants)
         if not targets:
             return
         devices = await repo.push_devices_for_users(db, targets)
@@ -81,8 +83,9 @@ class PushPlanner:
         channel: Channel,
         recipients: list[uuid.UUID],
         message: dict[str, Any] | None = None,
+        participants: set[uuid.UUID] | None = None,
     ) -> list[uuid.UUID]:
-        """The rules of PUSH_NOTIFICATIONS.md §4 (the read check arrives with M8b)."""
+        """PUSH_NOTIFICATIONS.md §4; ``participants`` are the thread's author and repliers."""
         now = utcnow()
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
         default = default_level(channel)
@@ -98,7 +101,8 @@ class PushPlanner:
                 continue
             if pref is not None and pref.muted_until is not None and pref.muted_until > now:
                 continue
-            if level == "mentions" and not (mention_all or user_id in mentioned):
+            involved = mention_all or user_id in mentioned or user_id in (participants or set())
+            if level == "mentions" and not involved:
                 continue
             if seq is not None and positions.get(user_id, 0) >= int(seq):
                 continue  # already read on another device (§4)

@@ -7,6 +7,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.isRetryable
@@ -33,9 +34,10 @@ interface SyncApi {
     suspend fun bootstrap(): BootstrapOut
     suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut
     suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut
-    suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean>
+    suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
+    suspend fun replies(messageId: String): List<MessageOut>
 }
 
 /** Transport as the engine sees it (OkHttp in the app, a fake in tests). Callbacks may come from any thread. */
@@ -344,22 +346,24 @@ class SyncEngine(
         val seq = frame.seq ?: return
         val channel = store.channel(channelId) ?: return
         val message = Codec.snake.decodeFromJsonElement(MessageOut.serializer(), frame.data["message"]?.jsonObject ?: return)
+        val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
         val synced = channel.syncedSeq
         when {
             synced == null -> {
                 store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
-                if (isNew) { countUnread(message); maybeNotify(message, channel) }
+                if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
             seq == synced + 1 -> {
                 store.upsertMessage(message)
+                if (thread != null) store.applyParentThread(channelId, thread)
                 store.updateChannel(channelId) { it.copy(syncedSeq = seq, lastSeq = maxOf(it.lastSeq, seq)) }
-                if (isNew) { countUnread(message); maybeNotify(message, channel) }
+                if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
             seq > synced + 1 -> {
                 store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
                 catchUp(channelId)
-                if (isNew) { countUnread(message); maybeNotify(message, channel) }
+                if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
             // seq <= synced: already applied
         }
@@ -372,6 +376,7 @@ class SyncEngine(
             store.updateChannel(message.channelId) { it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0) }
             return
         }
+        if (message.isReply) return // replies are not unread items (DATA_MODEL.md read_states)
         store.updateChannel(message.channelId) { channel ->
             if (message.seq <= channel.lastReadSeq) channel
             else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id)) 1 else 0)
@@ -385,13 +390,19 @@ class SyncEngine(
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
     }
 
-    /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
-    private fun maybeNotify(message: MessageOut, channel: ChannelState) {
+    /** DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4). */
+    private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
-        if (!channel.channel.isDm && !message.mentions(me.id)) return
+        val involved = message.mentions(me.id) || (thread != null && me.id in thread.participantIds)
+        if (!channel.channel.isDm && !involved) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
+    }
+
+    /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
+    suspend fun loadReplies(channelId: String, parentId: String) = enqueue {
+        api.replies(parentId).forEach { store.upsertMessage(it) }
     }
 
     // --- §7.3 catch_up --------------------------------------------------------------------------
@@ -464,11 +475,11 @@ class SyncEngine(
 
     // --- §9 optimistic send -------------------------------------------------------------------
 
-    suspend fun send(channelId: String, body: String, clientMsgId: String? = null) {
+    suspend fun send(channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null) {
         val key = clientMsgId ?: options.newId()
         val createdAt = options.now()
-        store.addOutbox(OutboxItem(key, channelId, body, createdAt))
-        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt))
+        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId))
+        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId))
         flushOutbox()
     }
 
@@ -491,7 +502,7 @@ class SyncEngine(
             for (item in store.outbox.toList()) {
                 if (item.failed != null) continue
                 try {
-                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body)
+                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId)
                     store.upsertMessage(message)
                     store.removeOutbox(item.clientMsgId)
                 } catch (e: Exception) {

@@ -181,9 +181,9 @@
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
-| `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, updated_seq }`) |
+| `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, updated_seq, participant_ids }`。`participant_ids` は親の投稿者と返信者で、プッシュ対象の判定に使う) |
 | `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }` |
-| `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空) |
+| `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count }` |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |

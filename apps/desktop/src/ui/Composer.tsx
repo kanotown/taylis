@@ -8,7 +8,17 @@ const MAX_LENGTH = 20_000;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
 const IME_COMMIT_GRACE_MS = 100;
 
-export function Composer({ controller, channel }: { controller: AppController; channel: ChannelState }) {
+export function Composer({
+  controller,
+  channel,
+  parentId = null,
+  placeholder = "メッセージを入力 (Enter で送信、Shift+Enter で改行、@ でメンション)",
+}: {
+  controller: AppController;
+  channel: ChannelState;
+  parentId?: string | null;
+  placeholder?: string;
+}) {
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -25,7 +35,7 @@ export function Composer({ controller, channel }: { controller: AppController; c
     const body = encodeMentions(text.trim(), store.users.values());
     if (!body || !controller.engine) return;
     setText("");
-    void controller.engine.send(channel.id, body);
+    void controller.engine.send(channel.id, body, undefined, parentId);
   };
 
   const pick = (candidate: MentionCandidate) => {
@@ -96,7 +106,7 @@ export function Composer({ controller, channel }: { controller: AppController; c
           ref={area}
           value={text}
           maxLength={MAX_LENGTH}
-          placeholder="メッセージを入力 (Enter で送信、Shift+Enter で改行、@ でメンション)"
+          placeholder={placeholder}
           onChange={(e) => {
             setText(e.target.value);
             syncCaret(e.target);

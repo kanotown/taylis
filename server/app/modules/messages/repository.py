@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +50,9 @@ async def get_by_client_msg_id(
 async def list_history(
     db: AsyncSession, channel_id: uuid.UUID, *, before_seq: int | None, limit: int
 ) -> list[Message]:
-    stmt = select(Message).where(Message.channel_id == channel_id, Message.deleted_at.is_(None))
+    stmt = select(Message).where(
+        Message.channel_id == channel_id, Message.deleted_at.is_(None), Message.parent_id.is_(None)
+    )
     if before_seq is not None:
         stmt = stmt.where(Message.seq < before_seq)
     stmt = stmt.order_by(Message.seq.desc()).limit(limit)
@@ -112,3 +114,26 @@ async def remove_reaction(
         .returning(Reaction.message_id)
     )
     return (await db.execute(stmt)).first() is not None
+
+
+async def list_replies(db: AsyncSession, parent_id: uuid.UUID) -> list[Message]:
+    stmt = (
+        select(Message)
+        .where(Message.parent_id == parent_id, Message.deleted_at.is_(None))
+        .order_by(Message.seq.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def thread_participants(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
+    """Parent author first, then repliers in order of first reply."""
+    stmt = (
+        select(Message.sender_id, func.min(Message.seq).label("first_seq"))
+        .where(
+            or_(Message.id == parent_id, Message.parent_id == parent_id),
+            Message.deleted_at.is_(None),
+        )
+        .group_by(Message.sender_id)
+        .order_by("first_seq")
+    )
+    return [row[0] for row in (await db.execute(stmt)).all()]

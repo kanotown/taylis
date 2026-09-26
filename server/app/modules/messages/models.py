@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -28,6 +29,8 @@ class Message(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id"))
     sender_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    # Thread reply (one level: replies to replies are rejected).
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
     seq: Mapped[int] = mapped_column(BigInteger)
     updated_seq: Mapped[int] = mapped_column(BigInteger)
     client_msg_id: Mapped[uuid.UUID | None]
@@ -37,6 +40,9 @@ class Message(Base):
         ARRAY(Uuid()), default=list, server_default=text("'{}'::uuid[]")
     )
     mention_all: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Thread parent bookkeeping (DATA_MODEL.md "各操作と seq").
+    reply_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -53,6 +59,12 @@ class Message(Base):
             postgresql_where=text("client_msg_id IS NOT NULL"),
         ),
         Index("messages_channel_updated_seq_idx", "channel_id", "updated_seq"),
+        Index(
+            "messages_parent_idx",
+            "parent_id",
+            "seq",
+            postgresql_where=text("parent_id IS NOT NULL"),
+        ),
     )
 
     @property

@@ -112,6 +112,43 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testThreadsKeepRepliesOutOfTheTimelineAndUpdateTheParent() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        let (parent, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply 1", parentId: parent.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["topic"])
+        XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["reply 1"])
+        XCTAssertEqual(w.store.message(w.channel.id, id: parent.id)?.replyCount, 1)
+        XCTAssertEqual(notifications, []) // bob is not part of the thread
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 1) // replies are not unread items
+
+        await w.engine.send(w.channel.id, body: "reply 2", parentId: parent.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["reply 1", "reply 2"])
+        XCTAssertEqual(w.store.message(w.channel.id, id: parent.id)?.replyCount, 2)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply 3", parentId: parent.id)
+        await settle(w.engine)
+        XCTAssertEqual(notifications, ["reply 3"]) // bob replied, so alice's reply notifies him
+
+        // A fresh client loads the thread on demand.
+        let restored = Store.fromSnapshot(Snapshot(meta: [:], users: Array(w.store.users.values), channels: Array(w.store.channels.values), messages: [], outbox: []))
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let second = SyncEngine(api: w.server.api(for: w.bob.id), connect: w.server.connector(for: w.bob.id), wsUrl: URL(string: "ws://fake")!,
+                                store: restored, getAccessToken: { "t" }, options: options)
+        await second.start()
+        await settle(second)
+        XCTAssertEqual(restored.replies(w.channel.id, parentId: parent.id).count, 0)
+        await second.loadReplies(w.channel.id, parentId: parent.id)
+        XCTAssertEqual(restored.replies(w.channel.id, parentId: parent.id).map(\.body), ["reply 1", "reply 2", "reply 3"])
+        second.stop()
+        w.engine.stop()
+    }
+
     func testBootstrapLoadsLatestPageOfTheOpenedChannel() async throws {
         let w = makeWorld()
         for i in 1...5 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }

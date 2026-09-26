@@ -923,6 +923,18 @@
             "format": "uuid",
             "title": "Client Msg Id",
             "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
           }
         },
         "required": [
@@ -996,6 +1008,18 @@
             "title": "Id",
             "type": "string"
           },
+          "last_reply_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply At"
+          },
           "mention_all": {
             "default": false,
             "title": "Mention All",
@@ -1010,6 +1034,18 @@
             "title": "Mentioned User Ids",
             "type": "array"
           },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
           "reactions": {
             "default": [],
             "items": {
@@ -1017,6 +1053,11 @@
             },
             "title": "Reactions",
             "type": "array"
+          },
+          "reply_count": {
+            "default": 0,
+            "title": "Reply Count",
+            "type": "integer"
           },
           "sender_id": {
             "format": "uuid",
@@ -3114,6 +3155,58 @@
           }
         ],
         "summary": "Add Reaction",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/replies": {
+      "get": {
+        "operationId": "list_replies_api_v1_messages__message_id__replies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response List Replies Api V1 Messages  Message Id  Replies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Replies",
         "tags": [
           "messages"
         ]

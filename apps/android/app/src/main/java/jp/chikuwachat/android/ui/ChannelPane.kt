@@ -52,7 +52,7 @@ import java.time.format.DateTimeFormatter
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
 
 @Composable
-fun ChannelPane(controller: AppController, channelId: String, version: Int) {
+fun ChannelPane(controller: AppController, channelId: String, version: Int, onOpenThread: (String) -> Unit = {}) {
     val store = controller.store
     val channel = store.channel(channelId) ?: return
     val messages = remember(version, channelId) { store.messages(channelId) }
@@ -75,6 +75,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int) {
                     onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
                     onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
                     onDelete = { scope.launch { controller.deleteMessage(message.id) } },
+                    onOpenThread = { onOpenThread(message.id) },
                 )
             }
             if (channel.hasOlder && channel.syncedSeq != null) {
@@ -131,6 +132,7 @@ private fun MessageRow(
     onReact: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDelete: () -> Unit,
+    onOpenThread: () -> Unit,
 ) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
@@ -146,6 +148,11 @@ private fun MessageRow(
             }
             MessageBody(message.body, store.users)
             ReactionChips(message, store, onToggle = onReact)
+            if (message.replyCount > 0) {
+                TextButton(onClick = onOpenThread, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    Text("${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
+                }
+            }
             if (message.failed) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
@@ -156,7 +163,7 @@ private fun MessageRow(
         }
         MessageMenu(
             expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false },
-            onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true },
+            onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread,
         )
     }
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })

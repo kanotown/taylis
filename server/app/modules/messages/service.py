@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import conflict, forbidden, not_found
+from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
@@ -26,6 +26,7 @@ from app.modules.messages.schemas import (
     MessageCreate,
     MessageEdit,
     MessageOut,
+    thread_of,
     to_message_out,
 )
 from app.modules.reads import service as reads
@@ -52,6 +53,14 @@ async def create_message(
     if existing is not None:
         return _same_channel(existing, channel_id), False
 
+    parent: Message | None = None
+    if data.parent_id is not None:
+        parent = await repo.get_message(db, data.parent_id)
+        if parent is None or parent.is_deleted or parent.channel_id != channel_id:
+            raise not_found("message_not_found", "Parent message not found")
+        if parent.parent_id is not None:
+            raise bad_request("reply_depth", "Replies to replies are not allowed")
+
     mentioned, mention_all = extract_mentions(data.body)
     try:
         async with db.begin_nested():
@@ -59,6 +68,7 @@ async def create_message(
             message = Message(
                 channel_id=channel_id,
                 sender_id=actor.id,
+                parent_id=data.parent_id,
                 seq=seq,
                 updated_seq=seq,
                 client_msg_id=data.client_msg_id,
@@ -68,13 +78,23 @@ async def create_message(
             )
             db.add(message)
             await db.flush()
+            parent_thread = None
+            if parent is not None:
+                # The reply consumes the seq; the parent's counters move to it (DATA_MODEL.md).
+                parent.reply_count += 1
+                parent.last_reply_at = message.created_at
+                parent.updated_seq = seq
+                await db.flush()
+                parent_thread = thread_of(parent, await repo.thread_participants(db, parent.id))
             await write_outbox(
                 db,
                 event_type=MESSAGE_CREATED,
                 audience_type="channel",
                 channel_id=channel_id,
                 seq=seq,
-                payload=MessageCreatedData(message=to_message_out(message)).model_dump(mode="json"),
+                payload=MessageCreatedData(
+                    message=to_message_out(message), parent_thread=parent_thread
+                ).model_dump(mode="json"),
             )
             # The sender has read their own message (SYNC_PROTOCOL.md §10).
             await reads.advance_in_tx(db, actor.id, channel_id, seq, last_seq=seq)
@@ -185,6 +205,14 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message.mention_all = False
     message.updated_seq = seq
     await db.flush()
+    parent_thread = None
+    if message.parent_id is not None:
+        parent = await repo.get_message(db, message.parent_id)
+        if parent is not None:
+            parent.reply_count = max(0, parent.reply_count - 1)
+            parent.updated_seq = seq
+            await db.flush()
+            parent_thread = thread_of(parent, await repo.thread_participants(db, parent.id))
     out = to_message_out(message)
     await write_outbox(
         db,
@@ -192,7 +220,9 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
         audience_type="channel",
         channel_id=message.channel_id,
         seq=seq,
-        payload=MessageDeletedData(message=out).model_dump(mode="json"),
+        payload=MessageDeletedData(message=out, parent_thread=parent_thread).model_dump(
+            mode="json"
+        ),
     )
     await db.commit()
     return out
@@ -223,3 +253,9 @@ async def set_reaction(
     )
     await db.commit()
     return out, True
+
+
+async def list_replies(db: AsyncSession, actor: User, parent_id: uuid.UUID) -> list[MessageOut]:
+    """GET /messages/{id}/replies: a thread is small enough to return whole, oldest first."""
+    parent = await get_message(db, actor, parent_id)
+    return await messages_out(db, await repo.list_replies(db, parent.id))
