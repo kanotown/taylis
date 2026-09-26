@@ -190,6 +190,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         } else if (!channel.isMember) {
             TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
         } else {
+            TypingLine(controller, channelId, version = version)
             ConversationComposer(controller, channelId)
         }
     }
@@ -291,7 +292,10 @@ fun ConversationComposer(controller: AppController, channelId: String, parentId:
     val draft = state.text
     val pendingUploads = state.attachments
     val uploading = store.uploading(channelId, parentId)
-    fun setText(value: String) { store.setDraft(channelId, parentId) { it.copy(text = value) } }
+    fun setText(value: String) {
+        store.setDraft(channelId, parentId) { it.copy(text = value) }
+        if (value.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (pendingUploads.size + uploading + uris.size > 10) controller.error = "添付は10件までです"
         else {

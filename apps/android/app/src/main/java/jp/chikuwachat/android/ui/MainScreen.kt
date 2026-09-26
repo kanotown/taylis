@@ -131,7 +131,7 @@ fun MainScreen(controller: AppController) {
                         selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
                             TwoLineTitle(
                                 channelTitle(selectedChannel, store),
-                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else null,
+                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
                             )
                         }
                         showThreads -> Text("スレッド")
@@ -386,7 +386,7 @@ private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit)
     ) {
         if (channel.channel.isDm) {
             val other = (channel.channel.dmUserIds ?: emptyList()).firstOrNull { it != store.me?.id } ?: store.me?.id ?: channel.id
-            Avatar(other, store.users[other]?.displayName ?: title, size = 36.dp)
+            Avatar(other, store.users[other]?.displayName ?: title, size = 36.dp, presence = store.presenceOf(other))
         } else {
             ChannelGlyph(channel)
         }
@@ -418,6 +418,12 @@ fun StatusBadge(status: EngineStatus) {
         EngineStatus.OFFLINE -> Box(Modifier.padding(8.dp).size(10.dp).background(Color(0xFFFF9500), CircleShape))
         else -> Spacer(Modifier.width(0.dp))
     }
+}
+
+/** 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) as the app bar subtitle. */
+private fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
+    val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != store.me?.id }
+    return if (others.size == 1) presenceLabel(store.presenceOf(others[0])) else null
 }
 
 fun channelTitle(channel: ChannelState, store: Store): String {

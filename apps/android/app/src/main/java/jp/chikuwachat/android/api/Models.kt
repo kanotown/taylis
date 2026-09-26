@@ -157,7 +157,12 @@ data class BootstrapOut(
     val limits: Limits,
     /** Followed threads with unread replies / mentions (THREADS.md §3); the 「スレッド」 badge. */
     val threads: ThreadSummary? = null,
+    /** Who is connected right now (SYNC_PROTOCOL.md §5.2 presence); users not listed are offline. */
+    val presence: List<PresenceEntry> = emptyList(),
 )
+
+@Serializable
+data class PresenceEntry(val userId: String, val status: String)
 
 /** My relation to one thread (THREADS.md §3). */
 @Serializable

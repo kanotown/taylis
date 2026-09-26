@@ -72,6 +72,9 @@ data class EngineOptions(
     val threadPageSize: Int = 50,
     /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
     val threadRefreshMs: Long = 300,
+    /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
+    val typingIntervalMs: Long = 3_000,
+    val typingTtlMs: Long = 5_000,
     /** Injectable so tests can skip reconnect pacing. */
     val sleep: suspend (Long) -> Unit = { delay(it) },
     val random: () -> Double = { Random.nextDouble() },
@@ -127,6 +130,8 @@ class SyncEngine(
     /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
     private val threadReadFloor = HashMap<String, Int>()
     private var threadRefresh: Job? = null
+    /** "channel[:parent]" → when the last typing frame went out. */
+    private val typingSent = HashMap<String, Long>()
 
     // --- serial work queue --------------------------------------------------------------------
 
@@ -290,6 +295,11 @@ class SyncEngine(
             }
             is ServerFrame.Error -> if (frame.code in setOf("invalid_token", "session_revoked", "session_expired", "password_change_required")) signOut()
             is ServerFrame.Event -> applyEvent(frame.frame)
+            is ServerFrame.Typing -> {
+                // Volatile (SYNC_PROTOCOL.md §5.2): shown for a few seconds, never stored.
+                if (frame.userId != store.me?.id) store.noteTyping(frame.channelId, frame.parentId, frame.userId, System.currentTimeMillis() + options.typingTtlMs)
+            }
+            is ServerFrame.Presence -> store.setPresence(frame.userId, frame.status)
         }
     }
 
@@ -329,6 +339,18 @@ class SyncEngine(
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { store.removeChannel(it.id) }
         bootstrap.threads?.let { store.setThreadSummary(it) }
         if (store.threadsLoaded) scheduleThreadRefresh() // the list may have moved while we were away
+        store.replacePresence(bootstrap.presence)
+    }
+
+    /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
+    fun sendTyping(channelId: String, parentId: String? = null) {
+        val socket = ws ?: return
+        if (_status.value != EngineStatus.ONLINE) return
+        val key = if (parentId != null) "$channelId:$parentId" else channelId
+        val now = System.currentTimeMillis()
+        if (now - (typingSent[key] ?: 0L) < options.typingIntervalMs) return
+        typingSent[key] = now
+        runCatching { socket.send(ClientFrame.typing(channelId, parentId)) }
     }
 
     /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -409,6 +431,7 @@ class SyncEngine(
 
     /** §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise. */
     private fun countUnread(message: MessageOut) {
+        store.clearTyping(message.channelId, message.parentId, message.senderId) // their message arrived: no longer typing
         val me = store.me ?: return
         if (message.senderId == me.id) {
             unreadHold.remove(message.channelId) // sending reads the conversation (the server does the same)

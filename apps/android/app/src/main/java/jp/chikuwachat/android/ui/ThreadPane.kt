@@ -110,6 +110,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         HorizontalDivider()
         val channel = store.channel(channelId)
         if (parent != null && channel?.isMember == true && !channel.channel.archived) {
+            TypingLine(controller, channelId, parentId, version)
             ConversationComposer(controller, channelId, parentId)
         }
     }

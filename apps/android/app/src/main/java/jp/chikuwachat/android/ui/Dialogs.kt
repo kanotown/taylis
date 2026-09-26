@@ -191,11 +191,13 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                     else -> list.sortedBy { store.users[it.userId]?.displayName ?: "" }.forEach { member ->
                         val user = store.users[member.userId]
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp)
+                            val presence = store.presenceOf(member.userId)
+                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                 Text(user?.displayName ?: "?")
                                 Text("@" + (user?.username ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                             if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

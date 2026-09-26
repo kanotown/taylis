@@ -2,6 +2,7 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ThreadSummary
+import jp.chikuwachat.android.sync.ClientFrame
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Snapshot
@@ -386,6 +387,46 @@ class SyncEngineTest {
         assertEquals(true, fresh.threads[parent.id]?.state?.following)
         assertEquals(1, fresh.threads[parent.id]?.state?.unreadCount)
         second.stop(); w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun presenceAndTypingAreVolatile() = runBlocking {
+        val w = world()
+        // alice is connected before bob bootstraps: listed in bootstrap.
+        val aliceSocket = w.server.connector(w.alice)("ws://fake", "t")
+        aliceSocket.send(ClientFrame.auth("t"))
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        assertEquals("online", w.store.presenceOf(w.alice))
+        assertEquals("online", w.store.presenceOf(w.bob)) // own connection announced too
+
+        w.server.awayUsers.add(w.alice)
+        w.server.announcePresence(w.alice)
+        settle(w.engine)
+        assertEquals("away", w.store.presenceOf(w.alice))
+        aliceSocket.close()
+        settle(w.engine)
+        assertEquals("offline", w.store.presenceOf(w.alice))
+        assertNull(w.store.presence[w.alice])
+
+        // Typing from alice shows up for bob, expires, and is cleared by her message.
+        val aliceAgain = w.server.connector(w.alice)("ws://fake", "t")
+        aliceAgain.send(ClientFrame.auth("t"))
+        aliceAgain.send(ClientFrame.typing(w.channelId, null))
+        settle(w.engine)
+        assertEquals(listOf(w.alice), w.store.typingUsers(w.channelId, null))
+        assertEquals(emptyList<String>(), w.store.typingUsers(w.channelId, null, System.currentTimeMillis() + 6_000)) // 5 s TTL
+        aliceAgain.send(ClientFrame.typing(w.channelId, "p1"))
+        settle(w.engine)
+        assertEquals(listOf(w.alice), w.store.typingUsers(w.channelId, "p1"))
+        w.server.post(w.channelId, w.alice, "here it is")
+        settle(w.engine)
+        assertEquals(emptyList<String>(), w.store.typingUsers(w.channelId, null))
+
+        // Our own typing goes out at most once per interval and never comes back to us.
+        w.engine.sendTyping(w.channelId)
+        w.engine.sendTyping(w.channelId)
+        settle(w.engine)
+        assertEquals(emptyList<String>(), w.store.typingUsers(w.channelId, null))
+        w.engine.stop(); w.scope.cancel()
     }
 
     @Test fun attachmentIdsTravelWithTheOutbox() = runBlocking {

@@ -19,6 +19,9 @@ sealed class ServerFrame {
     object Pong : ServerFrame()
     data class Error(val code: String, val message: String) : ServerFrame()
     data class Event(val frame: EventFrame) : ServerFrame()
+    /** Volatile (M11b): shown for a few seconds, never stored. */
+    data class Typing(val channelId: String, val parentId: String?, val userId: String) : ServerFrame()
+    data class Presence(val userId: String, val status: String) : ServerFrame()
 
     companion object {
         fun parse(text: String): ServerFrame? {
@@ -37,6 +40,8 @@ sealed class ServerFrame {
                         data = obj["data"]?.jsonObject ?: JsonObject(emptyMap()),
                     ),
                 )
+                "typing" -> Typing(obj.str("channel_id") ?: return null, obj.str("parent_id"), obj.str("user_id") ?: return null)
+                "presence" -> Presence(obj.str("user_id") ?: return null, obj.str("status") ?: return null)
                 else -> null
             }
         }
@@ -46,6 +51,10 @@ sealed class ServerFrame {
 object ClientFrame {
     fun auth(token: String): String = Codec.plain.encodeToString(JsonObject.serializer(), buildJsonObject { put("type", "auth"); put("token", token) })
     fun ping(active: Boolean): String = Codec.plain.encodeToString(JsonObject.serializer(), buildJsonObject { put("type", "ping"); put("active", active) })
+    fun typing(channelId: String, parentId: String?): String = Codec.plain.encodeToString(
+        JsonObject.serializer(),
+        buildJsonObject { put("type", "typing"); put("channel_id", channelId); if (parentId != null) put("parent_id", parentId) },
+    )
 }
 
 const val CLOSE_RECONNECT = 4000

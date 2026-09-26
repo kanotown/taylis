@@ -6,6 +6,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
+import jp.chikuwachat.android.api.PresenceEntry
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.ThreadItem
 import jp.chikuwachat.android.api.ThreadState
@@ -153,6 +154,10 @@ class Store(private val persistence: Persistence? = null) {
         private set
     var threadsHasMore = false
         private set
+    /** Who is connected right now (SYNC_PROTOCOL.md §5.2); absent = offline. Replaced by bootstrap. */
+    val presence = HashMap<String, String>()
+    /** "channel[:parent]" → user id → expiry (epoch ms); volatile typing indicators. */
+    private val typing = HashMap<String, HashMap<String, Long>>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -341,6 +346,39 @@ class Store(private val persistence: Persistence? = null) {
         }
         emit()
     }
+
+    // --- presence / typing (volatile, SYNC_PROTOCOL.md §5.2) ---------------------------------
+
+    fun presenceOf(userId: String): String = presence[userId] ?: "offline"
+
+    fun setPresence(userId: String, status: String) {
+        if (presenceOf(userId) == status) return
+        if (status == "offline") presence.remove(userId) else presence[userId] = status
+        emit()
+    }
+
+    /** bootstrap: the full picture; everyone not listed is offline. */
+    fun replacePresence(entries: List<PresenceEntry>) {
+        presence.clear()
+        entries.filter { it.status != "offline" }.forEach { presence[it.userId] = it.status }
+        emit()
+    }
+
+    private fun typingKey(channelId: String, parentId: String?) = if (parentId != null) "$channelId:$parentId" else channelId
+
+    fun noteTyping(channelId: String, parentId: String?, userId: String, until: Long) {
+        typing.getOrPut(typingKey(channelId, parentId)) { HashMap() }[userId] = until
+        emit()
+    }
+
+    /** The user posted: their indicator goes away at once. */
+    fun clearTyping(channelId: String, parentId: String?, userId: String) {
+        if (typing[typingKey(channelId, parentId)]?.remove(userId) != null) emit()
+    }
+
+    /** Users typing in this conversation right now (expired entries are skipped, not removed). */
+    fun typingUsers(channelId: String, parentId: String?, now: Long = System.currentTimeMillis()): List<String> =
+        typing[typingKey(channelId, parentId)]?.filterValues { it > now }?.keys?.sorted() ?: emptyList()
 
     /** The rows of the threads view: followed, newest reply first, unread only when that filter is on. */
     fun threadList(filter: String = threadsFilter): List<ThreadEntry> =
