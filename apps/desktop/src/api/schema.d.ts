@@ -1561,6 +1561,14 @@ export interface components {
             must_change_password: boolean;
             /** Role */
             role: string;
+            /** Status Emoji */
+            status_emoji?: string | null;
+            /** Status Expires At */
+            status_expires_at?: string | null;
+            /** Status Text */
+            status_text?: string | null;
+            /** Title */
+            title?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -1587,6 +1595,14 @@ export interface components {
             id: string;
             /** Role */
             role: string;
+            /** Status Emoji */
+            status_emoji?: string | null;
+            /** Status Expires At */
+            status_expires_at?: string | null;
+            /** Status Text */
+            status_text?: string | null;
+            /** Title */
+            title?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -1601,6 +1617,14 @@ export interface components {
             display_name?: string | null;
             /** Email */
             email?: string | null;
+            /** Status Emoji */
+            status_emoji?: string | null;
+            /** Status Expires At */
+            status_expires_at?: string | null;
+            /** Status Text */
+            status_text?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** ValidationError */
         ValidationError: {

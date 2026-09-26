@@ -102,6 +102,10 @@ export class FakeServer {
       deactivated_at: null,
       created_at: now(),
       updated_at: now(),
+      title: null,
+      status_text: null,
+      status_emoji: null,
+      status_expires_at: null,
     };
     this.users.set(user.id, user);
     return user;

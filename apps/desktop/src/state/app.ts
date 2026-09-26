@@ -253,6 +253,36 @@ export class AppController {
     }
   }
 
+  /** M11d: profile card fields (title, custom status). Null clears; omitted fields keep their value. */
+  async updateProfile(patch: { title?: string | null; status_text?: string | null; status_emoji?: string | null; status_expires_at?: string | null }): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const me = await this.api.updateMe(patch);
+      this.me = me;
+      this.store.setMe(me);
+      this.store.upsertUser(me);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** Open (or create) the DM with one user; returns its channel id. */
+  async openDmWith(userId: string): Promise<string | null> {
+    if (!this.api) return null;
+    const existing = [...this.store.channels.values()].find((c) => c.type === "dm" && (c.dm_user_ids ?? []).includes(userId) && (c.dm_user_ids ?? []).length <= 2);
+    if (existing) return existing.id;
+    try {
+      const channel = await this.api.createDm([userId]);
+      this.store.upsertChannel(channel, { isMember: true });
+      return channel.id;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
   async updateDisplayName(displayName: string): Promise<boolean> {
     if (!this.api) return false;
     try {

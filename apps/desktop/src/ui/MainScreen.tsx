@@ -21,8 +21,10 @@ import { Timeline } from "./Timeline";
 import { Toast } from "./Toast";
 import { TypingIndicator } from "./Typing";
 import { presenceLabel } from "./Avatar";
+import { activeStatus } from "./users";
+import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -201,11 +203,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
       }
     };
     const onSwitch = () => setSwitcher(true);
+    // Profile cards (UserPopover) ask the screen to open a DM or the status editor.
+    const onOpenChannel = (event: Event) => open(String((event as CustomEvent<string>).detail));
+    const onOpenStatus = () => setDialog("status");
     window.addEventListener("keydown", onKey);
     window.addEventListener("chikuwa:quick-switch", onSwitch);
+    window.addEventListener("chikuwa:open-channel", onOpenChannel);
+    window.addEventListener("chikuwa:open-status", onOpenStatus);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("chikuwa:quick-switch", onSwitch);
+      window.removeEventListener("chikuwa:open-channel", onOpenChannel);
+      window.removeEventListener("chikuwa:open-status", onOpenStatus);
     };
   }, [controller]);
 
@@ -301,6 +310,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <span className="flex items-center gap-1.5 text-xs text-muted" title="プレゼンス">
                     <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
                     {presenceLabel(store.presenceOf(dmOther[0]))}
+                    {activeStatus(store.users.get(dmOther[0])) && (
+                      <span className="ml-1 truncate">
+                        {activeStatus(store.users.get(dmOther[0]))!.emoji} {activeStatus(store.users.get(dmOther[0]))!.text}
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
@@ -392,7 +406,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       )}
       {dialog === "add-member" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog("members")} />}
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
-      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} onStatus={() => setDialog("status")} />}
+      {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
     </div>
   );

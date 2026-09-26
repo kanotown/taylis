@@ -6,6 +6,7 @@ import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
+import { StatusEmoji } from "./UserPopover";
 
 interface Props {
   controller: AppController;
@@ -60,6 +61,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             <Hash size={15} className="shrink-0 opacity-70" />
           )}
           <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
+          {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
           {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : null}
         </button>
