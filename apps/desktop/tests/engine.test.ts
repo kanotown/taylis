@@ -268,3 +268,41 @@ describe("read state (M8b)", () => {
     expect([state.lastReadSeq, state.unreadCount, state.mentionCount]).toEqual([5, 0, 0]);
   });
 });
+
+describe("threads (M8c)", () => {
+  it("keeps replies out of the timeline, updates the parent and loads a thread on demand", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const { message: parent } = server.post(channel.id, alice.id, "topic");
+    await engine.idle();
+    server.post(channel.id, alice.id, "reply 1", undefined, parent.id);
+    await engine.idle();
+    expect(store.messages(channel.id).map((m) => m.body)).toEqual(["topic"]);
+    expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["reply 1"]);
+    expect(store.message(channel.id, parent.id)?.reply_count).toBe(1);
+    expect(notifications).toEqual([]); // bob is not part of the thread
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(1); // replies are not unread items
+
+    await engine.send(channel.id, "reply 2", undefined, parent.id);
+    await engine.idle();
+    expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["reply 1", "reply 2"]);
+    expect(store.message(channel.id, parent.id)?.reply_count).toBe(2);
+    server.post(channel.id, alice.id, "reply 3", undefined, parent.id);
+    await engine.idle();
+    expect(notifications).toEqual(["reply 3"]); // bob replied, so alice's reply notifies him
+
+    const restored = new Store();
+    const second = new SyncEngine(
+      { api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: restored, getAccessToken: () => "t", sleep: async () => {} },
+      {},
+    );
+    await second.start();
+    await second.idle();
+    expect(restored.replies(channel.id, parent.id)).toHaveLength(0);
+    await second.loadReplies(channel.id, parent.id);
+    expect(restored.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["reply 1", "reply 2", "reply 3"]);
+    second.stop();
+    engine.stop();
+  });
+});

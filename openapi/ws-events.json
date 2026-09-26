@@ -655,6 +655,19 @@
                 "title": "Id",
                 "type": "string"
               },
+              "last_reply_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Last Reply At"
+              },
               "mention_all": {
                 "default": false,
                 "title": "Mention All",
@@ -669,6 +682,19 @@
                 "title": "Mentioned User Ids",
                 "type": "array"
               },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Parent Id"
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -676,6 +702,11 @@
                 },
                 "title": "Reactions",
                 "type": "array"
+              },
+              "reply_count": {
+                "default": 0,
+                "title": "Reply Count",
+                "type": "integer"
               },
               "sender_id": {
                 "format": "uuid",
@@ -711,6 +742,53 @@
             "title": "MessageOut",
             "type": "object"
           },
+          "ParentThread": {
+            "description": "The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6).",
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "last_reply_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Last Reply At"
+              },
+              "participant_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Participant Ids",
+                "type": "array"
+              },
+              "reply_count": {
+                "title": "Reply Count",
+                "type": "integer"
+              },
+              "updated_seq": {
+                "title": "Updated Seq",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "reply_count",
+              "last_reply_at",
+              "updated_seq"
+            ],
+            "title": "ParentThread",
+            "type": "object"
+          },
           "ReactionOut": {
             "properties": {
               "count": {
@@ -742,6 +820,17 @@
         "properties": {
           "message": {
             "$ref": "#/$defs/MessageOut"
+          },
+          "parent_thread": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ParentThread"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -805,6 +894,19 @@
                 "title": "Id",
                 "type": "string"
               },
+              "last_reply_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Last Reply At"
+              },
               "mention_all": {
                 "default": false,
                 "title": "Mention All",
@@ -819,6 +921,19 @@
                 "title": "Mentioned User Ids",
                 "type": "array"
               },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Parent Id"
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -826,6 +941,11 @@
                 },
                 "title": "Reactions",
                 "type": "array"
+              },
+              "reply_count": {
+                "default": 0,
+                "title": "Reply Count",
+                "type": "integer"
               },
               "sender_id": {
                 "format": "uuid",
@@ -861,6 +981,53 @@
             "title": "MessageOut",
             "type": "object"
           },
+          "ParentThread": {
+            "description": "The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6).",
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "last_reply_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Last Reply At"
+              },
+              "participant_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Participant Ids",
+                "type": "array"
+              },
+              "reply_count": {
+                "title": "Reply Count",
+                "type": "integer"
+              },
+              "updated_seq": {
+                "title": "Updated Seq",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "reply_count",
+              "last_reply_at",
+              "updated_seq"
+            ],
+            "title": "ParentThread",
+            "type": "object"
+          },
           "ReactionOut": {
             "properties": {
               "count": {
@@ -893,6 +1060,17 @@
         "properties": {
           "message": {
             "$ref": "#/$defs/MessageOut"
+          },
+          "parent_thread": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ParentThread"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -956,6 +1134,19 @@
                 "title": "Id",
                 "type": "string"
               },
+              "last_reply_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Last Reply At"
+              },
               "mention_all": {
                 "default": false,
                 "title": "Mention All",
@@ -970,6 +1161,19 @@
                 "title": "Mentioned User Ids",
                 "type": "array"
               },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Parent Id"
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -977,6 +1181,11 @@
                 },
                 "title": "Reactions",
                 "type": "array"
+              },
+              "reply_count": {
+                "default": 0,
+                "title": "Reply Count",
+                "type": "integer"
               },
               "sender_id": {
                 "format": "uuid",

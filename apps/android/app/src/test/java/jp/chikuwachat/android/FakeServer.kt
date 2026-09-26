@@ -9,6 +9,7 @@ import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.UserMe
@@ -79,7 +80,13 @@ class FakeServer {
         }
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
-        override suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId) }
+        override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId) }
+        override suspend fun replies(messageId: String): List<MessageOut> {
+            maybeFail()
+            val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
+            requireMember(record.channel.id, userId)
+            return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }
+        }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null) }
@@ -128,7 +135,7 @@ class FakeServer {
     fun readState(userId: String, channelId: String): ReadStateOut {
         val record = channels.getValue(channelId)
         val position = readPositions["$userId:$channelId"] ?: 0
-        val unread = record.messages.filter { it.seq > position && !it.deleted }
+        val unread = record.messages.filter { it.seq > position && !it.deleted && it.parentId == null }
         return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) })
     }
 
@@ -155,23 +162,36 @@ class FakeServer {
         return record
     }
 
-    fun post(channelId: String, senderId: String, body: String, clientMsgId: String? = null): Pair<MessageOut, Boolean> {
+    fun post(channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
         byClientKey["$senderId:$key"]?.let { existing ->
             if (existing.channelId != channelId) throw ApiException.Api(409, "idempotency_conflict", "conflict")
             return existing to false
         }
+        val parentIndex = parentId?.let { pid -> record.messages.indexOfFirst { it.id == pid && !it.deleted } }
+        if (parentId != null && (parentIndex == null || parentIndex < 0)) throw ApiException.Api(404, "message_not_found", "parent not found")
+        if (parentIndex != null && record.messages[parentIndex].parentId != null) throw ApiException.Api(400, "reply_depth", "no replies to replies")
         val seq = record.channel.lastSeq + 1
         record.channel = record.channel.copy(lastSeq = seq, lastMessageAt = now())
         val mentioned = Regex("<@([0-9a-f-]{36})>").findAll(body).map { it.groupValues[1] }.distinct().toList()
         val message = MessageOut(
-            id = nextId(), channelId = channelId, senderId = senderId, seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
+            id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
         )
         record.messages.add(message)
         byClientKey["$senderId:$key"] = message
-        emit(record.members, event("message.created", channelId, seq, buildJsonObject { put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message)) }))
+        var thread: ParentThread? = null
+        if (parentIndex != null) {
+            val parent = record.messages[parentIndex].let { it.copy(replyCount = it.replyCount + 1, lastReplyAt = message.createdAt, updatedSeq = seq) }
+            record.messages[parentIndex] = parent
+            val participants = (listOf(parent.senderId) + record.messages.filter { it.parentId == parent.id && !it.deleted }.map { it.senderId }).distinct()
+            thread = ParentThread(parent.id, parent.replyCount, parent.lastReplyAt, seq, participants)
+        }
+        emit(record.members, event("message.created", channelId, seq, buildJsonObject {
+            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message))
+            if (thread != null) put("parent_thread", Codec.snake.encodeToJsonElement(ParentThread.serializer(), thread))
+        }))
         markRead(senderId, channelId, seq) // the sender has read their own message (§10)
         return message to true
     }
@@ -279,7 +299,7 @@ class FakeServer {
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
         val record = requireMember(channelId, userId)
         val channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
-        var rows = record.messages.filter { !it.deleted }
+        var rows = record.messages.filter { !it.deleted && it.parentId == null }
         if (beforeSeq != null) rows = rows.filter { it.seq < beforeSeq }
         rows = rows.sortedByDescending { it.seq }
         return HistoryOut(channelLastSeq, rows.take(limit), rows.size > limit)

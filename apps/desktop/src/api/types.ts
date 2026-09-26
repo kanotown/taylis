@@ -8,6 +8,14 @@ export type ChannelOut = components["schemas"]["ChannelOut"];
 export type MessageOut = components["schemas"]["MessageOut"];
 export type ReactionOut = components["schemas"]["ReactionOut"];
 export type ReadStateOut = components["schemas"]["ReadStateOut"];
+/** message.created / message.deleted payloads for thread replies (SYNC_PROTOCOL.md §6). */
+export interface ParentThread {
+  id: string;
+  reply_count: number;
+  last_reply_at: string | null;
+  updated_seq: number;
+  participant_ids?: string[];
+}
 export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];

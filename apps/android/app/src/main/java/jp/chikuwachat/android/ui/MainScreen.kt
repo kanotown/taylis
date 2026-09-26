@@ -58,6 +58,7 @@ fun MainScreen(controller: AppController) {
     val version by store.version.collectAsState()
     val status = controller.engineStatus
     var selection by rememberSaveable { mutableStateOf<String?>(null) }
+    var threadId by rememberSaveable { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<MainDialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -77,14 +78,24 @@ fun MainScreen(controller: AppController) {
     if (selection != null && store.channel(selection!!) == null) selection = null
 
     val selectedChannel = selection?.let { store.channel(it) }
-    BackHandler(enabled = selectedChannel != null) { selection = null }
+    if (selectedChannel == null) threadId = null
+    BackHandler(enabled = threadId != null) { threadId = null }
+    BackHandler(enabled = threadId == null && selectedChannel != null) { selection = null }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(selectedChannel?.let { channelTitle(it, store) } ?: (store.me?.displayName ?: "ChikuwaChat")) },
+                title = {
+                    Text(
+                        when {
+                            threadId != null -> "スレッド"
+                            selectedChannel != null -> channelTitle(selectedChannel, store)
+                            else -> store.me?.displayName ?: "ChikuwaChat"
+                        },
+                    )
+                },
                 navigationIcon = {
-                    if (selectedChannel != null) IconButton(onClick = { selection = null }) { Text("←", style = MaterialTheme.typography.titleLarge) }
+                    if (selectedChannel != null) IconButton(onClick = { if (threadId != null) threadId = null else selection = null }) { Text("←", style = MaterialTheme.typography.titleLarge) }
                 },
                 actions = {
                     StatusBadge(status)
@@ -103,8 +114,11 @@ fun MainScreen(controller: AppController) {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            if (selectedChannel != null) {
-                ChannelPane(controller, selectedChannel.id, version)
+            val openThread = threadId
+            if (selectedChannel != null && openThread != null) {
+                ThreadPane(controller, selectedChannel.id, openThread, version)
+            } else if (selectedChannel != null) {
+                ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
             } else {
                 ChannelList(store, version, onSelect = { selection = it }, onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } })
             }

@@ -7,9 +7,10 @@ protocol SyncApi: AnyObject {
     func bootstrap() async throws -> BootstrapOut
     func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut
     func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut
-    func postMessage(channelId: String, clientMsgId: String, body: String) async throws -> (MessageOut, Bool)
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
+    func replies(messageId: String) async throws -> [MessageOut]
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
@@ -314,23 +315,26 @@ final class SyncEngine {
 
     private func applyTimelineEvent(_ frame: EventFrame) async throws {
         guard let channelId = frame.channelId, let seq = frame.seq, let channel = store.channel(channelId) else { return }
-        struct Payload: Decodable { let message: MessageOut }
-        let message = try frame.data.decode(Payload.self).message
+        struct Payload: Decodable { let message: MessageOut; let parentThread: ParentThread? }
+        let payload = try frame.data.decode(Payload.self)
+        let message = payload.message
+        let thread = payload.parentThread
         let isNew = frame.event == "message.created"
 
         guard let synced = channel.syncedSeq else {
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
-            if isNew { countUnread(message); maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel, thread) }
             return
         }
         if seq == synced + 1 {
             store.upsertMessage(message)
+            if let thread { store.applyParentThread(channelId, thread) }
             store.updateChannel(channelId) { $0.syncedSeq = seq; $0.lastSeq = max($0.lastSeq, seq) }
-            if isNew { countUnread(message); maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel, thread) }
         } else if seq > synced + 1 {
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             try await catchUp(channelId)
-            if isNew { countUnread(message); maybeNotify(message, channel) }
+            if isNew { countUnread(message); maybeNotify(message, channel, thread) }
         }
         // seq <= synced: already applied.
     }
@@ -340,6 +344,8 @@ final class SyncEngine {
         guard let me = store.me else { return }
         if message.senderId == me.id {
             store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
+        } else if message.isReply {
+            return // replies are not unread items (DATA_MODEL.md read_states)
         } else {
             store.updateChannel(message.channelId) { state in
                 guard message.seq > state.lastReadSeq else { return }
@@ -361,12 +367,20 @@ final class SyncEngine {
         onBadge?(store.badgeCount)
     }
 
-    /// DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults).
-    private func maybeNotify(_ message: MessageOut, _ channel: ChannelState) {
+    /// DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4).
+    private func maybeNotify(_ message: MessageOut, _ channel: ChannelState, _ thread: ParentThread? = nil) {
         guard let me = store.me, message.senderId != me.id else { return }
-        if !channel.channel.isDm && !message.mentions(me.id) { return }
+        let involved = message.mentions(me.id) || (thread?.participantIds.contains(me.id) ?? false)
+        if !channel.channel.isDm && !involved { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
+    }
+
+    /// Opening a thread: fetch its replies (live ones keep arriving as timeline events).
+    func loadReplies(_ channelId: String, parentId: String) async {
+        _ = try? await enqueue { [self] in
+            for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+        }.value
     }
 
     // MARK: §7.3 catch_up
@@ -447,11 +461,11 @@ final class SyncEngine {
 
     // MARK: §9 optimistic send
 
-    func send(_ channelId: String, body: String, clientMsgId: String? = nil) async {
+    func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil) async {
         let clientMsgId = clientMsgId ?? options.newId()
         let createdAt = options.now()
-        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil))
-        store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt))
+        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId))
+        store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt, parentId: parentId))
         await flushOutbox()
     }
 
@@ -477,7 +491,7 @@ final class SyncEngine {
         defer { flushing = false }
         for item in store.outbox where item.failed == nil {
             do {
-                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body)
+                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId)
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
             } catch {

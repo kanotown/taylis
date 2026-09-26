@@ -80,9 +80,14 @@ final class FakeServer {
             return try server.delta(userId: userId, channelId: channelId, sinceSeq: sinceSeq, limit: limit)
         }
 
-        func postMessage(channelId: String, clientMsgId: String, body: String) async throws -> (MessageOut, Bool) {
+        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?) async throws -> (MessageOut, Bool) {
             try maybeFail()
-            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId)
+            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId)
+        }
+
+        func replies(messageId: String) async throws -> [MessageOut] {
+            try maybeFail()
+            return try server.replies(userId: userId, messageId: messageId)
         }
 
         func publicChannels() async throws -> [ChannelOut] {
@@ -147,7 +152,7 @@ final class FakeServer {
     func readState(userId: String, channelId: String) -> ReadStateOut {
         let record = channels[channelId]!
         let position = readPositions["\(userId):\(channelId)"] ?? 0
-        let unread = record.messages.filter { $0.seq > position && !$0.deleted }
+        let unread = record.messages.filter { $0.seq > position && !$0.deleted && $0.parentId == nil }
         return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count)
     }
 
@@ -170,6 +175,12 @@ final class FakeServer {
         return readState(userId: userId, channelId: channelId)
     }
 
+    func replies(userId: String, messageId: String) throws -> [MessageOut] {
+        guard let record = channels.values.first(where: { $0.messages.contains { $0.id == messageId } }) else { return [] }
+        _ = try requireMember(record.channel.id, userId)
+        return record.messages.filter { $0.parentId == messageId && !$0.deleted }.sorted { $0.seq < $1.seq }
+    }
+
     private func requireMember(_ channelId: String, _ userId: String) throws -> ChannelRecord {
         guard let record = channels[channelId] else { throw ApiError.api(status: 404, code: "channel_not_found", message: "not found") }
         guard record.members.contains(userId) else { throw ApiError.api(status: 403, code: "not_a_member", message: "not a member") }
@@ -177,24 +188,43 @@ final class FakeServer {
     }
 
     @discardableResult
-    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil) throws -> (MessageOut, Bool) {
+    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
             if existing.channelId != channelId { throw ApiError.api(status: 409, code: "idempotency_conflict", message: "conflict") }
             return (existing, false)
         }
+        var parentIndex: Int?
+        if let parentId {
+            guard let index = record.messages.firstIndex(where: { $0.id == parentId && !$0.deleted }) else {
+                throw ApiError.api(status: 404, code: "message_not_found", message: "parent not found")
+            }
+            if record.messages[index].parentId != nil { throw ApiError.api(status: 400, code: "reply_depth", message: "no replies to replies") }
+            parentIndex = index
+        }
         let seq = record.channel.lastSeq + 1
         record.channel = ChannelOut(id: record.channel.id, type: record.channel.type, name: record.channel.name, topic: nil, purpose: nil, archived: false,
                                     createdBy: record.channel.createdBy, lastSeq: seq, lastMessageAt: now(), createdAt: record.channel.createdAt,
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
         let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
-                                 createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body))
+                                 createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body),
+                                 parentId: parentId)
         record.messages.append(message)
+        var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
+        if let parentIndex {
+            let old = record.messages[parentIndex]
+            let parent = rebuild(old, updatedSeq: seq, replyCount: old.replyCount + 1, lastReplyAt: message.createdAt)
+            record.messages[parentIndex] = parent
+            var participants = [parent.senderId]
+            for reply in record.messages where reply.parentId == parent.id && !reply.deleted && !participants.contains(reply.senderId) { participants.append(reply.senderId) }
+            let thread = ParentThread(id: parent.id, replyCount: parent.replyCount, lastReplyAt: parent.lastReplyAt, updatedSeq: seq, participantIds: participants)
+            payloadFields["parent_thread"] = try! JSONValue.from(thread)
+        }
         channels[channelId] = record
         byClientKey[senderId + ":" + key] = message
         eventId += 1
-        let payload: JSONValue = .object(["message": try! JSONValue.from(message)])
+        let payload: JSONValue = .object(payloadFields)
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
         _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) // the sender has read their own message (§10)
@@ -222,10 +252,12 @@ final class FakeServer {
     }
 
     private func rebuild(_ m: MessageOut, body: String? = nil, editedAt: String? = nil, updatedSeq: Int? = nil, deleted: Bool? = nil,
-                         reactions: [ReactionOut]? = nil, mentionedUserIds: [String]? = nil, mentionAll: Bool? = nil) -> MessageOut {
+                         reactions: [ReactionOut]? = nil, mentionedUserIds: [String]? = nil, mentionAll: Bool? = nil,
+                         replyCount: Int? = nil, lastReplyAt: String? = nil) -> MessageOut {
         MessageOut(id: m.id, channelId: m.channelId, senderId: m.senderId, seq: m.seq, updatedSeq: updatedSeq ?? m.updatedSeq, clientMsgId: m.clientMsgId,
                    body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
-                   mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions)
+                   mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions,
+                   parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt)
     }
 
     private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {
@@ -352,7 +384,7 @@ final class FakeServer {
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {
         let record = try requireMember(channelId, userId)
         let channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
-        var rows = record.messages.filter { !$0.deleted }
+        var rows = record.messages.filter { !$0.deleted && $0.parentId == nil }
         if let beforeSeq { rows = rows.filter { $0.seq < beforeSeq } }
         rows.sort { $0.seq > $1.seq }
         return HistoryOut(channelLastSeq: channelLastSeq, messages: Array(rows.prefix(limit)), hasMore: rows.count > limit)

@@ -5,6 +5,7 @@ struct ChannelView: View {
     let channelId: String
     @State private var draft = ""
     @State private var showAddMember = false
+    @State private var thread: ThreadTarget?
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     private var messages: [MessageState] { controller.store.messages(channelId) }
@@ -26,7 +27,7 @@ struct ChannelView: View {
                                 .font(.footnote)
                         }
                         ForEach(messages) { message in
-                            MessageRow(message: message, controller: controller).id(message.id)
+                            MessageRow(message: message, controller: controller, onOpenThread: { thread = ThreadTarget(id: message.id) }).id(message.id)
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -69,6 +70,7 @@ struct ChannelView: View {
             }
         }
         .sheet(isPresented: $showAddMember) { AddMemberView(controller: controller, channelId: channelId) }
+        .sheet(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
     }
 }
 
@@ -77,6 +79,7 @@ let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
 struct MessageRow: View {
     let message: MessageState
     @Bindable var controller: AppController
+    var onOpenThread: (() -> Void)? = nil
     @State private var editing = false
     @State private var confirmingDelete = false
 
@@ -106,6 +109,9 @@ struct MessageRow: View {
                 }
                 .padding(.top, 2)
             }
+            if message.replyCount > 0, let onOpenThread {
+                Button("\(message.replyCount) 件の返信") { onOpenThread() }.font(.caption).padding(.top, 2)
+            }
             if message.failed {
                 HStack {
                     Text("送信失敗").font(.caption).foregroundStyle(.red)
@@ -121,6 +127,7 @@ struct MessageRow: View {
                 ForEach(reactionPalette, id: \.self) { emoji in
                     Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
                 }
+                if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
             }
@@ -183,6 +190,7 @@ func parseIsoDate(_ iso: String) -> Date? {
 struct ComposerView: View {
     @Binding var text: String
     let users: [UserPublic]
+    var placeholder = "メッセージを入力"
     let onSend: (String) -> Void
 
     private var candidates: [Mentions.Candidate] {
@@ -208,7 +216,7 @@ struct ComposerView: View {
                 .padding(.vertical, 4)
             }
             HStack(alignment: .bottom) {
-                TextField("メッセージを入力", text: $text, axis: .vertical)
+                TextField(placeholder, text: $text, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
                 Button("送信", systemImage: "paperplane.fill") {

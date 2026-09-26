@@ -158,13 +158,18 @@ export class ApiClient {
     channelId: string,
     clientMsgId: string,
     body: string,
+    parentId: string | null = null,
   ): Promise<{ message: MessageOut; created: boolean }> {
     const { data, status } = await this.requestWithStatus<MessageOut>(
       "POST",
       `/api/v1/channels/${channelId}/messages`,
-      { client_msg_id: clientMsgId, body },
+      { client_msg_id: clientMsgId, body, parent_id: parentId },
     );
     return { message: data, created: status === 201 };
+  }
+
+  replies(messageId: string): Promise<MessageOut[]> {
+    return this.request("GET", `/api/v1/messages/${messageId}/replies`);
   }
 
   markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut> {

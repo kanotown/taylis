@@ -152,11 +152,14 @@ final class ApiClient: SyncApi {
         try await request("GET", "/api/v1/channels/\(channelId)/sync?since_seq=\(sinceSeq)&limit=\(limit)")
     }
 
-    func postMessage(channelId: String, clientMsgId: String, body: String) async throws -> (MessageOut, Bool) {
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil) async throws -> (MessageOut, Bool) {
         let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages",
-                                                  body: .object(["client_msg_id": .string(clientMsgId), "body": .string(body)]), auth: true, retry401: true)
+                                                  body: .object(["client_msg_id": .string(clientMsgId), "body": .string(body),
+                                                                 "parent_id": parentId.map(JSONValue.string) ?? .null]), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
+
+    func replies(messageId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/messages/\(messageId)/replies") }
 
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
         try await request("PUT", "/api/v1/channels/\(channelId)/read", body: .object(["last_read_seq": .number(Double(lastReadSeq))]))

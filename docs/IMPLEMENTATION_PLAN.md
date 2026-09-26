@@ -34,7 +34,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
 | M7 | FCM | 端末登録、トークン処理、配送 | **実装済み (2026-09-26)**: `FCMPushProvider` (HTTP v1、サービスアカウントの JWT bearer grant、data-only、応答対応表のテスト)、compose の鍵マウント、Android の `FirebaseMessagingService` / `PushCenter` (トークン登録・更新、通知の組み立て、タップで該当チャンネル)。Firebase プロジェクトでの実受信はユーザー側の設定後に確認する (infra/README.md) |
-| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。**M8b 実装済み (2026-09-26)**: `read_states` (参加時に初期化、送信者は自分の投稿を既読)、`PUT /channels/{id}/read` (単調・clamp)、`read.updated`、bootstrap の `read_state` (未読数・メンション数を seq 範囲から導出)、PushPlanner の既読チェックとバッジ、PushSender の送信直前の既読チェック、契約フィクスチャ 07 を 4 実装で通過、3 クライアントの未読バッジと既読送信 (1 秒デバウンス、楽観的更新)。M8c (スレッド) は未着手 |
+| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。**M8b 実装済み (2026-09-26)**: `read_states` (参加時に初期化、送信者は自分の投稿を既読)、`PUT /channels/{id}/read` (単調・clamp)、`read.updated`、bootstrap の `read_state` (未読数・メンション数を seq 範囲から導出)、PushPlanner の既読チェックとバッジ、PushSender の送信直前の既読チェック、契約フィクスチャ 07 を 4 実装で通過、3 クライアントの未読バッジと既読送信 (1 秒デバウンス、楽観的更新)。**M8c 実装済み (2026-09-26)**: `parent_id` (1 段)、返信で親の `reply_count` / `last_reply_at` / `updated_seq` を同じ seq に更新、`GET /messages/{id}/replies`、履歴は親のみ・差分は返信込み、返信は未読に数えない、通知対象に親の投稿者と返信者 (`parent_thread.participant_ids`)、3 クライアントのスレッド画面 (Desktop は右ペイン、モバイルはスレッド画面 / シート) |
 | M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
 | M10 | 運用 | backup、restore、security review、logging、deployment docs | 復元リハーサルが成功する |
 
@@ -182,6 +182,9 @@ FCM の実受信には Firebase プロジェクトが要るため、infra/README
   Android は既読になったチャンネルの通知を消す。
 - **M8c スレッド**: `parent_id`、`GET /messages/{id}/replies`、親の `reply_count` 更新、通知対象の拡張、
   Desktop の右ペイン、モバイルのスレッド画面。参加 / 退出のシステムメッセージはここで入れてもよい。
+  実装メモ (2026-09-26): 返信の削除は `reply_count` を減らし親の `updated_seq` を進める (イベントに `parent_thread`)。
+  返信の親を削除しても返信行は残る (親が無いので表示されない)。参加 / 退出のシステムメッセージは入れていない
+  (`messages.type = 'system'` の列だけ用意)。
 
 ### M9: 添付と検索 (2 分割)
 

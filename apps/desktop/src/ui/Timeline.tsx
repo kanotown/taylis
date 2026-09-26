@@ -7,7 +7,7 @@ import { decodeMentions, encodeMentions } from "./mentions";
 
 const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 
-export function Timeline({ controller, channel }: { controller: AppController; channel: ChannelState }) {
+export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
   const store = controller.store;
   const engine = controller.engine;
   const messages = store.messages(channel.id);
@@ -77,6 +77,11 @@ export function Timeline({ controller, channel }: { controller: AppController; c
                       {emoji}
                     </button>
                   ))}
+                  {onOpenThread && (
+                    <button className="link" onClick={() => onOpenThread(message.id)}>
+                      スレッド
+                    </button>
+                  )}
                   {mine && (
                     <button className="link" onClick={() => startEdit(message)}>
                       編集
@@ -120,6 +125,11 @@ export function Timeline({ controller, channel }: { controller: AppController; c
               </div>
             ) : (
               <MessageBody body={message.body} users={store.users} />
+            )}
+            {(message.reply_count ?? 0) > 0 && onOpenThread && (
+              <button className="link replies" onClick={() => onOpenThread(message.id)}>
+                {message.reply_count} 件の返信
+              </button>
             )}
             {reactions.length > 0 && (
               <div className="reactions">

@@ -426,6 +426,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Replies */
+        get: operations["list_replies_api_v1_messages__message_id__replies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sync/bootstrap": {
         parameters: {
             query?: never;
@@ -842,6 +859,8 @@ export interface components {
              * Format: uuid
              */
             client_msg_id: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** MessageEdit */
         MessageEdit: {
@@ -873,6 +892,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Last Reply At */
+            last_reply_at?: string | null;
             /**
              * Mention All
              * @default false
@@ -883,11 +904,18 @@ export interface components {
              * @default []
              */
             mentioned_user_ids: string[];
+            /** Parent Id */
+            parent_id?: string | null;
             /**
              * Reactions
              * @default []
              */
             reactions: components["schemas"]["ReactionOut"][];
+            /**
+             * Reply Count
+             * @default 0
+             */
+            reply_count: number;
             /**
              * Sender Id
              * Format: uuid
@@ -2088,6 +2116,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_replies_api_v1_messages__message_id__replies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
                 };
             };
             /** @description Validation Error */

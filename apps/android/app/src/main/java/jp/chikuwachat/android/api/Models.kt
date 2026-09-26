@@ -97,17 +97,31 @@ data class MessageOut(
     val seq: Int,
     val updatedSeq: Int,
     val clientMsgId: String? = null,
+    val parentId: String? = null,
     val type: String = "user",
     val body: String,
     val mentionedUserIds: List<String> = emptyList(),
     val mentionAll: Boolean = false,
     val reactions: List<ReactionOut> = emptyList(),
+    val replyCount: Int = 0,
+    val lastReplyAt: String? = null,
     val createdAt: String,
     val editedAt: String? = null,
     val deleted: Boolean,
 ) {
     fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
+    val isReply: Boolean get() = parentId != null
 }
+
+/** The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6). */
+@Serializable
+data class ParentThread(
+    val id: String,
+    val replyCount: Int,
+    val lastReplyAt: String? = null,
+    val updatedSeq: Int,
+    val participantIds: List<String> = emptyList(),
+)
 
 @Serializable
 data class HistoryOut(val channelLastSeq: Int, val messages: List<MessageOut>, val hasMore: Boolean)

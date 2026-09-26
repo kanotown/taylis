@@ -3,6 +3,7 @@ package jp.chikuwachat.android
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.EngineStatus
+import jp.chikuwachat.android.sync.Snapshot
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
@@ -212,6 +213,33 @@ class SyncEngineTest {
         w.engine.openChannel(w.channelId); w.engine.send(w.channelId, "mine"); settle(w.engine)
         assertEquals(Triple(5, 0, 0), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.mentionCount) })
         w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun threadsKeepRepliesOutOfTheTimelineAndUpdateTheParent() = runBlocking {
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        val (parent, _) = w.server.post(w.channelId, w.alice, "topic"); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "reply 1", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("topic"), w.store.messages(w.channelId).map { it.body })
+        assertEquals(listOf("reply 1"), w.store.replies(w.channelId, parent.id).map { it.body })
+        assertEquals(1, w.store.message(w.channelId, parent.id)?.replyCount)
+        assertEquals(0, w.notifications.size) // bob is not part of the thread
+        assertEquals(1, w.store.channel(w.channelId)?.unreadCount) // replies are not unread items
+
+        w.engine.send(w.channelId, "reply 2", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("reply 1", "reply 2"), w.store.replies(w.channelId, parent.id).map { it.body })
+        assertEquals(2, w.store.message(w.channelId, parent.id)?.replyCount)
+        w.server.post(w.channelId, w.alice, "reply 3", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("reply 3"), w.notifications) // now bob replied, so alice's reply notifies him
+
+        // A fresh client loads the thread on demand.
+        val restored = Store.fromSnapshot(Snapshot(users = w.store.users.values.toList(), channels = w.store.channels.values.toList()))
+        val second = SyncEngine(w.server.api(w.bob), w.server.connector(w.bob), "ws://fake", restored, { "t" }, w.scope, EngineOptions(sleep = {}))
+        second.start(); settle(second)
+        assertEquals(0, restored.replies(w.channelId, parent.id).size)
+        second.loadReplies(w.channelId, parent.id)
+        assertEquals(listOf("reply 1", "reply 2", "reply 3"), restored.replies(w.channelId, parent.id).map { it.body })
+        second.stop(); w.engine.stop(); w.scope.cancel()
     }
 
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {

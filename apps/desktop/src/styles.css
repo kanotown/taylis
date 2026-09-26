@@ -81,3 +81,10 @@ label { display: block; margin: 8px 0; }
 /* M8b: unread badges */
 .sidebar li.unread button { font-weight: 600; }
 .sidebar .badge { margin-left: auto; font-size: 11px; font-weight: 700; color: #fff; background: #3b6cf6; border-radius: 10px; padding: 0 7px; line-height: 18px; }
+
+/* M8c: thread pane */
+.thread-panel.open { display: flex; flex-direction: column; border-left: 1px solid var(--border); min-width: 320px; }
+.thread-panel.open .timeline { flex: 1; overflow-y: auto; padding: 8px 16px; }
+.thread-panel.open .channel-header { display: flex; justify-content: space-between; align-items: center; }
+.thread-count { font-size: 12px; margin: 4px 0 8px; }
+.message .replies { padding: 0; font-size: 12px; color: #3b6cf6; text-decoration: none; }

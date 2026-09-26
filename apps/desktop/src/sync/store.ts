@@ -1,4 +1,4 @@
-import type { ChannelOut, ChannelState, MessageState, OutboxItem, UserMe, UserPublic } from "./types";
+import type { ChannelOut, ChannelState, MessageState, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -137,11 +137,35 @@ export class Store {
   }
 
   /** Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
+  /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
   messages(channelId: string): MessageState[] {
-    const all = [...this.bucket(channelId).values()];
+    return this.ordered([...this.bucket(channelId).values()].filter((m) => !m.parent_id));
+  }
+
+  message(channelId: string, id: string): MessageState | undefined {
+    return this.bucket(channelId).get(id);
+  }
+
+  /** A thread: the replies of one parent, oldest first (pending ones last). */
+  replies(channelId: string, parentId: string): MessageState[] {
+    return this.ordered([...this.bucket(channelId).values()].filter((m) => m.parent_id === parentId));
+  }
+
+  private ordered(all: MessageState[]): MessageState[] {
     const confirmed = all.filter((m) => m.seq !== null).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
     const pending = all.filter((m) => m.seq === null).sort((a, b) => a.created_at.localeCompare(b.created_at));
     return [...confirmed, ...pending];
+  }
+
+  /** A reply moved the parent's counters (message.created / message.deleted with parent_thread). */
+  applyParentThread(channelId: string, thread: ParentThread): void {
+    const bucket = this.bucket(channelId);
+    const parent = bucket.get(thread.id);
+    if (!parent || thread.updated_seq <= parent.updated_seq) return;
+    const updated: MessageState = { ...parent, reply_count: thread.reply_count, last_reply_at: thread.last_reply_at, updated_seq: thread.updated_seq };
+    bucket.set(parent.id, updated);
+    this.persist((p) => p.saveMessage(updated));
+    this.emit();
   }
 
   getMessage(channelId: string, id: string): MessageState | undefined {

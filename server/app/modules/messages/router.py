@@ -56,6 +56,11 @@ async def get_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut
     return await service.message_out(db, await service.get_message(db, user, message_id))
 
 
+@router.get("/messages/{message_id}/replies", response_model=list[MessageOut])
+async def list_replies(message_id: UUID, user: CurrentUser, db: Db) -> list[MessageOut]:
+    return await service.list_replies(db, user, message_id)
+
+
 @router.patch("/messages/{message_id}", response_model=MessageOut)
 async def edit_message(
     message_id: UUID, user: CurrentUser, body: MessageEdit, db: Db

@@ -5,6 +5,7 @@ import type { ChannelState } from "../sync/types";
 import { Composer } from "./Composer";
 import { AddMemberDialog, NewChannelDialog, NewDmDialog } from "./Dialogs";
 import { Sidebar } from "./Sidebar";
+import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
 
 export function MainScreen({ controller }: { controller: AppController }) {
@@ -12,6 +13,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const store = controller.store;
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
   const [dialog, setDialog] = useState<"dm" | "channel" | "members" | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
@@ -27,7 +29,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (currentId && engine) void engine.openChannel(currentId);
   }, [currentId, engine]);
 
-  const open = (id: string) => setCurrentId(id);
+  const open = (id: string) => {
+    setCurrentId(id);
+    setThreadId(null);
+  };
 
   const join = async (id: string) => {
     if (!controller.api) return;
@@ -65,14 +70,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </button>
               )}
             </header>
-            <Timeline controller={controller} channel={current} />
+            <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
             {current.isMember && !current.archived && <Composer controller={controller} channel={current} />}
           </>
         ) : (
           <div className="centered muted">チャンネルを選択してください</div>
         )}
       </main>
-      <aside className="thread-panel" aria-hidden="true" />
+      {current && threadId ? (
+        <ThreadPane controller={controller} channel={current} parentId={threadId} onClose={() => setThreadId(null)} />
+      ) : (
+        <aside className="thread-panel" aria-hidden="true" />
+      )}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "members" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog(null)} />}

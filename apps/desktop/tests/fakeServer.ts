@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ReadStateOut, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -137,7 +137,7 @@ export class FakeServer {
   readState(userId: string, channelId: string): ReadStateOut {
     const record = this.record(channelId);
     const position = this.readPositions.get(`${userId}:${channelId}`) ?? 0;
-    const unread = record.messages.filter((m) => m.seq > position && !m.deleted);
+    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && !m.parent_id);
     const mentions = unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length;
     return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
   }
@@ -169,18 +169,25 @@ export class FakeServer {
   }
 
   /** Server-side post (used by fixtures for "other users" and by the api for the client). */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId()): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
       if (existing.channel_id !== channelId) throw new ApiError(409, "idempotency_conflict", "conflict");
       return { message: existing, created: false };
     }
+    let parentIndex = -1;
+    if (parentId) {
+      parentIndex = record.messages.findIndex((m) => m.id === parentId && !m.deleted);
+      if (parentIndex < 0) throw new ApiError(404, "message_not_found", "parent not found");
+      if (record.messages[parentIndex]!.parent_id) throw new ApiError(400, "reply_depth", "no replies to replies");
+    }
     const seq = ++record.channel.last_seq;
     const message: MessageOut = {
       id: nextId(),
       channel_id: channelId,
       sender_id: senderId,
+      parent_id: parentId,
       seq,
       updated_seq: seq,
       client_msg_id: clientMsgId,
@@ -189,6 +196,8 @@ export class FakeServer {
       mentioned_user_ids: mentionedIds(body),
       mention_all: MENTION_ALL.test(body),
       reactions: [],
+      reply_count: 0,
+      last_reply_at: null,
       created_at: now(),
       edited_at: null,
       deleted: false,
@@ -196,6 +205,15 @@ export class FakeServer {
     record.messages.push(message);
     record.channel.last_message_at = message.created_at;
     this.byClientKey.set(senderId + ":" + clientMsgId, message);
+    let parentThread: ParentThread | null = null;
+    if (parentIndex >= 0) {
+      const old = record.messages[parentIndex]!;
+      const parent: MessageOut = { ...old, reply_count: old.reply_count + 1, last_reply_at: message.created_at, updated_seq: seq };
+      record.messages[parentIndex] = parent;
+      const participants = [parent.sender_id];
+      for (const reply of record.messages) if (reply.parent_id === parent.id && !reply.deleted && !participants.includes(reply.sender_id)) participants.push(reply.sender_id);
+      parentThread = { id: parent.id, reply_count: parent.reply_count, last_reply_at: parent.last_reply_at ?? null, updated_seq: seq, participant_ids: participants };
+    }
     this.emit(record.members, {
       type: "event",
       id: ++this.eventId,
@@ -203,7 +221,7 @@ export class FakeServer {
       ts: now(),
       channel_id: channelId,
       seq,
-      data: { message },
+      data: parentThread ? { message, parent_thread: parentThread } : { message },
     });
     this.markRead(senderId, channelId, seq); // the sender has read their own message (§10)
     return { message, created: true };
@@ -346,7 +364,7 @@ export class FakeServer {
         maybeFail();
         const record = this.requireMember(channelId, userId);
         const channelLastSeq = record.channel.last_seq; // read BEFORE the rows (§4.3)
-        let rows = record.messages.filter((m) => !m.deleted);
+        let rows = record.messages.filter((m) => !m.deleted && !m.parent_id);
         if (beforeSeq !== null) rows = rows.filter((m) => m.seq < beforeSeq);
         rows = rows.sort((a, b) => b.seq - a.seq);
         return { channel_last_seq: channelLastSeq, messages: rows.slice(0, limit), has_more: rows.length > limit };
@@ -360,9 +378,16 @@ export class FakeServer {
         const hasMore = rows.length > limit;
         return { messages: page, next_since_seq: hasMore ? page[page.length - 1]!.updated_seq : Math.max(channelLastSeq, sinceSeq), has_more: hasMore };
       },
-      postMessage: async (channelId, clientMsgId, body) => {
+      postMessage: async (channelId, clientMsgId, body, parentId = null) => {
         maybeFail();
-        return this.post(channelId, userId, body, clientMsgId);
+        return this.post(channelId, userId, body, clientMsgId, parentId);
+      },
+      replies: async (messageId): Promise<MessageOut[]> => {
+        maybeFail();
+        const record = [...this.channels.values()].find((r) => r.messages.some((m) => m.id === messageId));
+        if (!record) return [];
+        this.requireMember(record.channel.id, userId);
+        return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
       },
       markRead: async (channelId, lastReadSeq): Promise<ReadStateOut> => {
         maybeFail();

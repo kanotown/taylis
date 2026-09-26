@@ -24,6 +24,7 @@ def clean_body(value: str) -> str:
 class MessageCreate(BaseModel):
     client_msg_id: UUID
     body: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
+    parent_id: UUID | None = None
 
     @field_validator("body")
     @classmethod
@@ -46,10 +47,22 @@ class ReactionOut(BaseModel):
     user_ids: list[UUID]
 
 
+class ParentThread(BaseModel):
+    """The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6)."""
+
+    id: UUID
+    reply_count: int
+    last_reply_at: datetime | None
+    updated_seq: int
+    # Parent author and repliers: push targets for the reply (PUSH_NOTIFICATIONS.md §4).
+    participant_ids: list[UUID] = []
+
+
 class MessageOut(BaseModel):
     id: UUID
     channel_id: UUID
     sender_id: UUID
+    parent_id: UUID | None = None
     seq: int
     updated_seq: int
     client_msg_id: UUID | None
@@ -58,6 +71,8 @@ class MessageOut(BaseModel):
     mentioned_user_ids: list[UUID] = []
     mention_all: bool = False
     reactions: list[ReactionOut] = []
+    reply_count: int = 0
+    last_reply_at: datetime | None = None
     created_at: datetime
     edited_at: datetime | None
     deleted: bool
@@ -89,6 +104,7 @@ def to_message_out(message: Message, reactions: Sequence[Reaction] = ()) -> Mess
         id=message.id,
         channel_id=message.channel_id,
         sender_id=message.sender_id,
+        parent_id=message.parent_id,
         seq=message.seq,
         updated_seq=message.updated_seq,
         client_msg_id=message.client_msg_id,
@@ -97,7 +113,19 @@ def to_message_out(message: Message, reactions: Sequence[Reaction] = ()) -> Mess
         mentioned_user_ids=[] if deleted else list(message.mentioned_user_ids),
         mention_all=False if deleted else message.mention_all,
         reactions=[] if deleted else reactions_out(reactions),
+        reply_count=message.reply_count,
+        last_reply_at=message.last_reply_at,
         created_at=message.created_at,
         edited_at=message.edited_at,
         deleted=deleted,
+    )
+
+
+def thread_of(parent: Message, participant_ids: list[UUID]) -> ParentThread:
+    return ParentThread(
+        id=parent.id,
+        reply_count=parent.reply_count,
+        last_reply_at=parent.last_reply_at,
+        updated_seq=parent.updated_seq,
+        participant_ids=participant_ids,
     )
