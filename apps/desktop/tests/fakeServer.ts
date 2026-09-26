@@ -480,7 +480,7 @@ export class FakeServer {
     const record = this.record(channelId);
     const memberIds = [...record.members];
     this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.member_added", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, user_id: userId } });
-    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "channel.created", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, membership: null }, member_ids: memberIds } });
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "channel.created", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, member_count: memberIds.length, membership: null }, member_ids: memberIds } });
   }
 
   revokeSession(userId: string): void {
@@ -523,6 +523,7 @@ export class FakeServer {
           .filter((r) => r.members.has(userId))
           .map((r) => ({
             ...r.channel,
+            member_count: r.members.size,
             membership: { role: r.channel.created_by === userId ? "owner" : "member", joined_at: now() },
             read_state: this.readState(userId, r.channel.id),
           }));
@@ -589,7 +590,7 @@ export class FakeServer {
       publicChannels: async (): Promise<ChannelOut[]> =>
         [...this.channels.values()]
           .filter((r) => r.channel.type === "public" && !r.members.has(userId))
-          .map((r) => ({ ...r.channel, membership: null })),
+          .map((r) => ({ ...r.channel, member_count: r.members.size, membership: null })),
     };
   }
 

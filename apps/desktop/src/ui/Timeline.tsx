@@ -1,4 +1,4 @@
-import { ArrowDown, Bookmark, BookmarkCheck, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -11,6 +11,7 @@ import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
+import { channelTitle } from "./MainScreen";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { firstLink } from "./links";
@@ -161,7 +162,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
             </Button>
           </div>
         )}
-        {!focus && !channel.hasOlder && messages.length > 0 && <div className="py-3 text-center text-xs text-muted">ここが会話の始まりです</div>}
+        {!focus && !channel.hasOlder && messages.length > 0 && <ChannelIntro controller={controller} channel={channel} />}
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-16 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
@@ -208,6 +209,35 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           {unseenBelow > 0 ? `新着 ${unseenBelow} 件` : "最新のメッセージへ"}
         </button>
       )}
+    </div>
+  );
+}
+
+/** The start of a conversation (M11h): what the channel is for, who made it, how many are in it. */
+export function ChannelIntro({ controller, channel }: { controller: AppController; channel: ChannelState }) {
+  const store = controller.store;
+  const isDm = channel.type === "dm" || channel.type === "group_dm";
+  const creator = channel.created_by ? store.users.get(channel.created_by)?.display_name : null;
+  const created = channel.created_at ? new Date(channel.created_at) : null;
+  const title = channelTitle(channel, controller);
+  return (
+    <div className="mb-3 border-b border-line pb-4 pt-6">
+      <div className="flex items-center gap-2 text-xl font-bold">
+        {isDm ? <AtSign size={22} className="text-muted" /> : channel.type === "private" ? <Lock size={22} className="text-muted" /> : <Hash size={22} className="text-muted" />}
+        {title.replace(/^#/, "")}
+      </div>
+      <p className="mt-1.5 text-sm text-muted">
+        {isDm ? (
+          <>{title} との会話の始まりです。</>
+        ) : (
+          <>
+            {creator ? `${creator} が` : ""}
+            {created ? `${created.getFullYear()}年${created.getMonth() + 1}月${created.getDate()}日に` : ""}作成した{channel.type === "private" ? "非公開" : "公開"}チャンネルの始まりです。
+            {channel.member_count ? ` メンバー ${channel.member_count} 人。` : ""}
+          </>
+        )}
+      </p>
+      {(channel.purpose || channel.topic) && <p className="mt-1 text-sm text-ink">{channel.purpose || channel.topic}</p>}
     </div>
   );
 }

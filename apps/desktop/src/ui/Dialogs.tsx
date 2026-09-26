@@ -439,6 +439,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl/⌘ + Shift + K", "新しい DM"],
   ["Ctrl/⌘ + F", "検索"],
   ["Ctrl/⌘ + Shift + T", "フォロー中のスレッド一覧"],
+  ["Ctrl/⌘ + Shift + E", "チャンネルを探す"],
   ["Alt/⌥ + ↑ / ↓", "前 / 次のチャンネル"],
   ["Alt/⌥ + Shift + ↑ / ↓", "前 / 次の未読チャンネル"],
   ["Esc", "パネルを閉じる。何も開いていなければ表示中のチャンネルを既読にする"],

@@ -13,6 +13,9 @@ import { readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writeSideb
 import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { PinsPane } from "./PinsPane";
+import { MentionsView } from "./MentionsView";
+import { DraftsView } from "./DraftsView";
+import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { SavedView } from "./SavedView";
 import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
@@ -25,7 +28,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -44,7 +47,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads" | "saved">("channel");
+  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts">("channel");
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -130,6 +133,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
     });
   };
 
+  const openView = (next: "mentions" | "drafts") => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setSearching(false);
+    setPinsOpen(false);
+    setView((v) => (v === next ? "channel" : next));
+  };
+
   const openThreads = () => {
     controller.clearMessageFocus();
     controller.setEditing(null);
@@ -178,6 +191,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       } else if (mod && event.shiftKey && key === "t") {
         event.preventDefault();
         openThreads();
+      } else if (mod && event.shiftKey && key === "e") {
+        event.preventDefault();
+        setDialog("browse");
       } else if (mod && event.shiftKey && key === "l") {
         event.preventDefault();
         document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
@@ -266,6 +282,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onSaved={openSaved}
         savedActive={view === "saved"}
         onAdmin={() => setDialog("admin")}
+        onBrowse={() => setDialog("browse")}
+        onMentions={() => openView("mentions")}
+        mentionsActive={view === "mentions"}
+        onDrafts={() => openView("drafts")}
+        draftsActive={view === "drafts"}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -290,6 +311,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
         ) : view === "saved" ? (
           <SavedView controller={controller} onOpen={revealFromList} />
+        ) : view === "mentions" ? (
+          <MentionsView controller={controller} onOpen={revealFromList} />
+        ) : view === "drafts" ? (
+          <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
         ) : current ? (
           <>
             <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
@@ -431,6 +456,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} onStatus={() => setDialog("status")} />}
       {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "admin" && <AdminDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "browse" && <ChannelBrowserDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} onCreate={() => setDialog("channel")} />}
       {dialog === "rename" && current && <RenameChannelDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "archive" && current && (
         <ArchiveConfirm channel={current} busy={busyAction} onClose={() => setDialog(null)} onConfirm={() => { setBusyAction(true); void controller.archiveChannel(current.id).then(() => { setBusyAction(false); setDialog(null); }); }} />

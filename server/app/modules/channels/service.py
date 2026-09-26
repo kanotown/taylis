@@ -113,7 +113,9 @@ async def _emit_channel(
 ) -> None:
     member_ids = (await repo.member_ids_for_channels(db, [channel.id])).get(channel.id, [])
     data = events.ChannelEventData(
-        channel=to_channel_out(channel, None, member_ids if channel.is_dm else None),
+        channel=to_channel_out(
+            channel, None, member_ids if channel.is_dm else None, len(member_ids)
+        ),
         member_ids=member_ids,
     )
     await write_outbox(
@@ -217,7 +219,7 @@ async def create_channel(db: AsyncSession, actor: User, data: ChannelCreate) -> 
     except IntegrityError as exc:
         await db.rollback()
         raise conflict("name_taken", "A channel with this name already exists") from exc
-    return to_channel_out(channel, membership, None)
+    return await _out_with_count(db, channel, membership)
 
 
 async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) -> list[ChannelOut]:
@@ -231,6 +233,14 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
     out = [to_channel_out(c, m, members.get(c.id), counts.get(c.id)) for c, m in rows]
     out.extend(to_channel_out(c, None, None, counts.get(c.id, 0)) for c in browsable)
     return out
+
+
+async def _out_with_count(
+    db: AsyncSession, channel: Channel, membership: ChannelMember | None
+) -> ChannelOut:
+    """A single non-DM channel with its current member count (M11h)."""
+    counts = await repo.member_counts_for_channels(db, [channel.id])
+    return to_channel_out(channel, membership, None, counts.get(channel.id, 0))
 
 
 async def get_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
@@ -266,7 +276,7 @@ async def update_channel(
     except IntegrityError as exc:
         await db.rollback()
         raise conflict("name_taken", "A channel with this name already exists") from exc
-    return to_channel_out(channel, membership, None)
+    return await _out_with_count(db, channel, membership)
 
 
 async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
@@ -291,7 +301,7 @@ async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
             target_id=channel.id,
         )
         await db.commit()
-    return to_channel_out(channel, membership, None)
+    return await _out_with_count(db, channel, membership)
 
 
 async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
@@ -319,7 +329,7 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
             membership = await repo.get_membership(db, channel_id, actor.id)
             if membership is None:
                 raise
-    return to_channel_out(channel, membership, None)
+    return await _out_with_count(db, channel, membership)
 
 
 async def leave_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> None:
