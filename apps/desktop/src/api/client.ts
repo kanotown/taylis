@@ -129,6 +129,14 @@ export class ApiClient {
     return this.request("GET", `/api/v1/channels${query}`);
   }
 
+  async publicChannels(): Promise<ChannelOut[]> {
+    return (await this.channels(true)).filter((c) => c.membership === null);
+  }
+
+  addMember(channelId: string, userId: string): Promise<MemberOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/members`, { user_id: userId });
+  }
+
   createChannel(name: string, type: "public" | "private"): Promise<ChannelOut> {
     return this.request("POST", "/api/v1/channels", { name, type });
   }

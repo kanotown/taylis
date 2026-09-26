@@ -187,6 +187,14 @@ export class FakeServer {
     for (const { userIds, frame } of held) this.emit(userIds, frame);
   }
 
+  /** What the real server emits after a join / add: member_added to the channel, channel.created to the user. */
+  emitMembership(channelId: string, userId: string): void {
+    const record = this.record(channelId);
+    const memberIds = [...record.members];
+    this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.member_added", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, user_id: userId } });
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "channel.created", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, membership: null }, member_ids: memberIds } });
+  }
+
   revokeSession(userId: string): void {
     for (const socket of [...this.sockets]) {
       if (socket.userId !== userId) continue;
@@ -256,6 +264,10 @@ export class FakeServer {
         maybeFail();
         return this.post(channelId, userId, body, clientMsgId);
       },
+      publicChannels: async (): Promise<ChannelOut[]> =>
+        [...this.channels.values()]
+          .filter((r) => r.channel.type === "public" && !r.members.has(userId))
+          .map((r) => ({ ...r.channel, membership: null })),
     };
   }
 

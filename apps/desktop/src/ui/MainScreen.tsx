@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Composer } from "./Composer";
-import { NewChannelDialog, NewDmDialog } from "./Dialogs";
+import { AddMemberDialog, NewChannelDialog, NewDmDialog } from "./Dialogs";
 import { Sidebar } from "./Sidebar";
 import { Timeline } from "./Timeline";
 
@@ -11,7 +11,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
-  const [dialog, setDialog] = useState<"dm" | "channel" | null>(null);
+  const [dialog, setDialog] = useState<"dm" | "channel" | "members" | null>(null);
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
@@ -59,6 +59,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   参加する
                 </button>
               )}
+              {current.isMember && (current.type === "public" || current.type === "private") && !current.archived && (
+                <button className="secondary" onClick={() => setDialog("members")}>
+                  メンバーを追加
+                </button>
+              )}
             </header>
             <Timeline controller={controller} channel={current} />
             {current.isMember && !current.archived && <Composer controller={controller} channel={current} />}
@@ -70,6 +75,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <aside className="thread-panel" aria-hidden="true" />
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
+      {dialog === "members" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog(null)} />}
     </div>
   );
 }
