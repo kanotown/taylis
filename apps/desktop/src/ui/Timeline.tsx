@@ -1,8 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { ChannelState } from "../sync/types";
+import type { ChannelState, MessageState } from "../sync/types";
 import { MessageBody } from "./MessageBody";
+import { decodeMentions, encodeMentions } from "./mentions";
+
+const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 
 export function Timeline({ controller, channel }: { controller: AppController; channel: ChannelState }) {
   const store = controller.store;
@@ -10,11 +13,25 @@ export function Timeline({ controller, channel }: { controller: AppController; c
   const messages = store.messages(channel.id);
   const bottom = useRef<HTMLDivElement>(null);
   const lastId = messages[messages.length - 1]?.id;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const me = store.me;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
     engine?.markSeen(channel.id);
   }, [lastId, channel.id, engine]);
+
+  const startEdit = (message: MessageState) => {
+    setEditingId(message.id);
+    setDraft(decodeMentions(message.body, store.users));
+  };
+  const saveEdit = (message: MessageState) => {
+    const body = encodeMentions(draft.trim(), store.users.values());
+    setEditingId(null);
+    if (body && body !== message.body) void controller.editMessage(message.id, body);
+  };
 
   return (
     <div className="timeline">
@@ -25,6 +42,8 @@ export function Timeline({ controller, channel }: { controller: AppController; c
       )}
       {messages.map((message) => {
         const sender = store.users.get(message.sender_id);
+        const mine = me?.id === message.sender_id;
+        const reactions = message.reactions ?? [];
         return (
           <article key={message.id} className={`message${message.pending ? " pending" : ""}${message.failed ? " failed" : ""}`}>
             <div className="meta">
@@ -42,8 +61,75 @@ export function Timeline({ controller, channel }: { controller: AppController; c
                   </button>
                 </span>
               )}
+              {!message.pending && (
+                <span className="actions">
+                  {REACTION_PALETTE.map((emoji) => (
+                    <button key={emoji} className="link" title="リアクション" onClick={() => void controller.toggleReaction(message, emoji)}>
+                      {emoji}
+                    </button>
+                  ))}
+                  {mine && (
+                    <button className="link" onClick={() => startEdit(message)}>
+                      編集
+                    </button>
+                  )}
+                  {(mine || controller.isAdmin) &&
+                    (confirmDeleteId === message.id ? (
+                      <>
+                        <button
+                          className="link danger"
+                          onClick={() => {
+                            setConfirmDeleteId(null);
+                            void controller.deleteMessage(message.id);
+                          }}
+                        >
+                          本当に削除
+                        </button>
+                        <button className="link" onClick={() => setConfirmDeleteId(null)}>
+                          やめる
+                        </button>
+                      </>
+                    ) : (
+                      <button className="link" onClick={() => setConfirmDeleteId(message.id)}>
+                        削除
+                      </button>
+                    ))}
+                </span>
+              )}
             </div>
-            <MessageBody body={message.body} users={store.users} />
+            {editingId === message.id ? (
+              <div className="editor">
+                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus />
+                <div>
+                  <button onClick={() => saveEdit(message)} disabled={!draft.trim()}>
+                    保存
+                  </button>
+                  <button className="secondary" onClick={() => setEditingId(null)}>
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <MessageBody body={message.body} users={store.users} />
+            )}
+            {reactions.length > 0 && (
+              <div className="reactions">
+                {reactions.map((reaction) => {
+                  const reacted = !!me && reaction.user_ids.includes(me.id);
+                  const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ");
+                  return (
+                    <button
+                      key={reaction.emoji}
+                      className={`chip${reacted ? " mine" : ""}`}
+                      title={names}
+                      onClick={() => void controller.toggleReaction(message, reaction.emoji)}
+                    >
+                      {reaction.emoji} {reaction.count}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </article>
         );
       })}

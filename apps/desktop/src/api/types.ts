@@ -6,6 +6,7 @@ export type UserMe = components["schemas"]["UserMe"];
 export type TokenResponse = components["schemas"]["TokenResponse"];
 export type ChannelOut = components["schemas"]["ChannelOut"];
 export type MessageOut = components["schemas"]["MessageOut"];
+export type ReactionOut = components["schemas"]["ReactionOut"];
 export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];

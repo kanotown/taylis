@@ -62,3 +62,18 @@ label { display: block; margin: 8px 0; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; }
 .modal { background: var(--bg); padding: 20px; border-radius: 8px; width: 400px; max-height: 80vh; overflow-y: auto; }
 .user-list { list-style: none; padding: 0; margin: 0; }
+
+/* M8a: message actions, reactions, mention suggestions */
+.message .actions { margin-left: auto; display: none; gap: 2px; }
+.message:hover .actions { display: inline-flex; }
+.message .actions button.link { text-decoration: none; }
+.message .actions button.danger { color: var(--error); }
+.reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.reactions .chip { font-size: 12px; padding: 1px 8px; border-radius: 12px; border: 1px solid var(--border); background: #f4f4f4; color: var(--fg); }
+.reactions .chip.mine { border-color: #3b6cf6; background: #e6eefc; }
+.editor textarea { width: 100%; resize: vertical; }
+.editor > div { display: flex; gap: 8px; margin-top: 4px; }
+.composer-wrap { position: relative; }
+.mention-suggestions { position: absolute; bottom: 100%; left: 16px; margin: 0 0 4px; padding: 4px 0; list-style: none; background: #fff; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); min-width: 220px; z-index: 5; }
+.mention-suggestions li { padding: 4px 10px; cursor: pointer; }
+.mention-suggestions li.active { background: #e6eefc; }

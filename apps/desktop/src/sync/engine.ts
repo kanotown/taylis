@@ -350,10 +350,13 @@ export class SyncEngine {
     // seq <= syncedSeq: already applied.
   }
 
+  /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
   private maybeNotify(message: MessageOut, channel: ChannelState): void {
     const me = this.deps.store.me;
     if (!me || message.sender_id === me.id) return;
-    if (channel.type !== "dm" && channel.type !== "group_dm") return; // mentions arrive in M8a
+    const isDm = channel.type === "dm" || channel.type === "group_dm";
+    const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
+    if (!isDm && !mentioned) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
   }

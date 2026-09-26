@@ -177,6 +177,23 @@ export class ApiClient {
     return { message: data, created: status === 201 };
   }
 
+  editMessage(messageId: string, body: string): Promise<MessageOut> {
+    return this.request("PATCH", `/api/v1/messages/${messageId}`, { body });
+  }
+
+  /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
+  deleteMessage(messageId: string): Promise<MessageOut> {
+    return this.request("DELETE", `/api/v1/messages/${messageId}`);
+  }
+
+  addReaction(messageId: string, emoji: string): Promise<MessageOut> {
+    return this.request("PUT", `/api/v1/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`, {});
+  }
+
+  removeReaction(messageId: string, emoji: string): Promise<MessageOut> {
+    return this.request("DELETE", `/api/v1/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
+  }
+
   // --- transport ------------------------------------------------------------------------
 
   async request<T>(

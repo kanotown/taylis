@@ -1,19 +1,23 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Path, Query, Response
 
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service
 from app.modules.messages.schemas import (
+    EMOJI_PATTERN,
     DeltaOut,
     HistoryOut,
     MessageCreate,
+    MessageEdit,
     MessageOut,
     to_message_out,
 )
 
 router = APIRouter(tags=["messages"])
+
+Emoji = Path(min_length=1, max_length=32, pattern=EMOJI_PATTERN)
 
 
 @router.post("/channels/{channel_id}/messages", response_model=MessageOut)
@@ -49,4 +53,34 @@ async def list_delta(
 
 @router.get("/messages/{message_id}", response_model=MessageOut)
 async def get_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
-    return to_message_out(await service.get_message(db, user, message_id))
+    return await service.message_out(db, await service.get_message(db, user, message_id))
+
+
+@router.patch("/messages/{message_id}", response_model=MessageOut)
+async def edit_message(
+    message_id: UUID, user: CurrentUser, body: MessageEdit, db: Db
+) -> MessageOut:
+    return await service.edit_message(db, user, message_id, body)
+
+
+@router.delete("/messages/{message_id}", response_model=MessageOut)
+async def delete_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    """Returns the tombstone so the caller can apply it locally."""
+    return await service.delete_message(db, user, message_id)
+
+
+@router.put("/messages/{message_id}/reactions/{emoji}", response_model=MessageOut)
+async def add_reaction(
+    message_id: UUID, user: CurrentUser, db: Db, response: Response, emoji: str = Emoji
+) -> MessageOut:
+    message, changed = await service.set_reaction(db, user, message_id, emoji, present=True)
+    response.status_code = 201 if changed else 200
+    return message
+
+
+@router.delete("/messages/{message_id}/reactions/{emoji}", response_model=MessageOut)
+async def remove_reaction(
+    message_id: UUID, user: CurrentUser, db: Db, emoji: str = Emoji
+) -> MessageOut:
+    message, _ = await service.set_reaction(db, user, message_id, emoji, present=False)
+    return message

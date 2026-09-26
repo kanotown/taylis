@@ -54,6 +54,25 @@ class Scenario {
         }
         return;
       }
+      case "edit": {
+        const user = this.server.userByName(step["as"] as string);
+        const target = this.server.messageByBody(this.channelId, step["body_of"] as string);
+        this.server.edit(this.channelId, user.id, target.id, step["body"] as string);
+        return;
+      }
+      case "delete": {
+        const user = this.server.userByName(step["as"] as string);
+        const target = this.server.messageByBody(this.channelId, step["body_of"] as string);
+        this.server.delete(this.channelId, user.id, target.id);
+        return;
+      }
+      case "react":
+      case "unreact": {
+        const user = this.server.userByName(step["as"] as string);
+        const target = this.server.messageByBody(this.channelId, step["body_of"] as string);
+        this.server.react(this.channelId, user.id, target.id, step["emoji"] as string, step.op === "react");
+        return;
+      }
       case "client.start":
         this.clientUser = step["as"] as string;
         this.clientOptions = step;
@@ -110,6 +129,12 @@ class Scenario {
         if (step["synced_seq"] !== undefined) expect(channel?.syncedSeq).toBe(step["synced_seq"]);
         if (step["catch_ups"] !== undefined) expect(this.engine?.stats.catchUps).toBe(step["catch_ups"]);
         if (step["reloads"] !== undefined) expect(this.engine?.stats.reloads).toBe(step["reloads"]);
+        if (step["reactions"] !== undefined) {
+          const byBody = new Map(this.store.messages(this.channelId).map((m) => [m.body, m]));
+          for (const [body, emojis] of Object.entries(step["reactions"] as Record<string, string[]>)) {
+            expect((byBody.get(body)?.reactions ?? []).map((r) => r.emoji), body).toEqual(emojis);
+          }
+        }
         if (step["server_message_count"] !== undefined) expect(this.server.channels.get(this.channelId)!.messages).toHaveLength(Number(step["server_message_count"]));
         return;
       }

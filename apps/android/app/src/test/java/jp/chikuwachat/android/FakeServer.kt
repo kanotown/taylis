@@ -9,6 +9,7 @@ import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.CLOSE_SESSION_REVOKED
@@ -130,11 +131,67 @@ class FakeServer {
         }
         val seq = record.channel.lastSeq + 1
         record.channel = record.channel.copy(lastSeq = seq, lastMessageAt = now())
-        val message = MessageOut(nextId(), channelId, senderId, seq, seq, key, body, now(), null, false)
+        val mentioned = Regex("<@([0-9a-f-]{36})>").findAll(body).map { it.groupValues[1] }.distinct().toList()
+        val message = MessageOut(
+            id = nextId(), channelId = channelId, senderId = senderId, seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
+            mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
+        )
         record.messages.add(message)
         byClientKey["$senderId:$key"] = message
         emit(record.members, event("message.created", channelId, seq, buildJsonObject { put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message)) }))
         return message to true
+    }
+
+    fun messageByBody(channelId: String, body: String): MessageOut =
+        channels.getValue(channelId).messages.first { it.body == body && !it.deleted }
+
+    private fun replace(record: ChannelRecord, updated: MessageOut, event: String, change: String? = null) {
+        val index = record.messages.indexOfFirst { it.id == updated.id }
+        record.messages[index] = updated
+        emit(record.members, event(event, updated.channelId, updated.updatedSeq, buildJsonObject {
+            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), updated))
+            if (change != null) put("change", change)
+        }))
+    }
+
+    private fun live(channelId: String, userId: String, messageId: String): Pair<ChannelRecord, MessageOut> {
+        val record = requireMember(channelId, userId)
+        val message = record.messages.firstOrNull { it.id == messageId && !it.deleted } ?: throw ApiException.Api(404, "message_not_found", "not found")
+        return record to message
+    }
+
+    fun edit(channelId: String, userId: String, messageId: String, body: String): MessageOut {
+        val (record, message) = live(channelId, userId, messageId)
+        if (message.senderId != userId) throw ApiException.Api(403, "not_message_owner", "not the author")
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(body = body, editedAt = now(), updatedSeq = seq)
+        replace(record, updated, "message.updated", "body")
+        return updated
+    }
+
+    fun delete(channelId: String, userId: String, messageId: String): MessageOut {
+        val (record, message) = live(channelId, userId, messageId)
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val tombstone = message.copy(body = "", deleted = true, updatedSeq = seq, reactions = emptyList())
+        replace(record, tombstone, "message.deleted")
+        return tombstone
+    }
+
+    fun react(channelId: String, userId: String, messageId: String, emoji: String, present: Boolean): Pair<MessageOut, Boolean> {
+        val (record, message) = live(channelId, userId, messageId)
+        val groups = LinkedHashMap<String, MutableList<String>>()
+        message.reactions.forEach { groups[it.emoji] = it.userIds.toMutableList() }
+        val users = groups.getOrPut(emoji) { ArrayList() }
+        val changed = if (present) (userId !in users).also { if (it) users.add(userId) } else users.remove(userId)
+        if (users.isEmpty()) groups.remove(emoji)
+        if (!changed) return message to false
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq, reactions = groups.map { (e, ids) -> ReactionOut(e, ids.size, ids.toList()) })
+        replace(record, updated, "message.updated", "reactions")
+        return updated to true
     }
 
     private fun event(name: String, channelId: String?, seq: Int?, data: JsonObject): JsonObject = buildJsonObject {

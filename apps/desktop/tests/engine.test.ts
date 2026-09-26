@@ -198,3 +198,41 @@ describe("channel browsing", () => {
     engine.stop();
   });
 });
+
+describe("edits, deletions, reactions and mentions (M8a)", () => {
+  it("applies live edits, deletions and reactions in order", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const { message: m1 } = server.post(channel.id, alice.id, "m1");
+    const { message: m2 } = server.post(channel.id, alice.id, "m2");
+    await engine.idle();
+    server.edit(channel.id, alice.id, m1.id, "m1 edited");
+    await engine.idle();
+    expect(store.messages(channel.id).map((m) => m.body)).toEqual(["m1 edited", "m2"]);
+    expect(store.messages(channel.id)[0]?.edited_at).toBeTruthy();
+    server.react(channel.id, bob.id, m2.id, "👍", true);
+    await engine.idle();
+    expect(store.messages(channel.id)[1]?.reactions).toEqual([{ emoji: "👍", count: 1, user_ids: [bob.id] }]);
+    server.react(channel.id, bob.id, m2.id, "👍", false);
+    await engine.idle();
+    expect(store.messages(channel.id)[1]?.reactions).toEqual([]);
+    server.delete(channel.id, alice.id, m2.id);
+    await engine.idle();
+    expect(store.messages(channel.id).map((m) => m.body)).toEqual(["m1 edited"]);
+    expect(store.getChannel(channel.id)?.syncedSeq).toBe(6);
+  });
+
+  it("notifies for channel messages only when mentioned", async () => {
+    const { server, alice, bob, channel, engine, notifications } = await setup();
+    await engine.start();
+    await engine.idle();
+    server.post(channel.id, alice.id, "plain");
+    await engine.idle();
+    expect(notifications).toEqual([]);
+    server.post(channel.id, alice.id, `hey <@${bob.id}>`);
+    server.post(channel.id, alice.id, "<!here> all");
+    await engine.idle();
+    expect(notifications).toEqual([`hey <@${bob.id}>`, "<!here> all"]);
+  });
+});

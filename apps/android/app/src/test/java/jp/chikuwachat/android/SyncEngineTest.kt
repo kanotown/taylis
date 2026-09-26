@@ -165,6 +165,36 @@ class SyncEngineTest {
         second.stop(); w.scope.cancel()
     }
 
+    @Test fun appliesLiveEditsDeletionsAndReactions() = runBlocking {
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        val (m1, _) = w.server.post(w.channelId, w.alice, "m1")
+        val (m2, _) = w.server.post(w.channelId, w.alice, "m2"); settle(w.engine)
+        w.server.edit(w.channelId, w.alice, m1.id, "m1 edited"); settle(w.engine)
+        assertEquals(listOf("m1 edited", "m2"), w.store.messages(w.channelId).map { it.body })
+        assertTrue(w.store.message(w.channelId, m1.id)!!.editedAt != null)
+        w.server.react(w.channelId, w.bob, m2.id, "👍", present = true); settle(w.engine)
+        assertEquals(listOf("👍"), w.store.message(w.channelId, m2.id)!!.reactions.map { it.emoji })
+        assertTrue(w.store.message(w.channelId, m2.id)!!.reactedBy(w.bob, "👍"))
+        w.server.react(w.channelId, w.bob, m2.id, "👍", present = false); settle(w.engine)
+        assertEquals(0, w.store.message(w.channelId, m2.id)!!.reactions.size)
+        w.server.delete(w.channelId, w.alice, m2.id); settle(w.engine)
+        assertEquals(listOf("m1 edited"), w.store.messages(w.channelId).map { it.body })
+        assertEquals(6, w.store.channel(w.channelId)?.syncedSeq)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun channelMentionsNotify() = runBlocking {
+        val w = world()
+        w.engine.start()
+        w.server.post(w.channelId, w.alice, "plain"); settle(w.engine)
+        assertEquals(0, w.notifications.size)
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "<!channel> all"); settle(w.engine)
+        assertEquals(listOf("hey <@${w.bob}>", "<!channel> all"), w.notifications)
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

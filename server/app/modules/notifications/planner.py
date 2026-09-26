@@ -4,6 +4,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +42,7 @@ class PushPlanner:
         if not recipients:
             return
         channel = await channels.require_channel(db, event.channel_id)
-        targets = await self.select_recipients(db, channel, recipients)
+        targets = await self.select_recipients(db, channel, recipients, message)
         if not targets:
             return
         devices = await repo.push_devices_for_users(db, targets)
@@ -68,12 +69,18 @@ class PushPlanner:
         log.info("planned %d push deliveries for event %s", planned, event.id)
 
     async def select_recipients(
-        self, db: AsyncSession, channel: Channel, recipients: list[uuid.UUID]
+        self,
+        db: AsyncSession,
+        channel: Channel,
+        recipients: list[uuid.UUID],
+        message: dict[str, Any] | None = None,
     ) -> list[uuid.UUID]:
-        """The rules of PUSH_NOTIFICATIONS.md §4 (mentions and read checks arrive with M8)."""
+        """The rules of PUSH_NOTIFICATIONS.md §4 (the read check arrives with M8b)."""
         now = utcnow()
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
         default = default_level(channel)
+        mentioned = {uuid.UUID(str(uid)) for uid in (message or {}).get("mentioned_user_ids", [])}
+        mention_all = bool((message or {}).get("mention_all"))
         targets: list[uuid.UUID] = []
         for user_id in recipients:
             pref = prefs.get(user_id)
@@ -82,8 +89,8 @@ class PushPlanner:
                 continue
             if pref is not None and pref.muted_until is not None and pref.muted_until > now:
                 continue
-            if level == "mentions":
-                continue  # until mentions exist (M8a) only "all" channels notify
+            if level == "mentions" and not (mention_all or user_id in mentioned):
+                continue
             if self.is_active(user_id):
                 continue  # the user is looking at another device right now (§4.1)
             targets.append(user_id)

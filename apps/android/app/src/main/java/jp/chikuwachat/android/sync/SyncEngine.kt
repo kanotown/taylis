@@ -354,9 +354,11 @@ class SyncEngine(
         }
     }
 
+    /** DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults). */
     private fun maybeNotify(message: MessageOut, channel: ChannelState) {
         val me = store.me ?: return
-        if (message.senderId == me.id || !channel.channel.isDm) return
+        if (message.senderId == me.id) return
+        if (!channel.channel.isDm && !message.mentions(me.id)) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
     }

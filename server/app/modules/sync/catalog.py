@@ -20,6 +20,8 @@ from app.realtime.protocol import (
 EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     # event name: (data model, audience, consumes a channel seq)
     message_events.MESSAGE_CREATED: (message_events.MessageCreatedData, "channel", True),
+    message_events.MESSAGE_UPDATED: (message_events.MessageUpdatedData, "channel", True),
+    message_events.MESSAGE_DELETED: (message_events.MessageDeletedData, "channel", True),
     channel_events.CHANNEL_CREATED: (
         channel_events.ChannelEventData,
         "channel (public: all)",

@@ -123,6 +123,30 @@ final class AppController {
         PushCenter.shared.uploadTokenIfNeeded()
     }
 
+    var isAdmin: Bool { me?.role == "admin" }
+
+    // MARK: message actions (M8a): apply the server's answer at once; the WS event is deduplicated
+
+    func editMessage(_ messageId: String, body: String) async {
+        guard let api else { return }
+        do { _ = store.upsertMessage(try await api.editMessage(id: messageId, body: body)) } catch { self.error = describe(error) }
+    }
+
+    func deleteMessage(_ messageId: String) async {
+        guard let api else { return }
+        do { _ = store.upsertMessage(try await api.deleteMessage(id: messageId)) } catch { self.error = describe(error) }
+    }
+
+    func toggleReaction(_ message: MessageState, emoji: String) async {
+        guard let api, let me = store.me else { return }
+        do {
+            let updated = message.reactedBy(me.id, emoji)
+                ? try await api.removeReaction(id: message.id, emoji: emoji)
+                : try await api.addReaction(id: message.id, emoji: emoji)
+            _ = store.upsertMessage(updated)
+        } catch { self.error = describe(error) }
+    }
+
     func logout() async {
         engine?.stop()
         engine = nil

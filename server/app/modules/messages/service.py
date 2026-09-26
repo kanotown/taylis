@@ -5,13 +5,29 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import conflict, not_found
+from app.core.errors import conflict, forbidden, not_found
+from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
 from app.modules.messages import repository as repo
-from app.modules.messages.events import MESSAGE_CREATED, MessageCreatedData
+from app.modules.messages.events import (
+    MESSAGE_CREATED,
+    MESSAGE_DELETED,
+    MESSAGE_UPDATED,
+    MessageCreatedData,
+    MessageDeletedData,
+    MessageUpdatedData,
+)
+from app.modules.messages.mentions import extract_mentions
 from app.modules.messages.models import Message
-from app.modules.messages.schemas import DeltaOut, HistoryOut, MessageCreate, to_message_out
+from app.modules.messages.schemas import (
+    DeltaOut,
+    HistoryOut,
+    MessageCreate,
+    MessageEdit,
+    MessageOut,
+    to_message_out,
+)
 from app.modules.users.models import User
 
 
@@ -35,6 +51,7 @@ async def create_message(
     if existing is not None:
         return _same_channel(existing, channel_id), False
 
+    mentioned, mention_all = extract_mentions(data.body)
     try:
         async with db.begin_nested():
             seq = await repo.allocate_seq(db, channel_id)
@@ -45,6 +62,8 @@ async def create_message(
                 updated_seq=seq,
                 client_msg_id=data.client_msg_id,
                 body=data.body,
+                mentioned_user_ids=mentioned,
+                mention_all=mention_all,
             )
             db.add(message)
             await db.flush()
@@ -77,7 +96,7 @@ async def list_history(
     rows = await repo.list_history(db, channel_id, before_seq=before_seq, limit=limit + 1)
     return HistoryOut(
         channel_last_seq=channel_last_seq,
-        messages=[to_message_out(m) for m in rows[:limit]],
+        messages=await messages_out(db, rows[:limit]),
         has_more=len(rows) > limit,
     )
 
@@ -94,7 +113,7 @@ async def list_delta(
     rows = rows[:limit]
     next_since_seq = rows[-1].updated_seq if has_more else max(channel_last_seq, since_seq)
     return DeltaOut(
-        messages=[to_message_out(m) for m in rows],
+        messages=await messages_out(db, rows),
         next_since_seq=next_since_seq,
         has_more=has_more,
     )
@@ -106,3 +125,98 @@ async def get_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> M
         raise not_found("message_not_found", "Message not found")
     await channels.require_member(db, actor.id, message.channel_id)
     return message
+
+
+async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut]:
+    """Response shapes with reactions filled in (DATA_MODEL.md: 差分・履歴は reactions を JOIN)."""
+    reactions = await repo.reactions_for(db, [m.id for m in rows if not m.is_deleted])
+    return [to_message_out(m, reactions.get(m.id, [])) for m in rows]
+
+
+async def message_out(db: AsyncSession, message: Message) -> MessageOut:
+    return (await messages_out(db, [message]))[0]
+
+
+async def _require_live_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
+    message = await get_message(db, actor, message_id)
+    channel = await channels.require_channel(db, message.channel_id)
+    channels.require_writable(channel)
+    return message
+
+
+async def edit_message(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, data: MessageEdit
+) -> MessageOut:
+    """Only the author edits; the edit consumes a seq so delta sync picks it up (§8)."""
+    message = await _require_live_message(db, actor, message_id)
+    if message.sender_id != actor.id:
+        raise forbidden("not_message_owner", "Only the author can edit a message")
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    message.body = data.body
+    message.mentioned_user_ids, message.mention_all = extract_mentions(data.body)
+    message.edited_at = utcnow()
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change="body").model_dump(mode="json"),
+    )
+    await db.commit()
+    return out
+
+
+async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
+    """Tombstone (author or admin): the body is cleared, the row stays for delta sync."""
+    message = await _require_live_message(db, actor, message_id)
+    if message.sender_id != actor.id and actor.role != "admin":
+        raise forbidden("not_message_owner", "Only the author or an admin can delete a message")
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    message.deleted_at = utcnow()
+    message.body = ""
+    message.mentioned_user_ids = []
+    message.mention_all = False
+    message.updated_seq = seq
+    await db.flush()
+    out = to_message_out(message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_DELETED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageDeletedData(message=out).model_dump(mode="json"),
+    )
+    await db.commit()
+    return out
+
+
+async def set_reaction(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, emoji: str, *, present: bool
+) -> tuple[MessageOut, bool]:
+    """Add (present=True) or remove a reaction: (message, changed). Only changes consume a seq."""
+    message = await _require_live_message(db, actor, message_id)
+    if present:
+        changed = await repo.add_reaction(db, message.id, actor.id, emoji)
+    else:
+        changed = await repo.remove_reaction(db, message.id, actor.id, emoji)
+    if not changed:
+        return await message_out(db, message), False
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change="reactions").model_dump(mode="json"),
+    )
+    await db.commit()
+    return out, True

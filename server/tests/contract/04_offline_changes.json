@@ -1,0 +1,21 @@
+{
+  "name": "切断中の作成・編集・削除・リアクション: 差分 1 回で回復する (§12)",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "post", "as": "alice", "count": 3, "body": "m{i}"},
+    {"op": "client.start", "as": "bob", "page_size": 50},
+    {"op": "expect", "messages": ["m1", "m2", "m3"], "synced_seq": 3},
+    {"op": "client.stop"},
+    {"op": "post", "as": "alice", "body": "m4"},
+    {"op": "edit", "as": "alice", "body_of": "m2", "body": "m2 edited"},
+    {"op": "react", "as": "alice", "body_of": "m1", "emoji": "👍"},
+    {"op": "delete", "as": "alice", "body_of": "m3"},
+    {"op": "react", "as": "bob", "body_of": "m4", "emoji": "🎉"},
+    {"op": "react", "as": "alice", "body_of": "m4", "emoji": "🎉"},
+    {"op": "unreact", "as": "bob", "body_of": "m4", "emoji": "🎉"},
+    {"op": "client.restart"},
+    {"op": "expect", "messages": ["m1", "m2 edited", "m4"], "synced_seq": 10, "catch_ups": 1,
+     "reactions": {"m1": ["👍"], "m2 edited": [], "m4": ["🎉"]}}
+  ]
+}

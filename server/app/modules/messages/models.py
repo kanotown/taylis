@@ -1,7 +1,20 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -18,7 +31,12 @@ class Message(Base):
     seq: Mapped[int] = mapped_column(BigInteger)
     updated_seq: Mapped[int] = mapped_column(BigInteger)
     client_msg_id: Mapped[uuid.UUID | None]
+    type: Mapped[str] = mapped_column(String(16), default="user", server_default="user")
     body: Mapped[str] = mapped_column(Text, default="", server_default="")
+    mentioned_user_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid()), default=list, server_default=text("'{}'::uuid[]")
+    )
+    mention_all: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -40,3 +58,16 @@ class Message(Base):
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+
+class Reaction(Base):
+    """One user's reaction with one emoji on a message (DATA_MODEL.md "reactions")."""
+
+    __tablename__ = "reactions"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    emoji: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )

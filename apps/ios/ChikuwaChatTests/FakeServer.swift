@@ -151,7 +151,7 @@ final class FakeServer {
                                     createdBy: record.channel.createdBy, lastSeq: seq, lastMessageAt: now(), createdAt: record.channel.createdAt,
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
         let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
-                                 createdAt: now(), editedAt: nil, deleted: false)
+                                 createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body))
         record.messages.append(message)
         channels[channelId] = record
         byClientKey[senderId + ":" + key] = message
@@ -160,6 +160,99 @@ final class FakeServer {
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
         return (message, true)
+    }
+
+    static func mentionedIds(_ body: String) -> [String] {
+        let regex = try! NSRegularExpression(pattern: #"<@([0-9a-f-]{36})>"#)
+        let ns = body as NSString
+        var ids: [String] = []
+        for match in regex.matches(in: body, range: NSRange(location: 0, length: ns.length)) {
+            let id = ns.substring(with: match.range(at: 1))
+            if !ids.contains(id) { ids.append(id) }
+        }
+        return ids
+    }
+
+    static func mentionsAll(_ body: String) -> Bool { body.range(of: #"<!(channel|here)>"#, options: .regularExpression) != nil }
+
+    func messageByBody(_ channelId: String, _ body: String) throws -> MessageOut {
+        guard let message = channels[channelId]?.messages.first(where: { $0.body == body && !$0.deleted }) else {
+            throw ApiError.api(status: 404, code: "message_not_found", message: "no message \(body)")
+        }
+        return message
+    }
+
+    private func rebuild(_ m: MessageOut, body: String? = nil, editedAt: String? = nil, updatedSeq: Int? = nil, deleted: Bool? = nil,
+                         reactions: [ReactionOut]? = nil, mentionedUserIds: [String]? = nil, mentionAll: Bool? = nil) -> MessageOut {
+        MessageOut(id: m.id, channelId: m.channelId, senderId: m.senderId, seq: m.seq, updatedSeq: updatedSeq ?? m.updatedSeq, clientMsgId: m.clientMsgId,
+                   body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
+                   mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions)
+    }
+
+    private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {
+        guard var record = channels[channelId], let index = record.messages.firstIndex(where: { $0.id == updated.id }) else { return }
+        record.messages[index] = updated
+        channels[channelId] = record
+        eventId += 1
+        var data: [String: JSONValue] = ["message": try! JSONValue.from(updated)]
+        if let change { data["change"] = .string(change) }
+        emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string(event), "ts": .string(now()),
+                                      "channel_id": .string(channelId), "seq": .number(Double(updated.updatedSeq)), "data": .object(data)]))
+    }
+
+    private func live(_ channelId: String, _ userId: String, _ messageId: String) throws -> MessageOut {
+        let record = try requireMember(channelId, userId)
+        guard let message = record.messages.first(where: { $0.id == messageId && !$0.deleted }) else {
+            throw ApiError.api(status: 404, code: "message_not_found", message: "not found")
+        }
+        return message
+    }
+
+    private func bumpSeq(_ channelId: String) -> Int {
+        guard var record = channels[channelId] else { return 0 }
+        let seq = record.channel.lastSeq + 1
+        let c = record.channel
+        record.channel = ChannelOut(id: c.id, type: c.type, name: c.name, topic: c.topic, purpose: c.purpose, archived: c.archived, createdBy: c.createdBy,
+                                    lastSeq: seq, lastMessageAt: c.lastMessageAt, createdAt: c.createdAt, updatedAt: now(), membership: c.membership, dmUserIds: c.dmUserIds)
+        channels[channelId] = record
+        return seq
+    }
+
+    @discardableResult
+    func edit(channelId: String, userId: String, messageId: String, body: String) throws -> MessageOut {
+        let message = try live(channelId, userId, messageId)
+        guard message.senderId == userId else { throw ApiError.api(status: 403, code: "not_message_owner", message: "not the author") }
+        let seq = bumpSeq(channelId)
+        let updated = rebuild(message, body: body, editedAt: now(), updatedSeq: seq, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body))
+        replace(channelId, updated, event: "message.updated", change: "body")
+        return updated
+    }
+
+    @discardableResult
+    func delete(channelId: String, userId: String, messageId: String) throws -> MessageOut {
+        let message = try live(channelId, userId, messageId)
+        let seq = bumpSeq(channelId)
+        let tombstone = rebuild(message, body: "", updatedSeq: seq, deleted: true, reactions: [], mentionedUserIds: [], mentionAll: false)
+        replace(channelId, tombstone, event: "message.deleted")
+        return tombstone
+    }
+
+    @discardableResult
+    func react(channelId: String, userId: String, messageId: String, emoji: String, present: Bool) throws -> (MessageOut, Bool) {
+        let message = try live(channelId, userId, messageId)
+        var order: [String] = []
+        var groups: [String: [String]] = [:]
+        for reaction in message.reactions { order.append(reaction.emoji); groups[reaction.emoji] = reaction.userIds }
+        var users = groups[emoji] ?? []
+        var changed = false
+        if present, !users.contains(userId) { users.append(userId); changed = true }
+        if !present, let index = users.firstIndex(of: userId) { users.remove(at: index); changed = true }
+        guard changed else { return (message, false) }
+        if users.isEmpty { groups[emoji] = nil; order.removeAll { $0 == emoji } } else { groups[emoji] = users; if !order.contains(emoji) { order.append(emoji) } }
+        let seq = bumpSeq(channelId)
+        let updated = rebuild(message, updatedSeq: seq, reactions: order.map { ReactionOut(emoji: $0, count: groups[$0]!.count, userIds: groups[$0]!) })
+        replace(channelId, updated, event: "message.updated", change: "reactions")
+        return (updated, true)
     }
 
     private func emit(_ userIds: Set<String>, _ frame: JSONValue) {

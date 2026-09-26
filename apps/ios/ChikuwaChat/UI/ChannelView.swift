@@ -20,7 +20,7 @@ struct ChannelView: View {
                                 .font(.footnote)
                         }
                         ForEach(messages) { message in
-                            MessageRow(message: message, store: controller.store, engine: controller.engine).id(message.id)
+                            MessageRow(message: message, controller: controller).id(message.id)
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -46,7 +46,7 @@ struct ChannelView: View {
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
-                    ComposerView(text: $draft) { body in
+                    ComposerView(text: $draft, users: Array(controller.store.users.values)) { body in
                         Task { await controller.engine?.send(channelId, body: body) }
                     }
                 }
@@ -65,10 +65,17 @@ struct ChannelView: View {
     }
 }
 
+let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
+
 struct MessageRow: View {
     let message: MessageState
-    let store: Store
-    let engine: SyncEngine?
+    @Bindable var controller: AppController
+    @State private var editing = false
+    @State private var confirmingDelete = false
+
+    private var store: Store { controller.store }
+    private var engine: SyncEngine? { controller.engine }
+    private var isMine: Bool { store.me?.id == message.senderId }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -78,6 +85,20 @@ struct MessageRow: View {
                 if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
             }
             MessageBodyView(text: message.body, users: store.users)
+            if !message.reactions.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(message.reactions, id: \.emoji) { reaction in
+                        let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
+                        Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
+                            Text("\(reaction.emoji) \(reaction.count)").font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(mine ? Color.accentColor : Color.secondary)
+                        .controlSize(.mini)
+                    }
+                }
+                .padding(.top, 2)
+            }
             if message.failed {
                 HStack {
                     Text("送信失敗").font(.caption).foregroundStyle(.red)
@@ -87,11 +108,57 @@ struct MessageRow: View {
             }
         }
         .opacity(message.pending && !message.failed ? 0.6 : 1)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if !message.pending {
+                ForEach(reactionPalette, id: \.self) { emoji in
+                    Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
+                }
+                if isMine { Button("編集", systemImage: "pencil") { editing = true } }
+                if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
+            }
+        }
+        .sheet(isPresented: $editing) {
+            EditMessageView(initial: Mentions.decode(message.body, users: store.users)) { body in
+                Task { await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values)) }
+            }
+        }
+        .confirmationDialog("メッセージを削除しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("削除", role: .destructive) { Task { await controller.deleteMessage(message.id) } }
+        }
     }
 
     private func formatTime(_ iso: String) -> String {
         guard let date = parseIsoDate(iso) else { return "送信中…" }
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+struct EditMessageView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+    let onSave: (String) -> Void
+
+    init(initial: String, onSave: @escaping (String) -> Void) {
+        _text = State(initialValue: initial)
+        self.onSave = onSave
+    }
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $text)
+                .padding()
+                .navigationTitle("メッセージを編集")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") { onSave(trimmed); dismiss() }.disabled(trimmed.isEmpty)
+                    }
+                }
+        }
     }
 }
 
@@ -108,23 +175,46 @@ func parseIsoDate(_ iso: String) -> Date? {
 
 struct ComposerView: View {
     @Binding var text: String
+    let users: [UserPublic]
     let onSend: (String) -> Void
 
+    private var candidates: [Mentions.Candidate] {
+        guard let query = Mentions.query(text) else { return [] }
+        return Mentions.candidates(query, users: users)
+    }
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     var body: some View {
-        HStack(alignment: .bottom) {
-            TextField("メッセージを入力", text: $text, axis: .vertical)
-                .lineLimit(1...5)
-                .textFieldStyle(.roundedBorder)
-            Button("送信", systemImage: "paperplane.fill") {
-                let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !body.isEmpty else { return }
-                text = ""
-                onSend(body)
+        VStack(spacing: 0) {
+            if !candidates.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(candidates) { candidate in
+                            Button("@\(candidate.username)  \(candidate.label)") { text = Mentions.complete(text, username: candidate.username) }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 4)
             }
-            .labelStyle(.iconOnly)
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            HStack(alignment: .bottom) {
+                TextField("メッセージを入力", text: $text, axis: .vertical)
+                    .lineLimit(1...5)
+                    .textFieldStyle(.roundedBorder)
+                Button("送信", systemImage: "paperplane.fill") {
+                    let body = Mentions.encode(trimmed, users: users)
+                    guard !body.isEmpty else { return }
+                    text = ""
+                    onSend(body)
+                }
+                .labelStyle(.iconOnly)
+                .disabled(trimmed.isEmpty)
+            }
+            .padding()
         }
-        .padding()
         .background(.bar)
     }
 }

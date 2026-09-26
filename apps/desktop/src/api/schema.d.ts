@@ -377,7 +377,30 @@ export interface paths {
         get: operations["get_message_api_v1_messages__message_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Message
+         * @description Returns the tombstone so the caller can apply it locally.
+         */
+        delete: operations["delete_message_api_v1_messages__message_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Message */
+        patch: operations["edit_message_api_v1_messages__message_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add Reaction */
+        put: operations["add_reaction_api_v1_messages__message_id__reactions__emoji__put"];
+        post?: never;
+        /** Remove Reaction */
+        delete: operations["remove_reaction_api_v1_messages__message_id__reactions__emoji__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -799,6 +822,11 @@ export interface components {
              */
             client_msg_id: string;
         };
+        /** MessageEdit */
+        MessageEdit: {
+            /** Body */
+            body: string;
+        };
         /** MessageOut */
         MessageOut: {
             /** Body */
@@ -825,12 +853,32 @@ export interface components {
              */
             id: string;
             /**
+             * Mention All
+             * @default false
+             */
+            mention_all: boolean;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
+            /**
+             * Reactions
+             * @default []
+             */
+            reactions: components["schemas"]["ReactionOut"][];
+            /**
              * Sender Id
              * Format: uuid
              */
             sender_id: string;
             /** Seq */
             seq: number;
+            /**
+             * Type
+             * @default user
+             */
+            type: string;
             /** Updated Seq */
             updated_seq: number;
         };
@@ -865,6 +913,15 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** ReactionOut */
+        ReactionOut: {
+            /** Count */
+            count: number;
+            /** Emoji */
+            emoji: string;
+            /** User Ids */
+            user_ids: string[];
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -1819,6 +1876,136 @@ export interface operations {
             header?: never;
             path: {
                 message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_message_api_v1_messages__message_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_message_api_v1_messages__message_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_reaction_api_v1_messages__message_id__reactions__emoji__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_reaction_api_v1_messages__message_id__reactions__emoji__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+                emoji: string;
             };
             cookie?: never;
         };
