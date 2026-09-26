@@ -193,7 +193,7 @@ struct ChannelView: View {
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
-                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), controller: controller) { body, attachmentIds in
+                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds in
                         Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds) }
                     }
                 }
@@ -449,7 +449,10 @@ struct ComposerView: View {
         controller?.store.setDraft(channelId, parentId: parentId) { $0.text = value }
     }) }
     @State private var photoItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     @State private var showFileImporter = false
+    @State private var showCamera = false
+    @FocusState private var focused: Bool
 
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
@@ -457,6 +460,8 @@ struct ComposerView: View {
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSend: Bool { uploading == 0 && (!trimmed.isEmpty || !pending.isEmpty) }
+    private var cameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
 
     private func upload(data: Data, filename: String, contentType: String) async {
         guard let controller else { return }
@@ -467,52 +472,84 @@ struct ComposerView: View {
         }
     }
 
+    private func send() {
+        let body = Mentions.encode(trimmed, users: users)
+        guard canSend else { return }
+        guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
+        let ids = pending.map(\.id)
+        controller?.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
+        onSend(body, ids)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            Divider()
             PendingAttachmentsView(items: pending) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }
-            if uploading > 0 { Text("添付をアップロード中…").font(.caption).foregroundStyle(.secondary) }
             if !candidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
+                    HStack(spacing: 6) {
                         ForEach(candidates) { candidate in
-                            Button("@\(candidate.username)  \(candidate.label)") { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                            Button { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) } label: {
+                                Text("@\(candidate.username)").fontWeight(.semibold) + Text("  \(candidate.label)").foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 12)
                 }
-                .padding(.vertical, 4)
+                .padding(.top, 6)
             }
-            HStack(alignment: .bottom) {
+            HStack(alignment: .bottom, spacing: 8) {
                 if controller != nil {
+                    // "+" like Slack / Mattermost: photos, camera and files from one place.
                     Menu {
-                        PhotosPicker(selection: $photoItems, maxSelectionCount: 5, matching: .images) { Label("写真", systemImage: "photo") }
-                        Button("ファイル", systemImage: "doc") { showFileImporter = true }
+                        Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+                        if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
+                        Button("ファイル", systemImage: "folder") { showFileImporter = true }
                     } label: {
-                        Image(systemName: uploading > 0 ? "hourglass" : "paperclip")
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(uploading > 0 ? Color.secondary : Color.accentColor)
+                            .frame(width: 36, height: 36)
                     }
                     .disabled(uploading > 0)
+                    .accessibilityLabel("添付")
                 }
-                TextField(placeholder, text: textBinding, axis: .vertical)
-                    .lineLimit(1...5)
-                    .textFieldStyle(.roundedBorder)
-                Button("送信", systemImage: "paperplane.fill") {
-                    let body = Mentions.encode(trimmed, users: users)
-                    guard uploading == 0, !body.isEmpty || !pending.isEmpty else { return }
-                    guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
-                    let ids = pending.map(\.id)
-                    controller?.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
-                    onSend(body, ids)
+                HStack(alignment: .bottom, spacing: 4) {
+                    TextField(placeholder, text: textBinding, axis: .vertical)
+                        .lineLimit(1...6)
+                        .focused($focused)
+                        .padding(.leading, 14)
+                        .padding(.vertical, 9)
+                        .padding(.trailing, canSend || uploading > 0 ? 0 : 12)
+                    if uploading > 0 {
+                        ProgressView().controlSize(.small).padding(.trailing, 10).padding(.bottom, 10)
+                    } else if canSend {
+                        Button(action: send) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .accessibilityLabel("送信")
+                        .padding(.trailing, 5)
+                        .padding(.bottom, 4)
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .labelStyle(.iconOnly)
-                .disabled(uploading > 0 || (trimmed.isEmpty && pending.isEmpty))
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(Color(.separator).opacity(0.6), lineWidth: 0.5))
+                .animation(.easeOut(duration: 0.15), value: canSend)
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .background(.bar)
+        .background(Color(.systemBackground))
+        // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             photoItems = []
@@ -525,6 +562,17 @@ struct ComposerView: View {
                     await upload(data: data, filename: "photo." + (type?.preferredFilenameExtension ?? "jpg"), contentType: type?.preferredMIMEType ?? "image/jpeg")
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+                controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
+                Task {
+                    defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
+                    await upload(data: data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg")
+                }
+            }
+            .ignoresSafeArea()
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }

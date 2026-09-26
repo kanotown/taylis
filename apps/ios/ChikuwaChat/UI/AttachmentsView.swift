@@ -88,15 +88,26 @@ struct PendingAttachmentsView: View {
     var body: some View {
         if !items.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
+                HStack(spacing: 6) {
                     ForEach(items) { item in
-                        Button { onRemove(item) } label: { Label(item.filename, systemImage: "xmark").font(.caption) }
-                            .buttonStyle(.bordered).controlSize(.small)
+                        Button { onRemove(item) } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: item.isImage ? "photo" : "doc")
+                                Text(item.filename).lineLimit(1)
+                                Image(systemName: "xmark").font(.caption2.bold())
+                            }
+                            .font(.footnote)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(item.filename) を取り消す")
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 12)
             }
-            .padding(.top, 4)
+            .padding(.top, 8)
         }
     }
 }

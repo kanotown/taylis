@@ -38,6 +38,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
+        NSCameraUsageDescription: 撮った写真をメッセージに添付するために使います
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios
