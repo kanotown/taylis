@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 
-import type { MessageOut, SearchHit } from "../api/types";
+import type { MessageOut, SearchFilters, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
 import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
@@ -14,6 +14,7 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
   const [hasMore, setHasMore] = useState(false);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState<SearchFilters | null>(null);
 
   const run = async (offset = 0) => {
     const q = query.trim();
@@ -24,6 +25,7 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
       setHits(offset === 0 ? result.hits : [...hits, ...result.hits]);
       setKeywords(result.keywords);
       setHasMore(result.has_more);
+      setFilters(result.filters);
       setSearched(true);
     } catch (error) {
       controller.setError(error);
@@ -51,7 +53,21 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
           検索
         </button>
       </form>
+      <div className="muted search-hint">
+        絞り込み: <code>from:@名前</code> <code>in:#チャンネル</code> <code>before:2026-09-01</code> <code>after:</code> <code>on:</code>
+      </div>
       <div className="timeline">
+        {filters && (filters.unresolved ?? []).length > 0 && (
+          <div className="error search-warning">見つからない条件があります: {(filters.unresolved ?? []).join(" ")}</div>
+        )}
+        {filters && (filters.from_username || filters.in_channel || filters.after || filters.before) && (
+          <div className="muted search-applied">
+            {filters.from_username && <span className="chip">from: @{filters.from_username}</span>}
+            {filters.in_channel && <span className="chip">in: #{filters.in_channel}</span>}
+            {filters.after && <span className="chip">{new Date(filters.after).toLocaleDateString()} 以降</span>}
+            {filters.before && <span className="chip">{new Date(filters.before).toLocaleDateString()} より前</span>}
+          </div>
+        )}
         {searched && hits.length === 0 && <div className="muted">見つかりませんでした</div>}
         {hits.map((hit) => {
           const message = hit.message;

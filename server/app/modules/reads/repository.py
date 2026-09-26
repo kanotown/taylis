@@ -42,6 +42,23 @@ async def advance(
     return seq, True
 
 
+async def set_position(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, seq: int
+) -> tuple[int, bool]:
+    """Exact position, may move backwards (mark as unread): (last_read_seq, whether it changed)."""
+    row = await db.get(ReadState, (user_id, channel_id), with_for_update=True)
+    if row is None:
+        db.add(ReadState(user_id=user_id, channel_id=channel_id, last_read_seq=seq))
+        await db.flush()
+        return seq, True
+    if row.last_read_seq == seq:
+        return seq, False
+    row.last_read_seq = seq
+    row.updated_at = utcnow()
+    await db.flush()
+    return seq, True
+
+
 async def last_read_seqs(
     db: AsyncSession, user_ids: list[uuid.UUID], channel_id: uuid.UUID
 ) -> dict[uuid.UUID, int]:

@@ -10,10 +10,27 @@ struct SearchView: View {
     @State private var keywords: [String] = []
     @State private var hasMore = false
     @State private var searched = false
+    @State private var filters: SearchFilters?
 
     var body: some View {
         NavigationStack {
             List {
+                if !searched {
+                    Text("絞り込み: from:@名前  in:#チャンネル  before:2026-09-01  after:  on:")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let filters, !filters.unresolved.isEmpty {
+                    Text("見つからない条件があります: \(filters.unresolved.joined(separator: " "))").font(.footnote).foregroundStyle(.red)
+                }
+                if let filters, filters.fromUsername != nil || filters.inChannel != nil || filters.after != nil || filters.before != nil {
+                    HStack(spacing: 6) {
+                        if let name = filters.fromUsername { Text("from: @\(name)") }
+                        if let name = filters.inChannel { Text("in: #\(name)") }
+                        if let after = filters.after, let date = parseIsoDate(after) { Text(date.formatted(date: .abbreviated, time: .omitted) + " 以降") }
+                        if let before = filters.before, let date = parseIsoDate(before) { Text(date.formatted(date: .abbreviated, time: .omitted) + " より前") }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
                 if searched && hits.isEmpty { Text("見つかりませんでした").foregroundStyle(.secondary) }
                 ForEach(hits) { hit in
                     let message = hit.message
@@ -52,6 +69,7 @@ struct SearchView: View {
             hits = offset == 0 ? result.hits : hits + result.hits
             keywords = result.keywords
             hasMore = result.hasMore
+            filters = result.filters
             searched = true
         } catch {
             controller.error = String(describing: error)

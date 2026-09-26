@@ -10,6 +10,7 @@ protocol SyncApi: AnyObject {
     func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
+    func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
 }
 
@@ -49,6 +50,8 @@ final class SyncEngine {
     /// The app badge (unread DMs + mentions) changed.
     var onBadge: ((Int) -> Void)?
     private var pendingReads: [String: Task<Void, Never>] = [:]
+    /// Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10).
+    private(set) var unreadHold: [String: Int] = [:]
     var isActive: () -> Bool = { true }
     var prepareConnection: (() async throws -> Void)?
 
@@ -355,6 +358,7 @@ final class SyncEngine {
     private func countUnread(_ message: MessageOut) {
         guard let me = store.me else { return }
         if message.senderId == me.id {
+            unreadHold[message.channelId] = nil // sending reads the conversation (the server does the same)
             store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
         } else if message.isReply {
             return // replies are not unread items (DATA_MODEL.md read_states)
@@ -370,8 +374,9 @@ final class SyncEngine {
 
     private func applyReadState(_ channelId: String, _ state: ReadStateOut) {
         guard store.channel(channelId) != nil else { return }
+        // The server's position wins, downwards too (another device may have marked messages unread).
         store.updateChannel(channelId) {
-            $0.lastReadSeq = max($0.lastReadSeq, state.lastReadSeq)
+            $0.lastReadSeq = state.lastReadSeq
             $0.unreadCount = state.unreadCount
             $0.mentionCount = state.mentionCount
         }
@@ -403,6 +408,7 @@ final class SyncEngine {
 
     func openChannel(_ channelId: String) async {
         currentChannelId = channelId
+        for held in unreadHold.keys where held != channelId { unreadHold[held] = nil }
         guard status == .online else { return }
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId) else { return }
@@ -412,8 +418,31 @@ final class SyncEngine {
     }
 
     /// §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins.
-    func markRead(_ channelId: String, seq: Int) {
+    /// 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once.
+    func markUnread(_ channelId: String, seq: Int) {
+        guard status == .online, seq >= 1, let channel = store.channel(channelId), channel.isMember else { return }
+        let target = seq - 1
+        unreadHold[channelId] = target
+        pendingReads[channelId]?.cancel()
+        let me = store.me?.id
+        let later = store.messages(channelId).filter { ($0.seq ?? 0) > target && $0.senderId != me }
+        store.updateChannel(channelId) { state in
+            state.lastReadSeq = target
+            state.unreadCount = later.count
+            state.mentionCount = later.filter { message in me.map { message.mentionAll || message.mentionedUserIds.contains($0) } ?? false }.count
+        }
+        onBadge?(store.badgeCount)
+        pendingReads[channelId] = Task { [weak self] in
+            guard let self else { return }
+            self.pendingReads[channelId] = nil
+            guard let state = try? await self.api.setReadPosition(channelId: channelId, lastReadSeq: target) else { return }
+            _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state) }.value
+        }
+    }
+
+    func markRead(_ channelId: String, seq: Int, force: Bool = false) {
         guard status == .online, isActive() else { return }
+        if force { unreadHold[channelId] = nil } else if unreadHold[channelId] != nil { return }
         guard let channel = store.channel(channelId), channel.isMember, seq > channel.lastReadSeq else { return }
         store.updateChannel(channelId) { state in
             state.lastReadSeq = seq

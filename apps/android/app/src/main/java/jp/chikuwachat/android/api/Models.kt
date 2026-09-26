@@ -173,7 +173,19 @@ data class SearchHit(val message: MessageOut, val score: Double = 0.0)
 data class SearchOut(
     val hits: List<SearchHit>,
     val keywords: List<String> = emptyList(),
+    val filters: SearchFilters? = null,
     val limit: Int,
     val offset: Int,
     val hasMore: Boolean,
+)
+
+/** What the server understood from the query's modifiers (from: in: before: after: on:). */
+@Serializable
+data class SearchFilters(
+    val text: String = "",
+    val fromUsername: String? = null,
+    val inChannel: String? = null,
+    val after: String? = null,
+    val before: String? = null,
+    val unresolved: List<String> = emptyList(),
 )

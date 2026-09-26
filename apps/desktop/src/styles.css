@@ -224,3 +224,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 .shortcuts table { width: 100%; border-collapse: collapse; }
 .shortcuts td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .shortcuts kbd { border-color: var(--border); background: var(--surface-2); color: var(--fg); white-space: nowrap; }
+
+/* search modifiers */
+.search-hint { font-size: 11px; padding: 0 12px 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.search-hint code { background: var(--surface-2); padding: 0 4px; border-radius: 3px; }
+.search-warning { font-size: 12px; margin-bottom: 6px; }
+.search-applied { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; font-size: 12px; }
+.search-applied .chip { border: 1px solid var(--border); border-radius: 12px; padding: 1px 8px; background: var(--surface); }

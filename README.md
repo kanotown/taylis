@@ -28,3 +28,4 @@ docs/           設計文書
 | [docs/PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md) | APNs / FCM、重複・欠落・遅延への対応 |
 | [docs/SECURITY.md](docs/SECURITY.md) | 認証・認可・添付・デプロイ |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | マイルストーン (M1〜M10) |
+| [docs/THREADS.md](docs/THREADS.md) | フォロー中スレッド一覧の設計 (未実装) |

@@ -1314,6 +1314,15 @@
             "minimum": 0.0,
             "title": "Last Read Seq",
             "type": "integer"
+          },
+          "mode": {
+            "default": "advance",
+            "enum": [
+              "advance",
+              "set"
+            ],
+            "title": "Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -1360,6 +1369,73 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "SearchFilters": {
+        "description": "What the server understood from the query: the free text and the resolved modifiers.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "from_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Username"
+          },
+          "in_channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Channel"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SearchFilters",
+        "type": "object"
+      },
       "SearchHit": {
         "properties": {
           "message": {
@@ -1379,6 +1455,9 @@
       },
       "SearchOut": {
         "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/SearchFilters"
+          },
           "has_more": {
             "title": "Has More",
             "type": "boolean"
@@ -1409,6 +1488,7 @@
         "required": [
           "hits",
           "keywords",
+          "filters",
           "limit",
           "offset",
           "has_more"
@@ -3757,6 +3837,18 @@
                 }
               ],
               "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 840,
+              "minimum": -840,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
             }
           },
           {

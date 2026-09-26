@@ -98,6 +98,10 @@ final class FakeServer {
             try maybeFail()
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq)
         }
+        func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
+            try maybeFail()
+            return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq, mode: "set")
+        }
     }
 
     struct ChannelRecord {
@@ -158,11 +162,12 @@ final class FakeServer {
 
     /// PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change.
     @discardableResult
-    func markRead(userId: String, channelId: String, seq: Int) throws -> ReadStateOut {
+    func markRead(userId: String, channelId: String, seq: Int, mode: String = "advance") throws -> ReadStateOut {
         let record = try requireMember(channelId, userId)
         let key = "\(userId):\(channelId)"
         let target = min(seq, record.channel.lastSeq)
-        if target > (readPositions[key] ?? 0) {
+        let current = readPositions[key] ?? 0
+        if mode == "set" ? target != current : target > current {
             readPositions[key] = target
             let state = readState(userId: userId, channelId: channelId)
             eventId += 1

@@ -438,10 +438,15 @@ async def get_or_create_dm(
 async def mark_read(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, data: ReadMark
 ) -> ReadStateOut:
-    """PUT /channels/{id}/read (SYNC_PROTOCOL.md §4.5): monotonic, clamped to last_seq."""
+    """PUT /channels/{id}/read (SYNC_PROTOCOL.md §4.5 / §10): monotonic, or exact with mode=set."""
     channel, _ = await require_member(db, actor.id, channel_id)
-    state = await reads.advance_in_tx(
-        db, actor.id, channel_id, data.last_read_seq, last_seq=channel.last_seq
-    )
+    if data.mode == "set":
+        state = await reads.set_in_tx(
+            db, actor.id, channel_id, data.last_read_seq, last_seq=channel.last_seq
+        )
+    else:
+        state = await reads.advance_in_tx(
+            db, actor.id, channel_id, data.last_read_seq, last_seq=channel.last_seq
+        )
     await db.commit()
     return state

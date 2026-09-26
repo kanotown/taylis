@@ -56,8 +56,21 @@ async def advance_in_tx(
     db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, seq: int, *, last_seq: int
 ) -> ReadStateOut:
     """GREATEST(current, min(seq, last_seq)); emits read.updated to the user's devices on change."""
-    target = min(seq, last_seq)
-    last_read_seq, changed = await repo.advance(db, user_id, channel_id, target)
+    last_read_seq, changed = await repo.advance(db, user_id, channel_id, min(seq, last_seq))
+    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed)
+
+
+async def set_in_tx(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, seq: int, *, last_seq: int
+) -> ReadStateOut:
+    """Exact position clamped to [0, last_seq] (mark as unread); devices follow via read.updated."""
+    last_read_seq, changed = await repo.set_position(db, user_id, channel_id, min(seq, last_seq))
+    return await _state_after_change(db, user_id, channel_id, last_read_seq, changed)
+
+
+async def _state_after_change(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, last_read_seq: int, changed: bool
+) -> ReadStateOut:
     unread, mentions = await repo.counts(db, user_id, channel_id, last_read_seq)
     state = ReadStateOut(last_read_seq=last_read_seq, unread_count=unread, mention_count=mentions)
     if changed:

@@ -31,7 +31,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   if (unreadMark.current.channelId !== channel.id) {
     unreadMark.current = { channelId: channel.id, seq: channel.unreadCount > 0 ? channel.lastReadSeq : null };
   }
-  const items = buildTimeline(messages, { firstUnreadAfterSeq: unreadMark.current.seq, meId: me?.id ?? null });
+  const heldUnread = engine?.unreadHold.get(channel.id);
+  const items = buildTimeline(messages, { firstUnreadAfterSeq: heldUnread ?? unreadMark.current.seq, meId: me?.id ?? null });
   const lastId = messages[messages.length - 1]?.id;
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
   const unseenBelow = focus ? 0 : messages.filter((m) => m.seq !== null && m.seq > seenSeq && m.sender_id !== me?.id).length;
@@ -186,6 +187,10 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       tabIndex={0}
       className={`message${controller.messageFocus?.messageId === message.id ? " highlighted" : ""}${compact ? " compact" : ""}${message.pending ? " pending" : ""}${message.failed ? " failed" : ""}`}
       title={compact ? fullTimestamp(message.created_at) : undefined}
+      onClick={(event) => {
+        // Alt+click marks the conversation unread from this message (Mattermost).
+        if (event.altKey && !thread && message.seq !== null && !message.pending) engine?.markUnread(message.channel_id, message.seq);
+      }}
     >
       <div className="gutter">
         {compact ? <span className="time-hover">{timeLabel(message.created_at)}</span> : <Avatar id={message.sender_id} name={senderName} />}
@@ -251,6 +256,11 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           {onOpenThread && (
             <button title="スレッドで返信" onClick={() => onOpenThread(message.id)}>
               💬
+            </button>
+          )}
+          {!thread && message.seq !== null && (
+            <button title="ここから未読にする (Alt+クリック)" onClick={() => engine?.markUnread(message.channel_id, message.seq!)}>
+              📩
             </button>
           )}
           {mine && (

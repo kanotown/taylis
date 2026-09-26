@@ -176,6 +176,10 @@ class ApiClient(
     override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut =
         request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq) })
 
+    /** 「ここから未読にする」: the exact position, may move backwards (SYNC_PROTOCOL.md §10 mode=set). */
+    override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut =
+        request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq); put("mode", "set") })
+
     override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",
@@ -192,7 +196,9 @@ class ApiClient(
 
     /** GET /search/messages: full-text search across my channels (SECURITY.md: server-side permission filter). */
     suspend fun searchMessages(query: String, channelId: String? = null, limit: Int = 20, offset: Int = 0): SearchOut {
-        val params = "q=" + Enc.encode(query, "UTF-8") + "&limit=$limit&offset=$offset" + (channelId?.let { "&channel_id=$it" } ?: "")
+        // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
+        val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
+        val params = "q=" + Enc.encode(query, "UTF-8") + "&limit=$limit&offset=$offset&tz_offset_minutes=$tzOffset" + (channelId?.let { "&channel_id=$it" } ?: "")
         return request("GET", "/api/v1/search/messages?$params")
     }
 

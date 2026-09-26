@@ -35,7 +35,9 @@ struct ChannelView: View {
         }
         return controller.store.messages(channelId)
     }
-    private var items: [TimelineItem] { Timeline.build(messages, firstUnreadAfterSeq: unreadMark, meId: controller.store.me?.id) }
+    private var items: [TimelineItem] {
+        Timeline.build(messages, firstUnreadAfterSeq: controller.engine?.unreadHold[channelId] ?? unreadMark, meId: controller.store.me?.id)
+    }
     private var unseenBelow: Int {
         guard focus == nil, let seenSeq else { return 0 }
         let me = controller.store.me?.id
@@ -113,7 +115,11 @@ struct ChannelView: View {
                                     UnreadSeparator()
                                 case .message(let message, let compact):
                                     MessageRow(message: message, controller: controller, compact: compact,
-                                               onOpenThread: { thread = ThreadTarget(id: message.id) })
+                                               onOpenThread: { thread = ThreadTarget(id: message.id) },
+                                               onMarkUnread: message.seq.map { seq in {
+                                                   controller.engine?.markUnread(channelId, seq: seq)
+                                                   unreadMark = seq - 1
+                                               } })
                                         .id(message.id)
                                         .background(GeometryReader { geometry in
                                             Color.clear.preference(key: VisibleMessageFrames.self,
@@ -303,6 +309,8 @@ struct MessageRow: View {
     @Bindable var controller: AppController
     var compact = false
     var onOpenThread: (() -> Void)? = nil
+    /// 「ここから未読にする」; nil for thread replies and pending rows.
+    var onMarkUnread: (() -> Void)? = nil
     @State private var editing = false
     @State private var confirmingDelete = false
     @State private var showTime = false
@@ -372,6 +380,7 @@ struct MessageRow: View {
                     Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
                 }
                 if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
+                if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
             }

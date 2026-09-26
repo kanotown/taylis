@@ -40,6 +40,7 @@ fun MessageMenu(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onReply: (() -> Unit)? = null,
+    onMarkUnread: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -49,6 +50,7 @@ fun MessageMenu(
         }
         HorizontalDivider()
         if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
+        if (onMarkUnread != null) DropdownMenuItem(text = { Text("ここから未読にする") }, onClick = { onDismiss(); onMarkUnread() })
         if (canEdit) DropdownMenuItem(text = { Text("編集") }, onClick = { onDismiss(); onEdit() })
         if (canDelete) DropdownMenuItem(text = { Text("削除") }, onClick = { onDismiss(); onDelete() })
     }

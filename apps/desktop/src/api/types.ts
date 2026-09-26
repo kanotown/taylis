@@ -27,3 +27,5 @@ export type ChannelType = ChannelOut["type"];
 
 export type SearchHit = components["schemas"]["SearchHit"];
 export type SearchOut = components["schemas"]["SearchOut"];
+export type SearchFilters = components["schemas"]["SearchFilters"];
+export type ReadMode = components["schemas"]["ReadMark"]["mode"];

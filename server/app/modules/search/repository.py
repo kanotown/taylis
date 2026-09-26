@@ -58,6 +58,39 @@ async def search_messages(
     return [(row[0], float(row[1] or 0.0)) for row in rows]
 
 
+async def list_filtered(
+    db: AsyncSession,
+    *,
+    channel_ids: list[uuid.UUID],
+    from_user_id: uuid.UUID | None,
+    after: datetime | None,
+    before: datetime | None,
+    limit: int,
+    offset: int,
+) -> list[Message]:
+    """Modifier-only searches (no words): the newest matching messages, no ranking."""
+    if not channel_ids:
+        return []
+    stmt = (
+        select(Message)
+        .where(
+            Message.channel_id.in_(channel_ids),
+            Message.deleted_at.is_(None),
+            Message.type == "user",
+        )
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if from_user_id is not None:
+        stmt = stmt.where(Message.sender_id == from_user_id)
+    if after is not None:
+        stmt = stmt.where(Message.created_at >= after)
+    if before is not None:
+        stmt = stmt.where(Message.created_at < before)
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def extract_keywords(db: AsyncSession, query: str, *, escaped: bool) -> list[str]:
     needle = func.pgroonga_query_escape(query) if escaped else query
     result = await db.execute(select(func.pgroonga_query_extract_keywords(needle)))

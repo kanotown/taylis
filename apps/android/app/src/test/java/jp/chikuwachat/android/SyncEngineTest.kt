@@ -254,6 +254,29 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun markUnreadMovesBackHoldsVisibleMarkingAndFollowsOtherDevices() = runBlocking {
+        val w = world()
+        w.engine.isActive = { true }
+        listOf("m1", "m2", "m3").forEach { w.server.post(w.channelId, w.alice, it) }
+        w.engine.start(); settle(w.engine)
+        w.engine.openChannel(w.channelId)
+        w.engine.markRead(w.channelId, 3); w.engine.flushReads(); settle(w.engine)
+        assertEquals(0, w.store.channel(w.channelId)?.unreadCount)
+
+        w.engine.markUnread(w.channelId, 2) // 「ここから未読にする」 on m2
+        assertEquals(listOf(1, 2), w.store.channel(w.channelId)?.let { listOf(it.lastReadSeq, it.unreadCount) })
+        w.engine.flushReads(); settle(w.engine)
+        assertEquals(1, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        w.engine.markRead(w.channelId, 3); w.engine.flushReads() // visible-range marking is on hold
+        assertEquals(1, w.store.channel(w.channelId)?.lastReadSeq)
+        w.engine.markRead(w.channelId, 3, force = true); w.engine.flushReads(); settle(w.engine) // Esc overrides the hold
+        assertEquals(3, w.store.channel(w.channelId)?.lastReadSeq)
+
+        w.server.markRead(w.bob, w.channelId, 0, mode = "set"); settle(w.engine) // another device of bob
+        assertEquals(listOf(0, 3), w.store.channel(w.channelId)?.let { listOf(it.lastReadSeq, it.unreadCount) })
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun unreadCountsFollowReadsAcrossDevices() = runBlocking {
         val w = world()
         w.engine.isActive = { true }

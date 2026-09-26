@@ -1140,6 +1140,12 @@ export interface components {
         ReadMark: {
             /** Last Read Seq */
             last_read_seq: number;
+            /**
+             * Mode
+             * @default advance
+             * @enum {string}
+             */
+            mode: "advance" | "set";
         };
         /** ReadStateOut */
         ReadStateOut: {
@@ -1155,6 +1161,24 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /**
+         * SearchFilters
+         * @description What the server understood from the query: the free text and the resolved modifiers.
+         */
+        SearchFilters: {
+            /** After */
+            after?: string | null;
+            /** Before */
+            before?: string | null;
+            /** From Username */
+            from_username?: string | null;
+            /** In Channel */
+            in_channel?: string | null;
+            /** Text */
+            text: string;
+            /** Unresolved */
+            unresolved?: string[];
+        };
         /** SearchHit */
         SearchHit: {
             message: components["schemas"]["MessageOut"];
@@ -1163,6 +1187,7 @@ export interface components {
         };
         /** SearchOut */
         SearchOut: {
+            filters: components["schemas"]["SearchFilters"];
             /** Has More */
             has_more: boolean;
             /** Hits */
@@ -2543,6 +2568,7 @@ export interface operations {
                 from_user_id?: string | null;
                 after?: string | null;
                 before?: string | null;
+                tz_offset_minutes?: number;
                 limit?: number;
                 offset?: number;
             };

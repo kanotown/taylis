@@ -89,6 +89,7 @@ class FakeServer {
             return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }
         }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
+        override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null) }
     }
@@ -141,12 +142,12 @@ class FakeServer {
     }
 
     /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
-    fun markRead(userId: String, channelId: String, seq: Int): ReadStateOut {
+    fun markRead(userId: String, channelId: String, seq: Int, mode: String = "advance"): ReadStateOut {
         val record = requireMember(channelId, userId)
         val key = "$userId:$channelId"
         val target = minOf(seq, record.channel.lastSeq)
         val current = readPositions[key] ?: 0
-        if (target > current) {
+        if (if (mode == "set") target != current else target > current) {
             readPositions[key] = target
             val state = readState(userId, channelId)
             emit(setOf(userId), event("read.updated", channelId, null, buildJsonObject {

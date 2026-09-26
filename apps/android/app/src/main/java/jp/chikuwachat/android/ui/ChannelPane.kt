@@ -72,7 +72,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     var positioned by remember(channelId, focus?.messageId) { mutableStateOf(false) }
     // The 「新着メッセージ」 divider stays where it was when the channel was opened.
     var unreadMark by remember(channelId) { mutableStateOf(channel.lastReadSeq.takeIf { channel.unreadCount > 0 }) }
-    val items = remember(messages, channelId, focus, unreadMark) { Timeline.build(messages, unreadMark, store.me?.id).asReversed() }
+    val heldUnread = controller.engine?.heldUnread(channelId)
+    val items = remember(messages, channelId, focus, unreadMark, heldUnread) { Timeline.build(messages, heldUnread ?: unreadMark, store.me?.id).asReversed() }
     val listState = rememberLazyListState()
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -129,6 +130,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.id) },
+                                onMarkUnread = message.seq?.takeIf { !message.pending }?.let { seq -> { controller.engine?.markUnread(channelId, seq); unreadMark = seq - 1 } },
                             )
                         }
                     }
@@ -224,6 +226,7 @@ fun MessageRow(
     onEdit: (String) -> Unit,
     onDelete: () -> Unit,
     onOpenThread: (() -> Unit)? = null,
+    onMarkUnread: (() -> Unit)? = null,
 ) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
@@ -267,7 +270,7 @@ fun MessageRow(
         }
         MessageMenu(
             expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false },
-            onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread,
+            onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
         )
     }
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
