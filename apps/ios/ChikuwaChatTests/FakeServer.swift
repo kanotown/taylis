@@ -101,7 +101,11 @@ final class FakeServer {
         }
 
         func publicChannels() async throws -> [ChannelOut] {
-            server.channels.values.filter { $0.channel.type == "public" && !$0.members.contains(userId) }.map { $0.channel }
+            server.channels.values.filter { $0.channel.type == "public" && !$0.members.contains(userId) }.map { record in
+                var out = record.channel
+                out.memberCount = record.members.count
+                return out
+            }
         }
 
         func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
@@ -553,9 +557,11 @@ final class FakeServer {
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.member_added"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .null, "data": .object(["channel_id": .string(channelId), "user_id": .string(userId)])]))
         eventId += 1
+        var out = record.channel
+        out.memberCount = record.members.count
         emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.created"), "ts": .string(now()),
                                "channel_id": .string(channelId), "seq": .null,
-                               "data": .object(["channel": try! JSONValue.from(record.channel), "member_ids": .array(record.members.map(JSONValue.string))])]))
+                               "data": .object(["channel": try! JSONValue.from(out), "member_ids": .array(record.members.map(JSONValue.string))])]))
     }
 
     func revokeSession(_ userId: String) {
@@ -582,7 +588,7 @@ final class FakeServer {
                        createdBy: record.channel.createdBy, lastSeq: record.channel.lastSeq, lastMessageAt: record.channel.lastMessageAt,
                        createdAt: record.channel.createdAt, updatedAt: record.channel.updatedAt,
                        membership: MembershipOut(role: record.channel.createdBy == userId ? "owner" : "member", joinedAt: now()), dmUserIds: nil,
-                       readState: readState(userId: userId, channelId: record.channel.id))
+                       readState: readState(userId: userId, channelId: record.channel.id), memberCount: record.members.count)
         }
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),

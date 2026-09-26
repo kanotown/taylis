@@ -103,8 +103,7 @@ struct ChannelView: View {
                                                            description: Text("最初のメッセージを送ってみましょう。"))
                                         .padding(.top, 40)
                                 } else if focus == nil {
-                                    Text("ここが会話の始まりです").font(.caption).foregroundStyle(.secondary)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                    ChannelIntroView(controller: controller, channel: channel)
                                 }
                             }
                             ForEach(items) { item in

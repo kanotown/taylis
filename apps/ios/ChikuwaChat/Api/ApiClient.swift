@@ -136,6 +136,12 @@ final class ApiClient: SyncApi {
 
     func joinChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/join", body: .object([:])) }
 
+    func leaveChannel(id: String) async throws {
+        _ = try await requestRaw("POST", "/api/v1/channels/\(id)/leave", body: .object([:]), auth: true, retry401: true)
+    }
+
+    func archiveChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/archive", body: .object([:])) }
+
     func updateChannel(id: String, topic: String? = nil, name: String? = nil, purpose: String? = nil) async throws -> ChannelOut {
         var body: [String: JSONValue] = [:]
         if let topic { body["topic"] = .string(topic) }
@@ -203,6 +209,16 @@ final class ApiClient: SyncApi {
     func listPins(channelId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/channels/\(channelId)/pins") }
     func pinMessage(id: String) async throws -> MessageOut { try await request("PUT", "/api/v1/messages/\(id)/pin") }
     func unpinMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)/pin") }
+
+    /// M11h: messages that mention me or everyone in my channels.
+    func listMentions(cursor: String? = nil, limit: Int = 50) async throws -> MentionListOut {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        var components = URLComponents()
+        components.path = "/api/v1/mentions"
+        components.queryItems = items
+        return try await request("GET", components.string ?? "/api/v1/mentions")
+    }
 
     func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {
         var items = [URLQueryItem(name: "limit", value: String(limit))]

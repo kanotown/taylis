@@ -87,12 +87,14 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     let lastMessageAt: String?
     let createdAt: String
     let updatedAt: String
-    let membership: MembershipOut?
+    var membership: MembershipOut?
     let dmUserIds: [String]?
     /// Filled by bootstrap for the requesting user (M8b); nil elsewhere.
     var readState: ReadStateOut? = nil
     /// Per-user notification preference; filled by bootstrap, kept locally across channel.updated events.
     var notification: NotificationPreferenceOut? = nil
+    /// How many members the channel has (M11h); lists, single-channel responses and channel events carry it.
+    var memberCount: Int? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
 }
@@ -260,6 +262,12 @@ struct BookmarkItem: Codable, Equatable {
 
 struct BookmarkListOut: Codable {
     let items: [BookmarkItem]
+    let nextCursor: String?
+}
+
+/// GET /mentions (M11h): messages that mention me or everyone, newest first.
+struct MentionListOut: Codable {
+    let items: [MessageOut]
     let nextCursor: String?
 }
 

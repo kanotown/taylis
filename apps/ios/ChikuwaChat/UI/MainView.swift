@@ -7,8 +7,8 @@ struct MainView: View {
     @State private var pendingThreadId: String?
 
     enum Sheet: Identifiable {
-        case newDm, newChannel, search, settings
-        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3 } }
+        case newDm, newChannel, search, settings, browse
+        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4 } }
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
@@ -35,6 +35,7 @@ struct MainView: View {
                         Menu {
                             Button("ダイレクトメッセージ", systemImage: "person.2") { sheet = .newDm }
                             Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
+                            Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
                         } label: { Image(systemName: "plus") }
                         .accessibilityLabel("新規")
                     }
@@ -50,6 +51,20 @@ struct MainView: View {
                             pendingThreadId = message.parentId
                         }
                     }
+                }
+            } else if selection == MentionsView.selectionId {
+                MentionsView(controller: controller) { message in
+                    Task {
+                        if await controller.revealMessage(message) {
+                            selection = message.channelId
+                            pendingThreadId = message.parentId
+                        }
+                    }
+                }
+            } else if selection == DraftsView.selectionId {
+                DraftsView(controller: controller) { channelId, parentId in
+                    selection = channelId
+                    pendingThreadId = parentId
                 }
             } else if let id = selection, let channel = controller.store.channel(id) {
                 // View state resets; conversation drafts live in the persistent Store.
@@ -75,11 +90,12 @@ struct MainView: View {
                 }
             }
             case .settings: SettingsView(controller: controller)
+            case .browse: ChannelBrowserView(controller: controller) { id in selection = id }
             }
         }
         .onChange(of: selection) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
-            if id == ThreadsListView.selectionId || id == SavedView.selectionId {
+            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId {
                 controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
