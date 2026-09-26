@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     ws_idle_timeout_seconds: float = 90.0
     ws_max_lifetime_seconds: float = 86_400.0
     ws_send_queue_size: int = 1000
+    # Presence (SYNC_PROTOCOL.md §5.2): online while a ping with active=true (or the connection
+    # itself) is younger than this; announced as away afterwards by the sweep.
+    presence_away_seconds: float = 300.0
+    presence_sweep_interval_seconds: float = 30.0
+    # typing frames from one connection are relayed at most this often.
+    typing_min_interval_seconds: float = 2.0
 
     # Outbox relay (ARCHITECTURE.md §6)
     outbox_poll_interval_seconds: float = 1.0

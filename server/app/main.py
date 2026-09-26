@@ -110,6 +110,16 @@ async def _attachment_gc_loop(app: FastAPI, stop: asyncio.Event) -> None:
             continue
 
 
+async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """Announces online → away when a user's activity window lapses (SYNC_PROTOCOL.md §5.2)."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.presence_sweep_interval_seconds)
+        except TimeoutError:
+            app.state.hub.sweep_presence()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
@@ -124,6 +134,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_purge_loop(app, stop), name="outbox-purge"))
         tasks.append(asyncio.create_task(app.state.push_sender.run(stop), name="push-sender"))
         tasks.append(asyncio.create_task(_attachment_gc_loop(app, stop), name="attachment-gc"))
+        tasks.append(asyncio.create_task(_presence_sweep_loop(app, stop), name="presence-sweep"))
     try:
         yield
     finally:
@@ -174,7 +185,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     }
     app.state.blobs = build_blobstore(settings)
     app.state.bus = InMemoryEventBus()
-    app.state.hub = RealtimeHub(queue_size=settings.ws_send_queue_size)
+    app.state.hub = RealtimeHub(
+        queue_size=settings.ws_send_queue_size, away_seconds=settings.presence_away_seconds
+    )
     app.state.bus.subscribe(app.state.hub.on_event)
     app.state.push_providers = build_providers(settings)
     app.state.push_sender = PushSender(

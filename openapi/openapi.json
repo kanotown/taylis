@@ -262,6 +262,14 @@
           "me": {
             "$ref": "#/components/schemas/UserMe"
           },
+          "presence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PresenceEntry"
+            },
+            "title": "Presence",
+            "type": "array"
+          },
           "server_time": {
             "format": "date-time",
             "title": "Server Time",
@@ -1286,6 +1294,30 @@
           "new_password"
         ],
         "title": "PasswordChange",
+        "type": "object"
+      },
+      "PresenceEntry": {
+        "properties": {
+          "status": {
+            "enum": [
+              "online",
+              "away",
+              "offline"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "status"
+        ],
+        "title": "PresenceEntry",
         "type": "object"
       },
       "ReactionOut": {

@@ -243,7 +243,9 @@ PushSender  (ループ): push_deliveries (pending, next_attempt_at <= now) -> AP
   WS 配信は揮発で、取りこぼしはクライアント側の差分同期で回復する。
 - **配信先解決は Relay で行う**。Hub は「user_id → 接続」しか知らない。これにより Redis 導入時も Hub の
   責務は変わらない。
-- **outbox を通らないもの**: typing、presence、ping/pong。これらは Hub が直接扱う揮発イベント。
+- **outbox を通らないもの**: typing、presence、ping/pong。これらは Hub が直接扱う揮発イベント (M11b で実装)。
+  presence は Hub の接続表と `ping` の `active` から導出し (online / away / offline)、変化したときだけ全接続に流す。
+  typing は WS ルータがメンバー判定をしてから他のメンバーの接続に中継する。
 
 ## 7. プロセスモデル
 

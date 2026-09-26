@@ -1,9 +1,10 @@
-"""``/api/v1/ws``: auth frame, hello, heartbeat, event delivery (SYNC_PROTOCOL.md §5)."""
+"""``/api/v1/ws``: auth, hello, heartbeat, events, typing relay (SYNC_PROTOCOL.md §5)."""
 
 import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -13,6 +14,7 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.auth import service as auth
+from app.modules.channels import repository as channel_repo
 from app.realtime.hub import CLOSE_KEY, Connection, RealtimeHub
 from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
@@ -23,11 +25,27 @@ from app.realtime.protocol import (
     HelloFrame,
     PingFrame,
     PongFrame,
+    TypingFrame,
+    TypingOut,
 )
 
 log = logging.getLogger("app.realtime")
 router = APIRouter(tags=["realtime"])
-_client_frame: TypeAdapter[AuthFrame | PingFrame] = TypeAdapter(ClientFrame)
+_client_frame: TypeAdapter[AuthFrame | PingFrame | TypingFrame] = TypeAdapter(ClientFrame)
+
+
+async def _relay_typing(
+    websocket: WebSocket, hub: RealtimeHub, user_id: uuid.UUID, frame: TypingFrame
+) -> None:
+    """Volatile typing indicator (M11b): to the channel's other members, only from a member."""
+    async with websocket.app.state.db.session_factory() as db:
+        members = (await channel_repo.member_ids_for_channels(db, [frame.channel_id])).get(
+            frame.channel_id, []
+        )
+    if user_id not in members:
+        return
+    out = TypingOut(channel_id=frame.channel_id, parent_id=frame.parent_id, user_id=user_id)
+    hub.send_to_users((m for m in members if m != user_id), out.model_dump(mode="json"))
 
 
 async def _send(websocket: WebSocket, frame: dict[str, Any]) -> None:
@@ -98,11 +116,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     )
     sender = asyncio.create_task(_sender(websocket, conn))
     deadline = time.monotonic() + settings.ws_max_lifetime_seconds
+    last_typing = 0.0
+    closing = False  # we asked for the close: let the queued frames flush first
     try:
         while not sender.done():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 conn.request_close(CLOSE_RECONNECT)
+                closing = True
                 break
             try:
                 timeout = min(settings.ws_idle_timeout_seconds, remaining)
@@ -110,9 +131,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except TimeoutError:
                 # No ping within the idle window (or the lifetime is over): ask for a reconnect.
                 conn.request_close(CLOSE_RECONNECT)
+                closing = True
                 break
             except (WebSocketDisconnect, RuntimeError):
-                break
+                break  # the peer went away: nothing to flush, drop the registration at once
             try:
                 frame = _client_frame.validate_json(raw)
             except ValidationError:
@@ -121,10 +143,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if isinstance(frame, PingFrame):
                 hub.mark_active(context.user.id, frame.active)
                 conn.offer(PongFrame(server_time=utcnow()).model_dump(mode="json"))
+            elif isinstance(frame, TypingFrame):
+                now = time.monotonic()
+                if now - last_typing >= settings.typing_min_interval_seconds:
+                    last_typing = now
+                    await _relay_typing(websocket, hub, context.user.id, frame)
             else:
                 error = ErrorFrame(code="already_authenticated", message="Already authenticated")
                 conn.offer(error.model_dump())
-        if not sender.done():
+        if closing and not sender.done():
             try:
                 await asyncio.wait_for(sender, timeout=2.0)
             except (TimeoutError, Exception):
