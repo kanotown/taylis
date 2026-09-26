@@ -188,7 +188,17 @@ data class BootstrapOut(
     val presence: List<PresenceEntry> = emptyList(),
     /** My saved messages (M11c): ids only, newest first; the list itself is GET /bookmarks. */
     val bookmarks: List<String> = emptyList(),
+    /** My starred channels (M12a) among `channels`. */
+    val favorites: List<String> = emptyList(),
 )
+
+/** PUT / DELETE /channels/{id}/favorite (M12a). */
+@Serializable
+data class FavoriteStateOut(val channelId: String, val favorite: Boolean)
+
+/** One row of POST /channels/read-all (M12a). */
+@Serializable
+data class ChannelReadStateOut(val channelId: String, val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int)
 
 @Serializable
 data class BookmarkStateOut(val messageId: String, val bookmarked: Boolean)

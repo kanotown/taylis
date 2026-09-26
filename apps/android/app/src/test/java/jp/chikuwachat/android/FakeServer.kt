@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.api.ChannelReadStateOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.BootstrapOut
 import jp.chikuwachat.android.api.ChannelOut
@@ -105,6 +106,7 @@ class FakeServer {
             return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }
         }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
+        override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
@@ -199,6 +201,22 @@ class FakeServer {
 
     /** user → saved message ids, newest first. */
     val bookmarks = HashMap<String, MutableList<String>>()
+    /** "user" → starred channel ids (M12a). */
+    val favorites = HashMap<String, MutableList<String>>()
+
+    fun setFavorite(userId: String, channelId: String, on: Boolean) {
+        val list = favorites.getOrPut(userId) { ArrayList() }
+        if (on == (channelId in list)) return
+        if (on) list.add(channelId) else list.remove(channelId)
+        emit(setOf(userId), event("favorite.updated", channelId, null, buildJsonObject { put("channel_id", channelId); put("favorite", on) }))
+    }
+
+    /** POST /channels/read-all: every membership read to its end; read.updated per moved channel. */
+    fun readAll(userId: String): List<ChannelReadStateOut> =
+        channels.values.filter { userId in it.members }.map { record ->
+            val state = markRead(userId, record.channel.id, record.channel.lastSeq)
+            ChannelReadStateOut(record.channel.id, state.lastReadSeq, state.unreadCount, state.mentionCount)
+        }
 
     fun setBookmark(userId: String, messageId: String, on: Boolean) {
         val list = bookmarks.getOrPut(userId) { ArrayList() }
@@ -470,7 +488,11 @@ class FakeServer {
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id), memberCount = record.members.size)
         }
         val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
-        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it)) }, bookmarks[userId]?.toList() ?: emptyList())
+        return BootstrapOut(
+            now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it) ) },
+            bookmarks[userId]?.toList() ?: emptyList(),
+            favorites = (favorites[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true },
+        )
     }
 
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {

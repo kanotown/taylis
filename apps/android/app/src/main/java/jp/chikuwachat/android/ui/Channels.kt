@@ -24,14 +24,28 @@ object Channels {
         else -> channel.mentionCount
     }
 
-    data class Sections(val channels: List<ChannelState>, val dms: List<ChannelState>, val browse: List<ChannelState>)
+    data class Sections(
+        val channels: List<ChannelState>,
+        val dms: List<ChannelState>,
+        val browse: List<ChannelState>,
+        /** Starred conversations (M12a); left out of `channels` / `dms`. */
+        val favorites: List<ChannelState> = emptyList(),
+    )
 
-    /** List order: channels by name, DMs by recency, joinable channels by name. The open one always stays. */
-    fun sections(all: Collection<ChannelState>, unreadOnly: Boolean = false, currentId: String? = null, now: Instant = Instant.now()): Sections {
+    /** List order: favorites, channels by name, DMs by recency, joinable channels by name. The open one always stays. */
+    fun sections(
+        all: Collection<ChannelState>,
+        unreadOnly: Boolean = false,
+        currentId: String? = null,
+        now: Instant = Instant.now(),
+        favorites: Set<String> = emptySet(),
+    ): Sections {
         fun keep(channel: ChannelState) = !unreadOnly || channel.id == currentId || hasUnread(channel, now)
+        fun starred(channel: ChannelState) = channel.id in favorites
         return Sections(
-            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.archived && keep(it) }.sortedBy { it.channel.name ?: "" },
-            dms = all.filter { it.isMember && it.channel.isDm && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
+            favorites = all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }.sortedBy { it.channel.name ?: it.channel.lastMessageAt ?: "" },
+            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.archived && !starred(it) && keep(it) }.sortedBy { it.channel.name ?: "" },
+            dms = all.filter { it.isMember && it.channel.isDm && !starred(it) && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
             browse = if (unreadOnly) emptyList() else all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
         )
     }

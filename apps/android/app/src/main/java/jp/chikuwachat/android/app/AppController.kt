@@ -347,6 +347,25 @@ class AppController(private val app: Application) {
         } catch (e: Exception) { error = describe(e) }
     }
 
+    /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */
+    suspend fun toggleFavorite(channelId: String) {
+        val api = api ?: return
+        val on = !store.isFavorite(channelId)
+        store.setFavorite(channelId, on)
+        try {
+            if (on) api.favoriteChannel(channelId) else api.unfavoriteChannel(channelId)
+        } catch (e: Exception) {
+            store.setFavorite(channelId, !on)
+            error = describe(e)
+        }
+    }
+
+    /** M12a 「すべて既読にする」. */
+    suspend fun markAllRead() {
+        val engine = engine ?: return
+        try { engine.markAllRead() } catch (e: Exception) { error = describe(e) }
+    }
+
     /** M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device. */
     suspend fun toggleBookmark(messageId: String) {
         val api = api ?: return

@@ -165,6 +165,8 @@ class Store(private val persistence: Persistence? = null) {
     private val typing = HashMap<String, HashMap<String, Long>>()
     /** My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted. */
     val bookmarks = HashSet<String>()
+    /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
+    val favorites = HashSet<String>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -366,6 +368,21 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    // --- favorites (M12a) --------------------------------------------------------------------
+
+    fun isFavorite(channelId: String): Boolean = channelId in favorites
+
+    fun setFavorite(channelId: String, on: Boolean) {
+        val changed = if (on) favorites.add(channelId) else favorites.remove(channelId)
+        if (changed) emit()
+    }
+
+    fun replaceFavorites(ids: List<String>) {
+        favorites.clear()
+        favorites.addAll(ids)
         emit()
     }
 

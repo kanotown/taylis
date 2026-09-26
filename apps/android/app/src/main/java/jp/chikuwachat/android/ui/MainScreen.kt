@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
@@ -44,6 +46,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -210,6 +213,11 @@ fun MainScreen(controller: AppController) {
                         )
                     }
                     if (selectedChannel != null && selectedChannel.isMember && threadId == null && !searching) {
+                        val starred = store.isFavorite(selectedChannel.id)
+                        IconButton(onClick = { scope.launch { controller.toggleFavorite(selectedChannel.id) } }) {
+                            Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = if (starred) "お気に入りから外す" else "お気に入りに追加",
+                                 tint = if (starred) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
+                        }
                         IconButton(onClick = { pinsOpen = !pinsOpen }) {
                             Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
                         }
@@ -246,6 +254,7 @@ fun MainScreen(controller: AppController) {
                         DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
                         DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
                         DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                        DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
                         if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
                             DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
                         }
@@ -374,7 +383,7 @@ private fun ChannelList(
     onBrowse: () -> Unit,
     onFiles: () -> Unit,
 ) {
-    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
+    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites) }
     val draftCount = remember(version) { store.listDrafts().size }
     val channels = sections.channels
     val dms = sections.dms
@@ -391,6 +400,10 @@ private fun ChannelList(
         if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
         item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
         item { SavedRow(store, onClick = onSaved) }
+        if (sections.favorites.isNotEmpty()) {
+            item { SectionHeader("お気に入り") }
+            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
+        }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
