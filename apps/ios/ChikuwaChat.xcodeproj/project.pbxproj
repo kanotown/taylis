@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		01058071D83FDB3831C7411A /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF56C1D17673E9A46D280F6D /* Frames.swift */; };
 		138952D589A640641DD470D6 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490CD2ABE3C202D8366FF9CE /* AvatarView.swift */; };
+		15295BD6F2E1B1010700B78D /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8311B119AAD428B9FFE2D33 /* CameraPicker.swift */; };
+		1573E0EAFD2600EF5EE55CDE /* ComposerSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */; };
 		1643D8D6E1C7BE4386F7EB1B /* SearchHighlightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B770F0D367C58D2D20912066 /* SearchHighlightTests.swift */; };
 		1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6130C50876B86E11534F6 /* LiveBackendTests.swift */; };
 		214B994514BE464424A29889 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */; };
@@ -81,6 +83,7 @@
 		6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
 		6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		7C74AC169B95554B18E616A6 /* MessageBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBodyView.swift; sourceTree = "<group>"; };
+		7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerSnapshotTests.swift; sourceTree = "<group>"; };
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 		C1B1B9CFD4F32337DCDC0CCA /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChikuwaChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChikuwaChatApp.swift; sourceTree = "<group>"; };
+		E8311B119AAD428B9FFE2D33 /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
 		FF56C1D17673E9A46D280F6D /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -188,6 +192,7 @@
 				B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */,
 				84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */,
 				9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */,
+				7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */,
 				91851A02B144D3F57EB66170 /* ContractTests.swift */,
 				048A41BC92EAD6644AFA7294 /* FakeServer.swift */,
 				13B6130C50876B86E11534F6 /* LiveBackendTests.swift */,
@@ -205,6 +210,7 @@
 			children = (
 				B0331E3481EE3CCEC391E1E4 /* AttachmentsView.swift */,
 				490CD2ABE3C202D8366FF9CE /* AvatarView.swift */,
+				E8311B119AAD428B9FFE2D33 /* CameraPicker.swift */,
 				6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */,
 				9B7251E3E02E155A12489239 /* ChannelListView.swift */,
 				3F7662F23ED981268EBFB0F8 /* ChannelView.swift */,
@@ -353,6 +359,7 @@
 				94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */,
 				CCDA600DF1E454593B370952 /* BodyTokenizerTests.swift in Sources */,
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
+				1573E0EAFD2600EF5EE55CDE /* ComposerSnapshotTests.swift in Sources */,
 				F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */,
 				870A22BBBA909116002B711D /* FakeServer.swift in Sources */,
 				1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */,
@@ -373,6 +380,7 @@
 				2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */,
 				9E7035C4099857904103250B /* AttachmentsView.swift in Sources */,
 				138952D589A640641DD470D6 /* AvatarView.swift in Sources */,
+				15295BD6F2E1B1010700B78D /* CameraPicker.swift in Sources */,
 				8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */,
 				BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */,
 				4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */,
