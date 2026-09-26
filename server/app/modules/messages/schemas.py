@@ -85,6 +85,9 @@ class MessageOut(BaseModel):
     created_at: datetime
     edited_at: datetime | None
     deleted: bool
+    # Pinned in the channel (M11c); both null when not pinned.
+    pinned_at: datetime | None = None
+    pinned_by: UUID | None = None
 
 
 class HistoryOut(BaseModel):
@@ -132,6 +135,8 @@ def to_message_out(
         created_at=message.created_at,
         edited_at=message.edited_at,
         deleted=deleted,
+        pinned_at=None if deleted else message.pinned_at,
+        pinned_by=None if deleted else message.pinned_by,
     )
 
 

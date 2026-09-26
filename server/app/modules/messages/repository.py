@@ -59,6 +59,21 @@ async def list_history(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_pinned(db: AsyncSession, channel_id: uuid.UUID, *, limit: int) -> list[Message]:
+    """Pinned messages of a channel, most recently pinned first (M11c)."""
+    stmt = (
+        select(Message)
+        .where(
+            Message.channel_id == channel_id,
+            Message.deleted_at.is_(None),
+            Message.pinned_at.is_not(None),
+        )
+        .order_by(Message.pinned_at.desc())
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def list_delta(
     db: AsyncSession, channel_id: uuid.UUID, *, since_seq: int, limit: int
 ) -> list[Message]:

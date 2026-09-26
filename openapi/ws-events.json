@@ -5,6 +5,35 @@
     "session_revoked": 4003
   },
   "events": {
+    "bookmark.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "bookmarked": {
+            "title": "Bookmarked",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "channel_id",
+          "bookmarked"
+        ],
+        "title": "BookmarkUpdatedData",
+        "type": "object"
+      }
+    },
     "channel.archived": {
       "audience": "channel",
       "consumes_seq": false,
@@ -772,6 +801,32 @@
                 "default": null,
                 "title": "Parent Id"
               },
+              "pinned_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned At"
+              },
+              "pinned_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned By"
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -1087,6 +1142,32 @@
                 ],
                 "default": null,
                 "title": "Parent Id"
+              },
+              "pinned_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned At"
+              },
+              "pinned_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned By"
               },
               "reactions": {
                 "default": [],
@@ -1404,6 +1485,32 @@
                 ],
                 "default": null,
                 "title": "Parent Id"
+              },
+              "pinned_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned At"
+              },
+              "pinned_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pinned By"
               },
               "reactions": {
                 "default": [],

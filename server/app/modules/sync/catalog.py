@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter
 
 from app.modules.auth import events as auth_events
+from app.modules.bookmarks import events as bookmark_events
 from app.modules.channels import events as channel_events
 from app.modules.messages import events as message_events
 from app.modules.notifications import events as notification_events
@@ -43,6 +44,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     auth_events.SESSION_REVOKED: (auth_events.SessionRevokedData, "session", False),
     read_events.READ_UPDATED: (read_events.ReadUpdatedData, "user", False),
     thread_events.THREAD_UPDATED: (thread_events.ThreadUpdatedData, "user", False),
+    bookmark_events.BOOKMARK_UPDATED: (bookmark_events.BookmarkUpdatedData, "user", False),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

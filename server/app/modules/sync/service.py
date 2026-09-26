@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
+from app.modules.bookmarks import service as bookmarks
 from app.modules.channels import service as channels
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
@@ -45,6 +46,7 @@ async def bootstrap(
         users=[to_user_public(u) for u in await users.list_users(db)],
         channels=with_prefs,
         threads=await threads.summary_for(db, actor.id),
+        bookmarks=await bookmarks.ids_for(db, actor.id),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

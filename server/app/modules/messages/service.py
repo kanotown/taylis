@@ -224,6 +224,8 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message.body = ""
     message.mentioned_user_ids = []
     message.mention_all = False
+    message.pinned_at = None
+    message.pinned_by = None
     message.updated_seq = seq
     await db.flush()
     await attachments.mark_deleted_in_tx(db, message.id)
@@ -249,6 +251,39 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     )
     await db.commit()
     return out
+
+
+async def set_pin(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, *, pinned: bool
+) -> tuple[MessageOut, bool]:
+    """Any member pins / unpins (Slack, Mattermost): (message, changed). A change consumes a seq so
+    delta sync carries the pin state (DATA_MODEL.md 各操作と seq)."""
+    message = await _require_live_message(db, actor, message_id)
+    if (message.pinned_at is not None) == pinned:
+        return await message_out(db, message), False
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    message.pinned_at = utcnow() if pinned else None
+    message.pinned_by = actor.id if pinned else None
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change="pin").model_dump(mode="json"),
+    )
+    await db.commit()
+    return out, True
+
+
+async def list_pins(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, limit: int
+) -> list[MessageOut]:
+    await channels.require_member(db, actor.id, channel_id)
+    return await messages_out(db, await repo.list_pinned(db, channel_id, limit=limit))
 
 
 async def set_reaction(
