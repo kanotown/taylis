@@ -248,9 +248,14 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    (初回ログインでパスワード変更を求められる)。Info.plist の ATS は自宅 LAN 向けに平文 HTTP を許可している。
    本番は Caddy の TLS を使う。
 5. **プッシュを試す。** Xcode から入れたビルドは `aps-environment = development` なので、端末は
-   `push_environment = sandbox` で登録される。`.env` の `PUSH_APNS_*` が設定済みなら、iPhone をバックグラウンドに
-   して Desktop から DM を送ると通知が届き、タップで該当チャンネルが開く。届かないときは
-   `docker compose logs app | grep -i apns` を見る。`BadDeviceToken` は環境の不一致 (sandbox / production)、
+   `push_environment = sandbox` で登録される。まず配線だけ確かめるなら
+   `docker compose exec -T app python -m app.cli push-test --user <iPhone のユーザー>` で、`sent` と出れば
+   鍵・環境・トークンは正しい (キューを通らないので `push_deliveries` には残らない)。
+   実際の流れは **別のユーザー** から送る: iPhone のユーザーとは別のユーザーで Desktop にログインし、
+   iPhone をバックグラウンドにして DM を送る (チャンネルならメンション)。次の場合は仕様として届かない
+   (PUSH_NOTIFICATIONS.md §4): 自分の投稿、iPhone のユーザーが Desktop でも操作中 (60 秒以内にアクティブ)、
+   すでに既読、通知レベルが none / ミュート中。届かないときは `docker compose logs app | grep -i apns` と
+   `push_deliveries` 表を見る。`BadDeviceToken` は環境の不一致 (sandbox / production)、
    `InvalidProviderToken` は Key ID / Team ID / 鍵の不一致。
 6. **見るところ**: ログイン → チャンネル一覧 → Desktop との送受信 → バックグラウンド中の通知とタップ →
    アプリを再起動してキャッシュが先に出て再同期されること → 機内モードにして送信し、復帰後に届くこと。

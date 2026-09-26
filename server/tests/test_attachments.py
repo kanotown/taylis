@@ -186,3 +186,28 @@ async def test_verify_reports_missing_blobs(
     assert await attachments.verify(db, blobs) == [
         (uuid.UUID(meta["id"]), f"attachments/{meta['id']}")
     ]
+
+
+async def test_thumbnail_honours_exif_orientation(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """A portrait phone photo (landscape pixels + orientation tag) must come out upright."""
+    from PIL import Image
+
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    source = Image.new("RGB", (120, 60), "red")
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotate 90° clockwise to display
+    raw = io.BytesIO()
+    source.save(raw, format="JPEG", exif=exif.tobytes())
+    uploaded = await client.post(
+        "/api/v1/attachments", files={"file": ("portrait.jpg", raw.getvalue(), "image/jpeg")}
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    meta = uploaded.json()
+    assert (meta["width"], meta["height"]) == (60, 120)
+    thumb = await client.get(f"/api/v1/attachments/{meta['id']}/thumbnail")
+    assert thumb.status_code == 200
+    with Image.open(io.BytesIO(thumb.content)) as image:
+        assert image.height > image.width

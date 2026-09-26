@@ -135,6 +135,13 @@ struct ChannelView: View {
                         .padding(.vertical, 8)
                     }
                     .coordinateSpace(name: "conversation")
+                    .defaultScrollAnchor(.bottom)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                        // The keyboard shrinks the viewport: keep the newest message in view when we were at the bottom.
+                        guard atBottom, focus == nil else { return }
+                        DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    }
                     .onPreferenceChange(VisibleMessageFrames.self) { frames in
                         visibleFrames = frames
                         viewportHeight = viewport.size.height
@@ -159,8 +166,11 @@ struct ChannelView: View {
                     }
                     .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
                     .onChange(of: messages.last?.id) { _, _ in
-                        if positioned && atBottom && focus == nil {
-                            proxy.scrollTo("bottom", anchor: .bottom)
+                        // Arrivals while at the bottom, and my own sends from anywhere, show the newest message.
+                        let last = messages.last
+                        let mine = last.map { $0.senderId == controller.store.me?.id && ($0.pending || $0.seq == channel?.lastSeq) } ?? false
+                        if positioned && focus == nil && (atBottom || mine) {
+                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                             markSeen()
                         }
                     }
@@ -565,7 +575,7 @@ struct ComposerView: View {
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in
-                guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+                guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85) else { return }
                 controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
                 Task {
                     defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }

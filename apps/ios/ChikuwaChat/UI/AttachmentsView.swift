@@ -50,23 +50,30 @@ struct ThumbnailView: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
     @State private var image: UIImage?
-    @State private var shareURL: URL?
+    @State private var viewing = false
 
     var body: some View {
         Group {
             if let image {
                 Image(uiImage: image).resizable().scaledToFit()
             } else {
-                Text(attachment.filename).font(.caption).padding(12).background(Color.secondary.opacity(0.12))
+                ZStack {
+                    Color.secondary.opacity(0.12)
+                    ProgressView()
+                }
+                .frame(width: 160, height: 120)
             }
         }
         .frame(maxWidth: 280, maxHeight: 240)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .onTapGesture { Task { shareURL = await controller.downloadAttachment(attachment) } }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture { viewing = true }
+        .accessibilityLabel("写真 \(attachment.filename)")
+        .accessibilityAddTraits(.isButton)
         .task(id: attachment.id) {
             if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
         }
-        .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
+        .fullScreenCover(isPresented: $viewing) { ImageViewer(attachment: attachment, controller: controller) }
     }
 }
 
