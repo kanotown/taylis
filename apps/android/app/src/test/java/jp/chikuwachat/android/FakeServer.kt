@@ -11,6 +11,7 @@ import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
+import jp.chikuwachat.android.api.PresenceEntry
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadItem
@@ -42,11 +43,21 @@ class FakeServer {
         var dropNext = 0
         var closed = false
 
+        var authed = false
+
         override fun send(text: String) {
             val frame = Codec.plain.parseToJsonElement(text).jsonObject
             when (frame["type"]?.jsonPrimitive?.contentOrNull) {
-                "auth" -> deliver(buildJsonObject { put("type", "hello"); put("session_id", "s-$userId"); put("server_time", now()); put("heartbeat_interval_sec", 30) })
-                "ping" -> deliver(buildJsonObject { put("type", "pong"); put("server_time", now()) })
+                "auth" -> {
+                    authed = true
+                    deliver(buildJsonObject { put("type", "hello"); put("session_id", "s-$userId"); put("server_time", now()); put("heartbeat_interval_sec", 30) })
+                    announcePresence(userId)
+                }
+                "ping" -> {
+                    if (frame["active"]?.jsonPrimitive?.contentOrNull == "true") markActive(userId)
+                    deliver(buildJsonObject { put("type", "pong"); put("server_time", now()) })
+                }
+                "typing" -> frame["channel_id"]?.jsonPrimitive?.contentOrNull?.let { relayTyping(userId, it, frame["parent_id"]?.jsonPrimitive?.contentOrNull) }
             }
         }
 
@@ -57,6 +68,7 @@ class FakeServer {
             closed = true
             sockets.remove(this)
             onClose?.invoke(code)
+            if (authed) announcePresence(userId)
         }
 
         fun deliver(frame: JsonObject) {
@@ -170,6 +182,37 @@ class FakeServer {
             return state
         }
         return readState(userId, channelId)
+    }
+
+    // --- presence / typing (SYNC_PROTOCOL.md §5.2, volatile) --------------------------------------
+
+    /** Users whose window is "away" (set by tests); everyone connected is online otherwise. */
+    val awayUsers = HashSet<String>()
+    private val announced = HashMap<String, String>()
+
+    fun presenceOf(userId: String): String {
+        if (sockets.none { it.userId == userId && it.authed }) return "offline"
+        return if (userId in awayUsers) "away" else "online"
+    }
+
+    fun markActive(userId: String) {
+        if (awayUsers.remove(userId)) announcePresence(userId)
+    }
+
+    /** Broadcast a presence frame when the user's status changed. */
+    fun announcePresence(userId: String) {
+        val status = presenceOf(userId)
+        if ((announced[userId] ?: "offline") == status) return
+        if (status == "offline") announced.remove(userId) else announced[userId] = status
+        sockets.toList().filter { it.authed }.forEach { it.deliver(buildJsonObject { put("type", "presence"); put("user_id", userId); put("status", status) }) }
+    }
+
+    fun relayTyping(userId: String, channelId: String, parentId: String?) {
+        val record = channels[channelId] ?: return
+        if (userId !in record.members) return
+        sockets.toList().filter { it.authed && it.userId != userId && it.userId in record.members }.forEach {
+            it.deliver(buildJsonObject { put("type", "typing"); put("channel_id", channelId); put("parent_id", parentId?.let { p -> JsonPrimitive(p) } ?: JsonNull); put("user_id", userId) })
+        }
     }
 
     // --- threads (THREADS.md §2) ------------------------------------------------------------------
@@ -402,7 +445,8 @@ class FakeServer {
         val mine = channels.values.filter { userId in it.members }.map { record ->
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id))
         }
-        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId))
+        val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
+        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it)) })
     }
 
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {

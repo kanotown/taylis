@@ -311,7 +311,7 @@ Desktop の見た目を、フリーで使える現行のフレームワークに
 | # | 機能 | 内容 | 状況 |
 | --- | --- | --- | --- |
 | M11a | フォロー中スレッド | THREADS.md。`thread_follows`、`GET /threads`、`GET/PUT /messages/{id}/thread[/read|/follow]`、`thread.updated`、bootstrap の `threads`、プッシュ対象をフォロワーに置き換え、3 端末の「スレッド」一覧・フォロー切替・スレッド既読・「新しい返信」 | **実装済み (2026-09-27)**: サーバ pytest 133、Desktop vitest 71 + ブラウザプレビューで目視、iOS XCTest 43 + スナップショット、Android JUnit 45 + Lint + assembleDebug |
-| M11b | プレゼンスと入力中表示 | WS の揮発イベント (outbox を通さない) で online / away と typing を配る。Hub が接続状態から導出、Redis は不要 | 未着手 |
+| M11b | プレゼンスと入力中表示 | WS の揮発フレーム (outbox を通さない、SYNC_PROTOCOL.md §5.2): `presence` (online / away / offline を Hub が接続表と ping の active から導出、変化時に全接続へ、bootstrap に現在値) と `typing` (メンバー判定後に他メンバーへ中継、接続ごとに 2 秒に 1 回)。3 端末: アバターのプレゼンスドット (DM 行・メンバー一覧)、1:1 DM のヘッダにステータス、入力欄の上に「… が入力中…」(5 秒で消える、送信で即消える)、入力中は 3 秒に 1 回送信 | **実装済み (2026-09-27)**: サーバ pytest 135、Desktop vitest 72、iOS XCTest 45、Android JUnit 46。Desktop / Android は実サーバ + 別ユーザーの WS で目視確認 |
 | M11c | ピン留めとブックマーク | `messages.pinned_at` + `PUT/DELETE /messages/{id}/pin` (`message.updated change=pin` は予約済み)、`bookmarks` (自分だけの保存) | 未着手 |
 | M11d | プロフィールとカスタムステータス | ユーザーのポップオーバー / シート、`users.status_text` / `status_emoji` / `status_expires_at`、`user.updated` で配る | 未着手 |
 | M11e | Desktop の管理 UI | ユーザー作成・パスワード再設定・無効化・ロール、チャンネルのアーカイブ・改名 (API は M10 までに実装済み) | 未着手 |
