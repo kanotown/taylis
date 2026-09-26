@@ -10,6 +10,7 @@ import { decodeMentions, encodeMentions } from "./mentions";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { StatusEmoji, UserPopover } from "./UserPopover";
 
 const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥", "😢", "😮", "💯", "🚀", "👏", "🤔", "😍", "😅", "🙌", "💪", "☕", "🍵", "🎂", "🥳", "😴", "🫡"];
 
@@ -247,7 +248,13 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       }}
     >
       <div className="flex justify-center pt-0.5">
-        {compact ? <span className="time-hover pt-1 text-[10px] leading-4 text-muted">{timeLabel(message.created_at)}</span> : <Avatar id={message.sender_id} name={senderName} size={size} />}
+        {compact ? (
+          <span className="time-hover pt-1 text-[10px] leading-4 text-muted">{timeLabel(message.created_at)}</span>
+        ) : (
+          <UserPopover controller={controller} userId={message.sender_id} className="rounded-lg">
+            <Avatar id={message.sender_id} name={senderName} size={size} />
+          </UserPopover>
+        )}
       </div>
       <div className="min-w-0">
         {(pinnedBy || saved) && (
@@ -266,7 +273,10 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         )}
         {!compact && (
           <div className="flex items-baseline gap-2 text-xs text-muted">
-            <strong className="text-sm text-ink">{senderName}</strong>
+            <UserPopover controller={controller} userId={message.sender_id} className="hover:underline">
+              <strong className="text-sm text-ink">{senderName}</strong>
+            </UserPopover>
+            <StatusEmoji controller={controller} userId={message.sender_id} />
             <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
             {message.edited_at && <span>(編集済み)</span>}
           </div>

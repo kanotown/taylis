@@ -5,6 +5,8 @@ import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
+import { StatusEmoji, UserPopover } from "./UserPopover";
+import { activeStatus, expiryLabel } from "./users";
 import { type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
@@ -205,10 +207,14 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
               .sort((a, b) => (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja"))
               .map(({ member, user }) => (
                 <li key={member.user_id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} presence={controller.store.presenceOf(member.user_id)} />
-                  <span className="flex-1 truncate">
-                    {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
-                  </span>
+                  <UserPopover controller={controller} userId={member.user_id} className="flex min-w-0 flex-1 items-center gap-3">
+                    <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} presence={controller.store.presenceOf(member.user_id)} />
+                    <span className="flex-1 truncate">
+                      {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
+                      {user?.title && <span className="ml-1 text-xs text-muted">· {user.title}</span>}
+                    </span>
+                  </UserPopover>
+                  <StatusEmoji controller={controller} userId={member.user_id} />
                   {controller.store.presenceOf(member.user_id) !== "offline" && (
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}
@@ -256,10 +262,12 @@ export function TopicDialog({ controller, channel, onClose }: { controller: AppC
 }
 
 /** Profile (display name), password change and logout. */
-export function SettingsDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
+export function SettingsDialog({ controller, onClose, onStatus }: { controller: AppController; onClose: () => void; onStatus?: () => void }) {
   const me = controller.store.me ?? controller.me;
   const [displayName, setDisplayName] = useState(me?.display_name ?? "");
+  const [title, setTitle] = useState(me?.title ?? "");
   const [savedName, setSavedName] = useState(false);
+  const status = activeStatus(me ? controller.store.users.get(me.id) ?? me : null);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -269,7 +277,8 @@ export function SettingsDialog({ controller, onClose }: { controller: AppControl
   const saveName = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    const ok = await controller.updateDisplayName(displayName);
+    const ok = (displayName.trim() !== me?.display_name ? await controller.updateDisplayName(displayName) : true)
+      && ((title.trim() || null) !== (me?.title ?? null) ? await controller.updateProfile({ title: title.trim() || null }) : true);
     setBusy(false);
     setSavedName(ok);
   };
@@ -302,13 +311,34 @@ export function SettingsDialog({ controller, onClose }: { controller: AppControl
             </div>
           </div>
         )}
+        {onStatus && (
+          <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
+            <div className="min-w-0 flex-1 text-sm">
+              {status ? (
+                <span>
+                  <span className="mr-1.5">{status.emoji}</span>
+                  {status.text}
+                  {expiryLabel(me?.status_expires_at) && <span className="ml-2 text-xs text-muted">{expiryLabel(me?.status_expires_at)}</span>}
+                </span>
+              ) : (
+                <span className="text-muted">ステータスは未設定です</span>
+              )}
+            </div>
+            <Button size="sm" variant="secondary" onClick={onStatus}>
+              {status ? "ステータスを変更" : "ステータスを設定"}
+            </Button>
+          </div>
+        )}
         <form className="space-y-3" onSubmit={saveName}>
           <Field label="表示名">
             <Input value={displayName} maxLength={80} onChange={(e) => { setDisplayName(e.target.value); setSavedName(false); }} required />
           </Field>
+          <Field label="肩書 (任意)">
+            <Input value={title} maxLength={80} placeholder="例: 開発 / 営業" onChange={(e) => { setTitle(e.target.value); setSavedName(false); }} />
+          </Field>
           <div className="flex items-center gap-3">
-            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || displayName.trim() === me?.display_name}>
-              表示名を保存
+            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (displayName.trim() === me?.display_name && (title.trim() || null) === (me?.title ?? null))}>
+              プロフィールを保存
             </Button>
             {savedName && <span className="text-xs text-muted">保存しました</span>}
           </div>
