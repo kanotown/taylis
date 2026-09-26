@@ -38,6 +38,14 @@ class Settings(BaseSettings):
 
     run_background_tasks: bool = True
 
+    # Browser-like clients (the Tauri WebView and the Vite dev server) need CORS. Comma separated.
+    # Tokens travel in the Authorization header, never in cookies, so credentials stay disabled.
+    cors_allow_origins: str = "tauri://localhost,http://tauri.localhost,http://localhost:1420"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0
     ws_heartbeat_interval_seconds: int = 30

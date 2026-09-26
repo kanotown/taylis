@@ -333,7 +333,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | --- | --- | --- |
 | API プロセスを複数にする / worker 分離 | `EventBus` を `RedisEventBus` (pub/sub) に差し替え (`EVENT_BUS=redis`)。Relay は 1 プロセスだけで動かす。presence / ratelimit を Redis に移す | outbox、ハンドラ、Hub のインタフェース、クライアント |
 | 添付の直接アップロード / ダウンロード | `BlobStore` に presigned URL 発行を追加。API は URL を返す | アクセス制御の判定 (API に残る) |
-| Web ブラウザクライアント | cookie ベース認証 + CSRF 対策、CORS、WS の Origin 検証 | データモデル、同期プロトコル |
+| Web ブラウザクライアント | cookie ベース認証 + CSRF 対策、`CORS_ALLOW_ORIGINS` への追加、WS の Origin 検証 | データモデル、同期プロトコル |
 | OIDC ログイン | `auth` に provider を追加。session の仕組みはそのまま | |
 | 検索の高度化 | PGroonga の tokenizer / ranking 調整。Elasticsearch は不要 | |
 | 通知の細分化 (quiet hours 等) | PushPlanner の判定ルールと `notification_preferences` の列追加 | 配送の仕組み |

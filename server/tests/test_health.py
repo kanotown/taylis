@@ -20,3 +20,24 @@ async def test_unknown_route_uses_error_format(client: AsyncClient) -> None:
     body = response.json()
     assert body["error"]["code"] == "not_found"
     assert set(body["error"]) == {"code", "message", "details"}
+
+
+async def test_cors_preflight_for_the_desktop_webview(client: AsyncClient) -> None:
+    allowed = await client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "tauri://localhost",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "tauri://localhost"
+    assert "content-type" in allowed.headers["access-control-allow-headers"].lower()
+    assert "access-control-allow-credentials" not in allowed.headers
+
+    denied = await client.options(
+        "/api/v1/auth/login",
+        headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"},
+    )
+    assert "access-control-allow-origin" not in denied.headers
