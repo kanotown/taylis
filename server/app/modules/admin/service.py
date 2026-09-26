@@ -10,6 +10,8 @@ from app.core.errors import conflict, not_found
 from app.core.security import generate_temporary_password, hash_password
 from app.core.time import utcnow
 from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
+from app.modules.audit import service as audit
+from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
 from app.modules.users.events import (
     USER_CREATED,
@@ -43,6 +45,7 @@ async def create_user(
     *,
     password: str | None = None,
     must_change_password: bool = True,
+    actor: User | None = None,
 ) -> tuple[User, str]:
     """Create an account. Without ``password`` a temporary one is generated and returned once."""
     await _ensure_unique(db, data.username, data.email)
@@ -59,6 +62,14 @@ async def create_user(
     try:
         await db.flush()
         await emit_user_event(db, USER_CREATED, user)
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id if actor else None,
+            action="admin.user_created",
+            target_type="user",
+            target_id=user.id,
+            details={"username": user.username, "role": user.role},
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -88,6 +99,14 @@ async def update_user(
     user.updated_at = now
     await db.flush()
     await emit_user_event(db, USER_DEACTIVATED if data.deactivated is True else USER_UPDATED, user)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="admin.user_updated",
+        target_type="user",
+        target_id=user.id,
+        details=data.model_dump(exclude_none=True, mode="json"),
+    )
     await db.commit()
     return user
 
@@ -103,12 +122,55 @@ async def reset_password(db: AsyncSession, actor: User, user_id: uuid.UUID) -> s
     now = utcnow()
     user.updated_at = now
     await auth.revoke_all_sessions(db, user.id, "admin", now)
+    await audit.record_in_tx(
+        db, actor_id=actor.id, action="admin.password_reset", target_type="user", target_id=user.id
+    )
     await db.commit()
     return temporary
 
 
-async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID) -> int:
+async def revoke_sessions(db: AsyncSession, actor: User, user_id: uuid.UUID) -> int:
     user = await _get_user(db, user_id)
     count = await auth.revoke_all_sessions(db, user.id, "admin", utcnow())
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="admin.sessions_revoked",
+        target_type="user",
+        target_id=user.id,
+        details={"count": count},
+    )
     await db.commit()
     return count
+
+
+async def anonymize_user(db: AsyncSession, actor: User | None, user_id: uuid.UUID) -> User:
+    """Erase the identity (name, e-mail, credentials, devices) and end all sessions.
+
+    Messages stay (the history of a channel is the team's), attributed to a generic name.
+    The audit row carries only the id, on purpose.
+    """
+    user = await _get_user(db, user_id)
+    if actor is not None and user.id == actor.id:
+        raise conflict("cannot_modify_self", "Administrators cannot anonymize their own account")
+    now = utcnow()
+    user.username = f"deleted-{user.id.hex[:12]}"
+    user.display_name = "退会したユーザー"
+    user.email = None
+    user.password_hash = await hash_password(generate_temporary_password())
+    user.must_change_password = True
+    user.deactivated_at = user.deactivated_at or now
+    user.updated_at = now
+    await db.flush()
+    await auth.revoke_all_sessions(db, user.id, "anonymized", now)
+    await auth_repo.clear_push_tokens(db, user.id)
+    await emit_user_event(db, USER_DEACTIVATED, user)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id if actor else None,
+        action="admin.user_anonymized",
+        target_type="user",
+        target_id=user.id,
+    )
+    await db.commit()
+    return user

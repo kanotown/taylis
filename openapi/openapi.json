@@ -1869,6 +1869,55 @@
         ]
       }
     },
+    "/api/v1/admin/users/{user_id}/anonymize": {
+      "post": {
+        "description": "Erase the identity and end all sessions; messages stay under a generic name (M10).",
+        "operationId": "anonymize_user_api_v1_admin_users__user_id__anonymize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Anonymize User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/users/{user_id}/reset-password": {
       "post": {
         "operationId": "reset_password_api_v1_admin_users__user_id__reset_password_post",

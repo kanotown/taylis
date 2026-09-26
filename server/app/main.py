@@ -23,6 +23,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
+from app.modules.auth import repository as auth_repo
 from app.modules.auth.router import router as auth_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
@@ -69,6 +70,16 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 await session.commit()
             if purged_pushes:
                 log.info("purged %d push deliveries", purged_pushes)
+            async with app.state.db.session_factory() as session:
+                sessions = await auth_repo.purge_sessions(
+                    session, utcnow() - timedelta(days=settings.session_retention_days)
+                )
+                devices = await auth_repo.purge_devices(
+                    session, utcnow() - timedelta(days=settings.device_retention_days)
+                )
+                await session.commit()
+            if sessions or devices:
+                log.info("purged %d sessions and %d devices", sessions, devices)
         except Exception:
             log.exception("outbox purge failed")
         try:

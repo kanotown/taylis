@@ -269,3 +269,8 @@ async def list_replies(db: AsyncSession, actor: User, parent_id: uuid.UUID) -> l
     """GET /messages/{id}/replies: a thread is small enough to return whole, oldest first."""
     parent = await get_message(db, actor, parent_id)
     return await messages_out(db, await repo.list_replies(db, parent.id))
+
+
+async def export_rows(db: AsyncSession, channel_id: uuid.UUID) -> list[MessageOut]:
+    """For the export-channel CLI (M10): the channel's live messages with reactions and files."""
+    return await messages_out(db, await repo.list_all(db, channel_id))

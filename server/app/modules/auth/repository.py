@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.outbox import write_outbox
@@ -100,3 +100,33 @@ async def revoke_sessions(
             .values(enabled=False, disabled_reason=reason, updated_at=now)
         )
     return len(device_ids)
+
+
+async def purge_sessions(db: AsyncSession, before: datetime) -> int:
+    """Revoked or expired sessions older than the retention window (SECURITY.md §2.4)."""
+    stmt = (
+        delete(UserSession)
+        .where(or_(UserSession.revoked_at < before, UserSession.expires_at < before))
+        .returning(UserSession.id)
+    )
+    return len((await db.execute(stmt)).all())
+
+
+async def purge_devices(db: AsyncSession, before: datetime) -> int:
+    """Disabled devices without sessions that have not been seen within the retention window."""
+    has_session = select(UserSession.id).where(UserSession.device_id == Device.id).exists()
+    stmt = (
+        delete(Device)
+        .where(Device.enabled.is_(False), Device.updated_at < before, ~has_session)
+        .returning(Device.id)
+    )
+    return len((await db.execute(stmt)).all())
+
+
+async def clear_push_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Anonymisation: no device of the user may receive another push."""
+    await db.execute(
+        update(Device)
+        .where(Device.user_id == user_id)
+        .values(push_token=None, push_provider="none", enabled=False, disabled_reason="anonymized")
+    )

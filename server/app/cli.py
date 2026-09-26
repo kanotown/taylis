@@ -6,8 +6,10 @@ import getpass
 import json
 import re
 import sys
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -183,6 +185,75 @@ async def _verify_attachments() -> int:
         await db.dispose()
 
 
+async def _anonymize_user(username: str) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.admin import service as admin
+    from app.modules.users import service as users
+
+    db = Database(get_settings().database_url)
+    try:
+        async with db.session_factory() as session:
+            user = await users.get_by_username(session, username)
+            if user is None:
+                print(f"no such user: {username}", file=sys.stderr)
+                return 1
+            anonymized = await admin.anonymize_user(session, None, user.id)
+            print(f"anonymized {username} -> {anonymized.username}")
+            return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_anonymize_user(args: argparse.Namespace) -> int:
+    """Erase a user's identity while keeping the channel history (M10)."""
+    return asyncio.run(_anonymize_user(args.username))
+
+
+async def export_channel_lines(session: Any, channel_id: uuid.UUID) -> list[str]:
+    """JSONL lines (one message each) for a channel: messages, reactions, attachment metadata."""
+    from app.modules.messages import service as messages
+    from app.modules.users import service as users
+
+    names = {u.id: u.username for u in await users.list_users(session)}
+    lines: list[str] = []
+    for message in await messages.export_rows(session, channel_id):
+        record = message.model_dump(mode="json")
+        record["sender_username"] = names.get(message.sender_id)
+        lines.append(json.dumps(record, ensure_ascii=False))
+    return lines
+
+
+async def _export_channel(channel: str) -> list[str] | None:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.channels import repository as channels_repo
+
+    db = Database(get_settings().database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                record = await channels_repo.get_channel(session, uuid.UUID(channel))
+            except ValueError:
+                record = await channels_repo.get_channel_by_name(session, channel)
+            if record is None:
+                return None
+            return await export_channel_lines(session, record.id)
+    finally:
+        await db.dispose()
+
+
+def cmd_export_channel(args: argparse.Namespace) -> int:
+    """Write a channel's history as JSONL (M10): a portable, grep-able archive."""
+    lines = asyncio.run(_export_channel(args.channel))
+    if lines is None:
+        print(f"no such channel: {args.channel}", file=sys.stderr)
+        return 1
+    Path(args.out).write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    print(f"wrote {len(lines)} messages to {args.out}")
+    return 0
+
+
 def cmd_verify_attachments(args: argparse.Namespace) -> int:
     """After a restore: report attachment rows whose bytes are missing (ARCHITECTURE.md §8)."""
     return asyncio.run(_verify_attachments())
@@ -216,6 +287,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = sub.add_parser("verify-attachments", help="report attachments whose bytes are missing")
     verify.set_defaults(func=cmd_verify_attachments)
+
+    anonymize = sub.add_parser("anonymize-user", help="erase a user's identity, keep the history")
+    anonymize.add_argument("--username", required=True)
+    anonymize.set_defaults(func=cmd_anonymize_user)
+
+    export_channel = sub.add_parser("export-channel", help="write a channel's messages as JSONL")
+    export_channel.add_argument("--channel", required=True, help="channel name or id")
+    export_channel.add_argument("--out", required=True)
+    export_channel.set_defaults(func=cmd_export_channel)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

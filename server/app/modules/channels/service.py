@@ -12,6 +12,7 @@ from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import AudienceType, write_outbox
+from app.modules.audit import service as audit
 from app.modules.channels import events
 from app.modules.channels import repository as repo
 from app.modules.channels.models import Channel, ChannelMember
@@ -274,6 +275,13 @@ async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
             audience_type="channel",
             channel_id=channel.id,
             payload=events.ChannelArchivedData(channel_id=channel.id).model_dump(mode="json"),
+        )
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="channel.archived",
+            target_type="channel",
+            target_id=channel.id,
         )
         await db.commit()
     return to_channel_out(channel, membership, None)

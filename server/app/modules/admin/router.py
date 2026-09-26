@@ -18,8 +18,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/users", response_model=AdminUserCreated, status_code=201)
-async def create_user(_: CurrentAdmin, body: AdminUserCreate, db: Db) -> AdminUserCreated:
-    user, temporary = await service.create_user(db, body)
+async def create_user(actor: CurrentAdmin, body: AdminUserCreate, db: Db) -> AdminUserCreated:
+    user, temporary = await service.create_user(db, body, actor=actor)
     return AdminUserCreated(user=to_admin_out(user), temporary_password=temporary)
 
 
@@ -41,5 +41,11 @@ async def reset_password(user_id: UUID, actor: CurrentAdmin, db: Db) -> Temporar
 
 
 @router.delete("/users/{user_id}/sessions", status_code=204)
-async def revoke_sessions(user_id: UUID, _: CurrentAdmin, db: Db) -> None:
-    await service.revoke_sessions(db, user_id)
+async def revoke_sessions(user_id: UUID, actor: CurrentAdmin, db: Db) -> None:
+    await service.revoke_sessions(db, actor, user_id)
+
+
+@router.post("/users/{user_id}/anonymize", response_model=AdminUserOut)
+async def anonymize_user(user_id: UUID, actor: CurrentAdmin, db: Db) -> AdminUserOut:
+    """Erase the identity and end all sessions; messages stay under a generic name (M10)."""
+    return to_admin_out(await service.anonymize_user(db, actor, user_id))
