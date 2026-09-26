@@ -193,6 +193,30 @@ export class AppController {
     }
   }
 
+  /** M11c: any member pins / unpins; the updated message (with pinned_at) replaces the row. */
+  async togglePin(message: MessageState): Promise<void> {
+    if (!this.api) return;
+    try {
+      this.store.upsertMessage(message.pinned_at ? await this.api.unpinMessage(message.id) : await this.api.pinMessage(message.id));
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  /** M11c: saved for me only; the store flag moves at once, bookmark.updated confirms on every device. */
+  async toggleBookmark(message: MessageState): Promise<void> {
+    if (!this.api) return;
+    const on = !this.store.isBookmarked(message.id);
+    this.store.setBookmarked(message.id, on);
+    try {
+      if (on) await this.api.bookmarkMessage(message.id);
+      else await this.api.unbookmarkMessage(message.id);
+    } catch (error) {
+      this.store.setBookmarked(message.id, !on);
+      this.setError(error);
+    }
+  }
+
   async toggleReaction(message: MessageState, emoji: string): Promise<void> {
     const me = this.store.me;
     if (!this.api || !me) return;

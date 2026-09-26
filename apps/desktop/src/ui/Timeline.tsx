@@ -1,4 +1,4 @@
-import { ArrowDown, Mail, MessageSquare, MessagesSquare, Pencil, SmilePlus, Trash2 } from "lucide-react";
+import { ArrowDown, Bookmark, BookmarkCheck, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -224,6 +224,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const reactions = message.reactions ?? [];
   const highlighted = controller.messageFocus?.messageId === message.id;
   const size = thread ? 30 : 36;
+  const saved = store.isBookmarked(message.id);
+  const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   return (
     <article
       key={message.id}
@@ -248,6 +250,20 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         {compact ? <span className="time-hover pt-1 text-[10px] leading-4 text-muted">{timeLabel(message.created_at)}</span> : <Avatar id={message.sender_id} name={senderName} size={size} />}
       </div>
       <div className="min-w-0">
+        {(pinnedBy || saved) && (
+          <div className="mb-0.5 flex items-center gap-3 text-[11px] text-muted">
+            {pinnedBy && (
+              <span className="inline-flex items-center gap-1 text-warning" title={message.pinned_at ? fullTimestamp(message.pinned_at) : undefined}>
+                <Pin size={11} /> {pinnedBy} がピン留め
+              </span>
+            )}
+            {saved && (
+              <span className="inline-flex items-center gap-1 text-accent">
+                <BookmarkCheck size={11} /> 保存済み
+              </span>
+            )}
+          </div>
+        )}
         {!compact && (
           <div className="flex items-baseline gap-2 text-xs text-muted">
             <strong className="text-sm text-ink">{senderName}</strong>
@@ -335,6 +351,12 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
               <MessageSquare size={15} />
             </IconButton>
           )}
+          <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
+            {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+          </IconButton>
+          <IconButton label={message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め"} className={cn("h-7 w-7 hover:text-ink", message.pinned_at ? "text-warning" : "text-muted")} onClick={() => void controller.togglePin(message)}>
+            {message.pinned_at ? <PinOff size={15} /> : <Pin size={15} />}
+          </IconButton>
           {!thread && message.seq !== null && (
             <IconButton label="ここから未読にする (Alt+クリック)" className="h-7 w-7 text-muted hover:text-ink" onClick={() => engine?.markUnread(message.channel_id, message.seq!)}>
               <Mail size={15} />

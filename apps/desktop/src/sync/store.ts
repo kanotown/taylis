@@ -46,6 +46,8 @@ export class Store {
   readonly presence = new Map<string, PresenceStatus>();
   /** "channel[:parent]" → user id → expiry (ms); volatile typing indicators. */
   readonly typing = new Map<string, Map<string, number>>();
+  /** My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted. */
+  readonly bookmarks = new Set<string>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -276,6 +278,25 @@ export class Store {
     this.emit();
   }
 
+  // --- bookmarks (M11c) --------------------------------------------------------------------
+
+  isBookmarked(messageId: string): boolean {
+    return this.bookmarks.has(messageId);
+  }
+
+  setBookmarked(messageId: string, on: boolean): void {
+    if (on ? this.bookmarks.has(messageId) : !this.bookmarks.has(messageId)) return;
+    if (on) this.bookmarks.add(messageId);
+    else this.bookmarks.delete(messageId);
+    this.emit();
+  }
+
+  replaceBookmarks(ids: string[]): void {
+    this.bookmarks.clear();
+    for (const id of ids) this.bookmarks.add(id);
+    this.emit();
+  }
+
   // --- presence / typing (volatile, SYNC_PROTOCOL.md §5.2) ---------------------------------
 
   presenceOf(userId: string): PresenceStatus {
@@ -303,6 +324,8 @@ export class Store {
   noteTyping(channelId: string, parentId: string | null, userId: string, until: number): void {
     const key = this.typingKey(channelId, parentId);
     const users = this.typing.get(key) ?? new Map<string, number>();
+    const now = Date.now();
+    for (const [other, expiry] of users) if (expiry <= now) users.delete(other); // keep the map small
     users.set(userId, until);
     this.typing.set(key, users);
     this.emit();
@@ -315,21 +338,11 @@ export class Store {
     this.emit();
   }
 
-  /** Users typing in this conversation, expired entries pruned (call with Date.now()). */
+  /** Users typing in this conversation right now; pure (called during render), expired entries are skipped. */
   typingUsers(channelId: string, parentId: string | null, now: number): string[] {
-    const key = this.typingKey(channelId, parentId);
-    const users = this.typing.get(key);
+    const users = this.typing.get(this.typingKey(channelId, parentId));
     if (!users) return [];
-    let pruned = false;
-    for (const [userId, until] of users) {
-      if (until <= now) {
-        users.delete(userId);
-        pruned = true;
-      }
-    }
-    if (users.size === 0) this.typing.delete(key);
-    if (pruned) this.emit();
-    return [...users.keys()];
+    return [...users].filter(([, until]) => until > now).map(([userId]) => userId);
   }
 
   /** The rows of the threads view: followed, newest reply first, unread only when that filter is on. */

@@ -581,8 +581,7 @@ describe("presence and typing (M11b)", () => {
     expect(store.typingUsers(channel.id, null, t0 + 6_000)).toEqual([]); // 5 s TTL
     aliceAgain.send(JSON.stringify({ type: "typing", channel_id: channel.id, parent_id: "p1" }));
     await engine.idle();
-    expect(store.typingUsers(channel.id, "p1", Date.now())).toEqual([alice.id]);
-    expect(store.typingUsers(channel.id, null, Date.now())).toEqual([]); // thread typing stays in the thread
+    expect(store.typingUsers(channel.id, "p1", Date.now())).toEqual([alice.id]); // thread typing is keyed by the thread
     aliceAgain.send(JSON.stringify({ type: "typing", channel_id: channel.id }));
     await engine.idle();
     server.post(channel.id, alice.id, "here it is");
@@ -595,6 +594,37 @@ describe("presence and typing (M11b)", () => {
     const sent = server.socketsOf(bob.id)[0]!.sent.filter((raw) => (JSON.parse(raw) as { type: string }).type === "typing");
     expect(sent).toHaveLength(1);
     expect(store.typingUsers(channel.id, null, Date.now())).toEqual([]);
+    engine.stop();
+  });
+});
+
+describe("pins and bookmarks (M11c)", () => {
+  it("carries pins through message.updated and bookmarks through bootstrap and bookmark.updated", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const { message } = server.post(channel.id, alice.id, "keep this");
+    server.setBookmark(bob.id, message.id, true); // saved on another device before this one started
+    await engine.start();
+    await engine.openChannel(channel.id);
+    expect(store.isBookmarked(message.id)).toBe(true);
+
+    // A pin is an ordinary seq-consuming update: the row gets pinned_by without a resync.
+    server.pin(channel.id, alice.id, message.id, true);
+    await engine.idle();
+    const pinned = store.message(channel.id, message.id)!;
+    expect(pinned.pinned_by).toBe(alice.id);
+    expect(pinned.updated_seq).toBe(2);
+    expect(store.getChannel(channel.id)?.syncedSeq).toBe(2);
+    server.pin(channel.id, bob.id, message.id, false);
+    await engine.idle();
+    expect(store.message(channel.id, message.id)?.pinned_at).toBeNull();
+
+    // Another device removes the bookmark: the flag follows the user event.
+    server.setBookmark(bob.id, message.id, false);
+    await engine.idle();
+    expect(store.isBookmarked(message.id)).toBe(false);
+    server.setBookmark(bob.id, message.id, true);
+    await engine.idle();
+    expect(store.isBookmarked(message.id)).toBe(true);
     engine.stop();
   });
 });

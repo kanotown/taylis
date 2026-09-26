@@ -1,7 +1,8 @@
-import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, Users } from "lucide-react";
+import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, Pin, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
+import type { MessageOut } from "../api/types";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
@@ -10,6 +11,8 @@ import { formatMuted } from "./format";
 import { readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writeSidebarWidth } from "./prefs";
 import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
+import { PinsPane } from "./PinsPane";
+import { SavedView } from "./SavedView";
 import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
@@ -38,9 +41,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads">("channel");
+  const [view, setView] = useState<"channel" | "threads" | "saved">("channel");
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [pinsOpen, setPinsOpen] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
@@ -75,8 +79,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const status = engine?.status ?? "idle";
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searching, switcher, view });
-  state.current = { currentId, dialog, threadId, searching, switcher, view };
+  const state = useRef({ currentId, dialog, threadId, searching, switcher, view, pinsOpen });
+  state.current = { currentId, dialog, threadId, searching, switcher, view, pinsOpen };
 
   useEffect(() => {
     if (!currentId && channels.length > 0) {
@@ -95,8 +99,32 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setCurrentId(id);
     setThreadId(null);
     setThreadChannelId(null);
+    setPinsOpen(false);
     setView("channel");
     setSwitcher(false);
+  };
+
+  const openSaved = () => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setSearching(false);
+    setPinsOpen(false);
+    setView((v) => (v === "saved" ? "channel" : "saved"));
+  };
+
+  /** A card in the pins pane / saved view: show the message in its conversation. */
+  const revealFromList = (message: MessageOut) => {
+    void controller.revealMessage(message).then((ok) => {
+      if (!ok) return;
+      setView("channel");
+      setSearching(false);
+      setPinsOpen(false);
+      setCurrentId(message.channel_id);
+      setThreadChannelId(message.channel_id);
+      setThreadId(message.parent_id ?? null);
+    });
   };
 
   const openThreads = () => {
@@ -161,9 +189,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
         if (s.switcher) setSwitcher(false);
         else if (s.dialog) setDialog(null);
         else if (s.searching) setSearching(false);
+        else if (s.pinsOpen) setPinsOpen(false);
         else if (s.threadId) setThreadId(null);
         else if (controller.editing) controller.setEditing(null);
-        else if (s.view === "threads") setView("channel");
+        else if (s.view !== "channel") setView("channel");
         else if (s.currentId) {
           // Nothing to close: Esc marks the open conversation read (Mattermost).
           const channel = controller.store.getChannel(s.currentId);
@@ -222,6 +251,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onSettings={() => setDialog("settings")}
         onThreads={openThreads}
         threadsActive={view === "threads"}
+        onSaved={openSaved}
+        savedActive={view === "saved"}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -244,6 +275,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         )}
         {view === "threads" ? (
           <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
+        ) : view === "saved" ? (
+          <SavedView controller={controller} onOpen={revealFromList} />
         ) : current ? (
           <>
             <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
@@ -272,6 +305,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 )}
               </div>
               <div className="flex items-center gap-0.5">
+                {current.isMember && (
+                  <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
+                    <Pin size={18} />
+                  </IconButton>
+                )}
                 {isChannel && (
                   <IconButton label="メンバー" onClick={() => setDialog("members")}>
                     <Users size={18} />
@@ -340,6 +378,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             });
           }}
         />
+      ) : pinsOpen && current && view === "channel" ? (
+        <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
       ) : threadId && threadChannel ? (
         <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
       ) : null}

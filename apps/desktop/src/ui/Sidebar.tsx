@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Hash, Lock, MessagesSquare, Plus, Search, Settings } from "lucide-react";
+import { AtSign, BellOff, Bookmark, Hash, Lock, MessagesSquare, Plus, Search, Settings } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -22,9 +22,12 @@ interface Props {
   /** The threads view (THREADS.md §5); `threadsActive` highlights its entry instead of a channel. */
   onThreads?: () => void;
   threadsActive?: boolean;
+  /** 「保存済み」 (M11c). */
+  onSaved?: () => void;
+  savedActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false }: Props) {
   const store = controller.store;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
@@ -131,6 +134,24 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               )}
             </button>
           </li>
+          {onSaved && (
+            <li>
+              <button
+                type="button"
+                onClick={onSaved}
+                aria-current={savedActive ? "page" : undefined}
+                title="保存したメッセージ"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  savedActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <Bookmark size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">保存済み</span>
+                {store.bookmarks.size > 0 && <span className="text-[11px] opacity-70">{store.bookmarks.size}</span>}
+              </button>
+            </li>
+          )}
         </ul>
       )}
 
