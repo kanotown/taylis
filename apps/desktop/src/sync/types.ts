@@ -1,6 +1,6 @@
-import type { AttachmentOut, ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
+import type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
 
-export type { AttachmentOut, ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic };
+export type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic };
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */
 export interface ChannelState extends ChannelOut {
@@ -13,6 +13,9 @@ export interface ChannelState extends ChannelOut {
   unreadCount: number;
   mentionCount: number;
   hasOlder: boolean;
+  /** Per-user notification preference (PUSH_NOTIFICATIONS.md §4); null = the channel type's default. */
+  notificationLevel: NotificationLevel | null;
+  mutedUntil: string | null;
 }
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */

@@ -26,7 +26,7 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
       setHasMore(result.has_more);
       setSearched(true);
     } catch (error) {
-      controller.error = error instanceof Error ? error.message : String(error);
+      controller.setError(error);
     } finally {
       setBusy(false);
     }

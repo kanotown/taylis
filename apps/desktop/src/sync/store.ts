@@ -1,4 +1,4 @@
-import type { ChannelOut, ChannelState, MessageState, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
+import type { ChannelOut, ChannelState, MessageState, NotificationLevel, OutboxItem, ParentThread, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -97,12 +97,18 @@ export class Store {
       unreadCount: channel.read_state?.unread_count ?? existing?.unreadCount ?? 0,
       mentionCount: channel.read_state?.mention_count ?? existing?.mentionCount ?? 0,
       hasOlder: existing?.hasOlder ?? true,
+      notificationLevel: channel.notification?.level ?? existing?.notificationLevel ?? null,
+      mutedUntil: channel.notification ? (channel.notification.muted_until ?? null) : (existing?.mutedUntil ?? null),
       ...patch,
     };
     this.channels.set(channel.id, merged);
     this.persist((p) => p.saveChannel(merged));
     this.emit();
     return merged;
+  }
+
+  setNotification(channelId: string, level: NotificationLevel, mutedUntil: string | null): void {
+    this.updateChannel(channelId, { notificationLevel: level, mutedUntil });
   }
 
   updateChannel(id: string, patch: Partial<ChannelState>): ChannelState | undefined {

@@ -1,24 +1,32 @@
 import { useEffect, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { ChannelState } from "../sync/types";
+import type { ChannelState, NotificationLevel } from "../sync/types";
 import { Composer } from "./Composer";
-import { AddMemberDialog, NewChannelDialog, NewDmDialog } from "./Dialogs";
+import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, TopicDialog } from "./Dialogs";
+import { formatMuted } from "./format";
+import { QuickSwitcher } from "./QuickSwitcher";
 import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
+import { Toast } from "./Toast";
+
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | null;
 
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
-  const [dialog, setDialog] = useState<"dm" | "channel" | "members" | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [switcher, setSwitcher] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
+  const status = engine?.status ?? "idle";
 
   useEffect(() => {
     if (!currentId && channels.length > 0) {
@@ -31,17 +39,53 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (currentId && engine) void engine.openChannel(currentId);
   }, [currentId, engine]);
 
+  // Keyboard: Ctrl/⌘+K quick switcher, Ctrl/⌘+F search, Esc closes the right pane / dialogs.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSwitcher(true);
+      } else if (mod && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearching(true);
+      } else if (event.key === "Escape") {
+        if (switcher) setSwitcher(false);
+        else if (dialog) setDialog(null);
+        else if (searching) setSearching(false);
+        else if (threadId) setThreadId(null);
+        setBellOpen(false);
+      }
+    };
+    const onSwitch = () => setSwitcher(true);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("chikuwa:quick-switch", onSwitch);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("chikuwa:quick-switch", onSwitch);
+    };
+  }, [switcher, dialog, searching, threadId]);
+
   const open = (id: string) => {
     setCurrentId(id);
     setThreadId(null);
+    setSwitcher(false);
   };
 
   const join = async (id: string) => {
     if (!controller.api) return;
-    const channel = await controller.api.joinChannel(id);
-    store.upsertChannel(channel, { isMember: true });
-    setCurrentId(id);
+    try {
+      const channel = await controller.api.joinChannel(id);
+      store.upsertChannel(channel, { isMember: true });
+      setCurrentId(id);
+    } catch (error) {
+      controller.setError(error);
+    }
   };
+
+  const muteLabel = current ? formatMuted(current.mutedUntil) : null;
+  const level: NotificationLevel = current?.notificationLevel ?? (current && (current.type === "dm" || current.type === "group_dm") ? "all" : "mentions");
+  const isChannel = current?.type === "public" || current?.type === "private";
 
   return (
     <div className="layout">
@@ -54,30 +98,87 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onNewDm={() => setDialog("dm")}
         onNewChannel={() => setDialog("channel")}
         onSearch={() => setSearching(true)}
+        onSettings={() => setDialog("settings")}
       />
       <main className="main">
+        {status !== "online" && status !== "idle" && (
+          <div className={`connection ${status}`}>{status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}</div>
+        )}
         {current ? (
           <>
             <header className="channel-header">
-              <strong>{channelTitle(current, controller)}</strong>
-              {current.topic && <span className="muted"> — {current.topic}</span>}
-              {current.archived && <span className="badge">アーカイブ済み</span>}
-              {!current.isMember && (
-                <button className="secondary" onClick={() => void join(current.id)}>
-                  参加する
-                </button>
-              )}
-              {current.isMember && (current.type === "public" || current.type === "private") && !current.archived && (
-                <button className="secondary" onClick={() => setDialog("members")}>
-                  メンバーを追加
-                </button>
-              )}
+              <div className="title">
+                <strong>{channelTitle(current, controller)}</strong>
+                {current.archived && <span className="badge">アーカイブ済み</span>}
+                {isChannel && current.isMember && !current.archived && (
+                  <button className="link topic" onClick={() => setDialog("topic")} title="トピックを編集">
+                    {current.topic ? current.topic : "トピックを追加"}
+                  </button>
+                )}
+                {!isChannel && current.topic && <span className="muted">{current.topic}</span>}
+              </div>
+              <div className="tools">
+                {isChannel && (
+                  <button className="icon" title="メンバー" onClick={() => setDialog("members")}>
+                    👥
+                  </button>
+                )}
+                {current.isMember && (
+                  <span className="bell">
+                    <button className="icon" title="通知設定" onClick={() => setBellOpen((v) => !v)}>
+                      {level === "none" || muteLabel ? "🔕" : "🔔"}
+                    </button>
+                    {bellOpen && (
+                      <div className="menu" onMouseLeave={() => setBellOpen(false)}>
+                        {(
+                          [
+                            ["all", "すべてのメッセージ"],
+                            ["mentions", "メンションのみ"],
+                            ["none", "通知しない"],
+                          ] as Array<[NotificationLevel, string]>
+                        ).map(([value, label]) => (
+                          <button
+                            key={value}
+                            className={level === value ? "active" : ""}
+                            onClick={() => {
+                              setBellOpen(false);
+                              void controller.setNotification(current.id, value, null);
+                            }}
+                          >
+                            {level === value ? "✓ " : ""}
+                            {label}
+                          </button>
+                        ))}
+                        <hr />
+                        {muteLabel ? (
+                          <button onClick={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</button>
+                        ) : (
+                          <button onClick={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>
+                            8 時間ミュート
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </span>
+                )}
+                {!current.isMember && (
+                  <button className="secondary" onClick={() => void join(current.id)}>
+                    参加する
+                  </button>
+                )}
+              </div>
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
             {current.isMember && !current.archived && <Composer controller={controller} channel={current} />}
+            {current.archived && <div className="muted archived-note">アーカイブされたチャンネルには投稿できません</div>}
           </>
         ) : (
-          <div className="centered muted">チャンネルを選択してください</div>
+          <div className="centered muted">
+            <div className="empty-state">
+              <strong>チャンネルを選択してください</strong>
+              <span>左のリストから選ぶか、Ctrl/⌘+K で移動できます。</span>
+            </div>
+          </div>
         )}
       </main>
       {searching ? (
@@ -95,9 +196,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : (
         <aside className="thread-panel" aria-hidden="true" />
       )}
+      <Toast controller={controller} />
+      {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
-      {dialog === "members" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog(null)} />}
+      {dialog === "members" && current && (
+        <MembersDialog controller={controller} channel={current} onClose={() => setDialog(null)} onAdd={() => setDialog("add-member")} />
+      )}
+      {dialog === "add-member" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog("members")} />}
+      {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
+      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} />}
     </div>
   );
 }
