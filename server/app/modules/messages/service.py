@@ -1,6 +1,7 @@
 """Message creation with channel sequence allocation and client idempotency keys."""
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,7 @@ from app.modules.messages.models import Message
 from app.modules.messages.schemas import (
     DeltaOut,
     HistoryOut,
+    MentionListOut,
     MessageCreate,
     MessageEdit,
     MessageOut,
@@ -251,6 +253,15 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     )
     await db.commit()
     return out
+
+
+async def list_mentions(
+    db: AsyncSession, actor: User, *, cursor: datetime | None, limit: int
+) -> MentionListOut:
+    rows = await repo.list_mentions(db, actor.id, before=cursor, limit=limit)
+    return MentionListOut(
+        items=await messages_out(db, rows), next_cursor=rows[-1].created_at if rows else None
+    )
 
 
 async def set_pin(

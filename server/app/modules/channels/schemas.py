@@ -48,6 +48,8 @@ class ChannelOut(BaseModel):
     # Filled by the sync module for the requesting user (bootstrap); None elsewhere.
     notification: NotificationPreferenceOut | None = None
     read_state: ReadStateOut | None = None
+    # M11h: how many people are in the channel (browser, intro); None where not computed.
+    member_count: int | None = None
 
 
 class MemberOut(BaseModel):

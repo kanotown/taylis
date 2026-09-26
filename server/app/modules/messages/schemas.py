@@ -90,6 +90,13 @@ class MessageOut(BaseModel):
     pinned_by: UUID | None = None
 
 
+class MentionListOut(BaseModel):
+    """Messages that mention me (M11h), newest first; `next_cursor` goes back as `cursor`."""
+
+    items: list[MessageOut]
+    next_cursor: datetime | None
+
+
 class HistoryOut(BaseModel):
     channel_last_seq: int
     messages: list[MessageOut]
