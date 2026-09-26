@@ -19,6 +19,7 @@ from app.modules.channels.models import Channel, ChannelMember
 from app.modules.channels.schemas import (
     ChannelCreate,
     ChannelOut,
+    ChannelReadStateOut,
     ChannelUpdate,
     MemberOut,
     MembershipOut,
@@ -450,6 +451,21 @@ async def get_or_create_dm(
                 raise
     membership = await repo.get_membership(db, channel.id, actor.id)
     return to_channel_out(channel, membership, user_ids), created
+
+
+async def mark_all_read(db: AsyncSession, actor: User) -> list[ChannelReadStateOut]:
+    """POST /channels/read-all (M12a): every channel I belong to is read to its end.
+
+    Each channel that moves emits its own read.updated, so other devices catch up as usual.
+    """
+    states: list[ChannelReadStateOut] = []
+    for channel in await list_channels(db, actor, include_public=False):
+        state = await reads.advance_in_tx(
+            db, actor.id, channel.id, channel.last_seq, last_seq=channel.last_seq
+        )
+        states.append(ChannelReadStateOut(channel_id=channel.id, **state.model_dump()))
+    await db.commit()
+    return states
 
 
 async def mark_read(

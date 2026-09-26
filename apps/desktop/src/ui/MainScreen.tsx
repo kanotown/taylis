@@ -1,4 +1,4 @@
-import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Users } from "lucide-react";
+import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -187,7 +187,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const navigationOrder = () => {
       const all = [...controller.store.channels.values()];
       const sections = sectionChannels(all, (c) => channelTitle(c, controller));
-      return [...sections.channels, ...sections.dms];
+      return [...sections.favorites, ...sections.channels, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
@@ -303,6 +303,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         draftsActive={view === "drafts"}
         onFiles={() => (view === "files" ? setView("channel") : openFiles(null))}
         filesActive={view === "files"}
+        onReadAll={() => void controller.markAllRead()}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -368,6 +369,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
               <div className="flex items-center gap-0.5">
                 {current.isMember && (
                   <>
+                    <IconButton
+                      label={store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
+                      className={cn(store.isFavorite(current.id) && "text-warning")}
+                      onClick={() => void controller.toggleFavorite(current.id)}
+                    >
+                      <Star size={18} className={cn(store.isFavorite(current.id) && "fill-current")} />
+                    </IconButton>
                     <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
                       <Pin size={18} />
                     </IconButton>

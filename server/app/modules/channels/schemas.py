@@ -64,3 +64,12 @@ class MemberAdd(BaseModel):
 
 class DmCreate(BaseModel):
     user_ids: list[UUID] = Field(min_length=1, max_length=9)
+
+
+class ChannelReadStateOut(BaseModel):
+    """One channel's read state after POST /channels/read-all (M12a)."""
+
+    channel_id: UUID
+    last_read_seq: int
+    unread_count: int
+    mention_count: int

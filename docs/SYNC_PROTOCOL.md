@@ -68,7 +68,8 @@
   "limits": { "max_message_length": 20000, "max_attachment_bytes": 104857600, "max_attachments_per_message": 10 },
   "threads": { "unread_count": 2, "mention_count": 1 },
   "presence": [ { "user_id": "...", "status": "online" } ],
-  "bookmarks": [ "<message_id>", "..." ]
+  "bookmarks": [ "<message_id>", "..." ],
+  "favorites": [ "<channel_id>", "..." ]
 }
 ```
 
@@ -78,6 +79,7 @@
 - `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
 - `presence` は今つながっているユーザー (§5.2)。載っていないユーザーは offline。以後の変化は `presence` フレームで届く。
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
+- `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -126,6 +128,9 @@
 - 送信者はサーバが認証情報から決める。本文の `created_at` などクライアントの時刻は受け取らない。
 
 ### 4.5 `PUT /api/v1/channels/{id}/read`
+
+`POST /api/v1/channels/read-all` (M12a 「すべて既読にする」) は参加中の全チャンネルを末尾まで既読にし、動いたチャンネルごとに
+`read.updated (reason=advance)` を出す。応答は `{ channel_id, last_read_seq, unread_count, mention_count }` の配列。
 
 ```json
 { "last_read_seq": 1532 }
@@ -192,6 +197,7 @@
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
+| `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |

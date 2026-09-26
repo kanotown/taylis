@@ -32,3 +32,5 @@ class BootstrapOut(BaseModel):
     presence: list[PresenceEntry] = []
     # My saved messages (M11c): ids only, newest first; the list itself is GET /bookmarks.
     bookmarks: list[UUID] = []
+    # My starred channels (M12a) among the channels above, oldest star first.
+    favorites: list[UUID] = []

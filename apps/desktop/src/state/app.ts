@@ -229,6 +229,30 @@ export class AppController {
     }
   }
 
+  /** M12a: a starred channel; the store flag moves at once, favorite.updated confirms on every device. */
+  async toggleFavorite(channelId: string): Promise<void> {
+    if (!this.api) return;
+    const on = !this.store.isFavorite(channelId);
+    this.store.setFavorite(channelId, on);
+    try {
+      if (on) await this.api.favoriteChannel(channelId);
+      else await this.api.unfavoriteChannel(channelId);
+    } catch (error) {
+      this.store.setFavorite(channelId, !on);
+      this.setError(error);
+    }
+  }
+
+  /** M12a 「すべて既読にする」. */
+  async markAllRead(): Promise<void> {
+    if (!this.engine) return;
+    try {
+      await this.engine.markAllRead();
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   /** M11c: saved for me only; the store flag moves at once, bookmark.updated confirms on every device. */
   async toggleBookmark(message: MessageState): Promise<void> {
     if (!this.api) return;

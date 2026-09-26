@@ -10,6 +10,7 @@ from app.core.time import utcnow
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.bookmarks import service as bookmarks
 from app.modules.channels import service as channels
+from app.modules.favorites import service as favorites
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import service as reads
@@ -47,6 +48,7 @@ async def bootstrap(
         channels=with_prefs,
         threads=await threads.summary_for(db, actor.id),
         bookmarks=await bookmarks.ids_for(db, actor.id),
+        favorites=await favorites.ids_for(db, actor.id),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

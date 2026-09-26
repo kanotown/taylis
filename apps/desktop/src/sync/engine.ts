@@ -4,7 +4,7 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -18,6 +18,8 @@ export interface SyncApi {
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
+  /** M12a: every channel read to its end; returns the new states. */
+  readAll(): Promise<ChannelReadStateOut[]>;
   /** THREADS.md §3. */
   threads(options: { filter: ThreadFilter; cursor?: string | null; limit?: number }): Promise<ThreadListOut>;
   threadState(messageId: string): Promise<ThreadState>;
@@ -322,6 +324,15 @@ export class SyncEngine {
     if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
+    store.replaceFavorites(bootstrap.favorites ?? []);
+  }
+
+  /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
+  async markAllRead(): Promise<void> {
+    const states = await this.deps.api.readAll();
+    await this.enqueue(async () => {
+      for (const state of states) this.applyReadState(state.channel_id, state, false);
+    });
   }
 
   /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -394,6 +405,11 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "favorite.updated": {
+        const data = frame.data as { channel_id: string; favorite: boolean };
+        store.setFavorite(data.channel_id, data.favorite);
         return;
       }
       case "bookmark.updated": {
