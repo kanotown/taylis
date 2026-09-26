@@ -3,13 +3,14 @@
 セルフホスト型の Slack ライクなチャットシステム。FastAPI + PostgreSQL (PGroonga) + versitygw (S3 互換オブジェクトストレージ) の
 modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android のクライアントを持つ。
 
-開発方針は [CLAUDE.md](CLAUDE.md)。現在の状態: **設計段階 (M0 完了)**。実装は未着手。
+開発方針は [CLAUDE.md](CLAUDE.md)。進捗は [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) の
+マイルストーン表を参照 (M1 バックエンド基盤、M2 同期、M3 Desktop まで完了)。
 
 ## 構成
 
 ```
 server/         FastAPI サーバ (modular monolith)
-apps/desktop/   Desktop クライアント (Tauri 2 + React + TypeScript)
+apps/desktop/   Desktop クライアント (Tauri 2 + React + TypeScript、Windows / macOS)
 apps/ios/       iOS クライアント (Swift / SwiftUI)
 apps/android/   Android クライアント (Kotlin / Jetpack Compose)
 infra/          Docker Compose、Caddy、運用手順
