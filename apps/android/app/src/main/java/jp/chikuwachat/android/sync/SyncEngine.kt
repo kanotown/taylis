@@ -37,6 +37,7 @@ interface SyncApi {
     suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
+    suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
 }
 
@@ -110,6 +111,9 @@ class SyncEngine(
     private var flushing = false
     private var reconnectAttempt = 0
     private val pendingReads = HashMap<String, Job>()
+    /** Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10). */
+    private val unreadHold = HashMap<String, Int>()
+    fun heldUnread(channelId: String): Int? = unreadHold[channelId]
 
     // --- serial work queue --------------------------------------------------------------------
 
@@ -384,6 +388,7 @@ class SyncEngine(
     private fun countUnread(message: MessageOut) {
         val me = store.me ?: return
         if (message.senderId == me.id) {
+            unreadHold.remove(message.channelId) // sending reads the conversation (the server does the same)
             store.updateChannel(message.channelId) { it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0) }
             return
         }
@@ -395,8 +400,9 @@ class SyncEngine(
     }
 
     private fun applyReadState(channelId: String, state: ReadStateOut) {
+        // The server's position wins, downwards too (another device may have marked messages unread).
         val updated = store.updateChannel(channelId) {
-            it.copy(lastReadSeq = maxOf(it.lastReadSeq, state.lastReadSeq), unreadCount = state.unreadCount, mentionCount = state.mentionCount)
+            it.copy(lastReadSeq = state.lastReadSeq, unreadCount = state.unreadCount, mentionCount = state.mentionCount)
         } ?: return
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
     }
@@ -425,6 +431,7 @@ class SyncEngine(
 
     suspend fun openChannel(channelId: String) {
         currentChannelId = channelId
+        unreadHold.keys.filter { it != channelId }.forEach { unreadHold.remove(it) }
         if (_status.value != EngineStatus.ONLINE) return
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
@@ -434,8 +441,33 @@ class SyncEngine(
     }
 
     /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
-    fun markRead(channelId: String, seq: Int) {
+    /** 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once. */
+    fun markUnread(channelId: String, seq: Int) {
+        if (_status.value != EngineStatus.ONLINE || seq < 1) return
+        val channel = store.channel(channelId) ?: return
+        if (!channel.isMember) return
+        val target = seq - 1
+        unreadHold[channelId] = target
+        pendingReads.remove(channelId)?.cancel()
+        val me = store.me?.id
+        val later = store.messages(channelId).filter { (it.seq ?: 0) > target && it.senderId != me }
+        store.updateChannel(channelId) {
+            it.copy(
+                lastReadSeq = target,
+                unreadCount = later.size,
+                mentionCount = later.count { m -> me != null && (m.mentionAll || me in m.mentionedUserIds) },
+            )
+        }
+        pendingReads[channelId] = scope.launch {
+            val state = runCatching { api.setReadPosition(channelId, target) }.getOrNull()
+            pendingReads.remove(channelId)
+            if (state != null) post { applyReadState(channelId, state) }
+        }
+    }
+
+    fun markRead(channelId: String, seq: Int, force: Boolean = false) {
         if (_status.value != EngineStatus.ONLINE || !isActive()) return
+        if (force) unreadHold.remove(channelId) else if (unreadHold.containsKey(channelId)) return
         val channel = store.channel(channelId) ?: return
         if (!channel.isMember || seq <= channel.lastReadSeq) return
         store.updateChannel(channelId) {

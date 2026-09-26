@@ -343,6 +343,49 @@ describe("attachments (M9a)", () => {
 });
 
 
+describe("mark as unread (§10 mode=set)", () => {
+  it("moves the position back, pauses visible marking until the channel is left, and follows other devices", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
+    for (const body of ["m1", "m2", "m3"]) server.post(channel.id, alice.id, body);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    engine.markRead(channel.id, 3);
+    await engine.flushReads();
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(0);
+
+    engine.markUnread(channel.id, 2); // 「ここから未読にする」 on m2
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(1);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(2);
+    await engine.flushReads();
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(1);
+    // Visible-range marking is ignored while the hold is on…
+    engine.markRead(channel.id, 3);
+    await engine.flushReads();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(1);
+    // …an explicit read (Esc) overrides it…
+    engine.markRead(channel.id, 3, { force: true });
+    await engine.flushReads();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(3);
+    // …and leaving the channel drops the hold.
+    engine.markUnread(channel.id, 3);
+    await engine.flushReads();
+    const other = server.createChannel("other", alice.id);
+    server.join(other.id, bob.id);
+    store.upsertChannel(other, { isMember: true });
+    await engine.openChannel(other.id);
+    engine.markRead(channel.id, 3);
+    await engine.flushReads();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(3);
+
+    // Another device marking unread arrives as read.updated and lowers the position here too.
+    server.markRead(bob.id, channel.id, 0, "set");
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(0);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(3);
+    engine.stop();
+  });
+});
+
 describe("conversation safety", () => {
   it("does not mark an opened channel read while inactive or offline", async () => {
     const { server, alice, channel, store, engine } = await setup();

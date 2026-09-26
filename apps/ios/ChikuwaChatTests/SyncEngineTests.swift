@@ -145,6 +145,37 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testMarkUnreadMovesBackHoldsVisibleMarkingAndFollowsOtherDevices() async throws {
+        let w = makeWorld()
+        w.engine.isActive = { true }
+        for body in ["m1", "m2", "m3"] { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: body) }
+        await w.engine.start()
+        await settle(w.engine)
+        await w.engine.openChannel(w.channel.id)
+        w.engine.markRead(w.channel.id, seq: 3)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 0)
+
+        w.engine.markUnread(w.channel.id, seq: 2) // 「ここから未読にする」 on m2
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [1, 2])
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).lastReadSeq, 1)
+        w.engine.markRead(w.channel.id, seq: 3) // visible-range marking is on hold
+        await w.engine.flushReads()
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 1)
+        w.engine.markRead(w.channel.id, seq: 3, force: true) // an explicit read overrides the hold
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 3)
+
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 0, mode: "set") // another device
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [0, 3])
+        w.engine.stop()
+    }
+
     func testUnreadCountsFollowReadsAcrossDevices() async throws {
         let w = makeWorld()
         w.engine.isActive = { true }

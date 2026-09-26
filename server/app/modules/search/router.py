@@ -22,6 +22,7 @@ async def search_messages(
     from_user_id: UUID | None = None,
     after: datetime | None = None,
     before: datetime | None = None,
+    tz_offset_minutes: int = Query(default=0, ge=-840, le=840),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10_000),
 ) -> SearchOut:
@@ -35,6 +36,7 @@ async def search_messages(
         from_user_id=from_user_id,
         after=after,
         before=before,
+        tz_offset_minutes=tz_offset_minutes,
         limit=limit,
         offset=offset,
     )

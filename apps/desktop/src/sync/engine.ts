@@ -17,7 +17,7 @@ export interface SyncApi {
   replies(messageId: string): Promise<MessageOut[]>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
-  markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut>;
+  markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
 }
 
 export interface WsLike {
@@ -62,6 +62,8 @@ export interface EngineOptions {
 export class SyncEngine {
   status: EngineStatus = "idle";
   currentChannelId: string | null = null;
+  /** Channels marked unread by hand: visible-range marking pauses until the reader leaves them (§10). */
+  readonly unreadHold = new Map<string, number>();
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
   private readonly pendingReads = new Map<string, Promise<void>>();
   private readonly readCancels = new Map<string, () => void>();
@@ -395,6 +397,7 @@ export class SyncEngine {
     const channel = store.getChannel(message.channel_id);
     if (!me || !channel) return;
     if (message.sender_id === me.id) {
+      this.unreadHold.delete(channel.id); // sending reads the conversation (server does the same)
       store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
       return;
     }
@@ -407,8 +410,9 @@ export class SyncEngine {
   private applyReadState(channelId: string, state: ReadStateOut): void {
     const channel = this.deps.store.getChannel(channelId);
     if (!channel) return;
+    // The server's position wins, downwards too (another device may have marked messages unread).
     this.deps.store.updateChannel(channelId, {
-      lastReadSeq: Math.max(channel.lastReadSeq, state.last_read_seq),
+      lastReadSeq: state.last_read_seq,
       unreadCount: state.unread_count,
       mentionCount: state.mention_count,
     });
@@ -435,6 +439,7 @@ export class SyncEngine {
 
   openChannel(channelId: string): Promise<void> {
     this.currentChannelId = channelId;
+    for (const held of [...this.unreadHold.keys()]) if (held !== channelId) this.unreadHold.delete(held);
     if (this.status !== "online") return Promise.resolve();
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);
@@ -444,9 +449,44 @@ export class SyncEngine {
     });
   }
 
+  /**
+   * 「ここから未読にする」: the position becomes seq - 1 at once and on the server (mode=set), and the
+   * visible-range marking stays paused for this channel until the reader opens another one.
+   */
+  markUnread(channelId: string, seq: number): void {
+    if (this.status !== "online") return;
+    const store = this.deps.store;
+    const channel = store.getChannel(channelId);
+    if (!channel || !channel.isMember || seq < 1) return;
+    const target = seq - 1;
+    this.unreadHold.set(channelId, target);
+    this.readCancels.get(channelId)?.();
+    const me = store.me?.id;
+    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && m.sender_id !== me);
+    store.updateChannel(channelId, {
+      lastReadSeq: target,
+      unreadCount: later.length,
+      mentionCount: later.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(me ?? "")).length,
+    });
+    const pending = (async () => {
+      try {
+        const state = await this.deps.api.markRead(channelId, target, "set");
+        await this.enqueue(async () => this.applyReadState(channelId, state));
+      } catch {
+        // the position moved locally; bootstrap or the next mark reconciles
+      }
+    })();
+    this.pendingReads.set(channelId, pending);
+    void pending.finally(() => {
+      if (this.pendingReads.get(channelId) === pending) this.pendingReads.delete(channelId);
+    });
+  }
+
   /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
-  markRead(channelId: string, seq: number): void {
+  markRead(channelId: string, seq: number, options: { force?: boolean } = {}): void {
     if (this.status !== "online" || this.deps.isActive?.() === false) return;
+    if (options.force) this.unreadHold.delete(channelId);
+    else if (this.unreadHold.has(channelId)) return;
     const store = this.deps.store;
     const channel = store.getChannel(channelId);
     if (!channel || !channel.isMember || seq <= channel.lastReadSeq) return;

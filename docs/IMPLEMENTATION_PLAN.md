@@ -260,6 +260,34 @@ Desktop の型検査 / ビルド、iOS Simulator のビルド、Android の Lint
 LIVE バックエンドテストは接続資格情報が無いため 1 件ずつスキップ。実機での操作感、3 端末間の実接続、
 APNs / FCM の実配信は別途受け入れ確認が必要。
 
+### Slack / Mattermost 流の操作 (2026-09-26、3 端末)
+
+Mattermost の公開コードは「振る舞いの仕様書」として参照した (webapp / mobile / desktop は Apache 2.0、
+サーバ本体は AGPLv3。コードの転用はしていない)。
+
+1 回目 (UI のみ):
+
+- ミュート中 (`level=none` または期限付きミュート) の会話は太字・未読件数を出さず、メンションだけバッジにする。
+  iOS のアプリバッジ、各端末のローカル通知 (all / mentions / none) も同じ規則。
+- サイドバーの未読フィルタ (Desktop はトグル、Android はチップ、iOS はセグメント)。開いている会話は常に残す。
+- Desktop のキーボード: Alt+↑↓ でチャンネル移動、Alt+Shift+↑↓ で未読チャンネル移動、Ctrl/⌘+Shift+K で DM、
+  Ctrl/⌘+Shift+L で入力欄、Ctrl/⌘+U で添付、Ctrl/⌘+/ で一覧、Esc は何も開いていなければ表示中の会話を既読に
+  する。空の入力欄で ↑ は自分の最後の投稿を編集、Shift+↑ は最新の投稿にスレッド返信。
+- 下にスクロールしていないときの「新着 N 件」ボタン。
+
+2 回目 (サーバを含む):
+
+- 「ここから未読にする」: `PUT /channels/{id}/read` の `mode: "set"` (SYNC_PROTOCOL.md §10)。操作した端末は
+  その会話を離れるまで表示範囲による既読更新を止め、他端末は `read.updated` の値で位置を下げる。
+  Desktop はホバー操作と Alt+クリック、iOS / Android は長押しメニュー。
+- 検索の修飾子 `from:@user` `in:#channel` `before:` `after:` `on:` (DATA_MODEL.md 検索)。日付は端末の
+  タイムゾーンで解釈し、解決できない条件は `filters.unresolved` として画面に出す。
+
+検証: サーバの pytest / ruff / mypy、Desktop の typecheck / vitest / vite build、iOS の XCTest、
+Android の JUnit / Lint / assembleDebug がすべて成功 (契約テストと FakeServer を含む)。
+
+次: フォロー中スレッドの一覧は THREADS.md の設計に沿って実装する。
+
 ### バックログ (未スケジュール)
 
 typing / presence、ピン留め、ブックマーク、カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、

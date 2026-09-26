@@ -112,7 +112,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         else if (s.currentId) {
           // Nothing to close: Esc marks the open conversation read (Mattermost).
           const channel = controller.store.getChannel(s.currentId);
-          if (channel && hasUnread(channel)) controller.engine?.markRead(channel.id, channel.lastSeq);
+          if (channel && hasUnread(channel)) controller.engine?.markRead(channel.id, channel.lastSeq, { force: true });
         }
         setBellOpen(false);
       }

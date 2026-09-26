@@ -189,6 +189,8 @@ export class ApiClient {
   searchMessages(query: string, options: { channelId?: string | null; limit?: number; offset?: number } = {}): Promise<SearchOut> {
     const params = new URLSearchParams({ q: query, limit: String(options.limit ?? 20), offset: String(options.offset ?? 0) });
     if (options.channelId) params.set("channel_id", options.channelId);
+    // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
+    params.set("tz_offset_minutes", String(-new Date().getTimezoneOffset()));
     return this.request("GET", `/api/v1/search/messages?${params}`);
   }
 
@@ -247,8 +249,8 @@ export class ApiClient {
     return this.request("GET", `/api/v1/messages/${messageId}/replies`);
   }
 
-  markRead(channelId: string, lastReadSeq: number): Promise<ReadStateOut> {
-    return this.request("PUT", `/api/v1/channels/${channelId}/read`, { last_read_seq: lastReadSeq });
+  markRead(channelId: string, lastReadSeq: number, mode: "advance" | "set" = "advance"): Promise<ReadStateOut> {
+    return this.request("PUT", `/api/v1/channels/${channelId}/read`, mode === "set" ? { last_read_seq: lastReadSeq, mode } : { last_read_seq: lastReadSeq });
   }
 
   editMessage(messageId: string, body: string): Promise<MessageOut> {

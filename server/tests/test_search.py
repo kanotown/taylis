@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from httpx import AsyncClient
@@ -119,3 +120,59 @@ async def test_search_matches_japanese_and_english_within_my_channels(
     assert [h["message"]["id"] for h in (await _search(client, "議事録"))["hits"]] == [
         with_file["id"]
     ]
+
+
+async def test_search_modifiers_filter_by_author_channel_and_date(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    await make_user(db, "bob")
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    other = (await client.post("/api/v1/channels", json={"name": "other"})).json()
+    bob = (await client.get("/api/v1/users")).json()
+    bob_user = next(u for u in bob if u["username"] == "bob")
+    as_user(await db.get(User, uuid.UUID(bob_user["id"])))  # type: ignore[arg-type]
+    await client.post(f"/api/v1/channels/{general['id']}/join")
+    as_user(alice)
+    await _post(client, general["id"], "report ready")
+    await _post(client, other["id"], "report archived")
+    as_user(await db.get(User, uuid.UUID(bob_user["id"])))  # type: ignore[arg-type]
+    await _post(client, general["id"], "report late")
+
+    as_user(alice)
+    assert bodies(await _search(client, "from:@bob report")) == ["report late"]
+    assert bodies(await _search(client, "in:#general report from:@alice")) == ["report ready"]
+    scoped = await _search(client, "in:general report")
+    assert set(bodies(scoped)) == {"report ready", "report late"}
+    assert scoped["filters"]["text"] == "report"
+    assert scoped["filters"]["in_channel"] == "general"
+    assert scoped["filters"]["from_username"] is None
+    assert scoped["filters"]["unresolved"] == []
+
+    # Dates are midnight in the caller's zone and exclusive, like Slack's before: / after:.
+    today = datetime.now(UTC).date()
+    assert len(bodies(await _search(client, f"report before:{today + timedelta(days=1)}"))) == 3
+    assert bodies(await _search(client, f"report before:{today}")) == []
+    assert len(bodies(await _search(client, f"report after:{today - timedelta(days=1)}"))) == 3
+    assert bodies(await _search(client, f"report after:{today}")) == []
+    assert len(bodies(await _search(client, f"report on:{today}"))) == 3
+    jst_today = (datetime.now(UTC) + timedelta(hours=9)).date()
+    assert len(bodies(await _search(client, f"report on:{jst_today}", tz_offset_minutes=540))) == 3
+
+    # A modifier that names nothing the caller can see returns nothing rather than guessing.
+    for query, token in (
+        ("report from:@nobody", "from:@nobody"),
+        ("report in:#secret", "in:#secret"),
+        ("report before:yesterday", "before:yesterday"),
+    ):
+        result = await _search(client, query)
+        assert result["hits"] == []
+        assert result["filters"]["unresolved"] == [token]
+
+    # Modifiers only: newest first, no ranking and no keywords to highlight.
+    listed = await _search(client, "from:@alice")
+    assert bodies(listed) == ["report archived", "report ready"]
+    assert listed["keywords"] == []
+    assert all(hit["score"] == 0 for hit in listed["hits"])
+    assert (await client.get("/api/v1/search/messages", params={"q": "   "})).status_code == 400

@@ -143,11 +143,12 @@ export class FakeServer {
   }
 
   /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
-  markRead(userId: string, channelId: string, seq: number): ReadStateOut {
+  markRead(userId: string, channelId: string, seq: number, mode: "advance" | "set" = "advance"): ReadStateOut {
     const record = this.requireMember(channelId, userId);
     const key = `${userId}:${channelId}`;
     const target = Math.min(seq, record.channel.last_seq);
-    if (target > (this.readPositions.get(key) ?? 0)) {
+    const current = this.readPositions.get(key) ?? 0;
+    if (mode === "set" ? target !== current : target > current) {
       this.readPositions.set(key, target);
       const state = this.readState(userId, channelId);
       this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "read.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, ...state } });
@@ -390,9 +391,9 @@ export class FakeServer {
         this.requireMember(record.channel.id, userId);
         return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
       },
-      markRead: async (channelId, lastReadSeq): Promise<ReadStateOut> => {
+      markRead: async (channelId, lastReadSeq, mode = "advance"): Promise<ReadStateOut> => {
         maybeFail();
-        return this.markRead(userId, channelId, lastReadSeq);
+        return this.markRead(userId, channelId, lastReadSeq, mode);
       },
       publicChannels: async (): Promise<ChannelOut[]> =>
         [...this.channels.values()]

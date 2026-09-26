@@ -188,6 +188,8 @@ final class ApiClient: SyncApi {
     func searchMessages(_ query: String, channelId: String? = nil, limit: Int = 20, offset: Int = 0) async throws -> SearchOut {
         var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "offset", value: String(offset))]
         if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
+        items.append(URLQueryItem(name: "tz_offset_minutes", value: String(TimeZone.current.secondsFromGMT() / 60)))
         var components = URLComponents()
         components.path = "/api/v1/search/messages"
         components.queryItems = items
@@ -245,6 +247,12 @@ final class ApiClient: SyncApi {
 
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
         try await request("PUT", "/api/v1/channels/\(channelId)/read", body: .object(["last_read_seq": .number(Double(lastReadSeq))]))
+    }
+
+    /// 「ここから未読にする」: the exact position, may move backwards (SYNC_PROTOCOL.md §10 mode=set).
+    func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
+        try await request("PUT", "/api/v1/channels/\(channelId)/read",
+                          body: .object(["last_read_seq": .number(Double(lastReadSeq)), "mode": .string("set")]))
     }
 
     func editMessage(id: String, body: String) async throws -> MessageOut {

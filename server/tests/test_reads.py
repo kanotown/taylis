@@ -99,6 +99,55 @@ async def test_read_position_is_monotonic_and_counts_are_derived(
     assert denied.status_code == 403
 
 
+async def test_mark_unread_sets_the_position_and_recounts(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    cid = (await client.post("/api/v1/channels", json={"name": "general"})).json()["id"]
+    as_user(bob)
+    await client.post(f"/api/v1/channels/{cid}/join")
+    as_user(alice)
+    for body in ("m1", "m2", f"<@{bob.id}> m3"):
+        await _post(client, cid, body)
+
+    as_user(bob)
+    await client.put(f"/api/v1/channels/{cid}/read", json={"last_read_seq": 3})
+    assert await _state(client, cid) == {"last_read_seq": 3, "unread_count": 0, "mention_count": 0}
+
+    # 「ここから未読にする」 on m2: the position moves back and the counts are derived again.
+    marked = await client.put(
+        f"/api/v1/channels/{cid}/read", json={"last_read_seq": 1, "mode": "set"}
+    )
+    assert marked.status_code == 200
+    assert marked.json() == {"last_read_seq": 1, "unread_count": 2, "mention_count": 1}
+    # Setting the same position again changes nothing and emits nothing.
+    again = await client.put(
+        f"/api/v1/channels/{cid}/read", json={"last_read_seq": 1, "mode": "set"}
+    )
+    assert again.json()["last_read_seq"] == 1
+    # set is clamped to last_seq like advance.
+    clamped = await client.put(
+        f"/api/v1/channels/{cid}/read", json={"last_read_seq": 999, "mode": "set"}
+    )
+    assert clamped.json() == {"last_read_seq": 3, "unread_count": 0, "mention_count": 0}
+    # The default mode stays monotonic from wherever set left the position.
+    await client.put(f"/api/v1/channels/{cid}/read", json={"last_read_seq": 0, "mode": "set"})
+    advanced = await client.put(f"/api/v1/channels/{cid}/read", json={"last_read_seq": 2})
+    assert advanced.json()["last_read_seq"] == 2
+    lower = await client.put(f"/api/v1/channels/{cid}/read", json={"last_read_seq": 1})
+    assert lower.json()["last_read_seq"] == 2
+
+    events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
+    positions = [
+        e.payload["last_read_seq"]
+        for e in events
+        if e.event_type == "read.updated" and e.audience_id == bob.id
+    ]
+    assert positions == [3, 1, 3, 0, 2]
+
+
 def channel_last_seq(response: Any) -> int:
     value: int = response.json()["last_seq"]
     return value

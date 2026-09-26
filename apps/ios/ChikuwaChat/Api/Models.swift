@@ -240,9 +240,20 @@ struct SearchHit: Codable, Identifiable {
     var id: String { message.id }
 }
 
+/// What the server understood from the query's modifiers (from: in: before: after: on:).
+struct SearchFilters: Codable, Equatable {
+    let text: String
+    let fromUsername: String?
+    let inChannel: String?
+    let after: String?
+    let before: String?
+    var unresolved: [String] = []
+}
+
 struct SearchOut: Codable {
     let hits: [SearchHit]
     let keywords: [String]
+    var filters: SearchFilters? = nil
     let limit: Int
     let offset: Int
     let hasMore: Bool

@@ -428,6 +428,12 @@ ORDER BY score DESC, m.created_at DESC
 LIMIT $limit OFFSET $offset;
 ```
 
+検索語の修飾子 (Slack / Mattermost と同じ書き方) はサーバが解釈する: `from:@user`、`in:#channel`、
+`before:YYYY-MM-DD`、`after:YYYY-MM-DD`、`on:YYYY-MM-DD`。日付は呼び出し側のタイムゾーン
+(`tz_offset_minutes`) の 0 時を境にし、Slack と同じく `before` / `after` はその日を含まない。
+名前は呼び出し側が見えるユーザー / チャンネルだけに解決し、解決できない修飾子は推測せず
+`filters.unresolved` に返して結果を空にする。修飾子だけの検索は新しい順の一覧 (score 0) になる。
+
 ## 5. サイズと保持
 
 | データ | 見積り | 保持 |

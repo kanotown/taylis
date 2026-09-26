@@ -44,6 +44,7 @@ fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.Me
     var keywords by remember { mutableStateOf(listOf<String>()) }
     var hasMore by remember { mutableStateOf(false) }
     var searched by remember { mutableStateOf(false) }
+    var filters by remember { mutableStateOf<jp.chikuwachat.android.api.SearchFilters?>(null) }
     val scope = rememberCoroutineScope()
 
     fun run(offset: Int = 0) {
@@ -54,6 +55,7 @@ fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.Me
                 hits = if (offset == 0) result.hits else hits + result.hits
                 keywords = result.keywords
                 hasMore = result.hasMore
+                filters = result.filters
                 searched = true
             }
         }
@@ -68,6 +70,28 @@ fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.Me
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run() }),
         )
+        if (!searched) {
+            Text(
+                "絞り込み: from:@名前  in:#チャンネル  before:2026-09-01  after:  on:",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+        filters?.takeIf { it.unresolved.isNotEmpty() }?.let {
+            Text("見つからない条件があります: " + it.unresolved.joinToString(" "), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
+        filters?.takeIf { it.fromUsername != null || it.inChannel != null || it.after != null || it.before != null }?.let { applied ->
+            Text(
+                listOfNotNull(
+                    applied.fromUsername?.let { "from: @$it" },
+                    applied.inChannel?.let { "in: #$it" },
+                    applied.after?.let { Timeline.fullLabel(it).substringBefore(" ") + " 以降" },
+                    applied.before?.let { Timeline.fullLabel(it).substringBefore(" ") + " より前" },
+                ).joinToString("  "),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
         if (searched && hits.isEmpty()) Text("見つかりませんでした", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.fillMaxSize()) {
             items(hits, key = { it.message.id }) { hit ->
