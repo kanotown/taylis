@@ -28,8 +28,8 @@ export function ChangePasswordScreen({ controller, onDone }: { controller: AppCo
           <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
         </label>
         <label>
-          新しいパスワード (12 文字以上)
-          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} minLength={12} autoComplete="new-password" required />
+          新しいパスワード (8 文字以上)
+          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} autoComplete="new-password" required />
         </label>
         <label>
           新しいパスワード (確認)

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import not_found, unauthorized
+from app.core.errors import AppError, not_found, unauthorized
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -225,7 +225,16 @@ async def update_device(db: AsyncSession, context: AuthContext, data: DeviceUpda
     return to_device_out(device)
 
 
-async def change_password(db: AsyncSession, context: AuthContext, data: PasswordChange) -> None:
+async def change_password(
+    db: AsyncSession, context: AuthContext, data: PasswordChange, settings: Settings
+) -> None:
+    if len(data.new_password) < settings.password_min_length:
+        raise AppError(
+            422,
+            "password_too_short",
+            f"Password must be at least {settings.password_min_length} characters",
+            details={"min_length": settings.password_min_length},
+        )
     context = await _lock_current(db, context)
     if not await verify_password(context.user.password_hash, data.current_password):
         raise unauthorized("invalid_credentials", "Invalid current password")

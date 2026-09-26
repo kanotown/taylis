@@ -78,6 +78,6 @@ async def update_device(
 
 @router.put("/users/me/password", status_code=204, name="auth:password")
 async def change_password(
-    _: CurrentUser, context: CurrentSession, body: PasswordChange, db: Db
+    _: CurrentUser, context: CurrentSession, body: PasswordChange, request: Request, db: Db
 ) -> None:
-    await service.change_password(db, context, body)
+    await service.change_password(db, context, body, request.app.state.settings)

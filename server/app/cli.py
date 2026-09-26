@@ -36,7 +36,6 @@ def cmd_export_openapi(args: argparse.Namespace) -> int:
 
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9._-]{3,32}$")
-MIN_PASSWORD_LENGTH = 12
 
 
 async def _insert_user(
@@ -73,12 +72,15 @@ def _validate_username(username: str) -> str:
 
 def cmd_create_admin(args: argparse.Namespace) -> int:
     """Create an administrator with a password chosen now (no forced change)."""
+    from app.core.settings import get_settings
+
+    minimum = get_settings().password_min_length
     username = _validate_username(args.username)
-    password = args.password or getpass.getpass("Password (min 12 chars): ")
+    password = args.password or getpass.getpass(f"Password (min {minimum} chars): ")
     if not args.password and password != getpass.getpass("Repeat password: "):
         raise SystemExit("error: passwords do not match")
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise SystemExit(f"error: password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if len(password) < minimum:
+        raise SystemExit(f"error: password must be at least {minimum} characters")
     asyncio.run(
         _insert_user(
             username=username,

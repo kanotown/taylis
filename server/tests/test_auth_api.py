@@ -442,3 +442,21 @@ async def test_revoke_all_sessions_leaves_commit_to_caller(
     await db.commit()
     assert (await client.get("/api/v1/users/me", headers=bearer(tokens))).status_code == 401
     assert await auth.revoke_all_sessions(db, user_id, "admin", utcnow()) == 0
+
+
+async def test_password_minimum_length_is_a_setting(client: AsyncClient, db: AsyncSession) -> None:
+    await make_user(db, "alice", password=PASSWORD)
+    tokens = await login(client, "alice")
+    short = await client.put(
+        "/api/v1/users/me/password",
+        headers=bearer(tokens),
+        json={"current_password": PASSWORD, "new_password": "seven77"},
+    )
+    assert short.status_code == 422 and short.json()["error"]["code"] == "password_too_short"
+    assert short.json()["error"]["details"]["min_length"] == 8
+    ok = await client.put(
+        "/api/v1/users/me/password",
+        headers=bearer(tokens),
+        json={"current_password": PASSWORD, "new_password": "eight888"},
+    )
+    assert ok.status_code == 204
