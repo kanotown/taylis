@@ -11,6 +11,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.SearchOut
 import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.api.ApiException
@@ -305,6 +306,33 @@ class AppController(private val app: Application) {
     }
 
     suspend fun members(channelId: String): Result<List<String>> = runCatching { api!!.members(channelId).map { it.userId } }
+
+    suspend fun memberList(channelId: String): Result<List<MemberOut>> = runCatching { api!!.members(channelId) }
+
+    // --- channel info & settings (UI brush-up) --------------------------------------------------
+
+    suspend fun updateTopic(channelId: String, topic: String): Boolean = runCatching {
+        val channel = api!!.updateChannel(channelId, topic = topic.trim())
+        store.upsertChannel(channel)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun setNotification(channelId: String, level: String, mutedUntil: String? = null): Boolean = runCatching {
+        val pref = api!!.setNotificationPreference(channelId, level, mutedUntil)
+        store.setNotification(channelId, pref.level, pref.mutedUntil)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun updateDisplayName(displayName: String): Boolean = runCatching {
+        val updated = api!!.updateMe(displayName = displayName.trim())
+        me = updated
+        store.setMe(updated)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** Password change from the settings sheet; returns the error text or null. */
+    suspend fun changePasswordInSession(current: String, new: String): String? =
+        runCatching { api!!.changePassword(current, new); null }.getOrElse { describe(it) }
 
     suspend fun addMember(channelId: String, userId: String): Result<Unit> = runCatching<Unit> { api!!.addMember(channelId, userId) }
 

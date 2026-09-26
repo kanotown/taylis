@@ -115,6 +115,25 @@ class ApiClient(
 
     suspend fun joinChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/join", buildJsonObject {})
 
+    suspend fun updateChannel(channelId: String, topic: String? = null, name: String? = null, purpose: String? = null): ChannelOut =
+        request("PATCH", "/api/v1/channels/$channelId", buildJsonObject {
+            topic?.let { put("topic", it) }
+            name?.let { put("name", it) }
+            purpose?.let { put("purpose", it) }
+        })
+
+    suspend fun setNotificationPreference(channelId: String, level: String, mutedUntil: String?): NotificationPreferenceOut =
+        request("PUT", "/api/v1/channels/$channelId/notification-preference", buildJsonObject {
+            put("level", level)
+            put("muted_until", mutedUntil)
+        })
+
+    suspend fun updateMe(displayName: String? = null, email: String? = null): UserMe =
+        request("PATCH", "/api/v1/users/me", buildJsonObject {
+            displayName?.let { put("display_name", it) }
+            email?.let { put("email", it) }
+        })
+
     suspend fun members(channelId: String): List<MemberOut> = request("GET", "/api/v1/channels/$channelId/members")
 
     suspend fun addMember(channelId: String, userId: String): MemberOut =

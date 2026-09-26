@@ -4,6 +4,7 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.UserMe
@@ -167,7 +168,8 @@ class Store(private val persistence: Persistence? = null) {
         val existing = channels[channel.id]
         val read = channel.readState
         val merged = ChannelState(
-            channel = channel.copy(readState = null),
+            // channel.updated events carry no per-user preference: keep the one we know.
+            channel = channel.copy(readState = null, notification = channel.notification ?: existing?.channel?.notification),
             isMember = isMember ?: existing?.isMember ?: (channel.membership != null),
             syncedSeq = existing?.syncedSeq,
             lastSeq = maxOf(existing?.lastSeq ?: 0, channel.lastSeq),
@@ -180,6 +182,10 @@ class Store(private val persistence: Persistence? = null) {
         persist { it.saveChannel(merged) }
         emit()
         return merged
+    }
+
+    fun setNotification(channelId: String, level: String, mutedUntil: String?) {
+        updateChannel(channelId) { it.copy(channel = it.channel.copy(notification = NotificationPreferenceOut(channelId, level, mutedUntil))) }
     }
 
     fun updateChannel(id: String, mutate: (ChannelState) -> ChannelState): ChannelState? {

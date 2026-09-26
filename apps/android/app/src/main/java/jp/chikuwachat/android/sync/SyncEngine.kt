@@ -335,6 +335,10 @@ class SyncEngine(
                 val channelId = frame.data.str("channel_id") ?: return
                 applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data))
             }
+            "notification_preference.updated" -> {
+                val channelId = frame.data.str("channel_id") ?: return
+                store.setNotification(channelId, frame.data.str("level") ?: "mentions", frame.data.str("muted_until"))
+            }
             "session.revoked" -> signOut()
         }
     }

@@ -1,11 +1,14 @@
 package jp.chikuwachat.android.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,20 +22,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Surface
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import jp.chikuwachat.android.api.AttachmentOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,23 +46,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-
-private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M/d HH:mm")
 
 @Composable
 fun ChannelPane(controller: AppController, channelId: String, version: Int, onOpenThread: (String) -> Unit = {}) {
     val store = controller.store
     val channel = store.channel(channelId) ?: return
     val messages = remember(version, channelId) { store.messages(channelId) }
+    // The 「新着メッセージ」 divider stays where it was when the channel was opened.
+    val unreadMark = remember(channelId) { channel.lastReadSeq.takeIf { channel.unreadCount > 0 } }
+    val items = remember(version, channelId) { Timeline.build(messages, unreadMark, store.me?.id).asReversed() }
     val listState = rememberLazyListState()
+    val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
     val scope = rememberCoroutineScope()
     var draft by rememberSaveable(channelId) { mutableStateOf("") }
     var loadingOlder by remember { mutableStateOf(false) }
@@ -71,34 +75,68 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     LaunchedEffect(channel.lastSeq) { controller.engine?.markRead(channelId, channel.lastSeq) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
-            items(messages.asReversed(), key = { it.id }) { message ->
-                MessageRow(
-                    message, store, controller,
-                    canEdit = !message.pending && message.senderId == store.me?.id,
-                    canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
-                    onRetry = { scope.launch { controller.engine?.retryFailed() } },
-                    onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
-                    onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                    onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
-                    onDelete = { scope.launch { controller.deleteMessage(message.id) } },
-                    onOpenThread = { onOpenThread(message.id) },
-                )
-            }
-            if (channel.hasOlder && channel.syncedSeq != null) {
-                item(key = "older") {
-                    LaunchedEffect(messages.size) {
-                        if (loadingOlder) return@LaunchedEffect
-                        loadingOlder = true
-                        try { controller.engine?.loadOlder(channelId) } finally { loadingOlder = false }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+                items(items, key = { it.key }) { item ->
+                    when (item) {
+                        is TimelineItem.DateSeparator -> DaySeparator(item.label)
+                        is TimelineItem.UnreadSeparator -> UnreadSeparator()
+                        is TimelineItem.Message -> {
+                            val message = item.message
+                            MessageRow(
+                                message, store, controller, compact = item.compact,
+                                canEdit = !message.pending && message.senderId == store.me?.id,
+                                canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
+                                onRetry = { scope.launch { controller.engine?.retryFailed() } },
+                                onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
+                                onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
+                                onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
+                                onDelete = { scope.launch { controller.deleteMessage(message.id) } },
+                                onOpenThread = { onOpenThread(message.id) },
+                            )
+                        }
                     }
-                    Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                 }
+                if (channel.hasOlder && channel.syncedSeq != null) {
+                    item(key = "older") {
+                        LaunchedEffect(messages.size) {
+                            if (loadingOlder) return@LaunchedEffect
+                            loadingOlder = true
+                            try { controller.engine?.loadOlder(channelId) } finally { loadingOlder = false }
+                        }
+                        Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
+                    }
+                } else if (messages.isEmpty()) {
+                    item(key = "empty") {
+                        Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
+                            Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else {
+                    item(key = "start") {
+                        Text(
+                            "ここが会話の始まりです",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        )
+                    }
+                }
+            }
+            if (showJump) {
+                SmallFloatingActionButton(
+                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "最新のメッセージへ") }
             }
         }
         HorizontalDivider()
         if (channel.channel.archived) {
             Text("このチャンネルはアーカイブされています", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (!channel.isMember) {
+            TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
         } else {
             val query = Mentions.query(draft)
             val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
@@ -131,12 +169,32 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     }
 }
 
+@Composable
+private fun DaySeparator(label: String) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(Modifier.weight(1f))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp))
+        HorizontalDivider(Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun UnreadSeparator() {
+    val color = MaterialTheme.colorScheme.error
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(Modifier.weight(1f), color = color)
+        Text("新着メッセージ", style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp))
+        HorizontalDivider(Modifier.weight(1f), color = color)
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageRow(
     message: MessageState,
     store: Store,
     controller: AppController,
+    compact: Boolean,
     canEdit: Boolean,
     canDelete: Boolean,
     onRetry: () -> Unit,
@@ -150,27 +208,39 @@ private fun MessageRow(
     var menuOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { if (!message.pending) menuOpen = true })) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).alpha(if (message.pending) 0.6f else 1f)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.width(8.dp))
-                Text(formatTime(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (message.editedAt != null) { Spacer(Modifier.width(4.dp)); Text("(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
-            AttachmentList(message.attachments, controller)
-            ReactionChips(message, store, onToggle = onReact)
-            if (message.replyCount > 0) {
-                TextButton(onClick = onOpenThread, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                    Text("${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
+    var showTime by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth().combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
+            if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                if (!compact) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(8.dp))
+                        Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (message.editedAt != null) { Spacer(Modifier.width(4.dp)); Text("(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                } else if (showTime || message.editedAt != null) {
+                    Text(
+                        Timeline.fullLabel(message.createdAt) + if (message.editedAt != null) " (編集済み)" else "",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            }
-            if (message.failed) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-                    TextButton(onClick = onRetry) { Text("再送") }
-                    TextButton(onClick = onDiscard) { Text("破棄") }
+                if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
+                AttachmentList(message.attachments, controller)
+                ReactionChips(message, store, onToggle = onReact)
+                if (message.replyCount > 0) {
+                    TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
+                        Text("💬 ${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                if (message.failed) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = onRetry) { Text("再送") }
+                        TextButton(onClick = onDiscard) { Text("破棄") }
+                    }
                 }
             }
         }
@@ -182,6 +252,3 @@ private fun MessageRow(
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
 }
-
-private fun formatTime(iso: String): String =
-    runCatching { TIME_FORMAT.format(Instant.parse(iso).atZone(ZoneId.systemDefault())) }.getOrDefault("")
