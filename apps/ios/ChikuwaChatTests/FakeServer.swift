@@ -216,6 +216,36 @@ final class FakeServer {
         return readState(userId: userId, channelId: channelId)
     }
 
+    // MARK: pins and bookmarks (M11c)
+
+    /// PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin).
+    @discardableResult
+    func pin(channelId: String, userId: String, messageId: String, pinned: Bool) throws -> MessageOut {
+        let message = try live(channelId, userId, messageId)
+        if (message.pinnedAt != nil) == pinned { return message }
+        let seq = bumpSeq(channelId)
+        var updated = rebuild(message, updatedSeq: seq)
+        updated.pinnedAt = pinned ? now() : nil
+        updated.pinnedBy = pinned ? userId : nil
+        replace(channelId, updated, event: "message.updated", change: "pin")
+        return updated
+    }
+
+    /// user → saved message ids, newest first.
+    var bookmarks: [String: [String]] = [:]
+
+    func setBookmark(_ userId: String, messageId: String, on: Bool) {
+        var list = bookmarks[userId] ?? []
+        if on == list.contains(messageId) { return }
+        if on { list.insert(messageId, at: 0) } else { list.removeAll { $0 == messageId } }
+        bookmarks[userId] = list
+        let channelId = channels.values.first { $0.messages.contains { $0.id == messageId } }?.channel.id
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("bookmark.updated"), "ts": .string(now()),
+                                "channel_id": channelId.map(JSONValue.string) ?? .null, "seq": .null,
+                                "data": .object(["message_id": .string(messageId), "channel_id": channelId.map(JSONValue.string) ?? .null, "bookmarked": .bool(on)])]))
+    }
+
     // MARK: presence / typing (SYNC_PROTOCOL.md §5.2, volatile)
 
     /// Users whose window is "away" (set by tests); everyone connected is online otherwise.
@@ -433,7 +463,8 @@ final class FakeServer {
         MessageOut(id: m.id, channelId: m.channelId, senderId: m.senderId, seq: m.seq, updatedSeq: updatedSeq ?? m.updatedSeq, clientMsgId: m.clientMsgId,
                    body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
                    mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions,
-                   parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt, attachments: m.attachments)
+                   parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt, attachments: m.attachments,
+                   pinnedAt: m.pinnedAt, pinnedBy: m.pinnedBy)
     }
 
     private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {
@@ -556,7 +587,8 @@ final class FakeServer {
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),
                             threads: threadSummary(for: userId),
-                            presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) })
+                            presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
+                            bookmarks: bookmarks[userId] ?? [])
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

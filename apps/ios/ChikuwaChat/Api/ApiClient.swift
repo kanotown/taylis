@@ -184,6 +184,24 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    // MARK: pins and bookmarks (M11c)
+
+    func listPins(channelId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/channels/\(channelId)/pins") }
+    func pinMessage(id: String) async throws -> MessageOut { try await request("PUT", "/api/v1/messages/\(id)/pin") }
+    func unpinMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)/pin") }
+
+    func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        var components = URLComponents()
+        components.path = "/api/v1/bookmarks"
+        components.queryItems = items
+        return try await request("GET", components.string ?? "/api/v1/bookmarks")
+    }
+
+    func bookmarkMessage(id: String) async throws -> BookmarkStateOut { try await request("PUT", "/api/v1/messages/\(id)/bookmark") }
+    func unbookmarkMessage(id: String) async throws -> BookmarkStateOut { try await request("DELETE", "/api/v1/messages/\(id)/bookmark") }
+
     // MARK: threads (THREADS.md §3)
 
     /// GET /threads: the threads I follow, newest reply first; `cursor` is the previous page's next_cursor.

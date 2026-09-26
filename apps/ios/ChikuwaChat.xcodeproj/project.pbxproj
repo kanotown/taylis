@@ -51,6 +51,8 @@
 		BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */; };
 		CBD65280B7792F5C68583C5D /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24269094945450CF90BCAC33 /* SyncEngine.swift */; };
 		CCDA600DF1E454593B370952 /* BodyTokenizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */; };
+		DD186BA276E115EA76964F24 /* PinsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CFB01E67A972B78B96D8C2 /* PinsView.swift */; };
+		F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4C8A95833707C7581F036D /* SavedView.swift */; };
 		F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91851A02B144D3F57EB66170 /* ContractTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -95,12 +97,14 @@
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
+		9B4C8A95833707C7581F036D /* SavedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedView.swift; sourceTree = "<group>"; };
 		9B7251E3E02E155A12489239 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
 		9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRulesTests.swift; sourceTree = "<group>"; };
 		A676948BB8E2458464753586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		AD73867C215B4C74259890CB /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		B0331E3481EE3CCEC391E1E4 /* AttachmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentsView.swift; sourceTree = "<group>"; };
 		B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClientTests.swift; sourceTree = "<group>"; };
+		B5CFB01E67A972B78B96D8C2 /* PinsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinsView.swift; sourceTree = "<group>"; };
 		B6BACB32869D36BC76BFACD3 /* Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sheets.swift; sourceTree = "<group>"; };
 		B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		B770F0D367C58D2D20912066 /* SearchHighlightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHighlightTests.swift; sourceTree = "<group>"; };
@@ -228,6 +232,8 @@
 				523DFDB1261A9B828CA81605 /* MainView.swift */,
 				8E494C7AA73C2DCB826BFF98 /* Mentions.swift */,
 				7C74AC169B95554B18E616A6 /* MessageBodyView.swift */,
+				B5CFB01E67A972B78B96D8C2 /* PinsView.swift */,
+				9B4C8A95833707C7581F036D /* SavedView.swift */,
 				4E8952935F7E755BB8B341C5 /* SearchView.swift */,
 				B6BACB32869D36BC76BFACD3 /* Sheets.swift */,
 				6B46E6619531606984F31D78 /* ThreadsListView.swift */,
@@ -407,8 +413,10 @@
 				48C7FDA6E58AED3E9E04985A /* Mentions.swift in Sources */,
 				ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */,
 				73929A42759EC180C603E753 /* Models.swift in Sources */,
+				DD186BA276E115EA76964F24 /* PinsView.swift in Sources */,
 				6B2FA428DA0DFA1858ACA00C /* PushCenter.swift in Sources */,
 				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
+				F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */,
 				8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */,
 				A891B9120FA22239813BEACD /* Sheets.swift in Sources */,
 				4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */,

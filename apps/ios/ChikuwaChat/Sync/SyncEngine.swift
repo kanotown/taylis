@@ -300,6 +300,7 @@ final class SyncEngine {
         if let summary = bootstrap.threads { store.setThreadSummary(summary) }
         if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
         store.replacePresence(bootstrap.presence ?? [])
+        store.replaceBookmarks(bootstrap.bookmarks ?? [])
         onBadge?(store.badgeCount)
     }
 
@@ -352,6 +353,10 @@ final class SyncEngine {
         case "read.updated":
             if let id = frame.data["channel_id"]?.stringValue {
                 applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: frame.data["reason"]?.stringValue == "set")
+            }
+        case "bookmark.updated":
+            if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
+                store.setBookmarked(id, on: on)
             }
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
