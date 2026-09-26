@@ -139,3 +139,80 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    print(r.status_code, r.text)
    EOF
    ```
+
+## デプロイ手順 (M10)
+
+前提: Linux サーバ 1 台 (2 vCPU / 4 GB 以上)、Docker Engine + compose plugin、DNS が `CHAT_DOMAIN` を向いている、
+80 / 443 が開いている。すべてのデータは PostgreSQL のボリュームと versitygw のボリュームにある。
+
+1. **取得と設定**
+
+   ```sh
+   git clone <repo> /srv/chikuwachat && cd /srv/chikuwachat/infra
+   cp .env.example .env && chmod 600 .env
+   # SECRET_KEY (32 文字以上)、POSTGRES_PASSWORD、S3_SECRET_KEY、CHAT_DOMAIN、必要なら PUSH_* を埋める
+   mkdir -p secrets && chmod 700 secrets     # APNs の .p8 / FCM のサービスアカウントを置く
+   ```
+
+2. **起動** (ポートは Caddy だけ。DB / app / versitygw はホストに出さない)
+
+   ```sh
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python -m app.cli create-admin --username admin
+   ```
+
+   起動時に `alembic upgrade head` が走り、`/readyz` が `db` / `schema` / `objectstore` / `outbox_pending` を返す。
+   `curl https://<CHAT_DOMAIN>/healthz` で疎通を確認する。
+
+3. **クライアント**: Desktop / iOS / Android のログイン画面で `https://<CHAT_DOMAIN>` を指定する。
+   ユーザーは `create-user` (仮パスワード) か管理者 API で作る。
+
+4. **バックアップ** (毎日。`infra/backup.sh` は `pg_dump -Fc` の後にオブジェクトストアの tar を取る)
+
+   ```sh
+   # crontab (root)
+   30 3 * * * CHIKUWA_PROD=1 /srv/chikuwachat/infra/backup.sh /srv/backups >> /var/log/chikuwachat-backup.log 2>&1
+   ```
+
+   `/srv/backups/<UTC 時刻>/{db.dump,objects.tgz,SHA256SUMS}` ができる。世代は 14 個保持。
+   別のマシンや外部ストレージへは `rsync` / `restic` で転送する。`.env` と `secrets/` は別経路で保管する
+   (バックアップには含めない)。
+
+5. **復元** (`infra/restore.sh <backup dir>`: DB → バケット → app 起動 → `verify-attachments`)
+
+   ```sh
+   CHIKUWA_PROD=1 ./restore.sh /srv/backups/20260926T033000Z
+   ```
+
+   対象プロジェクトの DB とオブジェクトを **置き換える**。復元後に `verify-attachments` が欠損 blob を報告する
+   (DB にあってバイト列が無い添付。バックアップ順序の都合で 0 件のはず)。
+
+6. **復元リハーサル** (`infra/restore-rehearsal.sh`): 稼働中のスタックからバックアップを取り、別の compose
+   プロジェクト (`chikuwa-rehearsal`、ポート非公開) に復元して users / messages / attachments の件数を比較し、
+   片付ける。四半期に一度は実行する。2026-09-26 に開発スタックで成功を確認。
+
+7. **更新**
+
+   ```sh
+   git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build app
+   ```
+
+   マイグレーションは起動時に自動適用される。後方互換のない変更はリリースノートに書く。
+   更新前にバックアップを取る。
+
+8. **運用コマンド** (`docker compose ... exec app python -m app.cli ...`)
+
+   | コマンド | 用途 |
+   | --- | --- |
+   | `create-admin` / `create-user` | アカウント作成 (仮パスワード表示は一度だけ) |
+   | `push-test --user <name>` | プッシュ疎通 |
+   | `verify-attachments` | 添付のバイト列欠損を報告 |
+   | `anonymize-user --username <name>` | 退会: 氏名・メール・資格情報・端末を消し、履歴は「退会したユーザー」名義で残す |
+   | `export-channel --channel <name|id> --out <file.jsonl>` | チャンネルの履歴を JSONL で書き出す (添付はメタデータのみ) |
+
+   管理操作は `audit_logs` に記録される (誰が・いつ・何に・何を)。保持期間ジョブが失効セッション (30 日)、
+   無効化された端末 (90 日)、処理済み outbox (7 日)、push_deliveries (7 日)、期限切れの未添付アップロード (24 時間)
+   を削除する。
+
+9. **ログ**: JSON 行 (`LOG_JSON=true`) を `docker compose logs app` か journald で集める。トークン・パスワード・
+   本文は出さない。`DEBUG=true` は本番では無視される。

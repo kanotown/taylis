@@ -18,6 +18,7 @@ from app.core.security import (
 )
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.audit import service as audit
 from app.modules.auth import repository as repo
 from app.modules.auth.models import Device, UserSession
 from app.modules.auth.schemas import (
@@ -257,6 +258,13 @@ async def change_password(
     users.change_password_in_tx(context.user, password_hash, now)
     await repo.revoke_sessions(
         db, context.user.id, "password_changed", now, except_session_id=context.session.id
+    )
+    await audit.record_in_tx(
+        db,
+        actor_id=context.user.id,
+        action="auth.password_changed",
+        target_type="user",
+        target_id=context.user.id,
     )
     await db.commit()
 

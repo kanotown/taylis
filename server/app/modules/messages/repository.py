@@ -137,3 +137,13 @@ async def thread_participants(db: AsyncSession, parent_id: uuid.UUID) -> list[uu
         .order_by("first_seq")
     )
     return [row[0] for row in (await db.execute(stmt)).all()]
+
+
+async def list_all(db: AsyncSession, channel_id: uuid.UUID) -> list[Message]:
+    """Every live message of a channel (replies included), oldest first: exports."""
+    stmt = (
+        select(Message)
+        .where(Message.channel_id == channel_id, Message.deleted_at.is_(None))
+        .order_by(Message.seq.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())

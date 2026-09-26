@@ -188,6 +188,7 @@ server/
    `auth → users`、`admin → users, auth`、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
+   `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。
    `reads` は葉 (どのモジュールにも依存しない): 参加時の既読位置の初期化は `channels` が、送信者の既読は
    `messages` が同一トランザクション内で呼ぶ。`PUT /channels/{id}/read` は `channels` の router に置く
    (メンバー判定が `channels` にあるため。M8b で `reads → channels` から変更)。
