@@ -33,9 +33,12 @@ struct ThreadView: View {
                         }
                         .padding()
                     }
+                    .defaultScrollAnchor(.bottom)
+                    .scrollDismissesKeyboard(.interactively)
                     .onChange(of: replies.last?.id) { _, _ in
-                        if positioned && atBottom && controller.messageFocus?.parentId != parentId {
-                            proxy.scrollTo("bottom", anchor: .bottom)
+                        let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
+                        if positioned && (atBottom || mine) && controller.messageFocus?.parentId != parentId {
+                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                         }
                     }
                     .task(id: replies.count) {
