@@ -1732,6 +1732,193 @@
         "type": "object"
       }
     },
+    "scheduled.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "AttachmentOut": {
+            "properties": {
+              "content_type": {
+                "title": "Content Type",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "filename": {
+                "title": "Filename",
+                "type": "string"
+              },
+              "has_thumbnail": {
+                "title": "Has Thumbnail",
+                "type": "boolean"
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "size_bytes": {
+                "title": "Size Bytes",
+                "type": "integer"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "id",
+              "filename",
+              "content_type",
+              "size_bytes",
+              "width",
+              "height",
+              "has_thumbnail",
+              "status",
+              "created_at"
+            ],
+            "title": "AttachmentOut",
+            "type": "object"
+          },
+          "ScheduledOut": {
+            "properties": {
+              "attachments": {
+                "items": {
+                  "$ref": "#/$defs/AttachmentOut"
+                },
+                "title": "Attachments",
+                "type": "array"
+              },
+              "body": {
+                "title": "Body",
+                "type": "string"
+              },
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "client_msg_id": {
+                "format": "uuid",
+                "title": "Client Msg Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Error"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Parent Id"
+              },
+              "send_at": {
+                "format": "date-time",
+                "title": "Send At",
+                "type": "string"
+              },
+              "sent_message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Sent Message Id"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "sent",
+                  "failed",
+                  "cancelled"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "parent_id",
+              "client_msg_id",
+              "body",
+              "attachments",
+              "send_at",
+              "status",
+              "error",
+              "sent_message_id",
+              "created_at"
+            ],
+            "title": "ScheduledOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "scheduled": {
+            "$ref": "#/$defs/ScheduledOut"
+          }
+        },
+        "required": [
+          "scheduled"
+        ],
+        "title": "ScheduledUpdatedData",
+        "type": "object"
+      }
+    },
     "session.revoked": {
       "audience": "session",
       "consumes_seq": false,

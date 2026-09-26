@@ -12,6 +12,8 @@ import type {
   ChannelReadStateOut,
   FavoriteStateOut,
   FileListOut,
+  ScheduledCreate,
+  ScheduledOut,
   LinkPreviewOut,
   MentionListOut,
   DeltaOut,
@@ -214,6 +216,24 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- scheduled messages (M12d) ---------------------------------------------------------
+
+  scheduleMessage(channelId: string, body: ScheduledCreate): Promise<ScheduledOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/scheduled`, body);
+  }
+
+  listScheduled(): Promise<ScheduledOut[]> {
+    return this.request("GET", "/api/v1/scheduled");
+  }
+
+  cancelScheduled(scheduledId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/scheduled/${scheduledId}`);
+  }
+
+  sendScheduledNow(scheduledId: string): Promise<MessageOut> {
+    return this.request("POST", `/api/v1/scheduled/${scheduledId}/send-now`);
   }
 
   // --- favorites and read-all (M12a) ------------------------------------------------------

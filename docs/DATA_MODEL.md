@@ -268,6 +268,36 @@ CREATE INDEX bookmarks_user_idx ON bookmarks (user_id, created_at);
 - ピン留め (`messages.pinned_at`) はチャンネル全員に見えるので `seq` を消費し、`message.updated (change=pin)`
   で配る。両方ともメッセージの削除で消える (一覧から外れる)。
 
+### scheduled_messages (予約送信、M12d)
+
+```sql
+CREATE TABLE scheduled_messages (
+  id               uuid PRIMARY KEY,
+  user_id          uuid NOT NULL REFERENCES users(id),
+  channel_id       uuid NOT NULL REFERENCES channels(id),
+  parent_id        uuid REFERENCES messages(id),        -- スレッドへの返信なら親
+  client_msg_id    uuid NOT NULL UNIQUE,                 -- 投稿時の冪等キーになる
+  body             text NOT NULL,
+  attachment_ids   uuid[],
+  send_at          timestamptz NOT NULL,
+  status           varchar(16) NOT NULL DEFAULT 'pending', -- pending | sent | failed | cancelled
+  error            text,                                 -- failed の理由 (エラーコード)
+  sent_message_id  uuid REFERENCES messages(id),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX scheduled_messages_due_idx  ON scheduled_messages (status, send_at);
+CREATE INDEX scheduled_messages_user_idx ON scheduled_messages (user_id, send_at);
+```
+
+- ワーカー (`scheduled_send_interval_seconds`、既定 15 秒) が `status = pending AND send_at <= now()` を
+  `FOR UPDATE SKIP LOCKED` で取り、通常のメッセージ作成 (`client_msg_id` が冪等キー) で投稿してから `sent` にする。
+  投稿と `sent` の間で落ちても、次回は同じ `client_msg_id` で既存メッセージが返るので二重投稿にならない。
+- 投稿できない (退出済み、アーカイブ、添付が無効) ときは `failed` + `error`。本人の各端末には `scheduled.updated`
+  (audience=user) で pending / sent / failed / cancelled の変化が届く。一覧は `GET /scheduled` (pending のみ)。
+- 添付は予約時に `attachments.status = 'scheduled'` に予約し、未送信アップロードの GC から外す。取消 / 失敗で
+  `deleted` に戻し、GC が実体を消す。
+
 ### channel_favorites (お気に入りチャンネル、M12a)
 
 ```sql

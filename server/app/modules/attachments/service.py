@@ -129,7 +129,7 @@ async def bind_in_tx(
         if (
             attachment is None
             or attachment.uploader_id != actor_id
-            or attachment.status != "pending"
+            or attachment.status not in ("pending", "scheduled")
         ):
             raise bad_request("attachment_invalid", f"Attachment {attachment_id} cannot be used")
         attachment.message_id = message_id
@@ -139,6 +139,47 @@ async def bind_in_tx(
         bound.append(attachment)
     await db.flush()
     return bound
+
+
+async def reserve_in_tx(
+    db: AsyncSession, actor_id: uuid.UUID, attachment_ids: list[uuid.UUID]
+) -> list[Attachment]:
+    """Hold pending uploads for a scheduled message (M12d): the pending GC leaves them alone."""
+    if len(attachment_ids) > MAX_ATTACHMENTS_PER_MESSAGE:
+        raise bad_request(
+            "too_many_attachments", f"At most {MAX_ATTACHMENTS_PER_MESSAGE} attachments"
+        )
+    rows = {a.id: a for a in await repo.get_many(db, attachment_ids)}
+    reserved: list[Attachment] = []
+    for attachment_id in dict.fromkeys(attachment_ids):
+        attachment = rows.get(attachment_id)
+        if (
+            attachment is None
+            or attachment.uploader_id != actor_id
+            or attachment.status != "pending"
+        ):
+            raise bad_request("attachment_invalid", f"Attachment {attachment_id} cannot be used")
+        attachment.status = "scheduled"
+        reserved.append(attachment)
+    await db.flush()
+    return reserved
+
+
+async def release_in_tx(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> None:
+    """A cancelled or failed scheduled message drops its unsent uploads; GC removes the bytes."""
+    now = utcnow()
+    for attachment in await repo.get_many(db, attachment_ids):
+        if attachment.status == "scheduled":
+            attachment.status = "deleted"
+            attachment.deleted_at = now
+    await db.flush()
+
+
+async def get_many(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> list[Attachment]:
+    if not attachment_ids:
+        return []
+    rows = {a.id: a for a in await repo.get_many(db, attachment_ids)}
+    return [rows[i] for i in attachment_ids if i in rows]
 
 
 async def mark_deleted_in_tx(db: AsyncSession, message_id: uuid.UUID) -> None:

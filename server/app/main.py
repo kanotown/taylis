@@ -38,6 +38,8 @@ from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
 from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
+from app.modules.scheduled import service as scheduled
+from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
 from app.modules.sync.router import router as sync_router
 from app.modules.threads.router import router as threads_router
@@ -125,6 +127,20 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
             app.state.hub.sweep_presence()
 
 
+async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """Posts scheduled messages whose time has come (M12d)."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.scheduled_send_interval_seconds)
+        except TimeoutError:
+            try:
+                async with app.state.db.session_factory() as session:
+                    await scheduled.send_due(session)
+            except Exception:
+                log.exception("scheduled send failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
@@ -140,6 +156,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(app.state.push_sender.run(stop), name="push-sender"))
         tasks.append(asyncio.create_task(_attachment_gc_loop(app, stop), name="attachment-gc"))
         tasks.append(asyncio.create_task(_presence_sweep_loop(app, stop), name="presence-sweep"))
+        tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
     try:
         yield
     finally:
@@ -160,6 +177,7 @@ def build_api_router() -> APIRouter:
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
     api.include_router(favorites_router)
+    api.include_router(scheduled_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(search_router)

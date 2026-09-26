@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelReadStateOut
 import jp.chikuwachat.android.api.AttachmentOut
@@ -107,6 +108,7 @@ class FakeServer {
         }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
         override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
+        override suspend fun listScheduled(): List<ScheduledOut> { maybeFail(); return scheduled[userId]?.toList() ?: emptyList() }
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
@@ -201,6 +203,22 @@ class FakeServer {
 
     /** user → saved message ids, newest first. */
     val bookmarks = HashMap<String, MutableList<String>>()
+    /** "user" → pending scheduled messages (M12d). */
+    val scheduled = HashMap<String, MutableList<ScheduledOut>>()
+
+    fun schedule(userId: String, channelId: String, body: String, sendAt: String): ScheduledOut {
+        val row = ScheduledOut(id = "sch-${++eventId}", channelId = channelId, clientMsgId = "c-$eventId", body = body, sendAt = sendAt, status = "pending", createdAt = now())
+        scheduled.getOrPut(userId) { ArrayList() }.add(row)
+        return row
+    }
+
+    fun emitScheduled(userId: String, row: ScheduledOut) {
+        val list = scheduled.getOrPut(userId) { ArrayList() }
+        list.removeAll { it.id == row.id }
+        if (row.status == "pending") list.add(row)
+        emit(setOf(userId), event("scheduled.updated", row.channelId, null, buildJsonObject { put("scheduled", Codec.snake.encodeToJsonElement(ScheduledOut.serializer(), row)) }))
+    }
+
     /** "user" → starred channel ids (M12a). */
     val favorites = HashMap<String, MutableList<String>>()
 

@@ -1796,6 +1796,153 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "ScheduledCreate": {
+        "properties": {
+          "attachment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "type": "array"
+          },
+          "body": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Body",
+            "type": "string"
+          },
+          "client_msg_id": {
+            "format": "uuid",
+            "title": "Client Msg Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "send_at": {
+            "format": "date-time",
+            "title": "Send At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_msg_id",
+          "send_at"
+        ],
+        "title": "ScheduledCreate",
+        "type": "object"
+      },
+      "ScheduledOut": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentOut"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "client_msg_id": {
+            "format": "uuid",
+            "title": "Client Msg Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "send_at": {
+            "format": "date-time",
+            "title": "Send At",
+            "type": "string"
+          },
+          "sent_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent Message Id"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "sent",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "parent_id",
+          "client_msg_id",
+          "body",
+          "attachments",
+          "send_at",
+          "status",
+          "error",
+          "sent_message_id",
+          "created_at"
+        ],
+        "title": "ScheduledOut",
+        "type": "object"
+      },
       "SearchFilters": {
         "description": "What the server understood from the query: the free text and the resolved modifiers.",
         "properties": {
@@ -4261,6 +4408,65 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/scheduled": {
+      "post": {
+        "description": "M12d 「後で送信」: the server posts this at send_at (at least a minute ahead).",
+        "operationId": "schedule_message_api_v1_channels__channel_id__scheduled_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Schedule Message",
+        "tags": [
+          "scheduled"
+        ]
+      }
+    },
     "/api/v1/channels/{channel_id}/sync": {
       "get": {
         "operationId": "list_delta_api_v1_channels__channel_id__sync_get",
@@ -5380,6 +5586,126 @@
         "summary": "Mark Thread Read",
         "tags": [
           "threads"
+        ]
+      }
+    },
+    "/api/v1/scheduled": {
+      "get": {
+        "description": "My pending scheduled messages, soonest first.",
+        "operationId": "list_scheduled_api_v1_scheduled_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduledOut"
+                  },
+                  "title": "Response List Scheduled Api V1 Scheduled Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Scheduled",
+        "tags": [
+          "scheduled"
+        ]
+      }
+    },
+    "/api/v1/scheduled/{scheduled_id}": {
+      "delete": {
+        "operationId": "cancel_scheduled_api_v1_scheduled__scheduled_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheduled_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheduled Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Scheduled",
+        "tags": [
+          "scheduled"
+        ]
+      }
+    },
+    "/api/v1/scheduled/{scheduled_id}/send-now": {
+      "post": {
+        "operationId": "send_scheduled_now_api_v1_scheduled__scheduled_id__send_now_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheduled_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scheduled Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Scheduled Now",
+        "tags": [
+          "scheduled"
         ]
       }
     },

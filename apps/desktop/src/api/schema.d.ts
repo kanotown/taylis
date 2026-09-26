@@ -504,6 +504,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/scheduled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule Message
+         * @description M12d 「後で送信」: the server posts this at send_at (at least a minute ahead).
+         */
+        post: operations["schedule_message_api_v1_channels__channel_id__scheduled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/sync": {
         parameters: {
             query?: never;
@@ -781,6 +801,60 @@ export interface paths {
          */
         put: operations["mark_thread_read_api_v1_messages__message_id__thread_read_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scheduled
+         * @description My pending scheduled messages, soonest first.
+         */
+        get: operations["list_scheduled_api_v1_scheduled_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduled/{scheduled_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel Scheduled */
+        delete: operations["cancel_scheduled_api_v1_scheduled__scheduled_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduled/{scheduled_id}/send-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Scheduled Now */
+        post: operations["send_scheduled_now_api_v1_scheduled__scheduled_id__send_now_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1606,6 +1680,71 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** ScheduledCreate */
+        ScheduledCreate: {
+            /** Attachment Ids */
+            attachment_ids?: string[];
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Client Msg Id
+             * Format: uuid
+             */
+            client_msg_id: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Send At
+             * Format: date-time
+             */
+            send_at: string;
+        };
+        /** ScheduledOut */
+        ScheduledOut: {
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentOut"][];
+            /** Body */
+            body: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Client Msg Id
+             * Format: uuid
+             */
+            client_msg_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Send At
+             * Format: date-time
+             */
+            send_at: string;
+            /** Sent Message Id */
+            sent_message_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sent" | "failed" | "cancelled";
         };
         /**
          * SearchFilters
@@ -2927,6 +3066,41 @@ export interface operations {
             };
         };
     };
+    schedule_message_api_v1_channels__channel_id__scheduled_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduledCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_delta_api_v1_channels__channel_id__sync_get: {
         parameters: {
             query?: {
@@ -3561,6 +3735,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreadState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_scheduled_api_v1_scheduled_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledOut"][];
+                };
+            };
+        };
+    };
+    cancel_scheduled_api_v1_scheduled__scheduled_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduled_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_scheduled_now_api_v1_scheduled__scheduled_id__send_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduled_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
                 };
             };
             /** @description Validation Error */

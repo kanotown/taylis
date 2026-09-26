@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelReadStateOut
 import jp.chikuwachat.android.api.BootstrapOut
@@ -42,6 +43,8 @@ interface SyncApi {
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
     /** M12a: every channel read to its end; returns the new states. */
     suspend fun readAll(): List<ChannelReadStateOut>
+    /** M12d: my pending scheduled messages. */
+    suspend fun listScheduled(): List<ScheduledOut>
     suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
     /** THREADS.md §3. */
@@ -345,6 +348,12 @@ class SyncEngine(
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
+        scope.launch { loadScheduled() }
+    }
+
+    /** M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events). */
+    suspend fun loadScheduled() {
+        runCatching { store.replaceScheduled(api.listScheduled()) }
     }
 
     /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
@@ -380,6 +389,10 @@ class SyncEngine(
             "bookmark.updated" -> {
                 val id = frame.data.str("message_id") ?: return
                 store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
+            "scheduled.updated" -> {
+                val row = Codec.snake.decodeFromJsonElement(ScheduledOut.serializer(), frame.data["scheduled"] ?: return)
+                store.applyScheduled(row)
             }
             "favorite.updated" -> {
                 val id = frame.data.str("channel_id") ?: return

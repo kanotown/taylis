@@ -74,3 +74,7 @@ export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];
 
 /** PATCH /users/me body (M11d, M12c). */
 export type UserUpdate = components["schemas"]["UserUpdate"];
+
+/** Scheduled messages (M12d). */
+export type ScheduledOut = components["schemas"]["ScheduledOut"];
+export type ScheduledCreate = components["schemas"]["ScheduledCreate"];

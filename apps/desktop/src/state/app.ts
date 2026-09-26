@@ -2,8 +2,9 @@
 import { ApiClient } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
+import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -236,6 +237,48 @@ export class AppController {
   setNotice(text: string | null): void {
     this.notice = text;
     this.emit();
+  }
+
+  /** M12d 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. */
+  async scheduleMessage(channelId: string, parentId: string | null, body: string, attachmentIds: string[], sendAt: Date): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const row = await this.api.scheduleMessage(channelId, {
+        client_msg_id: crypto.randomUUID(),
+        body,
+        parent_id: parentId,
+        attachment_ids: attachmentIds,
+        send_at: sendAt.toISOString(),
+      });
+      this.store.applyScheduled(row);
+      this.setNotice(`${scheduleLabel(row.send_at)} に送信します`);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost. */
+  async cancelScheduled(row: ScheduledOut, restoreDraft = true): Promise<void> {
+    if (!this.api) return;
+    try {
+      await this.api.cancelScheduled(row.id);
+      this.store.applyScheduled({ ...row, status: "cancelled" });
+      if (restoreDraft && row.body) this.store.setDraft(row.channel_id, row.parent_id ?? null, { text: row.body });
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  async sendScheduledNow(row: ScheduledOut): Promise<void> {
+    if (!this.api) return;
+    try {
+      await this.api.sendScheduledNow(row.id);
+      this.store.applyScheduled({ ...row, status: "sent" });
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   /** M12b: `<server>/m/<id>` for the server we are logged into. */

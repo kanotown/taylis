@@ -462,6 +462,25 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun scheduledRowsLoadAfterBootstrapAndFollowEvents() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice")
+        val general = server.createChannel("general", alice.id)
+        val row = server.schedule(alice.id, general.id, "later", "2026-10-03T00:00:00Z")
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(alice.id), server.connector(alice.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); settle(engine)
+        assertEquals(listOf("later"), store.listScheduled().map { it.body })
+        val second = server.schedule(alice.id, general.id, "sooner", "2026-10-02T00:00:00Z")
+        server.emitScheduled(alice.id, second); settle(engine)
+        assertEquals(listOf("sooner", "later"), store.listScheduled().map { it.body }) // soonest first
+        server.emitScheduled(alice.id, row.copy(status = "sent", sentMessageId = "m1"))
+        server.emitScheduled(alice.id, second.copy(status = "cancelled")); settle(engine)
+        assertTrue(store.listScheduled().isEmpty())
+        engine.stop(); scope.cancel()
+    }
+
     @Test fun favoritesSyncAndReadAllClearsEveryChannel() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.EmojiEmotions
@@ -366,6 +369,30 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
+            // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
+            var scheduleOpen by remember { mutableStateOf(false) }
+            var customOpen by remember { mutableStateOf(false) }
+            val canSchedule = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty())
+            fun schedule(at: java.time.ZonedDateTime) {
+                val body = Mentions.encode(draft.trim(), store.users.values)
+                val ids = pendingUploads.map { it.id }
+                if (!canSchedule) return
+                if (at.isBefore(java.time.ZonedDateTime.now().plusMinutes(1))) { controller.error = "1 分以上先の時刻を選んでください"; return }
+                controller.scope.launch {
+                    if (controller.scheduleMessage(channelId, parentId, body, ids, at)) store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                }
+            }
+            Box {
+                IconButton(enabled = canSchedule, onClick = { scheduleOpen = true }) { Icon(Icons.Outlined.Schedule, contentDescription = "後で送信") }
+                DropdownMenu(expanded = scheduleOpen, onDismissRequest = { scheduleOpen = false }) {
+                    Schedule.presets().forEach { preset ->
+                        DropdownMenuItem(text = { Text(preset.label + "  " + Schedule.label(preset.at)) }, onClick = { scheduleOpen = false; schedule(preset.at) })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("日時を指定…") }, onClick = { scheduleOpen = false; customOpen = true })
+                }
+            }
+            if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }
             OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
             IconButton(
                 onClick = {

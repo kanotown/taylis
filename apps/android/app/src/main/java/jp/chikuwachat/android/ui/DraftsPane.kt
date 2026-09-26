@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,8 +28,29 @@ import jp.chikuwachat.android.app.AppController
 fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: String, parentId: String?) -> Unit) {
     val store = controller.store
     val drafts = remember(version) { store.listDrafts().filter { store.channel(it.channelId) != null } }
+    val scheduled = remember(version) { store.listScheduled() }
     LazyColumn(Modifier.fillMaxSize()) {
-        if (drafts.isEmpty()) {
+        if (scheduled.isNotEmpty()) {
+            item { Text("予約送信", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            items(scheduled, key = { "sch:" + it.id }) { row ->
+                val channel = store.channel(row.channelId)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(channel?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        if (row.parentId != null) Text(" · スレッド", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(" · " + Schedule.label(row.sendAt) + " に送信", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (row.attachments.isNotEmpty()) Text(" · 添付 ${row.attachments.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(plainText(Mentions.toNames(row.body, store.users)).ifBlank { "(本文なし)" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    Row {
+                        TextButton(onClick = { controller.scope.launch { controller.sendScheduledNow(row) } }) { Text("今すぐ送信") }
+                        TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text("取り消し") }
+                    }
+                }
+                HorizontalDivider()
+            }
+        }
+        if (drafts.isEmpty() && scheduled.isEmpty()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("下書きはありません", style = MaterialTheme.typography.titleSmall)
