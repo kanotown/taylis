@@ -216,3 +216,41 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 
 9. **ログ**: JSON 行 (`LOG_JSON=true`) を `docker compose logs app` か journald で集める。トークン・パスワード・
    本文は出さない。`DEBUG=true` は本番では無視される。
+
+## 実機での動作確認 (iPhone)
+
+前提: `apps/ios/project.yml` の `DEVELOPMENT_TEAM` で自動署名できること (Xcode にそのチームの Apple ID を
+追加済み)、iPhone がデベロッパモード有効 (設定 → プライバシーとセキュリティ → デベロッパモード) で Mac を
+信頼していること。
+
+1. **サーバを LAN に公開する。** 開発用 compose は既定で localhost にしか公開しないので、`app` だけ作り直す。
+   元に戻すときは `APP_BIND` を付けずに同じコマンドを実行する。
+
+   ```
+   cd infra && APP_BIND=0.0.0.0 docker compose up -d app
+   ipconfig getifaddr en0        # Mac の LAN アドレス。アプリのサーバ URL に使う
+   ```
+
+   macOS のファイアウォールが有効なら Docker への着信を許可する。
+2. **UDID を確認する。** USB か同じ Wi‑Fi で接続し `xcrun devicectl list devices` を見る (`physical` の行)。
+3. **ビルドして入れる。** Xcode でプロジェクトを開き、対象に iPhone を選んで ▶ でもよい。
+
+   ```
+   cd apps/ios && xcodegen generate
+   xcodebuild -scheme ChikuwaChat -destination "id=<UDID>" -allowProvisioningUpdates -derivedDataPath build build
+   xcrun devicectl device install app --device <UDID> build/Build/Products/Debug-iphoneos/ChikuwaChat.app
+   xcrun devicectl device process launch --device <UDID> jp.chikuwachat.ios
+   ```
+
+   初回は iPhone 側で「信頼されていないデベロッパ」と出るので、設定 → 一般 → VPN とデバイス管理 で信頼する。
+4. **ログインする。** サーバ URL は `http://<Mac の IP>:8000`。ユーザーは既存の開発ユーザーか、
+   `docker compose exec -T app python -m app.cli create-user --username <名前> --display-name <表示名>` で追加する
+   (初回ログインでパスワード変更を求められる)。Info.plist の ATS は自宅 LAN 向けに平文 HTTP を許可している。
+   本番は Caddy の TLS を使う。
+5. **プッシュを試す。** Xcode から入れたビルドは `aps-environment = development` なので、端末は
+   `push_environment = sandbox` で登録される。`.env` の `PUSH_APNS_*` が設定済みなら、iPhone をバックグラウンドに
+   して Desktop から DM を送ると通知が届き、タップで該当チャンネルが開く。届かないときは
+   `docker compose logs app | grep -i apns` を見る。`BadDeviceToken` は環境の不一致 (sandbox / production)、
+   `InvalidProviderToken` は Key ID / Team ID / 鍵の不一致。
+6. **見るところ**: ログイン → チャンネル一覧 → Desktop との送受信 → バックグラウンド中の通知とタップ →
+   アプリを再起動してキャッシュが先に出て再同期されること → 機内モードにして送信し、復帰後に届くこと。
