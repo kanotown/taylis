@@ -22,3 +22,6 @@ export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];
 export type MemberOut = components["schemas"]["MemberOut"];
 export type ChannelType = ChannelOut["type"];
+
+export type SearchHit = components["schemas"]["SearchHit"];
+export type SearchOut = components["schemas"]["SearchOut"];

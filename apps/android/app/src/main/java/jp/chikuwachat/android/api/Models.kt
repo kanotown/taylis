@@ -165,3 +165,15 @@ data class ErrorEnvelope(val error: ErrorInner)
 
 @Serializable
 data class ErrorInner(val code: String, val message: String)
+
+@Serializable
+data class SearchHit(val message: MessageOut, val score: Double = 0.0)
+
+@Serializable
+data class SearchOut(
+    val hits: List<SearchHit>,
+    val keywords: List<String> = emptyList(),
+    val limit: Int,
+    val offset: Int,
+    val hasMore: Boolean,
+)

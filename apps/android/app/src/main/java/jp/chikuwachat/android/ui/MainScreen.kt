@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,6 +60,7 @@ fun MainScreen(controller: AppController) {
     val status = controller.engineStatus
     var selection by rememberSaveable { mutableStateOf<String?>(null) }
     var threadId by rememberSaveable { mutableStateOf<String?>(null) }
+    var searching by rememberSaveable { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MainDialog?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -79,7 +81,8 @@ fun MainScreen(controller: AppController) {
 
     val selectedChannel = selection?.let { store.channel(it) }
     if (selectedChannel == null) threadId = null
-    BackHandler(enabled = threadId != null) { threadId = null }
+    BackHandler(enabled = searching) { searching = false }
+    BackHandler(enabled = !searching && threadId != null) { threadId = null }
     BackHandler(enabled = threadId == null && selectedChannel != null) { selection = null }
 
     Scaffold(
@@ -88,6 +91,7 @@ fun MainScreen(controller: AppController) {
                 title = {
                     Text(
                         when {
+                            searching -> "検索"
                             threadId != null -> "スレッド"
                             selectedChannel != null -> channelTitle(selectedChannel, store)
                             else -> store.me?.displayName ?: "ChikuwaChat"
@@ -95,10 +99,12 @@ fun MainScreen(controller: AppController) {
                     )
                 },
                 navigationIcon = {
-                    if (selectedChannel != null) IconButton(onClick = { if (threadId != null) threadId = null else selection = null }) { Text("←", style = MaterialTheme.typography.titleLarge) }
+                    if (searching) IconButton(onClick = { searching = false }) { Text("←", style = MaterialTheme.typography.titleLarge) }
+                    else if (selectedChannel != null) IconButton(onClick = { if (threadId != null) threadId = null else selection = null }) { Text("←", style = MaterialTheme.typography.titleLarge) }
                 },
                 actions = {
                     StatusBadge(status)
+                    if (!searching) IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, contentDescription = "検索") }
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
@@ -115,7 +121,13 @@ fun MainScreen(controller: AppController) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             val openThread = threadId
-            if (selectedChannel != null && openThread != null) {
+            if (searching) {
+                SearchPane(controller) { channelId, _, parentId ->
+                    searching = false
+                    selection = channelId
+                    threadId = parentId
+                }
+            } else if (selectedChannel != null && openThread != null) {
                 ThreadPane(controller, selectedChannel.id, openThread, version)
             } else if (selectedChannel != null) {
                 ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })

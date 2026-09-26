@@ -309,7 +309,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | Reads / 通知設定 | `PUT /channels/{id}/read`, `PUT /channels/{id}/notification-preference` |
 | Sync | `GET /sync/bootstrap`, `WS /ws` |
 | Attachments | `POST /attachments` (multipart), `GET /attachments/{id}`, `GET /attachments/{id}/content`, `GET /attachments/{id}/thumbnail` |
-| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset) |
+| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`) |
 | Health | `GET /healthz` (プロセス生存), `GET /readyz` (DB / オブジェクトストレージ到達性) |
 
 ### エラー形式と分類

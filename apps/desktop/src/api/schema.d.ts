@@ -511,6 +511,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Messages */
+        get: operations["search_messages_api_v1_search_messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sync/bootstrap": {
         parameters: {
             query?: never;
@@ -1100,6 +1117,25 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** SearchHit */
+        SearchHit: {
+            message: components["schemas"]["MessageOut"];
+            /** Score */
+            score: number;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Has More */
+            has_more: boolean;
+            /** Hits */
+            hits: components["schemas"]["SearchHit"][];
+            /** Keywords */
+            keywords: string[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** SessionOut */
         SessionOut: {
@@ -2385,6 +2421,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_messages_api_v1_search_messages_get: {
+        parameters: {
+            query: {
+                q: string;
+                channel_id?: string | null;
+                from_user_id?: string | null;
+                after?: string | null;
+                before?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
                 };
             };
             /** @description Validation Error */

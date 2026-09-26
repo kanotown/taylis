@@ -224,3 +224,18 @@ struct ErrorEnvelope: Decodable {
     }
     let error: Inner
 }
+
+struct SearchHit: Codable, Identifiable {
+    let message: MessageOut
+    let score: Double
+
+    var id: String { message.id }
+}
+
+struct SearchOut: Codable {
+    let hits: [SearchHit]
+    let keywords: [String]
+    let limit: Int
+    let offset: Int
+    let hasMore: Bool
+}
