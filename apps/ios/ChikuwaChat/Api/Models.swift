@@ -10,6 +10,11 @@ struct UserPublic: Codable, Identifiable, Equatable, Hashable {
     let deactivatedAt: String?
     let createdAt: String
     let updatedAt: String
+    /// Profile card (M11d); the server reports an expired status as nil.
+    var title: String? = nil
+    var statusText: String? = nil
+    var statusEmoji: String? = nil
+    var statusExpiresAt: String? = nil
 }
 
 struct UserMe: Codable, Equatable {
@@ -22,6 +27,25 @@ struct UserMe: Codable, Equatable {
     let updatedAt: String
     let email: String?
     let mustChangePassword: Bool
+    var title: String? = nil
+    var statusText: String? = nil
+    var statusEmoji: String? = nil
+    var statusExpiresAt: String? = nil
+
+    var asPublic: UserPublic {
+        UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
+                   title: title, statusText: statusText, statusEmoji: statusEmoji, statusExpiresAt: statusExpiresAt)
+    }
+}
+
+/// A custom status (M11d) that has not expired: (emoji, text); nil otherwise.
+func activeStatus(_ user: UserPublic?, now: Date = Date()) -> (emoji: String, text: String)? {
+    guard let user else { return nil }
+    let emoji = user.statusEmoji ?? ""
+    let text = user.statusText ?? ""
+    if emoji.isEmpty && text.isEmpty { return nil }
+    if let expires = user.statusExpiresAt, let date = parseIsoDate(expires), date <= now { return nil }
+    return (emoji, text)
 }
 
 struct DeviceOut: Codable, Equatable {

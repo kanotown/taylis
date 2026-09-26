@@ -139,6 +139,7 @@ struct ChannelInfoView: View {
     @State private var members: [MemberOut]?
     @State private var topic = ""
     @State private var editingTopic = false
+    @State private var profileUserId: String?
     @State private var showAddMember = false
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
@@ -201,16 +202,22 @@ struct ChannelInfoView: View {
                             ForEach(members.sorted { (store.users[$0.userId]?.displayName ?? "") < (store.users[$1.userId]?.displayName ?? "") }, id: \.userId) { member in
                                 let user = store.users[member.userId]
                                 let presence = store.presenceOf(member.userId)
-                                HStack(spacing: 10) {
-                                    AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
-                                    VStack(alignment: .leading, spacing: 0) {
-                                        Text(user?.displayName ?? "?")
-                                        Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
+                                Button { profileUserId = member.userId } label: {
+                                    HStack(spacing: 10) {
+                                        AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            HStack(spacing: 6) {
+                                                Text(user?.displayName ?? "?")
+                                                StatusEmojiView(user: user)
+                                            }
+                                            Text("@\(user?.username ?? "")" + ((user?.title).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
+                                        if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
                                     }
-                                    Spacer()
-                                    if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
-                                    if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
                                 }
+                                .buttonStyle(.plain)
                             }
                         } else {
                             ProgressView()
@@ -221,6 +228,12 @@ struct ChannelInfoView: View {
                     }
                 } else {
                     Text("チャンネルが見つかりません").foregroundStyle(.secondary)
+                }
+            }
+            .sheet(item: Binding(get: { profileUserId.map { ProfileTarget(id: $0) } }, set: { profileUserId = $0?.id })) { target in
+                ProfileSheet(controller: controller, userId: target.id) { id in
+                    NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
+                    dismiss()
                 }
             }
             .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
@@ -239,7 +252,9 @@ struct SettingsView: View {
     @Bindable var controller: AppController
     @Environment(\.dismiss) private var dismiss
     @State private var displayName = ""
+    @State private var title = ""
     @State private var nameSaved = false
+    @State private var editingStatus = false
     @State private var current = ""
     @State private var next = ""
     @State private var repeated = ""
@@ -261,14 +276,42 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    Section("表示名") {
+                    Section("ステータス") {
+                        let status = activeStatus(controller.store.users[me.id] ?? me.asPublic)
+                        Button {
+                            editingStatus = true
+                        } label: {
+                            HStack {
+                                if let status {
+                                    Text("\(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces))
+                                    Spacer()
+                                    if let label = expiryLabel((controller.store.users[me.id] ?? me.asPublic).statusExpiresAt) { Text(label).font(.caption).foregroundStyle(.secondary) }
+                                } else {
+                                    Text("ステータスを設定").foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Section("プロフィール") {
                         TextField("表示名", text: $displayName)
                             .onChange(of: displayName) { _, _ in nameSaved = false }
+                        TextField("肩書 (任意)", text: $title)
+                            .onChange(of: title) { _, _ in nameSaved = false }
                         HStack {
-                            Button("表示名を保存") {
-                                Task { busy = true; nameSaved = await controller.updateDisplayName(displayName); busy = false }
+                            Button("プロフィールを保存") {
+                                Task {
+                                    busy = true
+                                    let name = displayName.trimmingCharacters(in: .whitespaces)
+                                    let newTitle = title.trimmingCharacters(in: .whitespaces)
+                                    var ok = true
+                                    if name != me.displayName { ok = await controller.updateDisplayName(name) }
+                                    if ok, (newTitle.isEmpty ? nil : newTitle) != me.title { ok = await controller.updateProfile(title: .some(newTitle.isEmpty ? nil : newTitle)) }
+                                    nameSaved = ok
+                                    busy = false
+                                }
                             }
-                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || displayName.trimmingCharacters(in: .whitespaces) == me.displayName)
+                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || (displayName.trimmingCharacters(in: .whitespaces) == me.displayName && (title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : title.trimmingCharacters(in: .whitespaces)) == me.title))
                             if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
                         }
                     }
@@ -299,7 +342,13 @@ struct SettingsView: View {
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
-            .onAppear { displayName = me?.displayName ?? "" }
+            .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
+            .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? "" }
         }
     }
+}
+
+
+struct ProfileTarget: Identifiable {
+    let id: String
 }
