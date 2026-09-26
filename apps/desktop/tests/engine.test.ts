@@ -5,7 +5,7 @@ import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { FakeServer } from "./fakeServer";
 
-async function setup(options: { hold?: boolean } = {}) {
+async function setup(options: { hold?: boolean; active?: boolean; prepare?: () => Promise<void> } = {}) {
   const server = new FakeServer();
   const alice = server.addUser("alice");
   const bob = server.addUser("bob");
@@ -19,10 +19,11 @@ async function setup(options: { hold?: boolean } = {}) {
       connect: server.connectorFor(bob.id),
       store,
       getAccessToken: () => "token",
+      prepareConnection: options.prepare,
       sleep: async () => {},
       random: () => 0.5,
       onNotify: (message) => notifications.push(message.body),
-      isActive: () => false,
+      isActive: () => options.active ?? false,
     },
     { pageSize: 3, gapLimit: 5, reconnectMinMs: 0 },
   );
@@ -239,7 +240,7 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
 
 describe("read state (M8b)", () => {
   it("counts unread and mentions, follows reads from other devices and clears on own sends", async () => {
-    const { server, alice, bob, channel, store, engine } = await setup();
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
     server.post(channel.id, alice.id, "m1");
     server.post(channel.id, alice.id, "m2");
     await engine.start();
@@ -317,5 +318,50 @@ describe("attachments (M9a)", () => {
     const sent = store.messages(channel.id)[0]!;
     expect(sent.attachments?.map((a) => a.id)).toEqual(["a1", "a2"]);
     expect(server.channels.get(channel.id)!.messages[0]!.attachments.map((a) => a.id)).toEqual(["a1", "a2"]);
+  });
+});
+
+
+describe("conversation safety", () => {
+  it("does not mark an opened channel read while inactive or offline", async () => {
+    const { server, alice, channel, store, engine } = await setup();
+    server.post(channel.id, alice.id, "unseen");
+    await engine.start();
+    await engine.openChannel(channel.id);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(1);
+    engine.markRead(channel.id, 1);
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(0);
+    engine.stop();
+    engine.markRead(channel.id, 1);
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(0);
+    await engine.send(channel.id, "offline send");
+    expect(store.outbox).toHaveLength(1);
+    expect(server.channels.get(channel.id)!.messages).toHaveLength(1);
+    await engine.start();
+    await engine.idle();
+    expect(store.outbox).toHaveLength(0);
+    expect(server.channels.get(channel.id)!.messages).toHaveLength(2);
+    engine.stop();
+  });
+
+  it("retries a temporary session restoration failure without signing out", async () => {
+    let attempts = 0;
+    const { engine, store } = await setup({ prepare: async () => {
+      if (++attempts === 1) throw new NetworkError("offline");
+    } });
+    store.setDraft("channel", null, { text: "offline draft" });
+    await engine.start();
+    for (let i = 0; i < 20; i++) await engine.idle();
+    expect(engine.status).toBe("online");
+    expect(attempts).toBe(2);
+    expect(store.draft("channel").text).toBe("offline draft");
+    engine.stop();
+  });
+
+  it("signs out if restoring the session is rejected", async () => {
+    const { engine } = await setup({ prepare: async () => { throw new ApiError(401, "session_revoked", "revoked"); } });
+    await engine.start();
+    expect(engine.status).toBe("signed_out");
+    engine.stop();
   });
 });

@@ -85,6 +85,9 @@ data class OutboxItem(
 )
 
 @Serializable
+data class Draft(val text: String = "", val attachments: List<AttachmentOut> = emptyList())
+
+@Serializable
 data class Snapshot(
     val meta: Map<String, String> = emptyMap(),
     val users: List<UserPublic> = emptyList(),
@@ -116,6 +119,23 @@ class Store(private val persistence: Persistence? = null) {
     val users = LinkedHashMap<String, UserPublic>()
     val channels = LinkedHashMap<String, ChannelState>()
     val outbox = ArrayList<OutboxItem>()
+    private val drafts = LinkedHashMap<String, Draft>()
+    private val uploads = HashMap<String, Int>()
+    private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
+    fun draft(channelId: String, parentId: String? = null) = drafts[draftKey(channelId, parentId)] ?: Draft()
+    fun setDraft(channelId: String, parentId: String? = null, mutate: (Draft) -> Draft) {
+        val key = draftKey(channelId, parentId)
+        val value = mutate(draft(channelId, parentId))
+        if (value.text.isEmpty() && value.attachments.isEmpty()) drafts.remove(key) else drafts[key] = value
+        persist { it.saveMeta(key, drafts[key]?.let { d -> Codec.plain.encodeToString(Draft.serializer(), d) }) }
+        emit()
+    }
+    fun uploading(channelId: String, parentId: String? = null) = uploads[draftKey(channelId, parentId)] ?: 0
+    fun trackUpload(channelId: String, parentId: String? = null, delta: Int) {
+        val key = draftKey(channelId, parentId)
+        uploads[key] = maxOf(0, (uploads[key] ?: 0) + delta)
+        emit()
+    }
     private val messagesByChannel = HashMap<String, LinkedHashMap<String, MessageState>>()
 
     private val _version = MutableStateFlow(0)
@@ -129,6 +149,9 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     private fun apply(snapshot: Snapshot) {
+        snapshot.meta.filterKeys { it.startsWith("draft:") }.forEach { (key, value) ->
+            runCatching { Codec.plain.decodeFromString(Draft.serializer(), value) }.getOrNull()?.let { drafts[key] = it }
+        }
         me = snapshot.meta["me"]?.let { runCatching { Codec.plain.decodeFromString(UserMe.serializer(), it) }.getOrNull() }
         snapshot.users.forEach { users[it.id] = it }
         snapshot.channels.forEach { channels[it.id] = it }
@@ -299,7 +322,8 @@ class Store(private val persistence: Persistence? = null) {
     // --- snapshots (tests, diagnostics) -----------------------------------------------------
 
     fun snapshot(): Snapshot = Snapshot(
-        meta = me?.let { mapOf("me" to Codec.plain.encodeToString(UserMe.serializer(), it)) } ?: emptyMap(),
+        meta = drafts.mapValues { Codec.plain.encodeToString(Draft.serializer(), it.value) } +
+            (me?.let { mapOf("me" to Codec.plain.encodeToString(UserMe.serializer(), it)) } ?: emptyMap()),
         users = users.values.toList(),
         channels = channels.values.toList(),
         messages = messagesByChannel.values.flatMap { it.values },

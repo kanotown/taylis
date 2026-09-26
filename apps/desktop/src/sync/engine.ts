@@ -36,6 +36,7 @@ export interface EngineDeps {
   connect: WsConnector;
   store: Store;
   getAccessToken: () => string | null;
+  prepareConnection?: () => Promise<void>;
   onSignedOut?: () => void;
   onNotify?: (message: MessageOut, channel: ChannelState) => void;
   /** A channel became fully read (here or on another device). */
@@ -132,6 +133,13 @@ export class SyncEngine {
   }
 
   private async connect(): Promise<void> {
+    if (this.stopped || ["connecting", "online"].includes(this.status)) return;
+    this.setStatus("connecting");
+    try { await this.deps.prepareConnection?.(); } catch (error) {
+      if (error instanceof ApiError && error.isAuth) this.signOut();
+      else await this.scheduleReconnect();
+      return;
+    }
     if (this.stopped) return;
     const token = this.deps.getAccessToken();
     if (!token) {
@@ -423,16 +431,18 @@ export class SyncEngine {
 
   openChannel(channelId: string): Promise<void> {
     this.currentChannelId = channelId;
+    if (this.status !== "online") return Promise.resolve();
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);
       if (!channel) return;
       if (channel.syncedSeq === null || channel.syncedSeq < channel.lastSeq) await this.catchUp(channelId);
-      this.markRead(channelId, this.deps.store.getChannel(channelId)?.lastSeq ?? channel.lastSeq);
+      // Read position is owned by the visible timeline, not navigation or sync.
     });
   }
 
   /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
   markRead(channelId: string, seq: number): void {
+    if (this.status !== "online" || this.deps.isActive?.() === false) return;
     const store = this.deps.store;
     const channel = store.getChannel(channelId);
     if (!channel || !channel.isMember || seq <= channel.lastReadSeq) return;
@@ -500,6 +510,7 @@ export class SyncEngine {
   /** Scroll-up pagination: older messages by seq cursor. */
   loadOlder(channelId: string): Promise<void> {
     return this.enqueue(async () => {
+      if (this.status !== "online") return;
       const store = this.deps.store;
       const channel = store.getChannel(channelId);
       if (!channel || !channel.hasOlder) return;
@@ -539,6 +550,7 @@ export class SyncEngine {
   /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
   loadReplies(_channelId: string, parentId: string): Promise<void> {
     return this.enqueue(async () => {
+      if (this.status !== "online") return;
       for (const reply of await this.deps.api.replies(parentId)) this.deps.store.upsertMessage(reply);
     });
   }
@@ -563,7 +575,7 @@ export class SyncEngine {
 
   /** Sends queued messages one at a time, in order (§9). Stops on temporary failures. */
   async flushOutbox(): Promise<void> {
-    if (this.flushing) return;
+    if (this.flushing || this.status !== "online") return;
     this.flushing = true;
     try {
       for (const item of [...this.deps.store.outbox]) {

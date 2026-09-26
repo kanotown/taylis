@@ -44,6 +44,64 @@ class SyncEngineTest {
 
     private suspend fun settle(engine: SyncEngine) { repeat(20) { engine.idle(); yield() } }
 
+    @Test fun conversationDraftsPersistSeparatelyIncludingAttachments() {
+        val store = Store()
+        val attachment = jp.chikuwachat.android.api.AttachmentOut("a", "note.txt", "text/plain", 4, status = "pending")
+        store.setDraft("c1") { it.copy(text = "channel", attachments = listOf(attachment)) }
+        store.setDraft("c1", "p1") { it.copy(text = "thread") }
+        store.setDraft("c2") { it.copy(text = "other") }
+        store.trackUpload("c1", delta = 1)
+        val restored = Store.fromSnapshot(store.snapshot())
+        assertEquals(listOf(attachment), restored.draft("c1").attachments)
+        assertEquals("thread", restored.draft("c1", "p1").text)
+        assertEquals("other", restored.draft("c2").text)
+        assertEquals(0, restored.uploading("c1"))
+        restored.setDraft("c1") { jp.chikuwachat.android.sync.Draft() }
+        assertEquals("", Store.fromSnapshot(restored.snapshot()).draft("c1").text)
+        assertEquals("thread", restored.draft("c1", "p1").text)
+    }
+
+    @Test fun openingDoesNotReadAndBackgroundReadIsIgnored() = runBlocking {
+        val w = world()
+        w.server.post(w.channelId, w.alice, "unseen")
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        assertEquals(1, w.store.channel(w.channelId)?.unreadCount)
+        w.engine.markRead(w.channelId, 1)
+        assertEquals(0, w.store.channel(w.channelId)?.lastReadSeq)
+        w.engine.stop()
+        w.engine.isActive = { true }
+        w.engine.markRead(w.channelId, 1)
+        assertEquals(0, w.store.channel(w.channelId)?.lastReadSeq)
+        w.engine.send(w.channelId, "offline send")
+        assertEquals(1, w.store.outbox.size)
+        w.engine.start(); settle(w.engine)
+        assertEquals(0, w.store.outbox.size)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun sessionRestorationRetriesTemporaryFailure() = runBlocking {
+        val w = world()
+        var attempts = 0
+        w.store.setDraft("c1") { it.copy(text = "offline draft") }
+        w.engine.prepareConnection = {
+            attempts++
+            if (attempts == 1) throw ApiException.Network(IOException("offline"))
+        }
+        w.engine.start(); settle(w.engine)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(2, attempts)
+        assertEquals("offline draft", w.store.draft("c1").text)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun revokedSessionDuringRestorationSignsOut() = runBlocking {
+        val w = world()
+        w.engine.prepareConnection = { throw ApiException.Api(401, "session_revoked", "revoked") }
+        w.engine.start()
+        assertEquals(EngineStatus.SIGNED_OUT, w.engine.status.value)
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun bootstrapLoadsLatestPage() = runBlocking {
         val w = world()
         repeat(5) { w.server.post(w.channelId, w.alice, "m${it + 1}") }
@@ -198,6 +256,7 @@ class SyncEngineTest {
 
     @Test fun unreadCountsFollowReadsAcrossDevices() = runBlocking {
         val w = world()
+        w.engine.isActive = { true }
         w.server.post(w.channelId, w.alice, "m1"); w.server.post(w.channelId, w.alice, "m2")
         w.engine.start(); settle(w.engine)
         assertEquals(2, w.store.channel(w.channelId)?.unreadCount)

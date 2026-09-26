@@ -11,6 +11,24 @@ final class AppController {
     var screen: Screen = .boot
     var error: String?
     var me: UserMe?
+    struct MessageFocus {
+        var channelId: String
+        var messageId: String
+        var parentId: String?
+        var context: [MessageState]
+    }
+    var messageFocus: MessageFocus?
+    func revealMessage(_ message: MessageOut) async -> Bool {
+        guard let api else { return false }
+        do {
+            let context = try await api.messageContext(message.id)
+            if let parentId = message.parentId {
+                for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+            }
+            messageFocus = MessageFocus(channelId: message.channelId, messageId: message.id, parentId: message.parentId, context: context.map(MessageState.init))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
     private(set) var api: ApiClient?
     private(set) var store = Store()
     private(set) var engine: SyncEngine?
@@ -29,7 +47,10 @@ final class AppController {
         let account = account(server.absoluteString, username)
         let api = ApiClient(baseUrl: server)
         api.onTokens = { tokens in Keychain.set(account: account, value: tokens.refreshToken) }
-        api.onSignedOut = { [weak self] in Task { @MainActor in self?.handleSignedOut(account: account) } }
+        api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
+            guard let self, self.api === api else { return }
+            self.handleSignedOut(account: account)
+        } }
         return api
     }
 
@@ -43,6 +64,8 @@ final class AppController {
         }
         let api = makeApi(server: server, username: username)
         api.refreshToken = refreshToken
+        self.api = api
+        if await startEngine(restoring: true) { return }
         do {
             let tokens = try await api.refresh()
             await enterSession(api: api, username: username, me: tokens.user)
@@ -93,14 +116,20 @@ final class AppController {
         await startEngine()
     }
 
-    private func startEngine() async {
-        guard let api else { return }
+    @discardableResult
+    private func startEngine(restoring: Bool = false) async -> Bool {
+        guard let api else { return false }
         engine?.stop()
+        messageFocus = nil
         let account = account(api.baseUrl.absoluteString, username)
         let persistence = try? SQLitePersistence.open(profile: account)
         let store = Store(persistence: persistence)
         store.load()
         self.store = store
+        if restoring {
+            guard let cached = store.me, !cached.mustChangePassword else { return false }
+            me = cached
+        } else if let me { store.setMe(me) }
         let engine = SyncEngine(
             api: api,
             connect: { url, _ in try await WebSocketTransport.connect(url: url) },
@@ -109,14 +138,29 @@ final class AppController {
             getAccessToken: { api.accessToken },
             options: .init()
         )
-        engine.onSignedOut = { [weak self] in self?.handleSignedOut(account: account) }
+        engine.onSignedOut = { [weak self, weak engine] in
+            guard let self, self.engine === engine else { return }
+            self.handleSignedOut(account: account)
+        }
         engine.isActive = { UIApplication.shared.applicationState == .active }
         engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
         engine.onBadge = { count in PushCenter.shared.setBadge(count) }
         self.engine = engine
+        engine.prepareConnection = { [weak self, weak engine] in
+            let tokens = try await api.refresh()
+            guard let self, self.api === api, self.engine === engine else { return }
+            self.me = tokens.user
+            self.store.setMe(tokens.user)
+            if tokens.user.mustChangePassword {
+                engine?.stop()
+                self.screen = .changePassword
+                throw ApiError.api(status: 403, code: "password_change_required", message: "Password change required")
+            }
+            PushCenter.shared.attach(controller: self)
+        }
         screen = .main
-        PushCenter.shared.attach(controller: self)
-        await engine.start()
+        Task { await engine.start() }
+        return true
     }
 
     /// Foreground: iOS suspends sockets in the background, so reconnect and catch up (SYNC_PROTOCOL.md §7.5).

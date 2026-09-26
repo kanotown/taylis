@@ -38,6 +38,7 @@ class ApiClient(
     val baseUrl: String,
     private val http: OkHttpClient = OkHttpClient(),
 ) : SyncApi {
+    @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
     var onTokens: ((TokenResponse) -> Unit)? = null
@@ -65,13 +66,15 @@ class ApiClient(
     }
 
     suspend fun refresh(): TokenResponse = refreshMutex.withLock {
+        val version = sessionVersion
         val token = refreshToken ?: throw ApiException.Api(401, "missing_token", "No refresh token")
         try {
             val tokens: TokenResponse = request("POST", "/api/v1/auth/refresh", buildJsonObject { put("refresh_token", token) }, auth = false)
+            if (version != sessionVersion) throw ApiException.Api(401, "session_changed", "Session changed")
             apply(tokens)
             tokens
         } catch (e: ApiException.Api) {
-            if (e.isAuth) signOut()
+            if (version == sessionVersion && e.isAuth) signOut()
             throw e
         }
     }
@@ -82,6 +85,7 @@ class ApiClient(
     }
 
     fun signOut() {
+        sessionVersion++
         accessToken = null
         refreshToken = null
         onSignedOut?.invoke()
@@ -194,6 +198,7 @@ class ApiClient(
 
     /** POST /attachments (multipart): the server sniffs the type and keeps it pending until a send binds it. */
     suspend fun uploadAttachment(bytes: ByteArray, filename: String, contentType: String?): AttachmentOut {
+        if (accessToken == null && refreshToken != null) refresh()
         val part = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", filename, bytes.toRequestBody((contentType ?: "application/octet-stream").toMediaType()))
             .build()
@@ -207,6 +212,7 @@ class ApiClient(
 
     /** Authenticated GET returning raw bytes (thumbnails and downloads). */
     suspend fun fetchBytes(path: String): ByteArray {
+        if (accessToken == null && refreshToken != null) refresh()
         val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
         accessToken?.let { request.header("Authorization", "Bearer $it") }
         return withContext(Dispatchers.IO) {
@@ -233,6 +239,8 @@ class ApiClient(
         return ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed")
     }
 
+    suspend fun messageContext(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/context")
+
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 
     // --- transport --------------------------------------------------------------------------
@@ -247,6 +255,7 @@ class ApiClient(
     }
 
     private suspend fun requestRaw(method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean): Pair<String, Int> {
+        if (auth && accessToken == null && refreshToken != null) refresh()
         val builder = Request.Builder().url(baseUrl.trimEnd('/') + path).header("Accept", "application/json")
         val requestBody = body?.let { Codec.plain.encodeToString(JsonElement.serializer(), it).toRequestBody("application/json".toMediaType()) }
         builder.method(method, requestBody ?: if (method == "GET") null else "".toRequestBody(null))

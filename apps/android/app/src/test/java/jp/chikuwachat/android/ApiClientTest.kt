@@ -2,6 +2,10 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.ApiException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -58,6 +62,42 @@ class ApiClientTest {
         try { client.me(); fail("expected failure") } catch (e: ApiException.Api) { assertEquals("session_revoked", e.code); assertEquals(401, e.status) }
         assertTrue(signedOut)
         assertNull(client.accessToken)
+    }
+
+    @Test fun restoredSessionRefreshesBeforeAuthenticatedRequest() = runBlocking {
+        val paths = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            paths.add(request.url.encodedPath)
+            if (request.url.encodedPath.endsWith("/auth/refresh")) 200 to tokens(2)
+            else {
+                assertEquals("Bearer access-2", request.header("Authorization"))
+                200 to """{"id":"u","username":"alice","display_name":"Alice","role":"member","created_at":"","updated_at":"","must_change_password":false}"""
+            }
+        })
+        client.refreshToken = "refresh-1"
+        client.me()
+        assertEquals(listOf("/api/v1/auth/refresh", "/api/v1/users/me"), paths)
+    }
+
+    @Test fun lateRefreshDoesNotRestoreSignedOutCredentials() = runBlocking {
+        val received = CompletableDeferred<Unit>()
+        val gate = CountDownLatch(1)
+        val client = ApiClient("http://server", stubbed {
+            received.complete(Unit)
+            gate.await(5, TimeUnit.SECONDS)
+            200 to tokens(2)
+        })
+        client.refreshToken = "refresh-1"
+        var saved = false
+        client.onTokens = { saved = true }
+        val refresh = async { runCatching { client.refresh() } }
+        received.await()
+        client.signOut()
+        gate.countDown()
+        assertTrue(refresh.await().isFailure)
+        assertNull(client.accessToken)
+        assertNull(client.refreshToken)
+        assertEquals(false, saved)
     }
 
     @Test fun errorClassificationAndWsUrl() {

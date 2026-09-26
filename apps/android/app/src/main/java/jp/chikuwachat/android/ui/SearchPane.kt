@@ -20,6 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,13 +37,13 @@ import kotlinx.coroutines.launch
 
 /** Full-text search: the server filters by membership; we highlight the keywords it matched. */
 @Composable
-fun SearchPane(controller: AppController, onOpen: (channelId: String, messageId: String, parentId: String?) -> Unit) {
+fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.MessageOut) -> Unit) {
     val store = controller.store
     var query by rememberSaveable { mutableStateOf("") }
-    var hits by rememberSaveable { mutableStateOf(listOf<SearchHit>()) }
-    var keywords by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var hasMore by rememberSaveable { mutableStateOf(false) }
-    var searched by rememberSaveable { mutableStateOf(false) }
+    var hits by remember { mutableStateOf(listOf<SearchHit>()) }
+    var keywords by remember { mutableStateOf(listOf<String>()) }
+    var hasMore by remember { mutableStateOf(false) }
+    var searched by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun run(offset: Int = 0) {
@@ -73,7 +74,7 @@ fun SearchPane(controller: AppController, onOpen: (channelId: String, messageId:
                 val message = hit.message
                 val channel = store.channel(message.channelId)
                 Column(
-                    Modifier.fillMaxWidth().clickable { onOpen(message.channelId, message.id, message.parentId) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().clickable { onOpen(message) }.padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     Row {
                         Text(channel?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)

@@ -1,12 +1,12 @@
 import { type FormEvent, useState } from "react";
 
-import type { SearchHit } from "../api/types";
+import type { MessageOut, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
 import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
 
 /** The right pane: full-text search across my channels; clicking a hit opens its channel (and thread). */
-export function SearchPane({ controller, onOpen, onClose }: { controller: AppController; onOpen: (channelId: string, parentId: string | null) => void; onClose: () => void }) {
+export function SearchPane({ controller, onOpen, onClose }: { controller: AppController; onOpen: (message: MessageOut) => void; onClose: () => void }) {
   const store = controller.store;
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -58,7 +58,7 @@ export function SearchPane({ controller, onOpen, onClose }: { controller: AppCon
           const channel = store.getChannel(message.channel_id);
           const text = message.body || message.attachments.map((a) => a.filename).join(", ");
           return (
-            <article key={message.id} className="message search-hit" onClick={() => onOpen(message.channel_id, message.parent_id ?? null)}>
+            <article key={message.id} className="message search-hit" onClick={() => onOpen(message)}>
               <div className="meta">
                 <strong>{channel ? channelTitle(channel, controller) : "?"}</strong>
                 <span>{store.users.get(message.sender_id)?.display_name ?? "?"}</span>

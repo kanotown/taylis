@@ -50,6 +50,7 @@ final class SyncEngine {
     var onBadge: ((Int) -> Void)?
     private var pendingReads: [String: Task<Void, Never>] = [:]
     var isActive: () -> Bool = { true }
+    var prepareConnection: (() async throws -> Void)?
 
     private let api: SyncApi
     private let connect: WsConnector
@@ -111,6 +112,12 @@ final class SyncEngine {
     }
 
     private func connectSocket() async {
+        if stopped || status == .connecting || status == .online { return }
+        status = .connecting
+        do { try await prepareConnection?() } catch {
+            if let error = error as? ApiError, error.isAuth { signOut() } else { await scheduleReconnect() }
+            return
+        }
         if stopped { return }
         guard let token = getAccessToken() else {
             signOut()
@@ -384,6 +391,7 @@ final class SyncEngine {
     /// Opening a thread: fetch its replies (live ones keep arriving as timeline events).
     func loadReplies(_ channelId: String, parentId: String) async {
         _ = try? await enqueue { [self] in
+            guard status == .online else { return }
             for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
         }.value
     }
@@ -392,15 +400,17 @@ final class SyncEngine {
 
     func openChannel(_ channelId: String) async {
         currentChannelId = channelId
+        guard status == .online else { return }
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId) else { return }
             if channel.syncedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }
-            markRead(channelId, seq: store.channel(channelId)?.lastSeq ?? channel.lastSeq)
+            // Only the visible timeline advances read state.
         }.value
     }
 
     /// §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins.
     func markRead(_ channelId: String, seq: Int) {
+        guard status == .online, isActive() else { return }
         guard let channel = store.channel(channelId), channel.isMember, seq > channel.lastReadSeq else { return }
         store.updateChannel(channelId) { state in
             state.lastReadSeq = seq
@@ -456,6 +466,7 @@ final class SyncEngine {
     /// Scroll-up pagination: older messages by seq cursor.
     func loadOlder(_ channelId: String) async {
         _ = try? await enqueue { [self] in
+            guard status == .online else { return }
             guard let channel = store.channel(channelId), channel.hasOlder else { return }
             let oldest = store.messages(channelId).compactMap(\.seq).first
             let page = try await api.history(channelId: channelId, beforeSeq: oldest, limit: options.pageSize)
@@ -491,7 +502,7 @@ final class SyncEngine {
 
     /// Sends queued messages one at a time, in order (§9). Stops on temporary failures.
     func flushOutbox() async {
-        if flushing { return }
+        if flushing || status != .online { return }
         flushing = true
         defer { flushing = false }
         for item in store.outbox where item.failed == nil {

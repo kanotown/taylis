@@ -41,7 +41,7 @@ struct MainView: View {
                 }
         } detail: {
             if let id = selection, let channel = controller.store.channel(id) {
-                // `.id` resets the per-channel view state (draft, unread marker) when switching channels.
+                // View state resets; conversation drafts live in the persistent Store.
                 ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
             } else {
                 ContentUnavailableView("チャンネルを選択してください", systemImage: "bubble.left.and.bubble.right",
@@ -54,14 +54,20 @@ struct MainView: View {
             switch which {
             case .newDm: NewDmView(controller: controller) { id in selection = id }
             case .newChannel: NewChannelView(controller: controller) { id in selection = id }
-            case .search: SearchView(controller: controller) { channelId, parentId in
-                selection = channelId
-                pendingThreadId = parentId
+            case .search: SearchView(controller: controller) { message in
+                Task {
+                    if await controller.revealMessage(message) {
+                        selection = message.channelId
+                        pendingThreadId = message.parentId
+                        sheet = nil
+                    }
+                }
             }
             case .settings: SettingsView(controller: controller)
             }
         }
         .onChange(of: selection) { _, id in
+            if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
             if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
         .onChange(of: PushCenter.shared.pendingChannelId, initial: true) { _, id in

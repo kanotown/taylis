@@ -13,7 +13,8 @@ const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
   const store = controller.store;
   const engine = controller.engine;
-  const messages = store.messages(channel.id);
+  const focus = controller.messageFocus?.channelId === channel.id ? controller.messageFocus : null;
+  const messages: MessageState[] = focus ? focus.context.map((m) => { const cached = store.message(channel.id, m.id); return cached && cached.updated_seq >= m.updated_seq ? cached : m; }).filter((m) => !m.deleted) : store.messages(channel.id);
   const me = store.me;
   const container = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -21,9 +22,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const [showJump, setShowJump] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const anchor = useRef<{ height: number; top: number } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
 
   // The "new messages" divider stays where it was when the channel was opened.
   const unreadMark = useRef<{ channelId: string; seq: number | null }>({ channelId: "", seq: null });
@@ -33,7 +32,19 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const items = buildTimeline(messages, { firstUnreadAfterSeq: unreadMark.current.seq, meId: me?.id ?? null });
   const lastId = messages[messages.length - 1]?.id;
 
+  const positioned = useRef(false);
   const scrollToBottom = () => bottom.current?.scrollIntoView({ block: "end" });
+  const markVisible = () => {
+    const el = container.current;
+    if (!el || focus || !positioned.current || !document.hasFocus()) return;
+    const bounds = el.getBoundingClientRect();
+    const visible = [...el.querySelectorAll<HTMLElement>("article[data-seq]")].filter((row) => {
+      const box = row.getBoundingClientRect();
+      return box.bottom <= bounds.bottom + 1 && box.bottom > bounds.top && (box.top >= bounds.top || box.height > bounds.height);
+    });
+    const seq = Math.max(0, ...visible.map((row) => Number(row.dataset.seq)));
+    if (seq > 0) engine?.markRead(channel.id, seq);
+  };
 
   useLayoutEffect(() => {
     // Older messages were prepended: keep the viewport anchored to what the reader was looking at.
@@ -44,26 +55,28 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     }
   }, [messages.length]);
 
-  useEffect(() => {
-    // A newly opened channel always starts at the newest message.
-    atBottom.current = true;
-    setShowJump(false);
-    scrollToBottom();
-  }, [channel.id]);
+  useLayoutEffect(() => {
+    positioned.current = false;
+    atBottom.current = false;
+  }, [channel.id, focus?.messageId]);
 
-  useEffect(() => {
-    if (atBottom.current) scrollToBottom();
-  }, [lastId]);
+  useLayoutEffect(() => {
+    if (positioned.current || messages.length === 0) return;
+    const target = focus?.parentId ?? focus?.messageId ?? messages.find((m) => m.seq !== null && unreadMark.current.seq !== null && m.seq > unreadMark.current.seq)?.id;
+    if (target) document.getElementById(`timeline-${target}`)?.scrollIntoView({ block: focus ? "center" : "start" });
+    else scrollToBottom();
+    positioned.current = true;
+    const el = container.current;
+    atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    setShowJump(!atBottom.current);
+  }, [channel.id, focus?.messageId, messages.length]);
 
-  // Viewing the newest messages in a focused window marks them read (SYNC_PROTOCOL.md §10).
+  useEffect(() => { if (!focus && atBottom.current && positioned.current) scrollToBottom(); }, [lastId]);
   useEffect(() => {
-    const mark = () => {
-      if (document.hasFocus() && atBottom.current) engine?.markRead(channel.id, channel.lastSeq);
-    };
-    mark();
-    window.addEventListener("focus", mark);
-    return () => window.removeEventListener("focus", mark);
-  }, [channel.id, channel.lastSeq, engine]);
+    markVisible();
+    window.addEventListener("focus", markVisible);
+    return () => window.removeEventListener("focus", markVisible);
+  }, [channel.id, channel.lastSeq, engine?.status, focus?.messageId, messages.length]);
 
   const onScroll = () => {
     const el = container.current;
@@ -71,29 +84,21 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     atBottom.current = distance < 48;
     setShowJump(distance > 240);
-    if (atBottom.current) engine?.markRead(channel.id, channel.lastSeq);
-    if (el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine) {
+    markVisible();
+    if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") {
       setLoadingOlder(true);
       anchor.current = { height: el.scrollHeight, top: el.scrollTop };
-      void engine.loadOlder(channel.id).finally(() => setLoadingOlder(false));
+      void engine.loadOlder(channel.id).catch((error) => controller.setError(error)).finally(() => setLoadingOlder(false));
     }
   };
 
-  const startEdit = (message: MessageState) => {
-    setEditingId(message.id);
-    setDraft(decodeMentions(message.body, store.users));
-  };
-  const saveEdit = (message: MessageState) => {
-    const body = encodeMentions(draft.trim(), store.users.values());
-    setEditingId(null);
-    if (body && body !== message.body) void controller.editMessage(message.id, body);
-  };
 
   return (
     <div className="timeline-wrap">
       <div className="timeline" ref={container} onScroll={onScroll}>
+        {focus && <div className="context-notice">検索位置の前後の会話 <button className="link" onClick={() => { controller.clearMessageFocus(); requestAnimationFrame(scrollToBottom); }}>最新の会話に戻る</button></div>}
         {loadingOlder && <div className="muted centered-row">読み込み中…</div>}
-        {!loadingOlder && channel.hasOlder && messages.length > 0 && engine && (
+        {!focus && !loadingOlder && channel.hasOlder && messages.length > 0 && engine && (
           <div className="centered-row">
             <button
               className="link"
@@ -101,14 +106,14 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
                 const el = container.current;
                 if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop };
                 setLoadingOlder(true);
-                void engine.loadOlder(channel.id).finally(() => setLoadingOlder(false));
+                void engine.loadOlder(channel.id).catch((error) => controller.setError(error)).finally(() => setLoadingOlder(false));
               }}
             >
               以前のメッセージを読み込む
             </button>
           </div>
         )}
-        {!channel.hasOlder && messages.length > 0 && <div className="muted centered-row history-start">ここが会話の始まりです</div>}
+        {!focus && !channel.hasOlder && messages.length > 0 && <div className="muted centered-row history-start">ここが会話の始まりです</div>}
         {messages.length === 0 && (
           <div className="empty-state">
             <strong>まだメッセージはありません</strong>
@@ -130,129 +135,155 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
               </div>
             );
           }
-          const message = item.message;
-          const sender = store.users.get(message.sender_id);
-          const senderName = sender?.display_name ?? (message.pending ? me?.display_name : undefined) ?? "unknown";
-          const mine = me?.id === message.sender_id;
-          const reactions = message.reactions ?? [];
-          return (
-            <article
-              key={message.id}
-              className={`message${item.compact ? " compact" : ""}${message.pending ? " pending" : ""}${message.failed ? " failed" : ""}`}
-              title={item.compact ? fullTimestamp(message.created_at) : undefined}
-            >
-              <div className="gutter">
-                {item.compact ? <span className="time-hover">{timeLabel(message.created_at)}</span> : <Avatar id={message.sender_id} name={senderName} />}
-              </div>
-              <div className="content">
-                {!item.compact && (
-                  <div className="meta">
-                    <strong>{senderName}</strong>
-                    <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
-                    {message.edited_at && <span className="muted">(編集済み)</span>}
-                  </div>
-                )}
-                {editingId === message.id ? (
-                  <div className="editor">
-                    <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus />
-                    <div>
-                      <button onClick={() => saveEdit(message)} disabled={!draft.trim()}>
-                        保存
-                      </button>
-                      <button className="secondary" onClick={() => setEditingId(null)}>
-                        キャンセル
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {message.body && <MessageBody body={message.body} users={store.users} />}
-                    <AttachmentList attachments={message.attachments ?? []} controller={controller} />
-                  </>
-                )}
-                {message.failed && (
-                  <div className="error send-failed">
-                    送信に失敗しました
-                    <button className="link" onClick={() => void engine?.retryFailed()}>
-                      再送
-                    </button>
-                    <button className="link" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>
-                      破棄
-                    </button>
-                  </div>
-                )}
-                {(message.reply_count ?? 0) > 0 && onOpenThread && (
-                  <button className="link replies" onClick={() => onOpenThread(message.id)}>
-                    💬 {message.reply_count} 件の返信
-                  </button>
-                )}
-                {reactions.length > 0 && (
-                  <div className="reactions">
-                    {reactions.map((reaction) => {
-                      const reacted = !!me && reaction.user_ids.includes(me.id);
-                      const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ");
-                      return (
-                        <button
-                          key={reaction.emoji}
-                          className={`chip${reacted ? " mine" : ""}`}
-                          title={names}
-                          onClick={() => void controller.toggleReaction(message, reaction.emoji)}
-                        >
-                          {reaction.emoji} {reaction.count}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {!message.pending && (
-                <div className="actions">
-                  {REACTION_PALETTE.map((emoji) => (
-                    <button key={emoji} title="リアクション" onClick={() => void controller.toggleReaction(message, emoji)}>
-                      {emoji}
-                    </button>
-                  ))}
-                  {onOpenThread && (
-                    <button title="スレッドで返信" onClick={() => onOpenThread(message.id)}>
-                      💬
-                    </button>
-                  )}
-                  {mine && (
-                    <button title="編集" onClick={() => startEdit(message)}>
-                      ✏️
-                    </button>
-                  )}
-                  {(mine || controller.isAdmin) &&
-                    (confirmDeleteId === message.id ? (
-                      <>
-                        <button
-                          className="danger"
-                          onClick={() => {
-                            setConfirmDeleteId(null);
-                            void controller.deleteMessage(message.id);
-                          }}
-                        >
-                          本当に削除
-                        </button>
-                        <button onClick={() => setConfirmDeleteId(null)}>やめる</button>
-                      </>
-                    ) : (
-                      <button title="削除" onClick={() => setConfirmDeleteId(message.id)}>
-                        🗑
-                      </button>
-                    ))}
-                </div>
-              )}
-            </article>
-          );
+          return <MessageRow key={item.message.id} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread} />;
         })}
         <div ref={bottom} />
       </div>
-      {showJump && (
+      {!focus && showJump && (
         <button className="jump" onClick={scrollToBottom}>
           ↓ 最新のメッセージへ
         </button>
       )}
     </div>
+  );
+}
+
+
+/** Shared actions for timeline and thread messages. */
+export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false }: {
+  controller: AppController; message: MessageState; compact?: boolean; onOpenThread?: (id: string) => void; thread?: boolean;
+}) {
+  const store = controller.store;
+  const engine = controller.engine;
+  const me = store.me;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const startEdit = (message: MessageState) => {
+    setEditingId(message.id);
+    setDraft(decodeMentions(message.body, store.users));
+  };
+  const saveEdit = (message: MessageState) => {
+    const body = encodeMentions(draft.trim(), store.users.values());
+    setEditingId(null);
+    if (body && body !== message.body) void controller.editMessage(message.id, body);
+  };
+
+  const sender = store.users.get(message.sender_id);
+  const senderName = sender?.display_name ?? (message.pending ? me?.display_name : undefined) ?? "unknown";
+  const mine = me?.id === message.sender_id;
+  const reactions = message.reactions ?? [];
+  return (
+    <article
+      key={message.id}
+      id={`${thread ? "thread" : "timeline"}-${message.id}`}
+      data-seq={message.seq ?? undefined}
+      tabIndex={0}
+      className={`message${controller.messageFocus?.messageId === message.id ? " highlighted" : ""}${compact ? " compact" : ""}${message.pending ? " pending" : ""}${message.failed ? " failed" : ""}`}
+      title={compact ? fullTimestamp(message.created_at) : undefined}
+    >
+      <div className="gutter">
+        {compact ? <span className="time-hover">{timeLabel(message.created_at)}</span> : <Avatar id={message.sender_id} name={senderName} />}
+      </div>
+      <div className="content">
+        {!compact && (
+          <div className="meta">
+            <strong>{senderName}</strong>
+            <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
+            {message.edited_at && <span className="muted">(編集済み)</span>}
+          </div>
+        )}
+        {editingId === message.id ? (
+          <div className="editor">
+            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus />
+            <div>
+              <button onClick={() => saveEdit(message)} disabled={!draft.trim()}>
+                保存
+              </button>
+              <button className="secondary" onClick={() => setEditingId(null)}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {message.body && <MessageBody body={message.body} users={store.users} />}
+            <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+          </>
+        )}
+        {message.failed && (
+          <div className="error send-failed">
+            送信に失敗しました
+            <button className="link" onClick={() => void engine?.retryFailed()}>
+              再送
+            </button>
+            <button className="link" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>
+              破棄
+            </button>
+          </div>
+        )}
+        {(message.reply_count ?? 0) > 0 && onOpenThread && (
+          <button className="link replies" onClick={() => onOpenThread(message.id)}>
+            💬 {message.reply_count} 件の返信
+          </button>
+        )}
+        {reactions.length > 0 && (
+          <div className="reactions">
+            {reactions.map((reaction) => {
+              const reacted = !!me && reaction.user_ids.includes(me.id);
+              const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ");
+              return (
+                <button
+                  key={reaction.emoji}
+                  className={`chip${reacted ? " mine" : ""}`}
+                  title={names}
+                  onClick={() => void controller.toggleReaction(message, reaction.emoji)}
+                >
+                  {reaction.emoji} {reaction.count}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {!message.pending && (
+        <div className="actions">
+          {REACTION_PALETTE.map((emoji) => (
+            <button key={emoji} title="リアクション" onClick={() => void controller.toggleReaction(message, emoji)}>
+              {emoji}
+            </button>
+          ))}
+          {onOpenThread && (
+            <button title="スレッドで返信" onClick={() => onOpenThread(message.id)}>
+              💬
+            </button>
+          )}
+          {mine && (
+            <button title="編集" onClick={() => startEdit(message)}>
+              ✏️
+            </button>
+          )}
+          {(mine || controller.isAdmin) &&
+            (confirmDeleteId === message.id ? (
+              <>
+                <button
+                  className="danger"
+                  onClick={() => {
+                    setConfirmDeleteId(null);
+                    void controller.deleteMessage(message.id);
+                  }}
+                >
+                  本当に削除
+                </button>
+                <button onClick={() => setConfirmDeleteId(null)}>やめる</button>
+              </>
+            ) : (
+              <button title="削除" onClick={() => setConfirmDeleteId(message.id)}>
+                🗑
+              </button>
+            ))}
+        </div>
+      )}
+    </article>
   );
 }

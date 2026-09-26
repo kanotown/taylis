@@ -1,7 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
+import type { AttachmentOut, MessageOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -25,6 +25,19 @@ export class AppController {
   store: Store = new Store();
   engine: SyncEngine | null = null;
   me: UserMe | null = null;
+  messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[] } | null = null;
+
+  clearMessageFocus(): void { this.messageFocus = null; this.emit(); }
+  async revealMessage(message: MessageOut): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const context = await this.api.messageContext(message.id);
+      if (message.parent_id) for (const reply of await this.api.replies(message.parent_id)) this.store.upsertMessage(reply);
+      this.messageFocus = { channelId: message.channel_id, messageId: message.id, parentId: message.parent_id ?? null, context };
+      this.emit();
+      return true;
+    } catch (error) { this.setError(error); return false; }
+  }
   private readonly listeners = new Set<() => void>();
   private readonly secrets = secretStore();
 
@@ -63,10 +76,11 @@ export class AppController {
 
   private createApi(server: string, username: string): ApiClient {
     const account = this.account(server, username);
-    return new ApiClient(server, {
+    const api = new ApiClient(server, {
       onTokens: (tokens: TokenResponse) => void this.secrets.set(account, tokens.refresh_token),
-      onSignedOut: () => void this.handleSignedOut(account),
+      onSignedOut: () => { if (this.api === api) void this.handleSignedOut(account); },
     });
+    return api;
   }
 
   /** Startup: restore the previous session from the credential store (SYNC_PROTOCOL.md §7.2). */
@@ -84,6 +98,8 @@ export class AppController {
     }
     const api = this.createApi(server, username);
     api.refreshToken = refreshToken;
+    this.api = api;
+    if (await this.startEngine(true)) return;
     try {
       const tokens = await api.refresh();
       await this.enterSession(api, username, tokens.user);
@@ -225,19 +241,34 @@ export class AppController {
     await this.startEngine();
   }
 
-  private async startEngine(): Promise<void> {
+  private async startEngine(restoring = false): Promise<boolean> {
     const api = this.api;
-    if (!api) return;
+    if (!api) return false;
     this.engine?.stop();
+    this.messageFocus = null;
     const profile = safeProfile(this.account(api.baseUrl, this.username));
     this.store = new Store(isTauri() ? await SqlitePersistence.open(profile) : null);
     await this.store.load();
+    if (restoring && (!this.store.me || this.store.me.must_change_password)) return false;
+    if (restoring) this.me = this.store.me;
+    else if (this.me) this.store.setMe(this.me);
     const engine = new SyncEngine({
       api,
       connect: browserConnector(api.wsUrl),
       store: this.store,
       getAccessToken: () => api.accessToken,
-      onSignedOut: () => void this.handleSignedOut(this.account(api.baseUrl, this.username)),
+      prepareConnection: async () => {
+        const tokens = await api.refresh();
+        if (this.api !== api || this.engine !== engine) return;
+        this.me = tokens.user;
+        this.store.setMe(tokens.user);
+        if (tokens.user.must_change_password) {
+          this.engine?.stop();
+          this.setScreen("change_password");
+          throw new Error("Password change required");
+        }
+      },
+      onSignedOut: () => { if (this.engine === engine) void this.handleSignedOut(this.account(api.baseUrl, this.username)); },
       onNotify: (message, channel) => {
         const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";
         const title = channel.type === "dm" ? sender : `${sender} (group DM)`;
@@ -248,7 +279,8 @@ export class AppController {
     this.engine = engine;
     engine.subscribe(() => this.emit());
     this.setScreen("main");
-    await engine.start();
+    void engine.start();
+    return true;
   }
 
   async logout(): Promise<void> {

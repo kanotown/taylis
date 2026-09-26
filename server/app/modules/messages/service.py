@@ -131,6 +131,15 @@ async def list_history(
     )
 
 
+async def message_context(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, limit: int
+) -> list[MessageOut]:
+    message = await get_message(db, actor, message_id)
+    if message.parent_id is not None:
+        message = await get_message(db, actor, message.parent_id)
+    return await messages_out(db, await repo.list_context(db, message, limit))
+
+
 async def list_delta(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, *, since_seq: int, limit: int
 ) -> DeltaOut:

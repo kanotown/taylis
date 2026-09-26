@@ -1,33 +1,22 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
@@ -37,14 +26,25 @@ import kotlinx.coroutines.launch
 @Composable
 fun ThreadPane(controller: AppController, channelId: String, parentId: String, version: Int) {
     val store = controller.store
-    val parent = store.message(channelId, parentId)
+    val parent = store.message(channelId, parentId) ?: controller.messageFocus?.context?.firstOrNull { it.id == parentId }
     val replies = remember(version, parentId) { store.replies(channelId, parentId) }
-    val scope = rememberCoroutineScope()
-    var draft by rememberSaveable(parentId) { mutableStateOf("") }
-    LaunchedEffect(parentId) { controller.engine?.loadReplies(channelId, parentId) }
+    val listState = rememberLazyListState()
+    var positioned by remember(parentId) { mutableStateOf(false) }
+    LaunchedEffect(parentId, replies.size) {
+        if (!positioned && replies.isNotEmpty()) {
+            val focus = controller.messageFocus?.takeIf { it.parentId == parentId }
+            val index = replies.indexOfFirst { it.id == focus?.messageId }
+            listState.scrollToItem(if (index >= 0) index + 2 else replies.size + 1)
+            positioned = true
+        }
+    }
+    LaunchedEffect(parentId, controller.engineStatus) {
+        try { controller.engine?.loadReplies(channelId, parentId) }
+        catch (e: Exception) { controller.error = controller.describe(e) }
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
             if (parent != null) {
                 item(key = "parent") { ThreadMessage(parent, store, controller) }
                 item(key = "divider") {
@@ -62,36 +62,23 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             items(replies, key = { it.id }) { reply -> ThreadMessage(reply, store, controller) }
         }
         HorizontalDivider()
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-            OutlinedTextField(draft, { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("スレッドに返信") }, maxLines = 6)
-            IconButton(
-                onClick = {
-                    val body = Mentions.encode(draft.trim(), store.users.values)
-                    if (body.isEmpty()) return@IconButton
-                    draft = ""
-                    scope.launch { controller.engine?.send(channelId, body, parentId = parentId) }
-                },
-                enabled = draft.isNotBlank() && parent != null,
-            ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "返信を送信") }
+        val channel = store.channel(channelId)
+        if (parent != null && channel?.isMember == true && !channel.channel.archived) {
+            ConversationComposer(controller, channelId, parentId)
         }
     }
 }
 
 @Composable
 private fun ThreadMessage(message: jp.chikuwachat.android.sync.MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController) {
-    val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Avatar(message.senderId, sender, size = 30.dp)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(sender, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(8.dp))
-                Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
-            AttachmentList(message.attachments, controller)
-            ReactionChips(message, store, onToggle = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } })
-        }
-    }
+    MessageRow(
+        message, store, controller,
+        canEdit = !message.pending && message.senderId == store.me?.id,
+        canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
+        onRetry = { controller.scope.launch { controller.engine?.retryFailed() } },
+        onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
+        onReact = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } },
+        onEdit = { body -> controller.scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
+        onDelete = { controller.scope.launch { controller.deleteMessage(message.id) } },
+    )
 }

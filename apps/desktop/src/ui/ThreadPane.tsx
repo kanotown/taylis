@@ -1,22 +1,28 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { AppController } from "../state/app";
-import type { ChannelState, MessageState } from "../sync/types";
-import { AttachmentList } from "./Attachments";
-import { Avatar } from "./Avatar";
+import type { ChannelState } from "../sync/types";
 import { Composer } from "./Composer";
-import { fullTimestamp, timeLabel } from "./format";
-import { MessageBody } from "./MessageBody";
+import { MessageRow } from "./Timeline";
 
 /** The right pane: one thread (parent + replies) with its own composer. */
 export function ThreadPane({ controller, channel, parentId, onClose }: { controller: AppController; channel: ChannelState; parentId: string; onClose: () => void }) {
   const store = controller.store;
-  const parent = store.message(channel.id, parentId);
+  const parent = store.message(channel.id, parentId) ?? controller.messageFocus?.context.find((m) => m.id === parentId);
   const replies = store.replies(channel.id, parentId);
+  const focused = useRef<string | null>(null);
 
   useEffect(() => {
-    void controller.engine?.loadReplies(channel.id, parentId);
-  }, [controller.engine, channel.id, parentId]);
+    void controller.engine?.loadReplies(channel.id, parentId).catch((error) => controller.setError(error));
+  }, [controller.engine, controller.engine?.status, channel.id, parentId]);
+
+  useEffect(() => {
+    const id = controller.messageFocus?.messageId;
+    if (id && focused.current !== id) {
+      const row = document.getElementById(`thread-${id}`);
+      if (row) { row.scrollIntoView({ block: "center" }); focused.current = id; }
+    }
+  }, [parentId, controller.messageFocus?.messageId, replies.length]);
 
   return (
     <aside className="thread-panel open">
@@ -29,37 +35,17 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
       <div className="timeline">
         {parent ? (
           <>
-            <ThreadMessage message={parent} controller={controller} />
+            <MessageRow thread message={parent} controller={controller} />
             <div className="muted thread-count">{replies.length === 0 ? "返信はまだありません" : `${replies.length} 件の返信`}</div>
             {replies.map((reply) => (
-              <ThreadMessage key={reply.id} message={reply} controller={controller} />
+              <MessageRow thread key={reply.id} message={reply} controller={controller} />
             ))}
           </>
         ) : (
           <div className="muted">メッセージが見つかりません</div>
         )}
       </div>
-      {parent && channel.isMember && !channel.archived && <Composer controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
+      {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
     </aside>
-  );
-}
-
-function ThreadMessage({ message, controller }: { message: MessageState; controller: AppController }) {
-  const store = controller.store;
-  const sender = store.users.get(message.sender_id)?.display_name ?? store.me?.display_name ?? "?";
-  return (
-    <article className={`message${message.pending ? " pending" : ""}`}>
-      <div className="gutter">
-        <Avatar id={message.sender_id} name={sender} size={28} />
-      </div>
-      <div className="content">
-        <div className="meta">
-          <strong>{sender}</strong>
-          <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
-        </div>
-        {message.body && <MessageBody body={message.body} users={store.users} />}
-        <AttachmentList attachments={message.attachments ?? []} controller={controller} />
-      </div>
-    </article>
   );
 }

@@ -25,6 +25,7 @@ enum ApiError: Error {
 @MainActor
 final class ApiClient: SyncApi {
     let baseUrl: URL
+    private var sessionVersion = 0
     var accessToken: String?
     var refreshToken: String?
     var onTokens: ((TokenResponse) -> Void)?
@@ -64,13 +65,15 @@ final class ApiClient: SyncApi {
     func refresh() async throws -> TokenResponse {
         if let task = refreshTask { return try await task.value }
         guard let token = refreshToken else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
+        let version = sessionVersion
         let task = Task<TokenResponse, Error> {
             do {
                 let tokens: TokenResponse = try await request("POST", "/api/v1/auth/refresh", body: .object(["refresh_token": .string(token)]), auth: false)
+                guard version == sessionVersion else { throw ApiError.api(status: 401, code: "session_changed", message: "Session changed") }
                 apply(tokens)
                 return tokens
             } catch {
-                if let apiError = error as? ApiError, apiError.isAuth { signOut() }
+                if version == sessionVersion, let apiError = error as? ApiError, apiError.isAuth { signOut() }
                 throw error
             }
         }
@@ -85,6 +88,7 @@ final class ApiClient: SyncApi {
     }
 
     func signOut() {
+        sessionVersion += 1
         accessToken = nil
         refreshToken = nil
         onSignedOut?()
@@ -207,6 +211,7 @@ final class ApiClient: SyncApi {
     }
 
     private func requestData(_ method: String, _ path: String, body: Data?, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
+        if accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -230,6 +235,10 @@ final class ApiClient: SyncApi {
             throw ApiError.api(status: status, code: envelope?.error.code ?? "http_\(status)", message: envelope?.error.message ?? "Request failed")
         }
         return (data, status)
+    }
+
+    func messageContext(_ messageId: String) async throws -> [MessageOut] {
+        try await request("GET", "/api/v1/messages/\(messageId)/context")
     }
 
     func replies(messageId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/messages/\(messageId)/replies") }
@@ -269,6 +278,7 @@ final class ApiClient: SyncApi {
     }
 
     private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool) async throws -> (Data, Int) {
+        if auth, accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
