@@ -25,6 +25,7 @@ from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
 from app.modules.auth import repository as auth_repo
 from app.modules.auth.router import router as auth_router
+from app.modules.bookmarks.router import router as bookmarks_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
 from app.modules.messages.router import router as messages_router
@@ -153,6 +154,7 @@ def build_api_router() -> APIRouter:
     api.include_router(channels_router)
     api.include_router(messages_router)
     api.include_router(threads_router)
+    api.include_router(bookmarks_router)
     api.include_router(attachments_router)
     api.include_router(search_router)
     api.include_router(notifications_router)

@@ -30,3 +30,5 @@ class BootstrapOut(BaseModel):
     threads: ThreadSummary = ThreadSummary(unread_count=0, mention_count=0)
     # Who is connected right now (SYNC_PROTOCOL.md §5.2 presence); users not listed are offline.
     presence: list[PresenceEntry] = []
+    # My saved messages (M11c): ids only, newest first; the list itself is GET /bookmarks.
+    bookmarks: list[UUID] = []

@@ -80,6 +80,29 @@ async def delete_message(message_id: UUID, user: CurrentUser, db: Db) -> Message
     return await service.delete_message(db, user, message_id)
 
 
+@router.get("/channels/{channel_id}/pins", response_model=list[MessageOut])
+async def list_pins(
+    channel_id: UUID, user: CurrentUser, db: Db, limit: int = Query(default=100, ge=1, le=200)
+) -> list[MessageOut]:
+    """Pinned messages, most recently pinned first (M11c)."""
+    return await service.list_pins(db, user, channel_id, limit)
+
+
+@router.put("/messages/{message_id}/pin", response_model=MessageOut)
+async def pin_message(
+    message_id: UUID, user: CurrentUser, db: Db, response: Response
+) -> MessageOut:
+    message, changed = await service.set_pin(db, user, message_id, pinned=True)
+    response.status_code = 201 if changed else 200
+    return message
+
+
+@router.delete("/messages/{message_id}/pin", response_model=MessageOut)
+async def unpin_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    message, _ = await service.set_pin(db, user, message_id, pinned=False)
+    return message
+
+
 @router.put("/messages/{message_id}/reactions/{emoji}", response_model=MessageOut)
 async def add_reaction(
     message_id: UUID, user: CurrentUser, db: Db, response: Response, emoji: str = Emoji

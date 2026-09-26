@@ -242,6 +242,23 @@ CREATE INDEX thread_follows_user_idx ON thread_follows (user_id, following);
   導出する (THREADS.md §2 のクエリ)。チャンネルの未読 (`read_states`) とは独立で、返信はそちらに数えない。
 - `message.created` の `parent_thread.participant_ids` と `thread.updated` の宛先はこの表の `following=true`。
 
+### bookmarks (保存したメッセージ、M11c)
+
+```sql
+CREATE TABLE bookmarks (
+  user_id     uuid NOT NULL REFERENCES users(id),
+  message_id  uuid NOT NULL REFERENCES messages(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, message_id)
+);
+CREATE INDEX bookmarks_user_idx ON bookmarks (user_id, created_at);
+```
+
+- 個人データなのでチャンネルの `seq` を消費しない。端末間は `bookmark.updated` (audience=user) で揃え、
+  bootstrap には id の一覧 (`bookmarks`) だけを入れる。一覧は `GET /bookmarks` (保存した順、カーソル)。
+- ピン留め (`messages.pinned_at`) はチャンネル全員に見えるので `seq` を消費し、`message.updated (change=pin)`
+  で配る。両方ともメッセージの削除で消える (一覧から外れる)。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql
@@ -278,11 +295,14 @@ CREATE TABLE messages (
   created_at          timestamptz NOT NULL DEFAULT now(),  -- サーバ時刻
   edited_at           timestamptz,
   deleted_at          timestamptz,                         -- トゥームストーン
+  pinned_at           timestamptz,                         -- M11c: ピン留め (メンバーなら誰でも)。外すと NULL
+  pinned_by           uuid REFERENCES users(id),
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
 CREATE INDEX messages_channel_updated_seq_idx  ON messages (channel_id, updated_seq);
 CREATE INDEX messages_parent_idx               ON messages (parent_id, seq) WHERE parent_id IS NOT NULL;
+CREATE INDEX messages_pinned_idx               ON messages (channel_id, pinned_at) WHERE pinned_at IS NOT NULL;
 -- M9: CREATE INDEX messages_body_pgroonga_idx ON messages USING pgroonga (body);
 ```
 
@@ -474,8 +494,7 @@ LIMIT $limit OFFSET $offset;
 
 ## 6. 将来の追加候補 (スキーマ上の置き場所だけ決めておく)
 
-- ピン留め: `pins (channel_id, message_id, pinned_by, created_at)`。seq を消費し `message.updated (change=pin)`。
-- ブックマーク (個人): `bookmarks (user_id, message_id)`。seq を消費しない (個人データ)。
+- (実装済み M11c) ピン留めは `messages.pinned_at / pinned_by`、ブックマークは `bookmarks` 表。
 - カスタム絵文字: `custom_emoji (name, attachment_id)`。
 - 意味検索 / RAG: `pgvector` 拡張と
   `message_embeddings (message_id, model, chunk_index, embedding vector(N), updated_seq, PRIMARY KEY (message_id, model, chunk_index))`。

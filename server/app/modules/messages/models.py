@@ -48,6 +48,9 @@ class Message(Base):
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Pinned in its channel (M11c): any member pins / unpins; the change consumes a seq.
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pinned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),
