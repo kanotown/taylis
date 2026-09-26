@@ -27,6 +27,10 @@ object Mentions {
         }
     }
 
+    /** Mention tokens as display names, for notifications and previews. */
+    fun toNames(text: String, users: Map<String, UserPublic>): String =
+        ALL_TOKEN.replace(USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.displayName } ?: "@メンバー" }) { "@" + it.groupValues[1] }
+
     fun decode(text: String, users: Map<String, UserPublic>): String =
         ALL_TOKEN.replace(USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.username } ?: m.value }) { "@" + it.groupValues[1] }
 

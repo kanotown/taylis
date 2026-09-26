@@ -34,6 +34,16 @@ export function decodeMentions(text: string, users: Map<string, UserPublic>): st
     .replace(ALL_TOKEN, "@$1");
 }
 
+/** Mention tokens as display names, for notifications and previews (`@Toru Kano`, `@channel`). */
+export function mentionsToNames(text: string, users: Map<string, UserPublic>): string {
+  return text
+    .replace(USER_TOKEN, (whole: string, id: string) => {
+      const user = users.get(id);
+      return user ? `@${user.display_name}` : "@メンバー";
+    })
+    .replace(ALL_TOKEN, "@$1");
+}
+
 /** The `@prefix` being typed just before the caret, or null. */
 export function mentionQuery(text: string, caret: number): { start: number; query: string } | null {
   const before = text.slice(0, Math.max(caret, 0));

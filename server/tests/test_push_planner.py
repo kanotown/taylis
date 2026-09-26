@@ -84,6 +84,22 @@ async def test_dm_notifies_recipient_devices_not_sender(
     assert rows[0].expires_at > utcnow() + timedelta(minutes=9)
 
 
+async def test_push_text_shows_display_names_and_no_markdown(
+    app: FastAPI, db: AsyncSession, test_settings: Settings
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    await add_device(db, bob)
+    dm, _ = await channels.get_or_create_dm(db, alice, [bob])
+    await post(db, alice, dm.id, f"# 明日\n- <@{bob.id}> **確認** お願い `x`\n<!here>")
+
+    relay = relay_with_planner(app, test_settings)
+    while await relay.process_batch():
+        pass
+    rows = await deliveries(db)
+    assert rows[0].payload["body"] == f"明日 @{bob.display_name} 確認 お願い x @here"
+
+
 async def test_channel_default_is_mentions_so_only_level_all_members_get_pushes(
     app: FastAPI, db: AsyncSession, test_settings: Settings
 ) -> None:

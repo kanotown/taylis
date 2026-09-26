@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBlocks, tokenize, tokenizeInline } from "../src/ui/markdown";
+import { parseBlocks, plainText, tokenize, tokenizeInline } from "../src/ui/markdown";
 
 describe("message body tokenizer", () => {
   it("handles the inline subset, mentions, links and newlines", () => {
@@ -73,5 +73,12 @@ describe("light markdown blocks", () => {
   it("tokenize() still reports fenced code with its language", () => {
     expect(tokenize("```py\nprint(1)\n```")).toEqual([{ kind: "codeblock", text: "print(1)", lang: "py" }]);
     expect(tokenize("```\nlet *x* = 1\n```")).toEqual([{ kind: "codeblock", text: "let *x* = 1", lang: null }]);
+  });
+});
+
+describe("plain text for notifications", () => {
+  it("drops markdown markers and joins lines", () => {
+    expect(plainText("# 今日\n- **太字** と `code`\n> 引用 [docs](https://example.com/d)\n```ts\nlet x = 1;\n```")).toBe("今日 太字 と code 引用 docs let x = 1;");
+    expect(plainText("a".repeat(300)).length).toBe(200);
   });
 });

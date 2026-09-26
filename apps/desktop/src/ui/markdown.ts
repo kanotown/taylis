@@ -146,3 +146,21 @@ export function parseBlocks(body: string): Block[] {
   }
   return blocks;
 }
+
+/** One-line plain text for notifications and previews: markers removed, newlines collapsed. */
+export function plainText(body: string, maxLength = 200): string {
+  const text = body
+    .replace(/^```[A-Za-z0-9_+#.-]*\s*$/gm, "")
+    .replace(/^(#{1,3})\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/^\s*(?:[-*•]|\d{1,3}\.)\s+/gm, "")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1")
+    .replace(/~~([^~\n]+)~~/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1")
+    .replace(/\s*\n+\s*/g, " ")
+    .trim();
+  return text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
+}

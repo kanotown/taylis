@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { UserPublic } from "../src/api/types";
 import { decodeMentions, encodeMentions, mentionCandidates, mentionQuery } from "../src/ui/mentions";
+import { mentionsToNames } from "../src/ui/mentions";
 
 const user = (id: string, username: string, display: string): UserPublic => ({
   id,
@@ -37,4 +38,9 @@ describe("mentions", () => {
     expect(mentionCandidates("bo", users).map((c) => c.username)).toEqual(["bob.k"]);
     expect(mentionCandidates("", users).map((c) => c.username)).toEqual(["alice", "bob.k", "channel", "here"]);
   });
+});
+
+it("renders mention tokens as display names for notifications", () => {
+  const users = new Map([["00000000-0000-7000-8000-000000000001", { id: "00000000-0000-7000-8000-000000000001", username: "kano", display_name: "Toru Kano", role: "member", deactivated_at: null, created_at: "", updated_at: "" }]]);
+  expect(mentionsToNames("hi <@00000000-0000-7000-8000-000000000001> and <@00000000-0000-7000-8000-000000000002> <!channel>", users)).toBe("hi @Toru Kano and @メンバー @channel");
 });

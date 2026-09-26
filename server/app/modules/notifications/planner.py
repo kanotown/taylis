@@ -15,6 +15,7 @@ from app.events.models import OutboxEvent
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.messages.events import MESSAGE_CREATED
+from app.modules.messages.mentions import notification_text
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
@@ -52,13 +53,21 @@ class PushPlanner:
         if not devices:
             return
         sender = await users.get_user(db, sender_id)
+        # Display names for the mentioned users, so the notification text never shows raw ids.
+        names: dict[uuid.UUID, str] = {}
+        for raw in message.get("mentioned_user_ids", []) or []:
+            mentioned_user = await users.get_user(db, uuid.UUID(str(raw)))
+            if mentioned_user is not None:
+                names[mentioned_user.id] = mentioned_user.display_name
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
         planned = 0
         payloads: dict[uuid.UUID, dict[str, Any]] = {}
         for device in devices:
             if device.user_id not in payloads:
                 badge = await self.badge_for(db, device.user_id)
-                payload = self.build_payload(channel, sender, message, event.seq, badge=badge)
+                payload = self.build_payload(
+                    channel, sender, message, event.seq, badge=badge, names=names
+                )
                 payloads[device.user_id] = payload.model_dump(mode="json") | {
                     "expires_at": expires_at.isoformat()
                 }
@@ -134,6 +143,7 @@ class PushPlanner:
         seq: int | None,
         *,
         badge: int = 1,
+        names: dict[uuid.UUID, str] | None = None,
     ) -> PushPayload:
         sender_name = sender.display_name if sender else "Someone"
         if channel.type == "dm":
@@ -143,7 +153,7 @@ class PushPlanner:
         else:
             title, subtitle = f"#{channel.name}", sender_name
         body = (
-            str(message.get("body", ""))[:200]
+            notification_text(str(message.get("body", "")), names or {})
             if self.settings.push_include_content
             else "新しいメッセージ"
         )

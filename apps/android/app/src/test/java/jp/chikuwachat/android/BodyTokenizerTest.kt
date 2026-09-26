@@ -52,4 +52,9 @@ class BodyTokenizerTest {
             parseBlocks("# Title\n## Sub **b**\n#### not"),
         )
     }
+
+    @Test fun plainTextForNotifications() {
+        assertEquals("今日 太字 と code 引用 docs let x = 1;", jp.chikuwachat.android.ui.plainText("# 今日\n- **太字** と `code`\n> 引用 [docs](https://example.com/d)\n```ts\nlet x = 1;\n```"))
+        assertEquals(200, jp.chikuwachat.android.ui.plainText("a".repeat(300)).length)
+    }
 }
