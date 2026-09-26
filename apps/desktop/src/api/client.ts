@@ -1,5 +1,9 @@
 import { ApiError, NetworkError } from "./errors";
 import type {
+  AdminUserCreate,
+  AdminUserCreated,
+  AdminUserOut,
+  AdminUserUpdate,
   AttachmentOut,
   BookmarkListOut,
   BookmarkStateOut,
@@ -13,6 +17,7 @@ import type {
   NotificationPreferenceOut,
   ReadStateOut,
   SearchOut,
+  TemporaryPasswordOut,
   ThreadFilter,
   ThreadListOut,
   ThreadState,
@@ -203,6 +208,46 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- channel management (M11e) ---------------------------------------------------------
+
+  archiveChannel(channelId: string): Promise<ChannelOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/archive`);
+  }
+
+  leaveChannel(channelId: string): Promise<void> {
+    return this.request("POST", `/api/v1/channels/${channelId}/leave`);
+  }
+
+  removeMember(channelId: string, userId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/channels/${channelId}/members/${userId}`);
+  }
+
+  // --- administration (M11e): admin role only ---------------------------------------------
+
+  adminListUsers(): Promise<AdminUserOut[]> {
+    return this.request("GET", "/api/v1/admin/users");
+  }
+
+  adminCreateUser(body: AdminUserCreate): Promise<AdminUserCreated> {
+    return this.request("POST", "/api/v1/admin/users", body);
+  }
+
+  adminUpdateUser(userId: string, patch: AdminUserUpdate): Promise<AdminUserOut> {
+    return this.request("PATCH", `/api/v1/admin/users/${userId}`, patch);
+  }
+
+  adminResetPassword(userId: string): Promise<TemporaryPasswordOut> {
+    return this.request("POST", `/api/v1/admin/users/${userId}/reset-password`);
+  }
+
+  adminRevokeSessions(userId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/users/${userId}/sessions`);
+  }
+
+  adminAnonymizeUser(userId: string): Promise<AdminUserOut> {
+    return this.request("POST", `/api/v1/admin/users/${userId}/anonymize`);
   }
 
   // --- pins and bookmarks (M11c) ---------------------------------------------------------

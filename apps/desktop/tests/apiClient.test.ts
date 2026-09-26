@@ -109,3 +109,46 @@ it("does not resurrect credentials when a refresh finishes after sign-out", asyn
   expect(client.accessToken).toBeNull();
   expect(saved).toEqual([]);
 });
+
+describe("administration and channel management (M11e)", () => {
+  it("calls the admin and channel endpoints with the right methods and bodies", async () => {
+    const calls: Array<{ method: string; path: string; body: unknown }> = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        const path = String(input).replace("http://server", "");
+        calls.push({ method: init?.method ?? "GET", path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (path.endsWith("/sessions") || path.endsWith("/leave") || path.includes("/members/")) return new Response(null, { status: 204 });
+        if (path === "/api/v1/admin/users" && init?.method === "POST") return jsonResponse(201, { user: { id: "n", username: "newbie" }, temporary_password: "tmp-pass" });
+        if (path.endsWith("/reset-password")) return jsonResponse(200, { temporary_password: "reset-pass" });
+        return jsonResponse(200, path.endsWith("/users") ? [] : { id: "x" });
+      },
+    });
+    client.accessToken = "a";
+    expect(await client.adminListUsers()).toEqual([]);
+    const created = await client.adminCreateUser({ username: "newbie", display_name: "Newbie", email: null, role: "member" });
+    expect(created.temporary_password).toBe("tmp-pass");
+    await client.adminUpdateUser("u1", { role: "admin" });
+    await client.adminUpdateUser("u1", { deactivated: true });
+    expect((await client.adminResetPassword("u1")).temporary_password).toBe("reset-pass");
+    await client.adminRevokeSessions("u1");
+    await client.adminAnonymizeUser("u1");
+    await client.archiveChannel("c1");
+    await client.leaveChannel("c1");
+    await client.removeMember("c1", "u2");
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /api/v1/admin/users",
+      "POST /api/v1/admin/users",
+      "PATCH /api/v1/admin/users/u1",
+      "PATCH /api/v1/admin/users/u1",
+      "POST /api/v1/admin/users/u1/reset-password",
+      "DELETE /api/v1/admin/users/u1/sessions",
+      "POST /api/v1/admin/users/u1/anonymize",
+      "POST /api/v1/channels/c1/archive",
+      "POST /api/v1/channels/c1/leave",
+      "DELETE /api/v1/channels/c1/members/u2",
+    ]);
+    expect(calls[1]!.body).toEqual({ username: "newbie", display_name: "Newbie", email: null, role: "member" });
+    expect(calls[2]!.body).toEqual({ role: "admin" });
+    expect(calls[3]!.body).toEqual({ deactivated: true });
+  });
+});

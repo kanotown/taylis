@@ -1,4 +1,4 @@
-import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, Pin, Users } from "lucide-react";
+import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -6,10 +6,11 @@ import type { MessageOut } from "../api/types";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
-import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
+import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
+import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
 import { readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writeSidebarWidth } from "./prefs";
-import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
+import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { PinsPane } from "./PinsPane";
 import { SavedView } from "./SavedView";
@@ -24,7 +25,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -238,6 +239,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const muteLabel = current ? formatMuted(current.mutedUntil) : null;
   const level: NotificationLevel = current?.notificationLevel ?? (current && (current.type === "dm" || current.type === "group_dm") ? "all" : "mentions");
   const isChannel = current?.type === "public" || current?.type === "private";
+  const canManage = !!current && (controller.isAdmin || current.membership?.role === "owner");
+  const [busyAction, setBusyAction] = useState(false);
 
   const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];
 
@@ -262,6 +265,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         threadsActive={view === "threads"}
         onSaved={openSaved}
         savedActive={view === "saved"}
+        onAdmin={() => setDialog("admin")}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -357,6 +361,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
                     </MenuContent>
                   </Menu>
                 )}
+                {isChannel && current.isMember && (
+                  <Menu>
+                    <MenuTrigger asChild>
+                      <button type="button" aria-label="チャンネルの操作" title="チャンネルの操作" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+                        <MoreHorizontal size={18} />
+                      </button>
+                    </MenuTrigger>
+                    <MenuContent>
+                      <MenuLabel>#{current.name}</MenuLabel>
+                      {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
+                      {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
+                      <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
+                      <MenuSeparator />
+                      <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
+                      {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
+                    </MenuContent>
+                  </Menu>
+                )}
                 <IconButton label={`キーボードショートカット (${modKey()}+/)`} onClick={() => setDialog("shortcuts")}>
                   <Keyboard size={18} />
                 </IconButton>
@@ -408,6 +430,22 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} onStatus={() => setDialog("status")} />}
       {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "admin" && <AdminDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "rename" && current && <RenameChannelDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
+      {dialog === "archive" && current && (
+        <ArchiveConfirm channel={current} busy={busyAction} onClose={() => setDialog(null)} onConfirm={() => { setBusyAction(true); void controller.archiveChannel(current.id).then(() => { setBusyAction(false); setDialog(null); }); }} />
+      )}
+      {dialog === "leave" && current && (
+        <Modal onClose={() => setDialog(null)} title={`#${current.name} を退出しますか？`} className="w-[440px]">
+          <p className="mt-3 text-sm text-muted">{current.type === "private" ? "非公開チャンネルなので、戻るには誰かに追加してもらう必要があります。" : "公開チャンネルなので、いつでも再参加できます。"}</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDialog(null)}>キャンセル</Button>
+            <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) setCurrentId(null); }); }}>
+              退出する
+            </Button>
+          </div>
+        </Modal>
+      )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
     </div>
   );

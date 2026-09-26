@@ -50,3 +50,10 @@ export interface PresenceEntry {
 export type BookmarkStateOut = components["schemas"]["BookmarkStateOut"];
 export type BookmarkItem = components["schemas"]["BookmarkItem"];
 export type BookmarkListOut = components["schemas"]["BookmarkListOut"];
+
+/** Administration (M11e). */
+export type AdminUserOut = components["schemas"]["AdminUserOut"];
+export type AdminUserCreate = components["schemas"]["AdminUserCreate"];
+export type AdminUserCreated = components["schemas"]["AdminUserCreated"];
+export type AdminUserUpdate = components["schemas"]["AdminUserUpdate"];
+export type TemporaryPasswordOut = components["schemas"]["TemporaryPasswordOut"];
