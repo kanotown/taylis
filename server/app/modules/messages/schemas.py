@@ -43,6 +43,12 @@ class HistoryOut(BaseModel):
     has_more: bool
 
 
+class DeltaOut(BaseModel):
+    messages: list[MessageOut]
+    next_since_seq: int
+    has_more: bool
+
+
 def to_message_out(message: Message) -> MessageOut:
     return MessageOut(
         id=message.id,

@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.events.outbox import write_outbox
+from app.modules.auth.events import SESSION_REVOKED, SessionRevokedData
 from app.modules.auth.models import Device, UserSession
 
 
@@ -61,9 +63,20 @@ async def revoke_sessions(
     if except_session_id is not None:
         stmt = stmt.where(UserSession.id != except_session_id)
     result = await db.execute(
-        stmt.values(revoked_at=now, revoke_reason=reason).returning(UserSession.device_id)
+        stmt.values(revoked_at=now, revoke_reason=reason).returning(
+            UserSession.id, UserSession.device_id
+        )
     )
-    device_ids = list(result.scalars().all())
+    revoked = result.all()
+    device_ids = [row[1] for row in revoked]
+    for revoked_id, _ in revoked:
+        await write_outbox(
+            db,
+            event_type=SESSION_REVOKED,
+            audience_type="session",
+            audience_id=revoked_id,
+            payload=SessionRevokedData(reason=reason).model_dump(mode="json"),
+        )
     if device_ids:
         await db.execute(
             update(Device)

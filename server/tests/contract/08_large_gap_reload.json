@@ -1,0 +1,14 @@
+{
+  "name": "大きく遅れた場合は差分を追わず最新ページを読み直す",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob", "page_size": 3, "gap_limit": 5},
+    {"op": "post", "as": "alice", "count": 1, "body": "m{i}"},
+    {"op": "client.receive", "count": 1},
+    {"op": "client.drop_next", "count": 8},
+    {"op": "post", "as": "alice", "count": 9, "body": "m{i}"},
+    {"op": "client.receive", "count": 9},
+    {"op": "expect", "messages": ["m8", "m9", "m10"], "synced_seq": 10, "reloads": 1}
+  ]
+}

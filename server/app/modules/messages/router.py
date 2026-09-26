@@ -5,7 +5,13 @@ from fastapi import APIRouter, Query, Response
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service
-from app.modules.messages.schemas import HistoryOut, MessageCreate, MessageOut, to_message_out
+from app.modules.messages.schemas import (
+    DeltaOut,
+    HistoryOut,
+    MessageCreate,
+    MessageOut,
+    to_message_out,
+)
 
 router = APIRouter(tags=["messages"])
 
@@ -28,6 +34,17 @@ async def list_history(
     limit: int = Query(default=50, ge=1, le=200),
 ) -> HistoryOut:
     return await service.list_history(db, user, channel_id, before_seq=before_seq, limit=limit)
+
+
+@router.get("/channels/{channel_id}/sync", response_model=DeltaOut)
+async def list_delta(
+    channel_id: UUID,
+    user: CurrentUser,
+    db: Db,
+    since_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=200),
+) -> DeltaOut:
+    return await service.list_delta(db, user, channel_id, since_seq=since_seq, limit=limit)
 
 
 @router.get("/messages/{message_id}", response_model=MessageOut)

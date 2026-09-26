@@ -1,3 +1,6 @@
+from typing import Any
+
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -23,3 +26,15 @@ async def make_user(
     db.add(user)
     await db.commit()
     return user
+
+
+async def http_login(base_url: str, username: str, password: str) -> dict[str, Any]:
+    """Log in against a live server and return the token response."""
+    async with httpx.AsyncClient(base_url=base_url) as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"username": username, "password": password, "device": {"platform": "desktop"}},
+        )
+        assert response.status_code == 200, response.text
+        body: dict[str, Any] = response.json()
+        return body

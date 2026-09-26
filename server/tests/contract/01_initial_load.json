@@ -1,0 +1,10 @@
+{
+  "name": "初回ロード: 最新ページを取得し synced_seq = last_seq になる",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "post", "as": "alice", "count": 60, "body": "m{i}"},
+    {"op": "client.start", "as": "bob", "page_size": 50},
+    {"op": "expect", "message_count": 50, "synced_seq": 60, "first_body": "m11", "last_body": "m60"}
+  ]
+}

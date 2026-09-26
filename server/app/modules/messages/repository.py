@@ -45,3 +45,16 @@ async def list_history(
         stmt = stmt.where(Message.seq < before_seq)
     stmt = stmt.order_by(Message.seq.desc()).limit(limit)
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_delta(
+    db: AsyncSession, channel_id: uuid.UUID, *, since_seq: int, limit: int
+) -> list[Message]:
+    """Current state of every message changed after ``since_seq`` (tombstones included)."""
+    stmt = (
+        select(Message)
+        .where(Message.channel_id == channel_id, Message.updated_seq > since_seq)
+        .order_by(Message.updated_seq.asc())
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())

@@ -11,6 +11,12 @@ from app.core.security import generate_temporary_password, hash_password
 from app.core.time import utcnow
 from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
 from app.modules.auth import service as auth
+from app.modules.users.events import (
+    USER_CREATED,
+    USER_DEACTIVATED,
+    USER_UPDATED,
+    emit_user_event,
+)
 from app.modules.users.models import User
 
 
@@ -51,6 +57,8 @@ async def create_user(
     )
     db.add(user)
     try:
+        await db.flush()
+        await emit_user_event(db, USER_CREATED, user)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -78,6 +86,8 @@ async def update_user(
     elif data.deactivated is False:
         user.deactivated_at = None
     user.updated_at = now
+    await db.flush()
+    await emit_user_event(db, USER_DEACTIVATED if data.deactivated is True else USER_UPDATED, user)
     await db.commit()
     return user
 

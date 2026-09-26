@@ -162,10 +162,10 @@
 | --- | --- |
 | `hello` | 上記 |
 | `pong` | `{ server_time }` |
-| `event` | `{ id, type, ts, channel_id?, seq?, data }` (§6) |
-| `typing` | `{ channel_id, user_id }`。揮発 |
-| `presence` | `{ user_id, online }`。揮発 |
-| `error` | `{ code, message }` |
+| `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
+| `typing` | `{ channel_id, user_id }`。揮発 (M11) |
+| `presence` | `{ user_id, online }`。揮発 (M11) |
+| `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |
 
 ### 5.3 ハートビートと再接続
 
@@ -186,15 +186,16 @@
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count }` |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
-| `channel.created` | channel (public は all) | — | `{ channel }` (bootstrap と同じ形。membership 等は受信者のもの) |
-| `channel.updated` | channel | — | `{ channel }` |
+| `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
+| `channel.updated` | channel | — | `{ channel, member_ids }` |
 | `channel.archived` | channel | — | `{ channel_id }` |
 | `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る |
-| `channel.member_removed` | channel + 本人 | — | `{ channel_id, user_id }` |
+| `channel.member_removed` | channel + 本人 (outbox 行を 2 つ書く) | — | `{ channel_id, user_id }` |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` |
 | `session.revoked` | session | — | `{ reason }` |
 
-`message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `Message` スキーマ)。
+`message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `MessageOut` スキーマ)。フレームと各イベントの
+`data` の JSON Schema は `openapi/ws-events.json` に生成される。
 
 ## 7. クライアントの同期手順
 

@@ -1,0 +1,14 @@
+{
+  "name": "ギャップ検知: 取りこぼしたイベントを差分取得で回復する",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob"},
+    {"op": "post", "as": "alice", "count": 1, "body": "m{i}"},
+    {"op": "client.receive", "count": 1},
+    {"op": "client.drop_next", "count": 2},
+    {"op": "post", "as": "alice", "count": 3, "body": "m{i}"},
+    {"op": "client.receive", "count": 3},
+    {"op": "expect", "messages": ["m1", "m2", "m3", "m4"], "synced_seq": 4, "catch_ups": 2}
+  ]
+}

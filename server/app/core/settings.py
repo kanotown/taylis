@@ -38,6 +38,19 @@ class Settings(BaseSettings):
 
     run_background_tasks: bool = True
 
+    # Realtime (SYNC_PROTOCOL.md §5)
+    ws_auth_timeout_seconds: float = 5.0
+    ws_heartbeat_interval_seconds: int = 30
+    ws_idle_timeout_seconds: float = 90.0
+    ws_max_lifetime_seconds: float = 86_400.0
+    ws_send_queue_size: int = 1000
+
+    # Outbox relay (ARCHITECTURE.md §6)
+    outbox_poll_interval_seconds: float = 1.0
+    outbox_batch_size: int = 100
+    outbox_max_attempts: int = 10
+    outbox_retention_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:

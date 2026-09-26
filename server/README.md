@@ -41,12 +41,16 @@ server/
     cli.py               create-admin, create-user, export-openapi
     core/                settings, db, base, ids (UUIDv7), security, errors, logging, ratelimit, time, health
     models_registry.py   全モジュールの models を集約 (Alembic 用)
+    events/              envelope, bus (Protocol), in_memory (InMemoryEventBus), outbox (write_outbox, OutboxRelay, purge), models
+    realtime/            protocol (フレーム), hub (接続レジストリと配信), router (/api/v1/ws)
     modules/
       users/             schemas, repository, service, router (一覧・プロフィール取得・更新)
       auth/              login, refresh, logout, sessions, devices, パスワード変更, 認証依存
       channels/          models, schemas, repository, service, router
       messages/          models, schemas, repository, service, router
       admin/             schemas, service (ユーザー作成・ロール・無効化・リセット), router (/admin/users*)
-  migrations/            Alembic (0001: users, devices, sessions, channels, channel_members, messages)
-  tests/                 conftest (テスト DB の作成・マイグレーション・トランケート・認証依存の差し替え), サービス層と API のテスト
+      sync/              bootstrap (/sync/bootstrap), catalog (ws-events.json 用のイベント一覧)
+  migrations/            Alembic (0001: users, devices, sessions, channels, channel_members, messages / 0002: outbox_events)
+  tests/                 conftest (テスト DB、マイグレーション、認証依存の差し替え、live uvicorn サーバ), サービス層 / API / WebSocket のテスト
+    contract/            SYNC_PROTOCOL.md §13 の契約フィクスチャ (JSON)。contract_client.py が参照クライアント
 ```

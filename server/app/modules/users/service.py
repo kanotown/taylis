@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import conflict, not_found
 from app.core.time import utcnow
 from app.modules.users import repository as repo
+from app.modules.users.events import USER_UPDATED, emit_user_event
 from app.modules.users.models import User
 from app.modules.users.schemas import UserUpdate
 
@@ -47,6 +48,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.email = data.email
     user.updated_at = utcnow()
     try:
+        await db.flush()
+        await emit_user_event(db, USER_UPDATED, user)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

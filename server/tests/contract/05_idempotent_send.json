@@ -1,0 +1,12 @@
+{
+  "name": "同じ client_msg_id で 2 回送っても 1 件",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "client.start", "as": "bob"},
+    {"op": "client.send", "body": "once", "key": "k1"},
+    {"op": "client.send", "body": "once", "key": "k1"},
+    {"op": "client.receive", "count": 1},
+    {"op": "expect", "messages": ["once"], "synced_seq": 1, "server_message_count": 1}
+  ]
+}
