@@ -1,0 +1,7 @@
+# 本番用の上書き: docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d
+# PostgreSQL / app のポートをホストに公開しない (Caddy だけが外に出る)。
+services:
+  db:
+    ports: !reset []
+  app:
+    ports: !reset []

@@ -1,0 +1,46 @@
+# secrets / local config
+.env
+.env.*
+!.env.example
+*.p8
+*service-account*.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# node / tauri
+node_modules/
+dist/
+apps/desktop/src-tauri/target/
+
+# ios
+apps/ios/**/xcuserdata/
+apps/ios/**/DerivedData/
+apps/ios/**/*.xcuserstate
+apps/ios/**/Pods/
+
+# android
+apps/android/**/build/
+apps/android/**/.gradle/
+apps/android/**/local.properties
+apps/android/**/*.keystore
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# secrets directory: nothing inside is ever committed (except its README)
+infra/secrets/*
+!infra/secrets/README.md
+
+# server local env
+server/.env
