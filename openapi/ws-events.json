@@ -1595,6 +1595,88 @@
         "type": "object"
       }
     },
+    "thread.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "following": {
+            "title": "Following",
+            "type": "boolean"
+          },
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "last_reply_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply At"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "participant_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Participant Ids",
+            "type": "array"
+          },
+          "reason": {
+            "enum": [
+              "reply",
+              "deleted",
+              "read",
+              "follow"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reply_count": {
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parent_id",
+          "channel_id",
+          "following",
+          "last_read_seq",
+          "unread_count",
+          "mention_count",
+          "reply_count",
+          "last_reply_at",
+          "reason"
+        ],
+        "title": "ThreadUpdatedData",
+        "type": "object"
+      }
+    },
     "user.created": {
       "audience": "all",
       "consumes_seq": false,

@@ -10,6 +10,7 @@ from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import service as reads
 from app.modules.sync.schemas import BootstrapOut, Limits
+from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.models import User
 from app.modules.users.schemas import to_user_me, to_user_public
@@ -35,6 +36,7 @@ async def bootstrap(db: AsyncSession, actor: User, settings: Settings) -> Bootst
         me=to_user_me(actor),
         users=[to_user_public(u) for u in await users.list_users(db)],
         channels=with_prefs,
+        threads=await threads.summary_for(db, actor.id),
         limits=Limits(
             max_message_length=MAX_BODY_LENGTH,
             max_attachment_bytes=settings.attachment_max_bytes,

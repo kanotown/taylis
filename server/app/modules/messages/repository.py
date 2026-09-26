@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -139,20 +139,6 @@ async def list_replies(db: AsyncSession, parent_id: uuid.UUID) -> list[Message]:
         .order_by(Message.seq.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
-
-
-async def thread_participants(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
-    """Parent author first, then repliers in order of first reply."""
-    stmt = (
-        select(Message.sender_id, func.min(Message.seq).label("first_seq"))
-        .where(
-            or_(Message.id == parent_id, Message.parent_id == parent_id),
-            Message.deleted_at.is_(None),
-        )
-        .group_by(Message.sender_id)
-        .order_by("first_seq")
-    )
-    return [row[0] for row in (await db.execute(stmt)).all()]
 
 
 async def list_all(db: AsyncSession, channel_id: uuid.UUID) -> list[Message]:

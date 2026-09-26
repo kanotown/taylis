@@ -65,13 +65,15 @@
       "dm_user_ids": null
     }
   ],
-  "limits": { "max_message_length": 20000, "max_attachment_bytes": 104857600, "max_attachments_per_message": 10 }
+  "limits": { "max_message_length": 20000, "max_attachment_bytes": 104857600, "max_attachments_per_message": 10 },
+  "threads": { "unread_count": 2, "mention_count": 1 }
 }
 ```
 
 - `channels` は自分が所属するチャンネルのみ (public のブラウズは `GET /channels?include=public`)。
 - ユーザー数・チャンネル数は数十なので全件返す。増えたらページングを足す。
 - `read_state` / `notification` は M8 / M5 で追加される。それまでは省略される。
+- `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -181,10 +183,11 @@
 
 | type | audience | seq | data |
 | --- | --- | --- | --- |
-| `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, updated_seq, participant_ids }`。`participant_ids` は親の投稿者と返信者で、プッシュ対象の判定に使う) |
+| `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, updated_seq, participant_ids }`。`participant_ids` はスレッドのフォロワー (THREADS.md §2) で、プッシュ対象の判定に使う) |
 | `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }` |
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count }` |
+| `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
 | `channel.updated` | channel | — | `{ channel, member_ids }` |

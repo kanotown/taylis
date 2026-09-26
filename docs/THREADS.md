@@ -1,7 +1,7 @@
-# フォロー中スレッドの一覧 (設計、未実装)
+# フォロー中スレッドの一覧
 
-Slack の「スレッド」ビュー、Mattermost の Collapsed Reply Threads (CRT) に相当する機能の設計。
-実装は IMPLEMENTATION_PLAN.md のバックログから着手する。この文書は着手前に読み、変更するなら実装と一緒に更新する。
+Slack の「スレッド」ビュー、Mattermost の Collapsed Reply Threads (CRT) に相当する機能の設計と実装メモ。
+サーバは 2026-09-27 に実装 (M11a、`server/app/modules/threads`)。変更するなら実装と一緒に更新する。
 
 ## 1. 目的
 
@@ -48,32 +48,38 @@ WHERE parent_id = $parent AND seq > $last_read_seq AND sender_id <> $me;
 
 | 操作 | エンドポイント | 備考 |
 | --- | --- | --- |
-| 一覧 | `GET /threads?filter=all|unread&limit&cursor` | `following=true` の親を `last_reply_at` の新しい順に。各行は `MessageOut` (親) + `ThreadState` |
-| 既読 | `PUT /messages/{id}/thread/read {last_read_seq}` | 単調。スレッドを開いて表示できた返信の最大 `seq` を 1 秒デバウンスで送る |
-| フォロー | `PUT /messages/{id}/thread/follow {following}` | false で一覧と通知から外れる |
-| bootstrap | `threads: {unread_count, mention_count}` を追加 | サイドバーの「スレッド」バッジ用 |
+| 一覧 | `GET /threads?filter=all|unread&limit&cursor` | `following=true` で返信が 1 件以上ある親を `last_reply_at` の新しい順に。各行は `{ parent: MessageOut, state: ThreadState }`。応答の `next_cursor` (最後の行の `last_reply_at`) をそのまま `cursor` に渡すと次ページ。`summary` (下記) も同梱 |
+| 既読 | `PUT /messages/{id}/thread/read {last_read_seq}` | 単調、最新の返信の `seq` で clamp。スレッドを開いて表示できた返信の最大 `seq` を 1 秒デバウンスで送る。`id` は返信の id でもよい (親に解決する) |
+| フォロー | `PUT /messages/{id}/thread/follow {following}` | false で一覧と通知から外れる。自動フォローは false を上書きしない |
+| bootstrap | `threads: { unread_count, mention_count }` | 未読の返信があるフォロー中スレッドの数と、そのうち未読メンションがあるものの数。サイドバーの「スレッド」バッジ用 |
 
 ```text
 ThreadState
 - parent_id
+- channel_id
 - following
 - last_read_seq
-- unread_count
-- mention_count
-- last_reply_at
-- participant_ids
+- unread_count       (seq > last_read_seq、他人の返信、削除済みを除く)
+- mention_count      (そのうち自分宛てのメンション / @channel)
+- reply_count        (親と同じ値)
+- last_reply_at      (親と同じ値)
+- participant_ids    (現在のフォロワー。thread.updated とプッシュの宛先)
 ```
+
+いずれもメンバーだけが呼べる (`messages` の所属判定を通す)。
 
 `GET /messages/{id}/replies` と `GET /messages/{id}/context` は変えない。
 
 ## 4. イベント
 
-- `thread.updated` (audience=user、フォロワー全員): 返信の作成 / 削除、フォロー変更、既読更新で送る。
-  payload は `ThreadState` + 親の `reply_count` / `last_reply_at`。outbox 経由 (ARCHITECTURE.md §6)。
+- `thread.updated` (audience=user、フォロワー全員): 返信の作成 / 削除はフォロワー全員に、フォロー変更と既読更新は
+  本人 (の全端末) に送る。payload は `ThreadState` + `reason` (`reply` / `deleted` / `read` / `follow`)。
+  outbox 経由 (ARCHITECTURE.md §6)。位置が動かない既読送信はイベントを出さない。
 - 返信そのものは今までどおり `message.created` としてチャンネルの購読者に届く。一覧はイベントで
   更新し、開いたスレッドは `replies` で埋める。
-- プッシュ: 現在の「スレッド参加者」判定 (`participant_ids`) を `thread_follows.following` に置き換える。
-  チャンネルのミュートはスレッド通知にも効かせる。
+- プッシュ: `message.created` の `parent_thread.participant_ids` は `thread_follows.following=true` の
+  ユーザー (返信者を自動フォローした後の値)。フォローを外すとスレッドの返信は通知されない。チャンネルのミュートは
+  今までどおりスレッド通知にも効く (PUSH_NOTIFICATIONS.md §4)。
 
 ## 5. クライアント
 
@@ -84,12 +90,14 @@ ThreadState
 - Store はスレッド状態を `thread_follows` の形で保持し、`thread.updated` で置き換える。
   ローカル永続化はチャンネルと同じ JSON 行。
 
-## 6. 進め方
+## 6. 進め方と状況
 
-1. サーバ: 表とマイグレーション、`threads` 葉モジュール (`messages → threads` 依存)、自動フォロー、
-   API、イベント、プッシュ判定の置き換え、テスト (契約フィクスチャ 10 を追加、マイグレーションは 0010)。
-2. Desktop: サイドバー項目と一覧、既読送信、契約テスト。
-3. iOS / Android: 同じ順。
-4. docs: DATA_MODEL.md §3 と SYNC_PROTOCOL.md §6 / §10、PUSH_NOTIFICATIONS.md §4 を更新。
+1. サーバ (実装済み 2026-09-27): 表とマイグレーション 0010、`threads` 葉モジュール (`messages → threads` 依存。
+   返信の作成 / 削除トランザクションの中で `on_reply_created_in_tx` / `on_reply_deleted_in_tx` を呼ぶ)、
+   自動フォロー、API、イベント、プッシュ判定の置き換え、`tests/test_threads.py`。
+2. Desktop: サイドバー項目と一覧、既読送信、スレッドパネルのフォロー切替。
+3. iOS / Android: 同じ順。契約フィクスチャ 10 (スレッドの既読収束) は 3 端末の契約ランナーが `reply` /
+   `client.thread_read` / `expect.threads` を解釈できるようになった時点で追加する。
+4. docs: DATA_MODEL.md §3 と SYNC_PROTOCOL.md §4.1 / §6、PUSH_NOTIFICATIONS.md §4 (更新済み)。
 
 規模は M8 と同程度。Redis や新しいミドルウェアは要らない。

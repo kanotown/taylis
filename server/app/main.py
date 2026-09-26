@@ -35,6 +35,7 @@ from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
 from app.modules.search.router import router as search_router
 from app.modules.sync.router import router as sync_router
+from app.modules.threads.router import router as threads_router
 from app.modules.users.router import router as users_router
 from app.realtime.hub import RealtimeHub
 from app.realtime.router import router as realtime_router
@@ -140,6 +141,7 @@ def build_api_router() -> APIRouter:
     api.include_router(admin_router)
     api.include_router(channels_router)
     api.include_router(messages_router)
+    api.include_router(threads_router)
     api.include_router(attachments_router)
     api.include_router(search_router)
     api.include_router(notifications_router)

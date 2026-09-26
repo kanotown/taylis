@@ -172,3 +172,193 @@ async def test_search_context_requires_channel_membership(
     as_user(bob)
     for anchor in (parent, reply):
         assert (await client.get(f"/api/v1/messages/{anchor['id']}/context")).status_code == 403
+
+
+async def _setup(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> tuple[User, User, User, str]:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(alice)
+    channel = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    for user in (bob, carol):
+        as_user(user)
+        await client.post(f"/api/v1/channels/{channel['id']}/join")
+    return alice, bob, carol, str(channel["id"])
+
+
+async def _threads(client: AsyncClient, **params: Any) -> dict[str, Any]:
+    response = await client.get("/api/v1/threads", params=params)
+    assert response.status_code == 200, response.text
+    result: dict[str, Any] = response.json()
+    return result
+
+
+async def _summary(client: AsyncClient) -> dict[str, int]:
+    bootstrap = (await client.get("/api/v1/sync/bootstrap")).json()
+    result: dict[str, int] = bootstrap["threads"]
+    return result
+
+
+async def test_replies_auto_follow_and_count_unread(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice, bob, carol, cid = await _setup(client, db, as_user)
+    as_user(alice)
+    parent = await _post(client, cid, "topic")  # seq 1
+    assert (await _threads(client))["items"] == []  # no replies yet: nothing to follow
+    as_user(bob)
+    reply = await _post(client, cid, f"<@{carol.id}> look", parent["id"])  # seq 2
+
+    # The parent author follows with one unread reply.
+    as_user(alice)
+    page = await _threads(client)
+    assert len(page["items"]) == 1
+    item = page["items"][0]
+    assert item["parent"]["id"] == parent["id"]
+    assert item["state"] == {
+        "parent_id": parent["id"],
+        "channel_id": cid,
+        "following": True,
+        "last_read_seq": 0,
+        "unread_count": 1,
+        "mention_count": 0,
+        "reply_count": 1,
+        "last_reply_at": item["parent"]["last_reply_at"],
+        "participant_ids": [str(alice.id), str(bob.id), str(carol.id)],
+    }
+    assert page["summary"] == {"unread_count": 1, "mention_count": 0}
+    assert await _summary(client) == {"unread_count": 1, "mention_count": 0}
+
+    # The replier follows too, with their own reply already read.
+    as_user(bob)
+    page = await _threads(client)
+    assert page["items"][0]["state"]["last_read_seq"] == reply["seq"]
+    assert page["items"][0]["state"]["unread_count"] == 0
+    assert (await _threads(client, filter="unread"))["items"] == []
+    assert await _summary(client) == {"unread_count": 0, "mention_count": 0}
+
+    # Someone mentioned in the thread follows and sees the mention.
+    as_user(carol)
+    state = (await _threads(client, filter="unread"))["items"][0]["state"]
+    assert state["unread_count"] == 1 and state["mention_count"] == 1
+    assert await _summary(client) == {"unread_count": 1, "mention_count": 1}
+
+    # thread.updated went to every follower via the outbox, with the reason.
+    events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
+    updated = [e for e in events if e.event_type == "thread.updated"]
+    assert {(e.audience_type, e.audience_id) for e in updated} == {
+        ("user", alice.id),
+        ("user", bob.id),
+        ("user", carol.id),
+    }
+    assert {e.payload["reason"] for e in updated} == {"reply"}
+    for_alice = next(e for e in updated if e.audience_id == alice.id)
+    assert for_alice.payload["unread_count"] == 1 and for_alice.payload["channel_id"] == cid
+
+
+async def test_thread_read_is_monotonic_and_clamped(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice, bob, _carol, cid = await _setup(client, db, as_user)
+    as_user(alice)
+    parent = await _post(client, cid, "topic")  # seq 1
+    as_user(bob)
+    await _post(client, cid, "r1", parent["id"])  # seq 2
+    second = await _post(client, cid, "r2", parent["id"])  # seq 3
+
+    as_user(alice)
+    read = f"/api/v1/messages/{parent['id']}/thread/read"
+    state = (await client.put(read, json={"last_read_seq": 2})).json()
+    assert state["last_read_seq"] == 2 and state["unread_count"] == 1
+    # Lower positions never move it back; a reply id addresses the same thread.
+    state = (
+        await client.put(f"/api/v1/messages/{second['id']}/thread/read", json={"last_read_seq": 1})
+    ).json()
+    assert state["last_read_seq"] == 2
+    # Ahead of the newest reply is clamped to it.
+    state = (await client.put(read, json={"last_read_seq": 999})).json()
+    assert state["last_read_seq"] == 3 and state["unread_count"] == 0
+    assert (await _threads(client, filter="unread"))["items"] == []
+    assert await _summary(client) == {"unread_count": 0, "mention_count": 0}
+
+    events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
+    reads = [
+        e
+        for e in events
+        if e.event_type == "thread.updated"
+        and e.payload["reason"] == "read"
+        and e.audience_id == alice.id
+    ]
+    assert [e.payload["last_read_seq"] for e in reads] == [2, 3]  # no event for the no-op
+
+    # Deleting an unread reply lowers the counts for the others.
+    as_user(bob)
+    third = await _post(client, cid, "r3", parent["id"])  # seq 4
+    as_user(alice)
+    assert (await _threads(client))["items"][0]["state"]["unread_count"] == 1
+    as_user(bob)
+    assert (await client.delete(f"/api/v1/messages/{third['id']}")).status_code == 200
+    as_user(alice)
+    assert (await _threads(client))["items"][0]["state"]["unread_count"] == 0
+
+    # Non-members cannot touch the thread.
+    dave = await make_user(db, "dave")
+    as_user(dave)
+    assert (await client.put(read, json={"last_read_seq": 1})).status_code == 403
+
+
+async def test_unfollow_removes_thread_from_list_and_from_push_targets(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice, bob, _carol, cid = await _setup(client, db, as_user)
+    as_user(alice)
+    parent = await _post(client, cid, "topic")  # seq 1
+    as_user(bob)
+    await _post(client, cid, "r1", parent["id"])  # seq 2
+
+    as_user(alice)
+    follow = f"/api/v1/messages/{parent['id']}/thread/follow"
+    state = (await client.put(follow, json={"following": False})).json()
+    assert state["following"] is False and state["participant_ids"] == [str(bob.id)]
+    assert (await _threads(client))["items"] == []
+    assert await _summary(client) == {"unread_count": 0, "mention_count": 0}
+
+    # A new reply does not re-follow, and alice is no longer a push target.
+    as_user(bob)
+    reply = await _post(client, cid, "r2", parent["id"])  # seq 3
+    as_user(alice)
+    assert (await _threads(client))["items"] == []
+    events = list((await db.execute(select(OutboxEvent).order_by(OutboxEvent.id))).scalars())
+    created = next(
+        e
+        for e in events
+        if e.event_type == "message.created" and e.payload["message"]["id"] == reply["id"]
+    )
+    assert created.payload["parent_thread"]["participant_ids"] == [str(bob.id)]
+    assert not [
+        e
+        for e in events
+        if e.event_type == "thread.updated"
+        and e.audience_id == alice.id
+        and e.payload["reason"] == "reply"
+        and e.payload["reply_count"] == 2
+    ]
+
+    # Following again lists it with the unread replies since the last read position.
+    state = (await client.put(follow, json={"following": True})).json()
+    assert state["following"] is True and state["unread_count"] == 2
+    assert [i["parent"]["id"] for i in (await _threads(client))["items"]] == [parent["id"]]
+
+    # Pagination: newest reply first, cursor continues the list.
+    as_user(alice)
+    other = await _post(client, cid, "other topic")  # seq 4
+    as_user(bob)
+    await _post(client, cid, "r", other["id"])  # seq 5
+    as_user(alice)
+    page = await _threads(client, limit=1)
+    assert [i["parent"]["id"] for i in page["items"]] == [other["id"]]
+    page2 = await _threads(client, limit=1, cursor=page["next_cursor"])
+    assert [i["parent"]["id"] for i in page2["items"]] == [parent["id"]]
+    assert (await _threads(client, limit=1, cursor=page2["next_cursor"]))["items"] == []
