@@ -362,9 +362,21 @@ export class SyncEngine {
         store.updateChannel(data.channel_id, { archived: true });
         return;
       }
+      case "channel.member_added": {
+        // M11h: keep the intro's member count current; the member list itself is loaded on demand.
+        const data = frame.data as { channel_id: string; user_id: string };
+        const channel = store.getChannel(data.channel_id);
+        if (channel && channel.member_count != null) store.updateChannel(data.channel_id, { member_count: channel.member_count + 1 });
+        return;
+      }
       case "channel.member_removed": {
         const data = frame.data as { channel_id: string; user_id: string };
-        if (store.me && data.user_id === store.me.id) store.removeChannel(data.channel_id);
+        if (store.me && data.user_id === store.me.id) {
+          store.removeChannel(data.channel_id);
+          return;
+        }
+        const channel = store.getChannel(data.channel_id);
+        if (channel && channel.member_count != null) store.updateChannel(data.channel_id, { member_count: Math.max(0, channel.member_count - 1) });
         return;
       }
       case "user.created":

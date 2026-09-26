@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Bookmark, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
+import { AtSign, BellOff, Bookmark, Compass, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -28,10 +28,17 @@ interface Props {
   savedActive?: boolean;
   /** Administration (M11e); shown to admins only. */
   onAdmin?: () => void;
+  /** M11h: channel browser, recent mentions and drafts. */
+  onBrowse?: () => void;
+  onMentions?: () => void;
+  mentionsActive?: boolean;
+  onDrafts?: () => void;
+  draftsActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false }: Props) {
   const store = controller.store;
+  const draftCount = store.listDrafts().length;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
   const status = controller.engine?.status ?? "idle";
@@ -143,6 +150,41 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               )}
             </button>
           </li>
+          {onMentions && (
+            <li>
+              <button
+                type="button"
+                onClick={onMentions}
+                aria-current={mentionsActive ? "page" : undefined}
+                title="自分宛てのメンション"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  mentionsActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <AtSign size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">メンション</span>
+              </button>
+            </li>
+          )}
+          {onDrafts && draftCount > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={onDrafts}
+                aria-current={draftsActive ? "page" : undefined}
+                title="送信していない下書き"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  draftsActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <FileText size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">下書き</span>
+                <span className="text-[11px] opacity-70">{draftCount}</span>
+              </button>
+            </li>
+          )}
           {onSaved && (
             <li>
               <button
@@ -167,9 +209,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       <Section
         title="チャンネル"
         action={
-          <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
-            <Plus size={14} />
-          </IconButton>
+          <span className="flex items-center">
+            {onBrowse && (
+              <IconButton tone="sidebar" label={`チャンネルを探す (${modKey()}+Shift+E)`} className="h-6 w-6" onClick={onBrowse}>
+                <Compass size={14} />
+              </IconButton>
+            )}
+            <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
+              <Plus size={14} />
+            </IconButton>
+          </span>
         }
       >
         <ul className="space-y-px">{sections.channels.map(item)}</ul>

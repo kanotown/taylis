@@ -54,6 +54,16 @@ export class Store {
   private writeQueue = Promise.resolve();
 
   private draftKey(channelId: string, parentId: string | null): string { return `draft:${channelId}:${parentId ?? ""}`; }
+  /** Every draft with text or attachments (M11h 「下書き」), in the order they were started. */
+  listDrafts(): Array<{ channelId: string; parentId: string | null; draft: Draft }> {
+    return [...this.drafts.entries()]
+      .filter(([, draft]) => draft.text.trim() !== "" || draft.attachments.length > 0)
+      .map(([key, draft]) => {
+        const [, channelId = "", parentId = ""] = key.split(":");
+        return { channelId, parentId: parentId || null, draft };
+      });
+  }
+
   draft(channelId: string, parentId: string | null = null): Draft {
     return this.drafts.get(this.draftKey(channelId, parentId)) ?? { text: "", attachments: [] };
   }
@@ -136,6 +146,8 @@ export class Store {
     const existing = this.channels.get(channel.id);
     const merged: ChannelState = {
       ...channel,
+      // Not every response counts members (M11h): keep the last known count.
+      member_count: channel.member_count ?? existing?.member_count ?? null,
       isMember: existing?.isMember ?? channel.membership !== null,
       syncedSeq: existing?.syncedSeq ?? null,
       lastSeq: Math.max(existing?.lastSeq ?? 0, channel.last_seq),

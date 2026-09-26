@@ -10,6 +10,7 @@ import type {
   BootstrapOut,
   ChannelOut,
   LinkPreviewOut,
+  MentionListOut,
   DeltaOut,
   HistoryOut,
   MemberOut,
@@ -209,6 +210,14 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- recent mentions (M11h) ------------------------------------------------------------
+
+  listMentions(options: { cursor?: string | null; limit?: number } = {}): Promise<MentionListOut> {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+    if (options.cursor) params.set("cursor", options.cursor);
+    return this.request("GET", `/api/v1/mentions?${params}`);
   }
 
   // --- link previews (M11g) --------------------------------------------------------------

@@ -534,6 +534,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mentions
+         * @description Messages that mention me or everyone, in my channels, newest first (M11h).
+         */
+        get: operations["list_mentions_api_v1_mentions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -1052,6 +1072,8 @@ export interface components {
             last_message_at: string | null;
             /** Last Seq */
             last_seq: number;
+            /** Member Count */
+            member_count?: number | null;
             membership: components["schemas"]["MembershipOut"] | null;
             /** Name */
             name: string | null;
@@ -1248,6 +1270,16 @@ export interface components {
             joined_at: string;
             /** Role */
             role: string;
+        };
+        /**
+         * MentionListOut
+         * @description Messages that mention me (M11h), newest first; `next_cursor` goes back as `cursor`.
+         */
+        MentionListOut: {
+            /** Items */
+            items: components["schemas"]["MessageOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** MessageCreate */
         MessageCreate: {
@@ -2770,6 +2802,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mentions_api_v1_mentions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MentionListOut"];
                 };
             };
             /** @description Validation Error */

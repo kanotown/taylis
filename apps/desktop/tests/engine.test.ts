@@ -190,12 +190,14 @@ describe("channel browsing", () => {
     await engine.start();
     await engine.idle();
     expect(store.getChannel(general.id)?.isMember).toBe(false); // browsable
+    expect(store.getChannel(general.id)?.member_count).toBe(1); // M11h: shown by the channel browser
     expect(store.getChannel(secret.id)).toBeUndefined(); // private channels stay invisible
 
     server.join(general.id, bob.id);
     server.emitMembership(general.id, bob.id);
     await engine.idle();
     expect(store.getChannel(general.id)?.isMember).toBe(true);
+    expect(store.getChannel(general.id)?.member_count).toBe(2); // member_added keeps the count current
     engine.stop();
   });
 });

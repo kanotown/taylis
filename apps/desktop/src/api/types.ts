@@ -60,3 +60,6 @@ export type TemporaryPasswordOut = components["schemas"]["TemporaryPasswordOut"]
 
 /** Link previews (M11g). */
 export type LinkPreviewOut = components["schemas"]["LinkPreviewOut"];
+
+/** Recent mentions (M11h). */
+export type MentionListOut = components["schemas"]["MentionListOut"];
