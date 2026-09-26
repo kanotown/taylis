@@ -144,6 +144,11 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
     val scope = rememberCoroutineScope()
     val isChannel = !channel.channel.isDm
     var members by remember { mutableStateOf<List<MemberOut>?>(null) }
+    var profileUserId by remember { mutableStateOf<String?>(null) }
+    profileUserId?.let { id ->
+        ProfileDialog(controller, id, onDismiss = { profileUserId = null }, onOpenDm = { profileUserId = null; onDismiss(); controller.pendingChannelId = it })
+        return
+    }
     var editingTopic by remember { mutableStateOf(false) }
     var topic by remember { mutableStateOf(channel.channel.topic ?: "") }
     LaunchedEffect(channel.id) { controller.memberList(channel.id).onSuccess { members = it } }
@@ -192,10 +197,13 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                         val user = store.users[member.userId]
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             val presence = store.presenceOf(member.userId)
-                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
-                            Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                Text(user?.displayName ?: "?")
-                                Text("@" + (user?.username ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence, modifier = Modifier.clickable { profileUserId = member.userId })
+                            Column(Modifier.weight(1f).padding(start = 10.dp).clickable { profileUserId = member.userId }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(user?.displayName ?: "?")
+                                    StatusEmoji(user, modifier = Modifier.padding(start = 6.dp))
+                                }
+                                Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                             if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -217,7 +225,13 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
     val me = controller.store.me ?: controller.me
     val scope = rememberCoroutineScope()
     var displayName by remember { mutableStateOf(me?.displayName ?: "") }
+    var title by remember { mutableStateOf(me?.title ?: "") }
     var nameSaved by remember { mutableStateOf(false) }
+    var editingStatus by remember { mutableStateOf(false) }
+    if (editingStatus) {
+        StatusDialog(controller, onDismiss = { editingStatus = false })
+        return
+    }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
@@ -237,13 +251,29 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                         }
                     }
                 }
-                SectionLabel("表示名")
-                OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                SectionLabel("ステータス")
+                val status = jp.chikuwachat.android.api.activeStatus(me?.let { controller.store.users[it.id] ?: it.asPublic })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(status?.let { (it.first + " " + it.second).trim() } ?: "未設定", modifier = Modifier.weight(1f), color = if (status == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                    TextButton(onClick = { editingStatus = true }) { Text(if (status == null) "設定" else "変更") }
+                }
+                SectionLabel("プロフィール")
+                OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(title, { title = it.take(80); nameSaved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
-                        enabled = !busy && displayName.isNotBlank() && displayName.trim() != me?.displayName,
-                        onClick = { scope.launch { busy = true; nameSaved = controller.updateDisplayName(displayName); busy = false } },
-                    ) { Text("表示名を保存") }
+                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title),
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                var ok = true
+                                if (displayName.trim() != me?.displayName) ok = controller.updateDisplayName(displayName)
+                                if (ok && title.trim().ifEmpty { null } != me?.title) ok = controller.updateProfile(mapOf("title" to title.trim().ifEmpty { null }))
+                                nameSaved = ok
+                                busy = false
+                            }
+                        },
+                    ) { Text("プロフィールを保存") }
                     if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 SectionLabel("パスワードの変更")

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -137,6 +138,9 @@ class ApiClient(
             displayName?.let { put("display_name", it) }
             email?.let { put("email", it) }
         })
+
+    /** M11d: profile card fields; JsonNull clears a field, omitted fields keep their value. */
+    suspend fun updateProfile(fields: JsonObject): UserMe = request("PATCH", "/api/v1/users/me", fields)
 
     suspend fun members(channelId: String): List<MemberOut> = request("GET", "/api/v1/channels/$channelId/members")
 

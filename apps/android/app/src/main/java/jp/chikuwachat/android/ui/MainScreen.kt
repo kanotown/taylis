@@ -446,6 +446,10 @@ private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit)
             val subtitle = channel.channel.topic?.takeIf { it.isNotBlank() && !channel.channel.isDm }
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        if (channel.channel.isDm) {
+            val other = (channel.channel.dmUserIds ?: emptyList()).firstOrNull { it != store.me?.id }
+            if (other != null) StatusEmoji(store.users[other], modifier = Modifier.padding(end = 6.dp))
+        }
         if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         if (unread && badge > 0) {
             Text(
@@ -473,7 +477,10 @@ fun StatusBadge(status: EngineStatus) {
 /** 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) as the app bar subtitle. */
 private fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != store.me?.id }
-    return if (others.size == 1) presenceLabel(store.presenceOf(others[0])) else null
+    if (others.size != 1) return null
+    val presence = presenceLabel(store.presenceOf(others[0]))
+    val status = jp.chikuwachat.android.api.activeStatus(store.users[others[0]]) ?: return presence
+    return "$presence · ${status.first} ${status.second}".trim()
 }
 
 fun channelTitle(channel: ChannelState, store: Store): String {

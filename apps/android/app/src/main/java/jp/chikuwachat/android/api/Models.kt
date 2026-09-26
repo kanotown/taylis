@@ -14,6 +14,11 @@ data class UserPublic(
     val deactivatedAt: String? = null,
     val createdAt: String,
     val updatedAt: String,
+    /** Profile card (M11d); the server reports an expired status as null. */
+    val title: String? = null,
+    val statusText: String? = null,
+    val statusEmoji: String? = null,
+    val statusExpiresAt: String? = null,
 )
 
 @Serializable
@@ -27,7 +32,24 @@ data class UserMe(
     val updatedAt: String,
     val email: String? = null,
     val mustChangePassword: Boolean,
-)
+    val title: String? = null,
+    val statusText: String? = null,
+    val statusEmoji: String? = null,
+    val statusExpiresAt: String? = null,
+) {
+    val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt)
+}
+
+/** A custom status (M11d) that has not expired: emoji to text; null otherwise. */
+fun activeStatus(user: UserPublic?, now: Long = System.currentTimeMillis()): Pair<String, String>? {
+    if (user == null) return null
+    val emoji = user.statusEmoji ?: ""
+    val text = user.statusText ?: ""
+    if (emoji.isEmpty() && text.isEmpty()) return null
+    val expires = user.statusExpiresAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+    if (expires != null && expires <= now) return null
+    return emoji to text
+}
 
 @Serializable
 data class DeviceOut(

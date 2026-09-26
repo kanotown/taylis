@@ -239,9 +239,10 @@ fun MessageRow(
     var editing by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
+    var showingProfile by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
-            if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp)
+            if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 val saved = store.isBookmarked(message.id)
@@ -260,7 +261,8 @@ fun MessageRow(
                 }
                 if (!compact) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
+                        StatusEmoji(store.users[message.senderId], modifier = Modifier.padding(start = 6.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (message.editedAt != null) { Spacer(Modifier.width(4.dp)); Text("(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -297,6 +299,7 @@ fun MessageRow(
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
         )
     }
+    if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
 }
