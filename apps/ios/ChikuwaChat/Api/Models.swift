@@ -211,6 +211,39 @@ struct BootstrapOut: Codable {
     let users: [UserPublic]
     let channels: [ChannelOut]
     let limits: Limits
+    /// Followed threads with unread replies / mentions (THREADS.md §3); the 「スレッド」 badge.
+    var threads: ThreadSummary? = nil
+}
+
+/// My relation to one thread (THREADS.md §3).
+struct ThreadState: Codable, Equatable {
+    let parentId: String
+    let channelId: String
+    var following: Bool
+    var lastReadSeq: Int
+    var unreadCount: Int
+    var mentionCount: Int
+    var replyCount: Int
+    var lastReplyAt: String?
+    /// Current followers: who gets thread.updated and the reply's push.
+    var participantIds: [String]
+}
+
+struct ThreadItem: Codable, Equatable {
+    let parent: MessageOut
+    let state: ThreadState
+}
+
+struct ThreadSummary: Codable, Equatable {
+    var unreadCount: Int
+    var mentionCount: Int
+}
+
+struct ThreadListOut: Codable {
+    let items: [ThreadItem]
+    /// Pass back as `cursor` for the next page; nil when the page was empty.
+    let nextCursor: String?
+    let summary: ThreadSummary
 }
 
 struct MemberOut: Codable, Equatable {

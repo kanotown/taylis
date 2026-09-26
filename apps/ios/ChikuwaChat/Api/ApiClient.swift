@@ -184,6 +184,28 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    // MARK: threads (THREADS.md §3)
+
+    /// GET /threads: the threads I follow, newest reply first; `cursor` is the previous page's next_cursor.
+    func threads(filter: String = "all", cursor: String? = nil, limit: Int = 50) async throws -> ThreadListOut {
+        var items = [URLQueryItem(name: "filter", value: filter), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        var components = URLComponents()
+        components.path = "/api/v1/threads"
+        components.queryItems = items
+        return try await request("GET", components.string ?? "/api/v1/threads")
+    }
+
+    func threadState(messageId: String) async throws -> ThreadState { try await request("GET", "/api/v1/messages/\(messageId)/thread") }
+
+    func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState {
+        try await request("PUT", "/api/v1/messages/\(messageId)/thread/read", body: .object(["last_read_seq": .number(Double(lastReadSeq))]))
+    }
+
+    func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState {
+        try await request("PUT", "/api/v1/messages/\(messageId)/thread/follow", body: .object(["following": .bool(following)]))
+    }
+
     /// GET /search/messages: full-text search across my channels (the server applies the membership filter).
     func searchMessages(_ query: String, channelId: String? = nil, limit: Int = 20, offset: Int = 0) async throws -> SearchOut {
         var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "offset", value: String(offset))]

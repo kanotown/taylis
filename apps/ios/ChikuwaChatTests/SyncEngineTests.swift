@@ -249,6 +249,77 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testFollowedThreadsListUnreadRepliesAndReadPosition() async throws {
+        let w = makeWorld()
+        w.engine.isActive = { true }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+
+        // bob's own topic: alice's reply makes it a followed, unread thread (badge via thread.updated).
+        await w.engine.send(w.channel.id, body: "topic")
+        await settle(w.engine)
+        let parent = try w.server.messageByBody(w.channel.id, "topic")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> reply 1", parentId: parent.id)
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 1, mentionCount: 1))
+        XCTAssertEqual(w.store.badgeCount, 1) // a thread mention counts on the app badge
+        XCTAssertFalse(w.store.threadsLoaded) // only the badge until the view opens
+
+        await w.engine.loadThreads(filter: "all")
+        let rows = w.store.threadList()
+        XCTAssertEqual(rows.map(\.parent.body), ["topic"])
+        XCTAssertEqual(rows.first?.state.unreadCount, 1)
+        XCTAssertEqual(rows.first?.state.mentionCount, 1)
+        XCTAssertEqual(rows.first?.state.participantIds, [w.bob.id, w.alice.id])
+
+        // Showing the reply marks the thread read (debounced PUT); the badge drops at once.
+        let reply = try w.server.messageByBody(w.channel.id, "<@\(w.bob.id)> reply 1")
+        await w.engine.loadReplies(w.channel.id, parentId: parent.id)
+        w.engine.markThreadRead(parent.id, seq: reply.seq)
+        XCTAssertEqual(w.store.threads[parent.id]?.state.unreadCount, 0)
+        XCTAssertEqual(w.store.threadSummary, ThreadSummary(unreadCount: 0, mentionCount: 0))
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: parent.id).lastReadSeq, reply.seq)
+        XCTAssertEqual(w.store.threadList(filter: "unread").count, 0)
+
+        // Unfollowing drops the thread from the list; the next reply does not bring it back.
+        await w.engine.setThreadFollow(parent.id, following: false)
+        XCTAssertEqual(w.store.threads[parent.id]?.state.following, false)
+        XCTAssertEqual(w.store.threadList().count, 0)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply 2", parentId: parent.id)
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threadList().count, 0)
+        XCTAssertEqual(w.store.threadSummary.unreadCount, 0)
+        XCTAssertEqual(try w.server.threadState(userId: w.alice.id, parentId: parent.id).participantIds, [w.alice.id]) // bob is no push target
+
+        await w.engine.setThreadFollow(parent.id, following: true)
+        await w.engine.flushThreads()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.threadList().map(\.parent.id), [parent.id])
+        XCTAssertEqual(w.store.threads[parent.id]?.state.unreadCount, 1)
+
+        // A fresh client asks for the state when a thread pane opens from the channel.
+        let fresh = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let second = SyncEngine(api: w.server.api(for: w.bob.id), connect: w.server.connector(for: w.bob.id), wsUrl: URL(string: "ws://fake")!,
+                                store: fresh, getAccessToken: { "t" }, options: options)
+        await second.start()
+        await second.openChannel(w.channel.id)
+        await settle(second)
+        XCTAssertEqual(fresh.threadSummary.unreadCount, 1) // from bootstrap
+        XCTAssertNil(fresh.threads[parent.id])
+        await second.loadThreadState(parent.id)
+        XCTAssertEqual(fresh.threads[parent.id]?.state.following, true)
+        XCTAssertEqual(fresh.threads[parent.id]?.state.unreadCount, 1)
+        second.stop()
+        w.engine.stop()
+    }
+
     func testAttachmentIdsTravelWithTheOutbox() async throws {
         let w = makeWorld()
         await w.engine.start()

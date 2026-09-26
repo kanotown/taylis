@@ -12,6 +12,11 @@ protocol SyncApi: AnyObject {
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
+    /// THREADS.md §3.
+    func threads(filter: String, cursor: String?, limit: Int) async throws -> ThreadListOut
+    func threadState(messageId: String) async throws -> ThreadState
+    func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState
+    func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
@@ -25,6 +30,9 @@ struct EngineOptions {
     var reconnectMax: TimeInterval = 30
     /// §10: read marks are debounced so scrolling does not spam the server.
     var readDebounce: TimeInterval = 1
+    var threadPageSize = 50
+    /// thread.updated bursts (one per reply) collapse into one list / badge refresh.
+    var threadRefresh: TimeInterval = 0.3
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -52,6 +60,9 @@ final class SyncEngine {
     private var pendingReads: [String: Task<Void, Never>] = [:]
     /// Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10).
     private(set) var unreadHold: [String: Int] = [:]
+    /// Thread read positions sent (or about to be) while the thread's state is not loaded yet.
+    private var threadReadFloor: [String: Int] = [:]
+    private var threadRefreshTask: Task<Void, Never>?
     var isActive: () -> Bool = { true }
     var prepareConnection: (() async throws -> Void)?
 
@@ -259,8 +270,10 @@ final class SyncEngine {
     private func clearTimers() {
         heartbeatTask?.cancel()
         pongTask?.cancel()
+        threadRefreshTask?.cancel()
         heartbeatTask = nil
         pongTask = nil
+        threadRefreshTask = nil
     }
 
     private func applyBootstrap(_ bootstrap: BootstrapOut) {
@@ -274,6 +287,8 @@ final class SyncEngine {
         for channel in Array(store.channels.values) where channel.isMember && !seen.contains(channel.id) {
             store.removeChannel(channel.id) // no longer a member
         }
+        if let summary = bootstrap.threads { store.setThreadSummary(summary) }
+        if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
         onBadge?(store.badgeCount)
     }
 
@@ -317,6 +332,12 @@ final class SyncEngine {
             if let id = frame.data["channel_id"]?.stringValue {
                 applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: frame.data["reason"]?.stringValue == "set")
             }
+        case "thread.updated":
+            // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
+            // refreshed from the server shortly after, which also covers threads we do not hold.
+            store.applyThreadState(try frame.data.decode(ThreadState.self))
+            onBadge?(store.badgeCount)
+            scheduleThreadRefresh()
         case "notification_preference.updated":
             if let id = frame.data["channel_id"]?.stringValue {
                 store.setNotification(id, level: frame.data["level"]?.stringValue ?? "mentions", mutedUntil: frame.data["muted_until"]?.stringValue)
@@ -468,6 +489,94 @@ final class SyncEngine {
     func flushReads() async {
         for task in Array(pendingReads.values) { await task.value }
         await idle()
+    }
+
+    // MARK: followed threads (THREADS.md §5)
+
+    /// The threads view opens (or switches filter): fetch the first page; `more` appends the next one.
+    func loadThreads(filter: String, more: Bool = false) async {
+        _ = try? await enqueue { [self] in
+            guard status == .online else { return }
+            let cursor = more && store.threadsFilter == filter ? store.threadsCursor : nil
+            if more && cursor == nil { return }
+            let page = try await api.threads(filter: filter, cursor: cursor, limit: options.threadPageSize)
+            store.setThreadPage(filter: filter, items: page.items, cursor: page.nextCursor, append: cursor != nil, pageSize: options.threadPageSize)
+            store.setThreadSummary(page.summary)
+            onBadge?(store.badgeCount)
+        }.value
+    }
+
+    /// A thread opened from a channel: fetch my relation to it (follow flag, read position).
+    func loadThreadState(_ parentId: String, parent: MessageOut? = nil) async {
+        _ = try? await enqueue { [self] in
+            guard status == .online else { return }
+            var state = try await api.threadState(messageId: parentId)
+            if let floor = threadReadFloor[parentId], floor > state.lastReadSeq { state.lastReadSeq = floor }
+            store.applyThreadState(state, parent: parent)
+        }.value
+    }
+
+    /// The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce.
+    func markThreadRead(_ parentId: String, seq: Int) {
+        guard status == .online, isActive() else { return }
+        let current = max(store.threads[parentId]?.state.lastReadSeq ?? 0, threadReadFloor[parentId] ?? 0)
+        guard seq > current else { return }
+        threadReadFloor[parentId] = seq
+        if var state = store.threads[parentId]?.state {
+            let newest = store.replies(state.channelId, parentId: parentId).compactMap(\.seq).max() ?? 0
+            state.lastReadSeq = seq
+            if seq >= newest { state.unreadCount = 0; state.mentionCount = 0 }
+            store.applyThreadState(state)
+            onBadge?(store.badgeCount)
+        }
+        let key = "thread:" + parentId
+        pendingReads[key]?.cancel()
+        let options = self.options
+        pendingReads[key] = Task { [weak self] in
+            await options.sleep(options.readDebounce)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingReads[key] = nil
+            let target = self.threadReadFloor[parentId] ?? seq
+            guard let state = try? await self.api.markThreadRead(messageId: parentId, lastReadSeq: target) else { return }
+            _ = try? await self.enqueue { [self] in
+                self.store.applyThreadState(state)
+                self.onBadge?(self.store.badgeCount)
+            }.value
+        }
+    }
+
+    func setThreadFollow(_ parentId: String, following: Bool) async {
+        _ = try? await enqueue { [self] in
+            guard status == .online else { return }
+            store.applyThreadState(try await api.setThreadFollow(messageId: parentId, following: following))
+            onBadge?(store.badgeCount)
+        }.value
+    }
+
+    private func scheduleThreadRefresh() {
+        threadRefreshTask?.cancel()
+        let options = self.options
+        threadRefreshTask = Task { [weak self] in
+            await options.sleep(options.threadRefresh)
+            guard let self, !Task.isCancelled, self.status == .online else { return }
+            await self.refreshThreads()
+        }
+    }
+
+    /// Re-read the badge (and the open list) from the server; cheap, and always consistent.
+    func refreshThreads() async {
+        if store.threadsLoaded {
+            await loadThreads(filter: store.threadsFilter)
+        } else if let page = try? await api.threads(filter: "unread", cursor: nil, limit: 1) {
+            store.setThreadSummary(page.summary)
+            onBadge?(store.badgeCount)
+        }
+    }
+
+    /// Waits for the debounced thread refresh and read marks (tests).
+    func flushThreads() async {
+        await threadRefreshTask?.value
+        await flushReads()
     }
 
     func catchUp(_ channelId: String) async throws {

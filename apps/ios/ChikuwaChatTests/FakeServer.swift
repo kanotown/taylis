@@ -98,6 +98,22 @@ final class FakeServer {
             try maybeFail()
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq)
         }
+        func threads(filter: String, cursor: String?, limit: Int) async throws -> ThreadListOut {
+            try maybeFail()
+            return server.threads(userId: userId, filter: filter, cursor: cursor, limit: limit)
+        }
+        func threadState(messageId: String) async throws -> ThreadState {
+            try maybeFail()
+            return try server.threadState(userId: userId, parentId: messageId)
+        }
+        func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState {
+            try maybeFail()
+            return try server.markThreadRead(userId: userId, messageId: messageId, seq: lastReadSeq)
+        }
+        func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState {
+            try maybeFail()
+            return try server.setThreadFollow(userId: userId, messageId: messageId, following: following)
+        }
         func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
             try maybeFail()
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq, mode: "set")
@@ -127,7 +143,17 @@ final class FakeServer {
     }
 
     fileprivate static func now() -> String { ISO8601DateFormatter().string(from: Date()) }
-    private func now() -> String { Self.now() }
+    private static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private var clock = Date()
+    /// Strictly increasing so that timestamp cursors (threads) never tie inside one test.
+    private func now() -> String {
+        clock = clock.addingTimeInterval(0.001)
+        return Self.fractional.string(from: clock)
+    }
 
     @discardableResult
     func addUser(_ username: String, role: String = "member") -> UserPublic {
@@ -180,6 +206,106 @@ final class FakeServer {
         return readState(userId: userId, channelId: channelId)
     }
 
+    // MARK: threads (THREADS.md §2)
+
+    struct ThreadFollow {
+        let parentId: String
+        let userId: String
+        var following: Bool
+        var lastReadSeq: Int
+        let order: Int
+    }
+
+    /// "parent:user" → follow row; `order` doubles as created_at.
+    var threadFollows: [String: ThreadFollow] = [:]
+    private var followOrder = 0
+
+    private func followers(_ parentId: String) -> [String] {
+        threadFollows.values.filter { $0.parentId == parentId && $0.following }.sorted { $0.order < $1.order }.map(\.userId)
+    }
+
+    private func autoFollow(_ parentId: String, _ userIds: [String]) {
+        for userId in userIds where threadFollows["\(parentId):\(userId)"] == nil {
+            followOrder += 1
+            threadFollows["\(parentId):\(userId)"] = ThreadFollow(parentId: parentId, userId: userId, following: true, lastReadSeq: 0, order: followOrder)
+        }
+    }
+
+    private func threadParent(_ messageId: String) throws -> (record: ChannelRecord, parent: MessageOut) {
+        for record in channels.values {
+            guard let message = record.messages.first(where: { $0.id == messageId && !$0.deleted }) else { continue }
+            let parent = message.parentId.flatMap { pid in record.messages.first { $0.id == pid } } ?? message
+            return (record, parent)
+        }
+        throw ApiError.api(status: 404, code: "message_not_found", message: "not found")
+    }
+
+    func threadState(userId: String, parentId: String) throws -> ThreadState {
+        let found = try threadParent(parentId)
+        _ = try requireMember(found.record.channel.id, userId)
+        let row = threadFollows["\(found.parent.id):\(userId)"]
+        let lastRead = row?.lastReadSeq ?? 0
+        let unread = found.record.messages.filter { $0.parentId == found.parent.id && !$0.deleted && $0.seq > lastRead && $0.senderId != userId }
+        return ThreadState(parentId: found.parent.id, channelId: found.record.channel.id, following: row?.following ?? false, lastReadSeq: lastRead,
+                           unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count,
+                           replyCount: found.parent.replyCount, lastReplyAt: found.parent.lastReplyAt, participantIds: followers(found.parent.id))
+    }
+
+    private func emitThread(_ parentId: String, to userIds: [String], reason: String) {
+        for userId in userIds {
+            guard let state = try? threadState(userId: userId, parentId: parentId), case .object(var fields) = try! JSONValue.from(state) else { continue }
+            fields["reason"] = .string(reason)
+            eventId += 1
+            emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("thread.updated"), "ts": .string(now()),
+                                    "channel_id": .string(state.channelId), "seq": .null, "data": .object(fields)]))
+        }
+    }
+
+    func threadSummary(for userId: String) -> ThreadSummary {
+        let states = threadFollows.values.filter { $0.userId == userId && $0.following }.compactMap { try? threadState(userId: userId, parentId: $0.parentId) }
+        return ThreadSummary(unreadCount: states.filter { $0.unreadCount > 0 }.count, mentionCount: states.filter { $0.mentionCount > 0 }.count)
+    }
+
+    func threads(userId: String, filter: String, cursor: String?, limit: Int) -> ThreadListOut {
+        var items: [ThreadItem] = threadFollows.values.filter { $0.userId == userId && $0.following }.compactMap { row in
+            guard let found = try? threadParent(row.parentId), !found.parent.deleted, found.parent.replyCount > 0,
+                  let state = try? threadState(userId: userId, parentId: row.parentId) else { return nil }
+            return ThreadItem(parent: found.parent, state: state)
+        }
+        items.sort { ($0.parent.lastReplyAt ?? "", $0.parent.seq) > ($1.parent.lastReplyAt ?? "", $1.parent.seq) }
+        if let cursor { items = items.filter { ($0.parent.lastReplyAt ?? "") < cursor } }
+        if filter == "unread" { items = items.filter { $0.state.unreadCount > 0 } }
+        items = Array(items.prefix(limit))
+        return ThreadListOut(items: items, nextCursor: items.last?.parent.lastReplyAt, summary: threadSummary(for: userId))
+    }
+
+    @discardableResult
+    func markThreadRead(userId: String, messageId: String, seq: Int) throws -> ThreadState {
+        let found = try threadParent(messageId)
+        _ = try requireMember(found.record.channel.id, userId)
+        let newest = found.record.messages.filter { $0.parentId == found.parent.id && !$0.deleted }.map(\.seq).max() ?? 0
+        let target = min(seq, newest)
+        let key = "\(found.parent.id):\(userId)"
+        autoFollow(found.parent.id, [userId])
+        if target > threadFollows[key]!.lastReadSeq {
+            threadFollows[key]!.lastReadSeq = target
+            emitThread(found.parent.id, to: [userId], reason: "read")
+        }
+        return try threadState(userId: userId, parentId: found.parent.id)
+    }
+
+    @discardableResult
+    func setThreadFollow(userId: String, messageId: String, following: Bool) throws -> ThreadState {
+        let found = try threadParent(messageId)
+        _ = try requireMember(found.record.channel.id, userId)
+        let key = "\(found.parent.id):\(userId)"
+        let changed = threadFollows[key]?.following != following
+        autoFollow(found.parent.id, [userId])
+        threadFollows[key]!.following = following
+        if changed { emitThread(found.parent.id, to: [userId], reason: "follow") }
+        return try threadState(userId: userId, parentId: found.parent.id)
+    }
+
     func replies(userId: String, messageId: String) throws -> [MessageOut] {
         guard let record = channels.values.first(where: { $0.messages.contains { $0.id == messageId } }) else { return [] }
         _ = try requireMember(record.channel.id, userId)
@@ -222,9 +348,10 @@ final class FakeServer {
             let old = record.messages[parentIndex]
             let parent = rebuild(old, updatedSeq: seq, replyCount: old.replyCount + 1, lastReplyAt: message.createdAt)
             record.messages[parentIndex] = parent
-            var participants = [parent.senderId]
-            for reply in record.messages where reply.parentId == parent.id && !reply.deleted && !participants.contains(reply.senderId) { participants.append(reply.senderId) }
-            let thread = ParentThread(id: parent.id, replyCount: parent.replyCount, lastReplyAt: parent.lastReplyAt, updatedSeq: seq, participantIds: participants)
+            // THREADS.md §2: auto-follow, the replier has read their own reply, followers are the push targets.
+            autoFollow(parent.id, [parent.senderId, senderId] + parent.mentionedUserIds + message.mentionedUserIds)
+            threadFollows["\(parent.id):\(senderId)"]!.lastReadSeq = max(threadFollows["\(parent.id):\(senderId)"]!.lastReadSeq, seq)
+            let thread = ParentThread(id: parent.id, replyCount: parent.replyCount, lastReplyAt: parent.lastReplyAt, updatedSeq: seq, participantIds: followers(parent.id))
             payloadFields["parent_thread"] = try! JSONValue.from(thread)
         }
         channels[channelId] = record
@@ -234,6 +361,7 @@ final class FakeServer {
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
         _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) // the sender has read their own message (§10)
+        if let parentId { emitThread(parentId, to: followers(parentId), reason: "reply") }
         return (message, true)
     }
 
@@ -384,7 +512,8 @@ final class FakeServer {
                        readState: readState(userId: userId, channelId: record.channel.id))
         }
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
-                            limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10))
+                            limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),
+                            threads: threadSummary(for: userId))
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

@@ -22,6 +22,9 @@ struct ChannelListView: View {
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
             }
+            Section {
+                threadsRow
+            }
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
                 if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
@@ -46,6 +49,28 @@ struct ChannelListView: View {
             }
         }
         .listStyle(.sidebar)
+    }
+
+    /// 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
+    private var threadsRow: some View {
+        let summary = controller.store.threadSummary
+        let active = selection == ThreadsListView.selectionId
+        let unread = summary.unreadCount > 0 && !active
+        return NavigationLink(value: ThreadsListView.selectionId) {
+            HStack(spacing: 12) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.body).foregroundStyle(.secondary).frame(width: 28)
+                Text("スレッド").fontWeight(unread ? .semibold : .regular)
+                Spacer()
+                if unread {
+                    Text("\(summary.unreadCount)")
+                        .font(.caption2).bold().foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(summary.mentionCount > 0 ? Color.red : Color.accentColor, in: Capsule())
+                }
+            }
+            .padding(.vertical, 2)
+        }
     }
 
     /// The glyph already says "#", so rows show the bare channel name.
