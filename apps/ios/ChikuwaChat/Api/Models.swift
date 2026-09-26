@@ -67,8 +67,16 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     let dmUserIds: [String]?
     /// Filled by bootstrap for the requesting user (M8b); nil elsewhere.
     var readState: ReadStateOut? = nil
+    /// Per-user notification preference; filled by bootstrap, kept locally across channel.updated events.
+    var notification: NotificationPreferenceOut? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
+}
+
+struct NotificationPreferenceOut: Codable, Equatable {
+    let channelId: String
+    let level: String
+    let mutedUntil: String?
 }
 
 struct ReadStateOut: Codable, Equatable {

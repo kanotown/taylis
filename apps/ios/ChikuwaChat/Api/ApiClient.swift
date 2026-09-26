@@ -132,6 +132,26 @@ final class ApiClient: SyncApi {
 
     func joinChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/join", body: .object([:])) }
 
+    func updateChannel(id: String, topic: String? = nil, name: String? = nil, purpose: String? = nil) async throws -> ChannelOut {
+        var body: [String: JSONValue] = [:]
+        if let topic { body["topic"] = .string(topic) }
+        if let name { body["name"] = .string(name) }
+        if let purpose { body["purpose"] = .string(purpose) }
+        return try await request("PATCH", "/api/v1/channels/\(id)", body: .object(body))
+    }
+
+    func setNotificationPreference(channelId: String, level: String, mutedUntil: String?) async throws -> NotificationPreferenceOut {
+        try await request("PUT", "/api/v1/channels/\(channelId)/notification-preference",
+                          body: .object(["level": .string(level), "muted_until": mutedUntil.map { JSONValue.string($0) } ?? .null]))
+    }
+
+    func updateMe(displayName: String? = nil, email: String? = nil) async throws -> UserMe {
+        var body: [String: JSONValue] = [:]
+        if let displayName { body["display_name"] = .string(displayName) }
+        if let email { body["email"] = .string(email) }
+        return try await request("PATCH", "/api/v1/users/me", body: .object(body))
+    }
+
     func members(channelId: String) async throws -> [MemberOut] { try await request("GET", "/api/v1/channels/\(channelId)/members") }
 
     func addMember(channelId: String, userId: String) async throws -> MemberOut {

@@ -5,51 +5,110 @@ import UniformTypeIdentifiers
 struct ChannelView: View {
     @Bindable var controller: AppController
     let channelId: String
+    @Binding var pendingThreadId: String?
     @State private var draft = ""
-    @State private var showAddMember = false
+    @State private var sheet: ChannelSheet?
     @State private var thread: ThreadTarget?
+    @State private var atBottom = true
+    @State private var loadingOlder = false
+    /// Read position when the channel was opened; the 「新着メッセージ」 divider stays there.
+    @State private var unreadMark: Int?
+
+    enum ChannelSheet: Identifiable {
+        case info, addMember
+        var id: Int { switch self { case .info: 0; case .addMember: 1 } }
+    }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     private var messages: [MessageState] { controller.store.messages(channelId) }
+    private var items: [TimelineItem] { Timeline.build(messages, firstUnreadAfterSeq: unreadMark, meId: controller.store.me?.id) }
 
     /// Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
     private func markRead() {
-        guard let channel, UIApplication.shared.applicationState == .active else { return }
+        guard let channel, atBottom, UIApplication.shared.applicationState == .active else { return }
         controller.engine?.markRead(channelId, seq: channel.lastSeq)
+    }
+
+    private func loadOlder() {
+        guard !loadingOlder else { return }
+        loadingOlder = true
+        Task {
+            await controller.engine?.loadOlder(channelId)
+            loadingOlder = false
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if let channel, channel.hasOlder, channel.syncedSeq != nil {
-                            Button("以前のメッセージを読み込む") { Task { await controller.engine?.loadOlder(channelId) } }
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if let channel {
+                            if channel.hasOlder, channel.syncedSeq != nil {
+                                Button(action: loadOlder) {
+                                    if loadingOlder { ProgressView().controlSize(.small) } else { Text("以前のメッセージを読み込む") }
+                                }
                                 .frame(maxWidth: .infinity)
                                 .font(.footnote)
+                                .padding(.vertical, 8)
+                            } else if messages.isEmpty {
+                                ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
+                                                       description: Text("最初のメッセージを送ってみましょう。"))
+                                    .padding(.top, 40)
+                            } else {
+                                Text("ここが会話の始まりです").font(.caption).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                            }
                         }
-                        ForEach(messages) { message in
-                            MessageRow(message: message, controller: controller, onOpenThread: { thread = ThreadTarget(id: message.id) }).id(message.id)
+                        ForEach(items) { item in
+                            switch item {
+                            case .date(let label, _):
+                                DaySeparator(label: label)
+                            case .unread:
+                                UnreadSeparator()
+                            case .message(let message, let compact):
+                                MessageRow(message: message, controller: controller, compact: compact,
+                                           onOpenThread: { thread = ThreadTarget(id: message.id) })
+                                    .id(message.id)
+                            }
                         }
                         Color.clear.frame(height: 1).id("bottom")
+                            .onAppear { atBottom = true; markRead() }
+                            .onDisappear { atBottom = false }
                     }
-                    .padding()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !atBottom {
+                        Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+                            Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                        }
+                        .accessibilityLabel("最新のメッセージへ")
+                        .padding(12)
+                    }
                 }
                 .onChange(of: messages.last?.id) { _, _ in
-                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                    if atBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
                     markRead()
                 }
                 .onChange(of: channel?.lastSeq) { _, _ in markRead() }
-                .onAppear { proxy.scrollTo("bottom", anchor: .bottom); markRead() }
+                .onAppear {
+                    if unreadMark == nil, let channel, channel.unreadCount > 0 { unreadMark = channel.lastReadSeq }
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                    markRead()
+                }
             }
             if let channel {
                 if !channel.isMember {
                     Button("参加する") {
                         Task {
-                            if let api = controller.api, let joined = try? await api.joinChannel(id: channelId) {
+                            guard let api = controller.api else { return }
+                            do {
+                                let joined = try await api.joinChannel(id: channelId)
                                 controller.store.upsertChannel(joined, isMember: true)
                                 await controller.engine?.openChannel(channelId)
-                            }
+                            } catch { controller.error = controller.describe(error) }
                         }
                     }
                     .buttonStyle(.borderedProminent).padding()
@@ -62,17 +121,106 @@ struct ChannelView: View {
                 }
             }
         }
-        .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let channel, channel.isMember, !channel.channel.isDm, !channel.channel.archived {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
+            ToolbarItem(placement: .principal) {
+                if let channel {
+                    Button { sheet = .info } label: {
+                        VStack(spacing: 0) {
+                            Text(channelTitle(channel, store: controller.store)).font(.headline).lineLimit(1)
+                            if let subtitle = headerSubtitle(channel) {
+                                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("チャンネル情報")
                 }
             }
+            if let channel, channel.isMember {
+                ToolbarItem(placement: .topBarTrailing) { NotificationMenu(controller: controller, channel: channel) }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("チャンネル情報", systemImage: "info.circle") { sheet = .info }
+            }
         }
-        .sheet(isPresented: $showAddMember) { AddMemberView(controller: controller, channelId: channelId) }
+        .sheet(item: $sheet) { which in
+            switch which {
+            case .info: ChannelInfoView(controller: controller, channelId: channelId)
+            case .addMember: AddMemberView(controller: controller, channelId: channelId)
+            }
+        }
         .sheet(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .onChange(of: pendingThreadId, initial: true) { _, id in
+            if let id {
+                thread = ThreadTarget(id: id)
+                pendingThreadId = nil
+            }
+        }
+    }
+
+    private func headerSubtitle(_ channel: ChannelState) -> String? {
+        if let topic = channel.channel.topic, !topic.isEmpty { return topic }
+        return !channel.channel.isDm && channel.isMember && !channel.channel.archived ? "トピックを設定" : nil
+    }
+}
+
+/// Bell in the channel toolbar: notification level plus a timed mute (PUSH_NOTIFICATIONS.md §4).
+struct NotificationMenu: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+
+    private var level: String { channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions") }
+    private var muteLabel: String? { Timeline.muteLabel(channel.channel.notification?.mutedUntil) }
+
+    var body: some View {
+        Menu {
+            Picker("通知", selection: Binding(get: { level }, set: { value in
+                Task { await controller.setNotification(channel.id, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
+            })) {
+                Text("すべてのメッセージ").tag("all")
+                Text("メンションのみ").tag("mentions")
+                Text("通知しない").tag("none")
+            }
+            Divider()
+            if let muteLabel {
+                Button("ミュート解除 (\(muteLabel))", systemImage: "bell") {
+                    Task { await controller.setNotification(channel.id, level: level, mutedUntil: nil) }
+                }
+            } else {
+                Button("8 時間ミュート", systemImage: "moon.zzz") {
+                    let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
+                    Task { await controller.setNotification(channel.id, level: level, mutedUntil: until) }
+                }
+            }
+        } label: {
+            Image(systemName: isMuted(channel) ? "bell.slash" : "bell")
+        }
+        .accessibilityLabel("通知設定")
+    }
+}
+
+struct DaySeparator: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(Color(.separator)).frame(height: 1)
+            Text(label).font(.caption).foregroundStyle(.secondary).fixedSize()
+            Rectangle().fill(Color(.separator)).frame(height: 1)
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+struct UnreadSeparator: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(.red).frame(height: 1)
+            Text("新着メッセージ").font(.caption.bold()).foregroundStyle(.red).fixedSize()
+            Rectangle().fill(.red).frame(height: 1)
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -81,50 +229,70 @@ let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
 struct MessageRow: View {
     let message: MessageState
     @Bindable var controller: AppController
+    var compact = false
     var onOpenThread: (() -> Void)? = nil
     @State private var editing = false
     @State private var confirmingDelete = false
+    @State private var showTime = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
     private var isMine: Bool { store.me?.id == message.senderId }
+    private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?")).bold()
-                Text(formatTime(message.createdAt)).font(.caption).foregroundStyle(.secondary)
-                if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
+        HStack(alignment: .top, spacing: 10) {
+            if compact {
+                Color.clear.frame(width: 36, height: 1)
+            } else {
+                AvatarView(id: message.senderId, name: senderName)
             }
-            if !message.body.isEmpty { MessageBodyView(text: message.body, users: store.users) }
-            if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
-            if !message.reactions.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(message.reactions, id: \.emoji) { reaction in
-                        let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
-                        Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
-                            Text("\(reaction.emoji) \(reaction.count)").font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(mine ? Color.accentColor : Color.secondary)
-                        .controlSize(.mini)
+            VStack(alignment: .leading, spacing: 2) {
+                if !compact {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(senderName).bold()
+                        Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
                     }
+                } else if showTime || message.editedAt != nil {
+                    Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
-                .padding(.top, 2)
-            }
-            if message.replyCount > 0, let onOpenThread {
-                Button("\(message.replyCount) 件の返信") { onOpenThread() }.font(.caption).padding(.top, 2)
-            }
-            if message.failed {
-                HStack {
-                    Text("送信失敗").font(.caption).foregroundStyle(.red)
-                    Button("再送") { Task { await engine?.retryFailed() } }.font(.caption)
-                    Button("破棄", role: .destructive) { if let key = message.clientMsgId { engine?.discardFailed(key) } }.font(.caption)
+                if !message.body.isEmpty { MessageBodyView(text: message.body, users: store.users) }
+                if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
+                if !message.reactions.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(message.reactions, id: \.emoji) { reaction in
+                            let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
+                            Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
+                                Text("\(reaction.emoji) \(reaction.count)").font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(mine ? Color.accentColor : Color.secondary)
+                            .controlSize(.mini)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                if message.replyCount > 0, let onOpenThread {
+                    Button { onOpenThread() } label: {
+                        Label("\(message.replyCount) 件の返信", systemImage: "bubble.left.and.bubble.right").font(.caption)
+                    }
+                    .padding(.top, 2)
+                }
+                if message.failed {
+                    HStack {
+                        Text("送信に失敗しました").font(.caption).foregroundStyle(.red)
+                        Button("再送") { Task { await engine?.retryFailed() } }.font(.caption)
+                        Button("破棄", role: .destructive) { if let key = message.clientMsgId { engine?.discardFailed(key) } }.font(.caption)
+                    }
                 }
             }
         }
+        .padding(.vertical, compact ? 1 : 5)
         .opacity(message.pending && !message.failed ? 0.6 : 1)
         .contentShape(Rectangle())
+        .onTapGesture { if compact { showTime.toggle() } }
         .contextMenu {
             if !message.pending {
                 ForEach(reactionPalette, id: \.self) { emoji in
@@ -143,11 +311,6 @@ struct MessageRow: View {
         .confirmationDialog("メッセージを削除しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("削除", role: .destructive) { Task { await controller.deleteMessage(message.id) } }
         }
-    }
-
-    private func formatTime(_ iso: String) -> String {
-        guard let date = parseIsoDate(iso) else { return "送信中…" }
-        return date.formatted(date: .omitted, time: .shortened)
     }
 }
 
