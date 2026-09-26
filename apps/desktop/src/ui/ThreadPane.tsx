@@ -28,7 +28,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   }, [parentId, controller.messageFocus?.messageId, replies.length]);
 
   return (
-    <aside className="flex w-[380px] min-w-[320px] flex-col border-l border-line bg-canvas">
+    <aside className="flex min-h-0 w-[380px] min-w-[320px] flex-col border-l border-line bg-canvas">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">スレッド</div>
@@ -38,7 +38,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <X size={18} />
         </IconButton>
       </header>
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {parent ? (
           <>
             <MessageRow thread message={parent} controller={controller} />
