@@ -68,6 +68,16 @@ final class BrowserSnapshotTests: XCTestCase {
                               size: CGSize(width: 390, height: 500), name: "mentions.png")
         XCTAssertGreaterThan(list.size.width, 0)
 
+        let files = [
+            FileItem(attachment: AttachmentOut(id: "a1", filename: "logo-draft.png", contentType: "image/png", sizeBytes: 48_213, width: 640, height: 400, hasThumbnail: true, status: "attached", createdAt: "2026-09-27T01:30:00Z"),
+                     messageId: "m1", channelId: "c1", parentId: nil, uploaderId: "u2", attachedAt: "2026-09-27T01:30:00Z"),
+            FileItem(attachment: AttachmentOut(id: "a2", filename: "release-notes-v0.9.md", contentType: "text/markdown", sizeBytes: 812, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: "2026-09-27T01:20:00Z"),
+                     messageId: "m2", channelId: "c3", parentId: "m1", uploaderId: "me", attachedAt: "2026-09-27T01:20:00Z"),
+        ]
+        let filesImage = try render(NavigationStack { FilesView(controller: controller, onOpen: { _, _, _ in }, initial: files) },
+                                    size: CGSize(width: 390, height: 500), name: "files.png")
+        XCTAssertGreaterThan(filesImage.size.width, 0)
+
         store.setDraft("c1") { $0.text = "リリースノートの下書き: 今回の変更点はスレッドのフォローとリンクプレビューです" }
         store.setDraft("c3", parentId: "m9") { $0.text = "当番表を更新しました" }
         XCTAssertEqual(store.listDrafts().count, 2)

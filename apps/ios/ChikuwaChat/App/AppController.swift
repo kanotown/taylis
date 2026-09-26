@@ -19,13 +19,18 @@ final class AppController {
     }
     var messageFocus: MessageFocus?
     func revealMessage(_ message: MessageOut) async -> Bool {
+        await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
+    }
+
+    /// Focus a message known only by its ids (M11i files list): the context comes from the server.
+    func revealMessage(id: String, channelId: String, parentId: String?) async -> Bool {
         guard let api else { return false }
         do {
-            let context = try await api.messageContext(message.id)
-            if let parentId = message.parentId {
+            let context = try await api.messageContext(id)
+            if let parentId {
                 for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
             }
-            messageFocus = MessageFocus(channelId: message.channelId, messageId: message.id, parentId: message.parentId, context: context.map(MessageState.init))
+            messageFocus = MessageFocus(channelId: channelId, messageId: id, parentId: parentId, context: context.map(MessageState.init))
             return true
         } catch { self.error = describe(error); return false }
     }

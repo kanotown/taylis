@@ -61,6 +61,15 @@ struct MainView: View {
                         }
                     }
                 }
+            } else if selection == FilesView.selectionId {
+                FilesView(controller: controller) { messageId, channelId, parentId in
+                    Task {
+                        if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
+                            selection = channelId
+                            pendingThreadId = parentId
+                        }
+                    }
+                }
             } else if selection == DraftsView.selectionId {
                 DraftsView(controller: controller) { channelId, parentId in
                     selection = channelId
@@ -95,12 +104,15 @@ struct MainView: View {
         }
         .onChange(of: selection) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
-            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId {
+            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId || id == FilesView.selectionId {
                 controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
-            if let id = note.userInfo?["id"] as? String { selection = id }
+            if let id = note.userInfo?["id"] as? String {
+                selection = id
+                if let parentId = note.userInfo?["parentId"] as? String { pendingThreadId = parentId }
+            }
         }
         .onChange(of: PushCenter.shared.pendingChannelId, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).

@@ -55,6 +55,7 @@
 		BAC374BD1E76EA42F1E24852 /* TypingLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234BE2448E1022BD0D1D55EB /* TypingLine.swift */; };
 		BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7251E3E02E155A12489239 /* ChannelListView.swift */; };
 		BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */; };
+		BF21ACAE32EB5D85A1485CB8 /* FilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026967342CC9E58E372D3A44 /* FilesView.swift */; };
 		C3D7A8E5ED5B565412D4A51A /* EmojiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEE327A40F68B8450858B9E /* EmojiTests.swift */; };
 		CB580DDF4A008845D30F4F2F /* LinkPreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE53857316C0711ABC592BE3 /* LinkPreviewCard.swift */; };
 		CBD65280B7792F5C68583C5D /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24269094945450CF90BCAC33 /* SyncEngine.swift */; };
@@ -81,6 +82,7 @@
 
 /* Begin PBXFileReference section */
 		00D8D7E37A6EBA67685667F3 /* Timeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeline.swift; sourceTree = "<group>"; };
+		026967342CC9E58E372D3A44 /* FilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesView.swift; sourceTree = "<group>"; };
 		040510582EF3182E66D21640 /* ChannelIntroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelIntroView.swift; sourceTree = "<group>"; };
 		048A41BC92EAD6644AFA7294 /* FakeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeServer.swift; sourceTree = "<group>"; };
 		095DC9C14EA053C04A5D3DEA /* ThreadsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadsSnapshotTests.swift; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 				342A0B1BCD9379AB86C4B521 /* Emoji.swift */,
 				9762241E8CC66308A104F181 /* EmojiData.swift */,
 				95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */,
+				026967342CC9E58E372D3A44 /* FilesView.swift */,
 				5396B11E764B50A589735215 /* ImageViewer.swift */,
 				EE53857316C0711ABC592BE3 /* LinkPreviewCard.swift */,
 				B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */,
@@ -453,6 +456,7 @@
 				F2230137BE87493D9D0FDC74 /* Emoji.swift in Sources */,
 				DC2D572AB84C9472A95422CE /* EmojiData.swift in Sources */,
 				5FECA8B2E9AF819525A1CAA1 /* EmojiPickerView.swift in Sources */,
+				BF21ACAE32EB5D85A1485CB8 /* FilesView.swift in Sources */,
 				01058071D83FDB3831C7411A /* Frames.swift in Sources */,
 				581692ADE9D9F2BF23170BDE /* ImageViewer.swift in Sources */,
 				23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */,

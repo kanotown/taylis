@@ -160,6 +160,57 @@ struct ChannelInfoView: View {
         do { members = try await api.members(channelId: channelId) } catch { controller.error = controller.describe(error) }
     }
 
+    /// M11h: the channel's purpose, editable by members.
+    @ViewBuilder
+    private func purposeSection(_ channel: ChannelState, canEdit: Bool) -> some View {
+        Section("説明") {
+            if editingPurpose {
+                TextField("例: デザインレビューの依頼と結果を共有する", text: $purpose)
+                HStack {
+                    Button("保存") { Task { if await controller.updatePurpose(channelId, purpose: purpose) { editingPurpose = false } } }
+                    Spacer()
+                    Button("キャンセル", role: .cancel) { editingPurpose = false }
+                }
+            } else {
+                if let current = channel.channel.purpose, !current.isEmpty {
+                    Text(current)
+                } else {
+                    Text("未設定").foregroundStyle(.secondary)
+                }
+                if canEdit { Button("編集") { purpose = channel.channel.purpose ?? ""; editingPurpose = true } }
+            }
+        }
+    }
+
+    /// M11i: this channel's files; a row reveals its message and closes the sheet.
+    private var filesSection: some View {
+        Section {
+            NavigationLink {
+                FilesView(controller: controller, channelId: channelId) { messageId, channelId, parentId in
+                    Task {
+                        if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
+                            NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channelId, "parentId": parentId as Any])
+                            dismiss()
+                        }
+                    }
+                }
+            } label: {
+                Label("ファイル", systemImage: "doc.on.doc")
+            }
+        }
+    }
+
+    /// M11h: leave for every member; rename / archive for owners and admins.
+    private func manageSection(_ channel: ChannelState) -> some View {
+        Section {
+            if canManage && !channel.channel.archived {
+                Button("名前を変更", systemImage: "pencil") { newName = channel.channel.name ?? ""; renaming = true }
+                Button("アーカイブ", systemImage: "archivebox", role: .destructive) { confirmArchive = true }
+            }
+            Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -185,23 +236,7 @@ struct ChannelInfoView: View {
                                 if canEdit { Button("編集") { topic = channel.channel.topic ?? ""; editingTopic = true } }
                             }
                         }
-                        Section("説明") {
-                            if editingPurpose {
-                                TextField("例: デザインレビューの依頼と結果を共有する", text: $purpose)
-                                HStack {
-                                    Button("保存") { Task { if await controller.updatePurpose(channelId, purpose: purpose) { editingPurpose = false } } }
-                                    Spacer()
-                                    Button("キャンセル", role: .cancel) { editingPurpose = false }
-                                }
-                            } else {
-                                if let current = channel.channel.purpose, !current.isEmpty {
-                                    Text(current)
-                                } else {
-                                    Text("未設定").foregroundStyle(.secondary)
-                                }
-                                if canEdit { Button("編集") { purpose = channel.channel.purpose ?? ""; editingPurpose = true } }
-                            }
-                        }
+                        purposeSection(channel, canEdit: canEdit)
                     }
                     if channel.isMember {
                         let level = channel.channel.notification?.level ?? (isChannel ? "mentions" : "all")
@@ -254,15 +289,8 @@ struct ChannelInfoView: View {
                             Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
                         }
                     }
-                    if isChannel && channel.isMember {
-                        Section {
-                            if canManage && !channel.channel.archived {
-                                Button("名前を変更", systemImage: "pencil") { newName = channel.channel.name ?? ""; renaming = true }
-                                Button("アーカイブ", systemImage: "archivebox", role: .destructive) { confirmArchive = true }
-                            }
-                            Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
-                        }
-                    }
+                    if channel.isMember { filesSection }
+                    if isChannel && channel.isMember { manageSection(channel) }
                 } else {
                     Text("チャンネルが見つかりません").foregroundStyle(.secondary)
                 }

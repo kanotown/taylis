@@ -27,6 +27,7 @@ struct ChannelListView: View {
                 threadsRow
                 mentionsRow
                 draftsRow
+                filesRow
                 savedRow
             }
             Section("チャンネル") {
@@ -115,6 +116,17 @@ struct ChannelListView: View {
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(summary.mentionCount > 0 ? Color.red : Color.accentColor, in: Capsule())
                 }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    /// 「ファイル」 (M11i): attachments in my channels.
+    private var filesRow: some View {
+        NavigationLink(value: FilesView.selectionId) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.on.doc").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                Text("ファイル")
             }
             .padding(.vertical, 2)
         }

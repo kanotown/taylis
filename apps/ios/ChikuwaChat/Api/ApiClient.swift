@@ -210,6 +210,18 @@ final class ApiClient: SyncApi {
     func pinMessage(id: String) async throws -> MessageOut { try await request("PUT", "/api/v1/messages/\(id)/pin") }
     func unpinMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)/pin") }
 
+    /// M11i: attached files in my channels (optionally one channel), newest first.
+    func listFiles(channelId: String? = nil, query: String? = nil, cursor: String? = nil, limit: Int = 50) async throws -> FileListOut {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        var components = URLComponents()
+        components.path = "/api/v1/files"
+        components.queryItems = items
+        return try await request("GET", components.string ?? "/api/v1/files")
+    }
+
     /// M11h: messages that mention me or everyone in my channels.
     func listMentions(cursor: String? = nil, limit: Int = 50) async throws -> MentionListOut {
         var items = [URLQueryItem(name: "limit", value: String(limit))]
