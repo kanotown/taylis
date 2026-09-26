@@ -11,6 +11,8 @@ import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
+import { plainText } from "../ui/markdown";
+import { mentionsToNames } from "../ui/mentions";
 import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
@@ -293,7 +295,7 @@ export class AppController {
       onNotify: (message, channel) => {
         const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";
         const title = channel.type === "dm" ? sender : `${sender} (group DM)`;
-        void notify(title, message.body.slice(0, 200));
+        void notify(title, plainText(mentionsToNames(message.body, this.store.users)) || "新しいメッセージ");
       },
       isActive: () => document.hasFocus(),
     });

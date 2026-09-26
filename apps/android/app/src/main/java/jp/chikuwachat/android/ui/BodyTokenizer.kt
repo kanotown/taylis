@@ -148,3 +148,21 @@ fun splitIntoLines(tokens: List<BodyToken>): List<List<BodyToken>> {
     }
     return lines.filter { it.isNotEmpty() }
 }
+
+/** One-line plain text for notifications and previews: markers removed, newlines collapsed. */
+fun plainText(body: String, maxLength: Int = 200): String {
+    val text = body
+        .replace(Regex("""(?m)^```[A-Za-z0-9_+#.-]*\s*$"""), "")
+        .replace(Regex("""(?m)^#{1,3}\s+"""), "")
+        .replace(Regex("""(?m)^>\s?"""), "")
+        .replace(Regex("""(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"""), "")
+        .replace(Regex("""\*\*([^*\n]+?)\*\*"""), "$1")
+        .replace(Regex("""\*([^*\n]+)\*"""), "$1")
+        .replace(Regex("""_([^_\n]+)_"""), "$1")
+        .replace(Regex("""~~([^~\n]+)~~"""), "$1")
+        .replace(Regex("""`([^`\n]+)`"""), "$1")
+        .replace(Regex("""\[([^\]\n]+)\]\((https?://[^\s)]+)\)"""), "$1")
+        .replace(Regex("""\s*\n+\s*"""), " ")
+        .trim()
+    return if (text.length > maxLength) text.take(maxLength - 1) + "…" else text
+}
