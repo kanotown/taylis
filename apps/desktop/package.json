@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gen:api": "openapi-typescript ../../openapi/openapi.json -o src/api/schema.d.ts",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:2": "vite --port 1421",
+    "tauri:dev:2": "tauri dev --config src-tauri/tauri.dev2.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

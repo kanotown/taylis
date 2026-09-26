@@ -40,7 +40,9 @@ class Settings(BaseSettings):
 
     # Browser-like clients (the Tauri WebView and the Vite dev server) need CORS. Comma separated.
     # Tokens travel in the Authorization header, never in cookies, so credentials stay disabled.
-    cors_allow_origins: str = "tauri://localhost,http://tauri.localhost,http://localhost:1420"
+    cors_allow_origins: str = (
+        "tauri://localhost,http://tauri.localhost,http://localhost:1420,http://localhost:1421"
+    )
 
     @property
     def cors_origins(self) -> list[str]:
