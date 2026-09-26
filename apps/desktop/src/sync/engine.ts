@@ -4,7 +4,7 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -20,6 +20,8 @@ export interface SyncApi {
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
   /** M12a: every channel read to its end; returns the new states. */
   readAll(): Promise<ChannelReadStateOut[]>;
+  /** M12d: my pending scheduled messages. */
+  listScheduled(): Promise<ScheduledOut[]>;
   /** THREADS.md §3. */
   threads(options: { filter: ThreadFilter; cursor?: string | null; limit?: number }): Promise<ThreadListOut>;
   threadState(messageId: string): Promise<ThreadState>;
@@ -325,6 +327,16 @@ export class SyncEngine {
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
+    void this.loadScheduled();
+  }
+
+  /** M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events). */
+  async loadScheduled(): Promise<void> {
+    try {
+      this.deps.store.replaceScheduled(await this.deps.api.listScheduled());
+    } catch (err) {
+      console.warn("could not load scheduled messages", err);
+    }
   }
 
   /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
@@ -405,6 +417,11 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "scheduled.updated": {
+        const data = frame.data as { scheduled: ScheduledOut };
+        store.applyScheduled(data.scheduled);
         return;
       }
       case "favorite.updated": {

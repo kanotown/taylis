@@ -233,6 +233,22 @@ data class FileItem(
 @Serializable
 data class FileListOut(val items: List<FileItem>, val nextCursor: String? = null)
 
+/** A message the server posts later (M12d); `status` is pending | sent | failed | cancelled. */
+@Serializable
+data class ScheduledOut(
+    val id: String,
+    val channelId: String,
+    val parentId: String? = null,
+    val clientMsgId: String,
+    val body: String,
+    val attachments: List<AttachmentOut> = emptyList(),
+    val sendAt: String,
+    val status: String,
+    val error: String? = null,
+    val sentMessageId: String? = null,
+    val createdAt: String,
+)
+
 /** GET /mentions (M11h): messages that mention me or everyone, newest first. */
 @Serializable
 data class MentionListOut(val items: List<MessageOut>, val nextCursor: String? = null)

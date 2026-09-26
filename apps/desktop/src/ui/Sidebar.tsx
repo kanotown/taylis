@@ -43,7 +43,7 @@ interface Props {
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll }: Props) {
   const store = controller.store;
-  const draftCount = store.listDrafts().length;
+  const draftCount = store.listDrafts().length + store.scheduled.size;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites });
   const status = controller.engine?.status ?? "idle";

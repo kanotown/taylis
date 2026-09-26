@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -50,6 +50,8 @@ export class Store {
   readonly bookmarks = new Set<string>();
   /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
   readonly favorites = new Set<string>();
+  /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
+  readonly scheduled = new Map<string, ScheduledOut>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -289,6 +291,25 @@ export class Store {
         mention_count: Math.max(0, this.threadSummary.mention_count + mention),
       };
     }
+    this.emit();
+  }
+
+  // --- scheduled messages (M12d) -----------------------------------------------------------
+
+  listScheduled(): ScheduledOut[] {
+    return [...this.scheduled.values()].sort((a, b) => a.send_at.localeCompare(b.send_at));
+  }
+
+  replaceScheduled(rows: ScheduledOut[]): void {
+    this.scheduled.clear();
+    for (const row of rows) if (row.status === "pending") this.scheduled.set(row.id, row);
+    this.emit();
+  }
+
+  /** scheduled.updated: a pending row is kept (created / edited); any other status drops it. */
+  applyScheduled(row: ScheduledOut): void {
+    if (row.status === "pending") this.scheduled.set(row.id, row);
+    else this.scheduled.delete(row.id);
     this.emit();
   }
 

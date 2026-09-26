@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     # itself) is younger than this; announced as away afterwards by the sweep.
     presence_away_seconds: float = 300.0
     presence_sweep_interval_seconds: float = 30.0
+    # M12d: how often the worker looks for scheduled messages whose time has come.
+    scheduled_send_interval_seconds: float = 15.0
     # typing frames from one connection are relayed at most this often.
     typing_min_interval_seconds: float = 2.0
 

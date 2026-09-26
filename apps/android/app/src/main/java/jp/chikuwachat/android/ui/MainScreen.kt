@@ -400,7 +400,7 @@ private fun ChannelList(
     onFiles: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites) }
-    val draftCount = remember(version) { store.listDrafts().size }
+    val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
     val channels = sections.channels
     val dms = sections.dms
     val browsable = sections.browse

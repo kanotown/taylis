@@ -1,5 +1,9 @@
 package jp.chikuwachat.android.app
 
+import java.util.UUID
+import java.time.ZonedDateTime
+import jp.chikuwachat.android.ui.Schedule
+import jp.chikuwachat.android.api.ScheduledOut
 import kotlinx.serialization.json.JsonObject
 import jp.chikuwachat.android.ui.Permalink
 import android.content.ClipboardManager
@@ -354,6 +358,37 @@ class AppController(private val app: Application) {
         val api = api ?: return
         try {
             store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
+        } catch (e: Exception) { error = describe(e) }
+    }
+
+    // --- scheduled messages (M12d) ----------------------------------------------------------------
+
+    /** 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. */
+    suspend fun scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: List<String>, sendAt: ZonedDateTime): Boolean {
+        val api = api ?: return false
+        return try {
+            val row = api.scheduleMessage(channelId, UUID.randomUUID().toString(), body, parentId, attachmentIds, sendAt.toInstant().toString())
+            store.applyScheduled(row)
+            notice = Schedule.label(sendAt) + " に送信します"
+            true
+        } catch (e: Exception) { error = describe(e); false }
+    }
+
+    /** Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost. */
+    suspend fun cancelScheduled(row: ScheduledOut) {
+        val api = api ?: return
+        try {
+            api.cancelScheduled(row.id)
+            store.applyScheduled(row.copy(status = "cancelled"))
+            if (row.body.isNotEmpty()) store.setDraft(row.channelId, row.parentId) { it.copy(text = row.body) }
+        } catch (e: Exception) { error = describe(e) }
+    }
+
+    suspend fun sendScheduledNow(row: ScheduledOut) {
+        val api = api ?: return
+        try {
+            api.sendScheduledNow(row.id)
+            store.applyScheduled(row.copy(status = "sent"))
         } catch (e: Exception) { error = describe(e) }
     }
 

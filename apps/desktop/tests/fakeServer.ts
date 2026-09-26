@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -449,6 +449,21 @@ export class FakeServer {
     return updated;
   }
 
+  /** "user" → pending scheduled messages (M12d). */
+  readonly scheduled = new Map<string, ScheduledOut[]>();
+
+  /** A scheduled row for the user; `emitScheduled` reports later status changes. */
+  schedule(userId: string, channelId: string, body: string, sendAt: string): ScheduledOut {
+    const row: ScheduledOut = { id: `sch-${++this.eventId}`, channel_id: channelId, parent_id: null, client_msg_id: `c-${this.eventId}`, body, attachments: [], send_at: sendAt, status: "pending", error: null, sent_message_id: null, created_at: now() };
+    this.scheduled.set(userId, [...(this.scheduled.get(userId) ?? []), row]);
+    return row;
+  }
+
+  emitScheduled(userId: string, row: ScheduledOut): void {
+    this.scheduled.set(userId, (this.scheduled.get(userId) ?? []).filter((r) => r.id !== row.id).concat(row.status === "pending" ? [row] : []));
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "scheduled.updated", ts: now(), channel_id: row.channel_id, seq: null, data: { scheduled: row } });
+  }
+
   /** "user" → starred channel ids (M12a). */
   readonly favorites = new Map<string, string[]>();
 
@@ -584,6 +599,10 @@ export class FakeServer {
         if (!record) return [];
         this.requireMember(record.channel.id, userId);
         return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
+      },
+      listScheduled: async (): Promise<ScheduledOut[]> => {
+        maybeFail();
+        return this.scheduled.get(userId) ?? [];
       },
       readAll: async (): Promise<ChannelReadStateOut[]> => {
         maybeFail();

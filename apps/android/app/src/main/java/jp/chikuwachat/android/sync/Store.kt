@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -167,6 +168,8 @@ class Store(private val persistence: Persistence? = null) {
     val bookmarks = HashSet<String>()
     /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
     val favorites = HashSet<String>()
+    /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
+    val scheduled = LinkedHashMap<String, ScheduledOut>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -368,6 +371,22 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    // --- scheduled messages (M12d) -----------------------------------------------------------
+
+    fun listScheduled(): List<ScheduledOut> = scheduled.values.sortedBy { it.sendAt }
+
+    fun replaceScheduled(rows: List<ScheduledOut>) {
+        scheduled.clear()
+        rows.filter { it.status == "pending" }.forEach { scheduled[it.id] = it }
+        emit()
+    }
+
+    /** scheduled.updated: a pending row is kept (created / edited); any other status drops it. */
+    fun applyScheduled(row: ScheduledOut) {
+        if (row.status == "pending") scheduled[row.id] = row else scheduled.remove(row.id)
         emit()
     }
 

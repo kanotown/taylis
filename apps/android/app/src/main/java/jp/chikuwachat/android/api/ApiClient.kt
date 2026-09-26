@@ -265,6 +265,20 @@ class ApiClient(
 
     suspend fun linkPreview(url: String): LinkPreviewOut = request("GET", "/api/v1/link-previews?url=" + Enc.encode(url, "UTF-8"))
 
+    // --- scheduled messages (M12d) --------------------------------------------------------------
+
+    suspend fun scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, sendAt: String): ScheduledOut =
+        request("POST", "/api/v1/channels/$channelId/scheduled", buildJsonObject {
+            put("client_msg_id", clientMsgId)
+            put("body", body)
+            if (parentId == null) put("parent_id", JsonNull) else put("parent_id", parentId)
+            put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
+            put("send_at", sendAt)
+        })
+    override suspend fun listScheduled(): List<ScheduledOut> = request("GET", "/api/v1/scheduled")
+    suspend fun cancelScheduled(id: String) { requestRaw("DELETE", "/api/v1/scheduled/$id", null, auth = true, retry401 = true) }
+    suspend fun sendScheduledNow(id: String): MessageOut = request("POST", "/api/v1/scheduled/$id/send-now", buildJsonObject {})
+
     // --- favorites and read-all (M12a) ----------------------------------------------------------
 
     suspend fun favoriteChannel(channelId: String): FavoriteStateOut = request("PUT", "/api/v1/channels/$channelId/favorite")

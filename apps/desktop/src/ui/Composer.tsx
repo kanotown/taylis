@@ -1,4 +1,4 @@
-import { Bold, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote } from "lucide-react";
+import { Bold, Clock, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -11,7 +11,8 @@ import { completeEmoji, emojiCandidates, emojiQuery, type EmojiEntry } from "./e
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
-import { Button, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, cn, modKey } from "./primitives";
+import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
+import { Button, cn, IconButton, Kbd, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
@@ -71,6 +72,21 @@ export function Composer({
     setText("");
     setPending([]);
     void controller.engine.send(channel.id, body, undefined, parentId, ids);
+  };
+
+  // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [customAt, setCustomAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
+  const schedule = async (sendAt: Date) => {
+    const body = encodeMentions(text.trim(), store.users.values());
+    if ((!body && pending.length === 0) || uploading > 0) return;
+    if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; }
+    const ids = pending.map((a) => a.id);
+    setScheduleOpen(false);
+    if (await controller.scheduleMessage(channel.id, parentId, body, ids, sendAt)) {
+      setText("");
+      setPending([]);
+    }
   };
 
   const pickFiles = async (files: FileList | null) => {
@@ -356,6 +372,30 @@ export function Composer({
             <span className="hidden items-center gap-1 text-[11px] text-muted lg:flex">
               <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").newline}</Kbd> 改行
             </span>
+            <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || (!text.trim() && pending.length === 0)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ink/6 hover:text-ink disabled:opacity-40">
+                  <Clock size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3">
+                <div className="mb-2 text-xs font-semibold text-muted">後で送信</div>
+                <ul className="space-y-0.5">
+                  {schedulePresets().map((preset) => (
+                    <li key={preset.key}>
+                      <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => void schedule(preset.at)}>
+                        <span>{preset.label}</span>
+                        <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
+                  <input type="datetime-local" value={customAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setCustomAt(e.target.value)} />
+                  <Button size="sm" variant="secondary" onClick={() => void schedule(new Date(customAt))}>予約</Button>
+                </div>
+              </PopoverContent>
+            </PopoverRoot>
             <Button size="sm" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
               <SendHorizontal size={14} /> 送信
             </Button>
