@@ -28,6 +28,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.bookmarks.router import router as bookmarks_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
+from app.modules.link_previews.fetcher import build_fetcher
+from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages.router import router as messages_router
 from app.modules.notifications import repository as notifications_repo
 from app.modules.notifications.planner import PushPlanner
@@ -155,6 +157,7 @@ def build_api_router() -> APIRouter:
     api.include_router(messages_router)
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
+    api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(search_router)
     api.include_router(notifications_router)
@@ -184,8 +187,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
         "search": RateLimiter(settings.search_rate_limit_per_user),
+        "link_preview": RateLimiter(settings.link_preview_rate_limit_per_user),
     }
     app.state.blobs = build_blobstore(settings)
+    app.state.link_fetcher = build_fetcher(
+        timeout_seconds=settings.link_preview_timeout_seconds,
+        max_bytes=settings.link_preview_max_bytes,
+        user_agent=settings.link_preview_user_agent,
+    )
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(
         queue_size=settings.ws_send_queue_size, away_seconds=settings.presence_away_seconds

@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     attachment_thumbnail_px: int = 512
     upload_rate_limit_per_user: int = 20
     search_rate_limit_per_user: int = 30
+    # Link previews (M11g, SECURITY.md §14): bounded fetches of public pages, cached.
+    link_preview_rate_limit_per_user: int = 60
+    link_preview_timeout_seconds: float = 5.0
+    link_preview_max_bytes: int = 512 * 1024
+    link_preview_ttl_hours: int = 168
+    link_preview_negative_ttl_hours: int = 24
+    link_preview_user_agent: str = "ChikuwaChat-LinkPreview/1.0 (+https://github.com/chikuwachat)"
     session_retention_days: int = 30
     device_retention_days: int = 90
 

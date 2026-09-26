@@ -430,6 +430,25 @@ CREATE TABLE push_deliveries (
 CREATE INDEX push_deliveries_pending_idx ON push_deliveries (next_attempt_at) WHERE status = 'pending';
 ```
 
+### link_previews (M11g)
+
+```sql
+CREATE TABLE link_previews (
+  url_hash     text PRIMARY KEY,       -- sha256(URL、フラグメント除去後)
+  url          text NOT NULL,
+  status       text NOT NULL,          -- 'ok' | 'failed'
+  title        text,
+  description  text,
+  image_url    text,
+  site_name    text,
+  fetched_at   timestamptz NOT NULL
+);
+```
+
+メッセージ本文の URL に対する Open Graph 情報のキャッシュ (SECURITY.md §14)。メッセージとは結び付けず URL 単位で
+持つので、同じリンクが何度貼られても取得は 1 回。成功は 7 日、失敗は 1 日で取り直す。クライアントは表示時に
+`GET /link-previews?url=` で取り、端末内でも URL 単位にキャッシュする。
+
 ### audit_logs (M10)
 
 ```sql
