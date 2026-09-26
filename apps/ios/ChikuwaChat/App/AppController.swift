@@ -265,6 +265,42 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    // MARK: channel management (M11h)
+
+    func updatePurpose(_ channelId: String, purpose: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.updateChannel(id: channelId, purpose: purpose.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func renameChannel(_ channelId: String, name: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.updateChannel(id: channelId, name: name.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func archiveChannel(_ channelId: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.archiveChannel(id: channelId))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// Leaving drops the channel locally at once; the server's member_removed confirms it.
+    func leaveChannel(_ channelId: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            try await api.leaveChannel(id: channelId)
+            store.removeChannel(channelId)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
     func setNotification(_ channelId: String, level: String, mutedUntil: String? = nil) async -> Bool {
         guard let api else { return false }
         do {

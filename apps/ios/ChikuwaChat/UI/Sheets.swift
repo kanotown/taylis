@@ -141,8 +141,19 @@ struct ChannelInfoView: View {
     @State private var editingTopic = false
     @State private var profileUserId: String?
     @State private var showAddMember = false
+    @State private var purpose = ""
+    @State private var editingPurpose = false
+    @State private var renaming = false
+    @State private var newName = ""
+    @State private var confirmLeave = false
+    @State private var confirmArchive = false
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
+    /// Owners and admins manage the channel (rename / archive); every member may leave.
+    private var canManage: Bool {
+        guard let channel else { return false }
+        return channel.channel.membership?.role == "owner" || controller.store.me?.role == "admin"
+    }
 
     private func loadMembers() async {
         guard let api = controller.api else { return }
@@ -172,6 +183,23 @@ struct ChannelInfoView: View {
                                     Text("未設定").foregroundStyle(.secondary)
                                 }
                                 if canEdit { Button("編集") { topic = channel.channel.topic ?? ""; editingTopic = true } }
+                            }
+                        }
+                        Section("説明") {
+                            if editingPurpose {
+                                TextField("例: デザインレビューの依頼と結果を共有する", text: $purpose)
+                                HStack {
+                                    Button("保存") { Task { if await controller.updatePurpose(channelId, purpose: purpose) { editingPurpose = false } } }
+                                    Spacer()
+                                    Button("キャンセル", role: .cancel) { editingPurpose = false }
+                                }
+                            } else {
+                                if let current = channel.channel.purpose, !current.isEmpty {
+                                    Text(current)
+                                } else {
+                                    Text("未設定").foregroundStyle(.secondary)
+                                }
+                                if canEdit { Button("編集") { purpose = channel.channel.purpose ?? ""; editingPurpose = true } }
                             }
                         }
                     }
@@ -226,6 +254,15 @@ struct ChannelInfoView: View {
                             Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
                         }
                     }
+                    if isChannel && channel.isMember {
+                        Section {
+                            if canManage && !channel.channel.archived {
+                                Button("名前を変更", systemImage: "pencil") { newName = channel.channel.name ?? ""; renaming = true }
+                                Button("アーカイブ", systemImage: "archivebox", role: .destructive) { confirmArchive = true }
+                            }
+                            Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
+                        }
+                    }
                 } else {
                     Text("チャンネルが見つかりません").foregroundStyle(.secondary)
                 }
@@ -239,6 +276,17 @@ struct ChannelInfoView: View {
             .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
+            .alert("名前を変更", isPresented: $renaming) {
+                TextField("新しい名前", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("変更") { Task { _ = await controller.renameChannel(channelId, name: newName) } }
+                Button("キャンセル", role: .cancel) {}
+            }
+            .confirmationDialog("このチャンネルを退出しますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
+                Button("退出", role: .destructive) { Task { if await controller.leaveChannel(channelId) { dismiss() } } }
+            } message: { Text("公開チャンネルなら、あとから「チャンネルを探す」で再び参加できます。") }
+            .confirmationDialog("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive, titleVisibility: .visible) {
+                Button("アーカイブ", role: .destructive) { Task { if await controller.archiveChannel(channelId) { dismiss() } } }
+            } message: { Text("アーカイブしたチャンネルは読み取り専用になります。") }
             .task { await loadMembers() }
             .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
                 AddMemberView(controller: controller, channelId: channelId)

@@ -4,6 +4,7 @@ struct ChannelListView: View {
     @Bindable var controller: AppController
     @Binding var selection: String?
     @AppStorage("sidebar.unreadOnly") private var unreadOnly = false
+    @State private var showBrowser = false
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     /// The unread filter keeps the open conversation so the selection never disappears.
@@ -24,11 +25,14 @@ struct ChannelListView: View {
             }
             Section {
                 threadsRow
+                mentionsRow
+                draftsRow
                 savedRow
             }
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
                 if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
+                if !unreadOnly { browseRow }
             }
             Section("ダイレクトメッセージ") {
                 ForEach(dms) { row($0) }
@@ -50,6 +54,48 @@ struct ChannelListView: View {
             }
         }
         .listStyle(.sidebar)
+        .sheet(isPresented: $showBrowser) {
+            ChannelBrowserView(controller: controller) { id in selection = id }
+        }
+    }
+
+    /// 「メンション」 (M11h): messages that mention me or everyone.
+    private var mentionsRow: some View {
+        NavigationLink(value: MentionsView.selectionId) {
+            HStack(spacing: 12) {
+                Image(systemName: "at").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                Text("メンション")
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    /// 「下書き」 (M11h): listed only while something is unsent.
+    @ViewBuilder
+    private var draftsRow: some View {
+        let count = controller.store.listDrafts().count
+        if count > 0 {
+            NavigationLink(value: DraftsView.selectionId) {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.text").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                    Text("下書き")
+                    Spacer()
+                    Text("\(count)").font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    /// 「チャンネルを探す」 (M11h): the browser with member counts, join / leave and create.
+    private var browseRow: some View {
+        Button { showBrowser = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "safari").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                Text("チャンネルを探す").foregroundStyle(.primary)
+            }
+            .padding(.vertical, 2)
+        }
     }
 
     /// 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.

@@ -254,6 +254,24 @@ final class Store {
         persist { try $0.saveMeta(key: key, value: encoded) }
     }
     func uploading(_ channelId: String, parentId: String? = nil) -> Int { uploads[draftKey(channelId, parentId)] ?? 0 }
+
+    /// A conversation with unsent text or attachments (M11h 「下書き」).
+    struct DraftEntry: Identifiable {
+        let channelId: String
+        let parentId: String?
+        let draft: Draft
+        var id: String { "\(channelId):\(parentId ?? "")" }
+    }
+
+    /// Every draft with text or attachments, ordered by conversation.
+    func listDrafts() -> [DraftEntry] {
+        drafts.keys.sorted().compactMap { key in
+            let parts = key.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3, let draft = drafts[key],
+                  !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draft.attachments.isEmpty else { return nil }
+            return DraftEntry(channelId: String(parts[1]), parentId: parts[2].isEmpty ? nil : String(parts[2]), draft: draft)
+        }
+    }
     func trackUpload(_ channelId: String, parentId: String? = nil, delta: Int) {
         let key = draftKey(channelId, parentId)
         uploads[key] = max(0, (uploads[key] ?? 0) + delta)
@@ -312,6 +330,9 @@ final class Store {
         stripped.readState = nil
         // channel.updated events carry no per-user preference: keep the one we know.
         stripped.notification = channel.notification ?? existing?.channel.notification
+        // Events and some responses carry no membership or count either (M11h): keep the last known ones.
+        stripped.membership = channel.membership ?? existing?.channel.membership
+        stripped.memberCount = channel.memberCount ?? existing?.channel.memberCount
         let merged = ChannelState(
             channel: stripped,
             isMember: isMember ?? existing?.isMember ?? (channel.membership != nil),

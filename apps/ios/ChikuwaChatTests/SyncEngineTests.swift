@@ -555,11 +555,13 @@ final class SyncEngineTests: XCTestCase {
         await engine.start()
         await settle(engine)
         XCTAssertEqual(store.channel(general.id)?.isMember, false)
+        XCTAssertEqual(store.channel(general.id)?.channel.memberCount, 1) // M11h: shown by the channel browser
         XCTAssertNil(store.channel(secret.id))
         server.join(general.id, bob.id)
         server.emitMembership(general.id, bob.id)
         await settle(engine)
         XCTAssertEqual(store.channel(general.id)?.isMember, true)
+        XCTAssertEqual(store.channel(general.id)?.channel.memberCount, 2) // member_added keeps the count current
         engine.stop()
     }
 }

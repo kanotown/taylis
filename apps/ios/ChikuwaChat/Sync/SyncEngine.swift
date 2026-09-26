@@ -342,11 +342,20 @@ final class SyncEngine {
                                                purpose: state.channel.purpose, archived: true, createdBy: state.channel.createdBy, lastSeq: state.channel.lastSeq,
                                                lastMessageAt: state.channel.lastMessageAt, createdAt: state.channel.createdAt, updatedAt: state.channel.updatedAt,
                                                membership: state.channel.membership, dmUserIds: state.channel.dmUserIds,
-                                               notification: state.channel.notification)
+                                               notification: state.channel.notification, memberCount: state.channel.memberCount)
                 }
             }
+        case "channel.member_added":
+            // M11h: keep the intro's member count current; the member list itself is loaded on demand.
+            if let id = frame.data["channel_id"]?.stringValue {
+                store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = count + 1 } }
+            }
         case "channel.member_removed":
-            if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue { store.removeChannel(id) }
+            if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue {
+                store.removeChannel(id)
+            } else if let id = frame.data["channel_id"]?.stringValue {
+                store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = max(0, count - 1) } }
+            }
         case "user.created", "user.updated", "user.deactivated":
             struct Payload: Decodable { let user: UserPublic }
             store.upsertUser(try frame.data.decode(Payload.self).user)
