@@ -200,6 +200,20 @@ data class BookmarkItem(val message: MessageOut, val createdAt: String)
 @Serializable
 data class BookmarkListOut(val items: List<BookmarkItem>, val nextCursor: String? = null)
 
+/** GET /files (M11i): one attached file and where it was posted. */
+@Serializable
+data class FileItem(
+    val attachment: AttachmentOut,
+    val messageId: String,
+    val channelId: String,
+    val parentId: String? = null,
+    val uploaderId: String,
+    val attachedAt: String,
+)
+
+@Serializable
+data class FileListOut(val items: List<FileItem>, val nextCursor: String? = null)
+
 /** GET /mentions (M11h): messages that mention me or everyone, newest first. */
 @Serializable
 data class MentionListOut(val items: List<MessageOut>, val nextCursor: String? = null)

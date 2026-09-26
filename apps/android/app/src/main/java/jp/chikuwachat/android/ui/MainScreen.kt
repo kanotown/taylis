@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
@@ -96,8 +98,11 @@ fun MainScreen(controller: AppController) {
     // M11h: 「メンション」 and 「下書き」 replace the channel list the same way.
     var showMentions by rememberSaveable { mutableStateOf(false) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
-    val listReplaced = showThreads || showSaved || showMentions || showDrafts
-    val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false }
+    // M11i: 「ファイル」 replaces the list (all channels) or the open channel's timeline (that channel only).
+    var showFiles by rememberSaveable { mutableStateOf(false) }
+    var filesChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+    val listReplaced = showThreads || showSaved || showMentions || showDrafts || showFiles
+    val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false; showFiles = false }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -129,6 +134,7 @@ fun MainScreen(controller: AppController) {
     }
     BackHandler(enabled = searching) { searching = false }
     BackHandler(enabled = !searching && pinsOpen && selectedChannel != null) { pinsOpen = false }
+    BackHandler(enabled = !searching && !pinsOpen && showFiles && selectedChannel != null) { showFiles = false }
     BackHandler(enabled = !searching && !pinsOpen && threadId != null) { closeThread() }
     BackHandler(enabled = threadId == null && !pinsOpen && selectedChannel != null) { selection = null }
     BackHandler(enabled = !searching && selectedChannel == null && listReplaced) { closeLists() }
@@ -139,6 +145,7 @@ fun MainScreen(controller: AppController) {
                 pinsOpen = false
                 showSaved = false
                 showMentions = false
+                showFiles = false
                 threadFromList = false
                 selection = message.channelId
                 threadId = message.parentId
@@ -168,13 +175,14 @@ fun MainScreen(controller: AppController) {
                         showSaved -> Text("保存済み")
                         showMentions -> Text("メンション")
                         showDrafts -> Text("下書き")
+                        showFiles -> Text("ファイル")
                         else -> Text("ChikuwaChat")
                     }
                 },
                 navigationIcon = {
                     when {
                         searching -> IconButton(onClick = { searching = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
-                        selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (threadId != null) closeThread() else selection = null }) {
+                        selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (showFiles) showFiles = false else if (threadId != null) closeThread() else selection = null }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                         }
                         listReplaced -> IconButton(onClick = closeLists) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
@@ -204,6 +212,9 @@ fun MainScreen(controller: AppController) {
                     if (selectedChannel != null && selectedChannel.isMember && threadId == null && !searching) {
                         IconButton(onClick = { pinsOpen = !pinsOpen }) {
                             Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
+                        }
+                        IconButton(onClick = { filesChannelId = selectedChannel.id; showFiles = !showFiles; pinsOpen = false }) {
+                            Icon(if (showFiles) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = "ファイル")
                         }
                         val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                         val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
@@ -262,6 +273,17 @@ fun MainScreen(controller: AppController) {
                     }
                 } else if (selectedChannel != null && pinsOpen) {
                     PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal)
+                } else if (showFiles) {
+                    FilesPane(controller, version, channelId = filesChannelId, onScopeChange = { filesChannelId = it }) { messageId, channelId, parentId ->
+                        scope.launch {
+                            if (controller.revealMessage(messageId, channelId, parentId)) {
+                                showFiles = false
+                                threadFromList = false
+                                selection = channelId
+                                threadId = parentId
+                            }
+                        }
+                    }
                 } else if (selectedChannel != null && openThread != null) {
                     ThreadPane(controller, selectedChannel.id, openThread, version)
                 } else if (showSaved) {
@@ -295,6 +317,7 @@ fun MainScreen(controller: AppController) {
                         onSaved = { showSaved = true },
                         onMentions = { showMentions = true },
                         onDrafts = { showDrafts = true },
+                        onFiles = { filesChannelId = null; showFiles = true },
                         onBrowse = { dialog = MainDialog.BROWSE },
                     )
                 }
@@ -349,6 +372,7 @@ private fun ChannelList(
     onMentions: () -> Unit,
     onDrafts: () -> Unit,
     onBrowse: () -> Unit,
+    onFiles: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
     val draftCount = remember(version) { store.listDrafts().size }
@@ -365,6 +389,7 @@ private fun ChannelList(
         item { ThreadsRow(store, onClick = onThreads) }
         item { ListRow(Icons.Default.AlternateEmail, "メンション", onClick = onMentions) }
         if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
+        item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
         item { SavedRow(store, onClick = onSaved) }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
