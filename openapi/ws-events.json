@@ -1936,12 +1936,47 @@
           ],
           "title": "PingFrame",
           "type": "object"
+        },
+        "TypingFrame": {
+          "description": "Volatile: relayed to the other members of the channel (M11b), never stored.",
+          "properties": {
+            "channel_id": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Parent Id"
+            },
+            "type": {
+              "const": "typing",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "channel_id"
+          ],
+          "title": "TypingFrame",
+          "type": "object"
         }
       },
       "discriminator": {
         "mapping": {
           "auth": "#/$defs/AuthFrame",
-          "ping": "#/$defs/PingFrame"
+          "ping": "#/$defs/PingFrame",
+          "typing": "#/$defs/TypingFrame"
         },
         "propertyName": "type"
       },
@@ -1951,6 +1986,9 @@
         },
         {
           "$ref": "#/$defs/PingFrame"
+        },
+        {
+          "$ref": "#/$defs/TypingFrame"
         }
       ]
     },
@@ -2091,6 +2129,75 @@
           ],
           "title": "PongFrame",
           "type": "object"
+        },
+        "PresenceOut": {
+          "properties": {
+            "status": {
+              "enum": [
+                "online",
+                "away",
+                "offline"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "type": {
+              "const": "presence",
+              "default": "presence",
+              "title": "Type",
+              "type": "string"
+            },
+            "user_id": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "user_id",
+            "status"
+          ],
+          "title": "PresenceOut",
+          "type": "object"
+        },
+        "TypingOut": {
+          "properties": {
+            "channel_id": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "type": {
+              "const": "typing",
+              "default": "typing",
+              "title": "Type",
+              "type": "string"
+            },
+            "user_id": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "channel_id",
+            "parent_id",
+            "user_id"
+          ],
+          "title": "TypingOut",
+          "type": "object"
         }
       },
       "discriminator": {
@@ -2098,7 +2205,9 @@
           "error": "#/$defs/ErrorFrame",
           "event": "#/$defs/EventFrame",
           "hello": "#/$defs/HelloFrame",
-          "pong": "#/$defs/PongFrame"
+          "pong": "#/$defs/PongFrame",
+          "presence": "#/$defs/PresenceOut",
+          "typing": "#/$defs/TypingOut"
         },
         "propertyName": "type"
       },
@@ -2114,6 +2223,12 @@
         },
         {
           "$ref": "#/$defs/EventFrame"
+        },
+        {
+          "$ref": "#/$defs/TypingOut"
+        },
+        {
+          "$ref": "#/$defs/PresenceOut"
         }
       ]
     }

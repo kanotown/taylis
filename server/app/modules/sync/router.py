@@ -10,4 +10,5 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 
 @router.get("/bootstrap", response_model=BootstrapOut)
 async def bootstrap(request: Request, user: CurrentUser, db: Db) -> BootstrapOut:
-    return await service.bootstrap(db, user, request.app.state.settings)
+    state = request.app.state
+    return await service.bootstrap(db, user, state.settings, state.hub.presence_snapshot())

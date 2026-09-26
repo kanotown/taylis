@@ -21,7 +21,17 @@ class PingFrame(BaseModel):
     active: bool = False
 
 
-ClientFrame = Annotated[AuthFrame | PingFrame, Field(discriminator="type")]
+class TypingFrame(BaseModel):
+    """Volatile: relayed to the other members of the channel (M11b), never stored."""
+
+    type: Literal["typing"]
+    channel_id: UUID
+    parent_id: UUID | None = None
+
+
+ClientFrame = Annotated[AuthFrame | PingFrame | TypingFrame, Field(discriminator="type")]
+
+PresenceStatus = Literal["online", "away", "offline"]
 
 
 class HelloFrame(BaseModel):
@@ -52,6 +62,20 @@ class EventFrame(BaseModel):
     data: dict[str, Any]
 
 
+class TypingOut(BaseModel):
+    type: Literal["typing"] = "typing"
+    channel_id: UUID
+    parent_id: UUID | None
+    user_id: UUID
+
+
+class PresenceOut(BaseModel):
+    type: Literal["presence"] = "presence"
+    user_id: UUID
+    status: PresenceStatus
+
+
 ServerFrame = Annotated[
-    HelloFrame | PongFrame | ErrorFrame | EventFrame, Field(discriminator="type")
+    HelloFrame | PongFrame | ErrorFrame | EventFrame | TypingOut | PresenceOut,
+    Field(discriminator="type"),
 ]

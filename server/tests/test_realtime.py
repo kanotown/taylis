@@ -30,6 +30,31 @@ async def _connect(live: LiveServer, token: str) -> websockets.ClientConnection:
     return ws
 
 
+async def _recv_type(
+    ws: websockets.ClientConnection, kind: str, wait: float = 5.0
+) -> dict[str, Any]:
+    """The next frame of `kind`, skipping others (presence announcements arrive at any time)."""
+    deadline = asyncio.get_running_loop().time() + wait
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError(kind)
+        frame = await _recv(ws, remaining)
+        if frame["type"] == kind:
+            return frame
+
+
+async def _recv_presence(ws: websockets.ClientConnection, user_id: str, wait: float = 5.0) -> str:
+    deadline = asyncio.get_running_loop().time() + wait
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("presence " + user_id)
+        frame = await _recv_type(ws, "presence", remaining)
+        if frame["user_id"] == user_id:
+            return str(frame["status"])
+
+
 async def _close_code(ws: websockets.ClientConnection) -> int:
     with pytest.raises(websockets.ConnectionClosed) as excinfo:
         await asyncio.wait_for(ws.recv(), 5.0)
@@ -105,19 +130,19 @@ async def test_ws_hello_ping_and_live_message_events(live: LiveServer) -> None:
     alice, bob, channel_id = await _setup(live)
     ws = await _connect(live, bob["access_token"])
     await ws.send(json.dumps({"type": "ping", "active": True}))
-    pong = await _recv(ws)
+    pong = await _recv_type(ws, "pong")  # presence announcements may come first
     assert pong["type"] == "pong"
     assert live.app.state.hub.is_active(uuid.UUID(bob["user"]["id"]), within_seconds=5)
 
     posted = await _post(live, alice, channel_id, "hello bob")
-    event = await _recv(ws)
+    event = await _recv_type(ws, "event")
     assert event["type"] == "event" and event["event"] == "message.created"
     assert event["channel_id"] == channel_id and event["seq"] == 1
     assert event["data"]["message"]["id"] == posted["id"]
     assert event["data"]["message"]["body"] == "hello bob"
 
     await ws.send("not json")
-    error = await _recv(ws)
+    error = await _recv_type(ws, "error")
     assert error["type"] == "error" and error["code"] == "invalid_frame"
     await ws.close()
 
@@ -128,7 +153,7 @@ async def test_ws_events_missed_while_disconnected_are_recovered_by_delta(
     alice, bob, channel_id = await _setup(live)
     ws = await _connect(live, bob["access_token"])
     await _post(live, alice, channel_id, "m1")
-    assert (await _recv(ws))["seq"] == 1
+    assert (await _recv_type(ws, "event"))["seq"] == 1
     await ws.close()
 
     await _post(live, alice, channel_id, "m2")
@@ -147,7 +172,7 @@ async def test_ws_events_missed_while_disconnected_are_recovered_by_delta(
 
     ws = await _connect(live, bob["access_token"])
     await _post(live, alice, channel_id, "m4")
-    event = await _recv(ws)
+    event = await _recv_type(ws, "event")
     assert event["seq"] == 4 and event["data"]["message"]["body"] == "m4"
     await ws.close()
 
@@ -160,7 +185,7 @@ async def test_ws_is_closed_when_the_session_is_revoked(live: LiveServer) -> Non
             "/api/v1/auth/logout", headers={"Authorization": f"Bearer {bob['access_token']}"}
         )
         assert response.status_code == 204
-    event = await _recv(ws)
+    event = await _recv_type(ws, "event")
     assert event["event"] == "session.revoked" and event["data"]["reason"] == "logout"
     assert await _close_code(ws) == 4003
 
@@ -181,9 +206,78 @@ async def test_ws_membership_events_reach_the_new_member(live: LiveServer) -> No
         )
     received = {}
     for _ in range(2):
-        event = await _recv(ws)
+        event = await _recv_type(ws, "event")
         received[event["event"]] = event
     assert set(received) == {"channel.member_added", "channel.created"}
     assert received["channel.created"]["data"]["channel"]["name"] == "secret"
     assert bob["user"]["id"] in received["channel.created"]["data"]["member_ids"]
     await ws.close()
+
+
+async def test_presence_follows_connections_pings_and_the_sweep(live: LiveServer) -> None:
+    alice, bob, _channel_id = await _setup(live)
+    alice_id, bob_id = alice["user"]["id"], bob["user"]["id"]
+    hub = live.app.state.hub
+    hub.away_seconds = 0.3  # the activity window lapses quickly in this test
+
+    bob_ws = await _connect(live, bob["access_token"])
+    assert await _recv_presence(bob_ws, bob_id) == "online"  # own announcement
+    # bootstrap lists who is connected right now.
+    async with httpx.AsyncClient(base_url=live.base_url) as client:
+        auth = {"Authorization": f"Bearer {alice['access_token']}"}
+        boot = (await client.get("/api/v1/sync/bootstrap", headers=auth)).json()
+    assert boot["presence"] == [{"user_id": bob_id, "status": "online"}]
+
+    alice_ws = await _connect(live, alice["access_token"])
+    assert await _recv_presence(bob_ws, alice_id) == "online"
+
+    # No activity for away_seconds: the sweep announces away; a ping with active=true undoes it.
+    await asyncio.sleep(0.4)
+    hub.sweep_presence()
+    assert await _recv_presence(bob_ws, alice_id) == "away"
+    await alice_ws.send(json.dumps({"type": "ping", "active": True}))
+    assert (await _recv_type(alice_ws, "pong"))["type"] == "pong"
+    assert await _recv_presence(bob_ws, alice_id) == "online"
+    assert hub.presence_status(uuid.UUID(alice_id)) == "online"
+
+    # The last connection going away is offline; a second connection of the same user is not.
+    alice_ws2 = await _connect(live, alice["access_token"])
+    await alice_ws.close()
+    await asyncio.sleep(0.2)
+    assert hub.presence_status(uuid.UUID(alice_id)) == "online"
+    await alice_ws2.close()
+    assert await _recv_presence(bob_ws, alice_id) == "offline"
+    await bob_ws.close()
+
+
+async def test_typing_reaches_other_members_only_and_is_rate_limited(live: LiveServer) -> None:
+    alice, bob, channel_id = await _setup(live)
+    async with live.app.state.db.session_factory() as db:
+        await make_user(db, "carol", password=PASSWORD)
+    carol = await http_login(live.base_url, "carol", PASSWORD)
+    alice_ws = await _connect(live, alice["access_token"])
+    bob_ws = await _connect(live, bob["access_token"])
+    carol_ws = await _connect(live, carol["access_token"])
+
+    await alice_ws.send(json.dumps({"type": "typing", "channel_id": channel_id}))
+    frame = await _recv_type(bob_ws, "typing")
+    assert frame == {
+        "type": "typing",
+        "channel_id": channel_id,
+        "parent_id": None,
+        "user_id": alice["user"]["id"],
+    }
+    # A second frame inside the interval is dropped; carol (not a member) never sees any.
+    await alice_ws.send(json.dumps({"type": "typing", "channel_id": channel_id}))
+    with pytest.raises(TimeoutError):
+        await _recv_type(bob_ws, "typing", wait=0.5)
+    with pytest.raises(TimeoutError):
+        await _recv_type(carol_ws, "typing", wait=0.3)
+    # Typing from a non-member is ignored; the sender never gets their own indicator.
+    await carol_ws.send(json.dumps({"type": "typing", "channel_id": channel_id}))
+    with pytest.raises(TimeoutError):
+        await _recv_type(bob_ws, "typing", wait=0.5)
+    with pytest.raises(TimeoutError):
+        await _recv_type(alice_ws, "typing", wait=0.3)
+    for ws in (alice_ws, bob_ws, carol_ws):
+        await ws.close()

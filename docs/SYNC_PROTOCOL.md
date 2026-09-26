@@ -66,7 +66,8 @@
     }
   ],
   "limits": { "max_message_length": 20000, "max_attachment_bytes": 104857600, "max_attachments_per_message": 10 },
-  "threads": { "unread_count": 2, "mention_count": 1 }
+  "threads": { "unread_count": 2, "mention_count": 1 },
+  "presence": [ { "user_id": "...", "status": "online" } ]
 }
 ```
 
@@ -74,6 +75,7 @@
 - ユーザー数・チャンネル数は数十なので全件返す。増えたらページングを足す。
 - `read_state` / `notification` は M8 / M5 で追加される。それまでは省略される。
 - `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
+- `presence` は今つながっているユーザー (§5.2)。載っていないユーザーは offline。以後の変化は `presence` フレームで届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -156,7 +158,7 @@
 | --- | --- |
 | `auth` | `{ token }` |
 | `ping` | `{ active: bool }`。`heartbeat_interval_sec` ごとに送る。`active` はウィンドウがフォーカスされている / アプリがフォアグラウンドなら true (プッシュ抑制の判定に使う。PUSH_NOTIFICATIONS.md §4.1) |
-| `typing` | `{ channel_id }`。揮発。3 秒に 1 回まで |
+| `typing` | `{ channel_id, parent_id? }`。揮発。入力中に 3 秒に 1 回まで送る (サーバは 1 接続あたり 2 秒に 1 回だけ中継し、メンバーでなければ捨てる) |
 
 サーバ → クライアント:
 
@@ -165,8 +167,8 @@
 | `hello` | 上記 |
 | `pong` | `{ server_time }` |
 | `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
-| `typing` | `{ channel_id, user_id }`。揮発 (M11) |
-| `presence` | `{ user_id, online }`。揮発 (M11) |
+| `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す |
+| `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
 | `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |
 
 ### 5.3 ハートビートと再接続

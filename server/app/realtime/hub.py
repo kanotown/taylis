@@ -1,14 +1,20 @@
-"""RealtimeHub: WebSocket connection registry and fan-out (process-local, ARCHITECTURE.md §7)."""
+"""RealtimeHub: connection registry, fan-out and presence (process-local, ARCHITECTURE.md §7)."""
 
 import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.events.envelope import Envelope
-from app.realtime.protocol import CLOSE_RECONNECT, CLOSE_SESSION_REVOKED
+from app.realtime.protocol import (
+    CLOSE_RECONNECT,
+    CLOSE_SESSION_REVOKED,
+    PresenceOut,
+    PresenceStatus,
+)
 
 log = logging.getLogger("app.realtime")
 
@@ -43,11 +49,15 @@ class Connection:
 
 
 class RealtimeHub:
-    def __init__(self, *, queue_size: int = 1000) -> None:
+    def __init__(self, *, queue_size: int = 1000, away_seconds: float = 300.0) -> None:
         self.queue_size = queue_size
+        # Presence (SYNC_PROTOCOL.md §5.2): online while activity is younger than this, else away.
+        self.away_seconds = away_seconds
         self._by_user: dict[uuid.UUID, set[Connection]] = {}
         self._by_session: dict[uuid.UUID, set[Connection]] = {}
         self._last_active: dict[uuid.UUID, float] = {}
+        # Last presence announced per user; users not listed are (announced as) offline.
+        self._announced: dict[uuid.UUID, PresenceStatus] = {}
 
     def new_connection(self, user_id: uuid.UUID, session_id: uuid.UUID) -> Connection:
         conn = Connection(
@@ -55,6 +65,9 @@ class RealtimeHub:
         )
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
+        # Connecting counts as activity: apps connect when they come to the foreground.
+        self._last_active[user_id] = time.monotonic()
+        self._announce(user_id)
         return conn
 
     def remove(self, conn: Connection) -> None:
@@ -64,6 +77,7 @@ class RealtimeHub:
                 conns.discard(conn)
                 if not conns:
                     del index[key]
+        self._announce(conn.user_id)
 
     def connection_count(self) -> int:
         return sum(len(c) for c in self._by_user.values())
@@ -71,10 +85,47 @@ class RealtimeHub:
     def mark_active(self, user_id: uuid.UUID, active: bool) -> None:
         if active:
             self._last_active[user_id] = time.monotonic()
+            self._announce(user_id)
 
     def is_active(self, user_id: uuid.UUID, within_seconds: float) -> bool:
         last = self._last_active.get(user_id)
         return last is not None and time.monotonic() - last <= within_seconds
+
+    # --- presence (volatile, process-local) ----------------------------------------------
+
+    def presence_status(self, user_id: uuid.UUID) -> PresenceStatus:
+        if user_id not in self._by_user:
+            return "offline"
+        return "online" if self.is_active(user_id, self.away_seconds) else "away"
+
+    def presence_snapshot(self) -> list[tuple[uuid.UUID, PresenceStatus]]:
+        """Everyone connected right now (for bootstrap); absent users are offline."""
+        return [(user_id, self.presence_status(user_id)) for user_id in self._by_user]
+
+    def sweep_presence(self) -> None:
+        """Periodic: announce users whose activity window lapsed (online → away)."""
+        for user_id in list(self._by_user):
+            self._announce(user_id)
+
+    def _announce(self, user_id: uuid.UUID) -> None:
+        status = self.presence_status(user_id)
+        if status == self._announced.get(user_id, "offline"):
+            return
+        if status == "offline":
+            self._announced.pop(user_id, None)
+        else:
+            self._announced[user_id] = status
+        self.broadcast(PresenceOut(user_id=user_id, status=status).model_dump(mode="json"))
+
+    def broadcast(self, frame: dict[str, Any]) -> None:
+        for conns in self._by_user.values():
+            for conn in conns:
+                conn.offer(frame)
+
+    def send_to_users(self, user_ids: Iterable[uuid.UUID], frame: dict[str, Any]) -> None:
+        for user_id in user_ids:
+            for conn in self._by_user.get(user_id, ()):
+                conn.offer(frame)
 
     def _targets(self, envelope: Envelope) -> set[Connection]:
         audience = envelope.audience
