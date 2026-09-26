@@ -25,7 +25,7 @@ struct ChannelListView: View {
                         Button { join(channel.id) } label: {
                             HStack(spacing: 12) {
                                 ChannelGlyph(channel: channel.channel)
-                                Text(channelTitle(channel, store: controller.store)).foregroundStyle(.primary)
+                                Text(rowTitle(channel)).foregroundStyle(.primary)
                                 Spacer()
                                 Text("参加").font(.footnote).foregroundStyle(Color.accentColor)
                             }
@@ -35,6 +35,12 @@ struct ChannelListView: View {
             }
         }
         .listStyle(.sidebar)
+    }
+
+    /// The glyph already says "#", so rows show the bare channel name.
+    private func rowTitle(_ channel: ChannelState) -> String {
+        let title = channelTitle(channel, store: controller.store)
+        return channel.channel.isDm ? title : String(title.drop(while: { $0 == "#" }))
     }
 
     private func hint(_ text: String) -> some View {
@@ -65,7 +71,7 @@ struct ChannelListView: View {
                     ChannelGlyph(channel: channel.channel)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
+                    Text(rowTitle(channel)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
                     if !channel.channel.isDm, let topic = channel.channel.topic, !topic.isEmpty {
                         Text(topic).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
