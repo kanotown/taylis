@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.db import Database
 from app.core.errors import install_error_handlers
@@ -123,6 +124,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.add_middleware(RequestContextMiddleware)
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
+            expose_headers=["X-Request-ID", "Retry-After"],
+            allow_credentials=False,
+            max_age=600,
+        )
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(build_api_router())

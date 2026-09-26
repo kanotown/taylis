@@ -181,7 +181,9 @@ refresh(token):
 - app はプレーン HTTP で Caddy からのみ受ける。`X-Forwarded-For` は Caddy からの値のみ信用する。
 - PostgreSQL / versitygw はホストにポートを公開しない。versitygw の WebUI と admin API は有効にしない
   (`--webui` / `--admin-port` を指定しない)。
-- CORS は無効 (ブラウザクライアントが無い)。導入時は許可オリジンを明示する。
+- CORS は Desktop アプリの WebView オリジン (`tauri://localhost`、`http://tauri.localhost`) と Vite 開発サーバ
+  (`http://localhost:1420`) だけを許可する (`CORS_ALLOW_ORIGINS`)。トークンは Authorization ヘッダで運ぶので
+  credentials 付きの CORS は使わない。Web クライアント導入時はそのオリジンを追加する。
 - Docker イメージはタグではなくダイジェストで固定する。
 
 ## 7. 秘密情報
