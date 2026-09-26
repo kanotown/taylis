@@ -27,6 +27,24 @@ export function schedulePresets(now = new Date()): SchedulePreset[] {
   return presets;
 }
 
+/** 「リマインド」 choices (M12e): a little later, or a fresh morning. */
+export function reminderPresets(now = new Date()): SchedulePreset[] {
+  const soon = (minutes: number) => {
+    const d = new Date(now.getTime() + minutes * 60_000);
+    d.setSeconds(0, 0);
+    return d;
+  };
+  const presets: SchedulePreset[] = [
+    { key: "20m", label: "20 分後", at: soon(20) },
+    { key: "1h", label: "1 時間後", at: soon(60) },
+    { key: "3h", label: "3 時間後", at: soon(180) },
+    { key: "tomorrow9", label: "明日 9:00", at: at(now, 1, 9) },
+  ];
+  const toMonday = (8 - now.getDay()) % 7 || 7;
+  presets.push({ key: "monday9", label: "来週月曜 9:00", at: at(now, toMonday, 9) });
+  return presets;
+}
+
 const DAY = ["日", "月", "火", "水", "木", "金", "土"];
 
 /** "今日 18:00" / "明日 9:00" / "10月3日(土) 9:00" / "2027年1月4日(月) 9:00". */

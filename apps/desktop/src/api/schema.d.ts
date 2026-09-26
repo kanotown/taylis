@@ -728,6 +728,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Reminder
+         * @description M12e 「リマインド」: a nudge about this message at remind_at (at least a minute ahead).
+         */
+        post: operations["create_reminder_api_v1_messages__message_id__reminders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/replies": {
         parameters: {
             query?: never;
@@ -802,6 +822,46 @@ export interface paths {
         put: operations["mark_thread_read_api_v1_messages__message_id__thread_read_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reminders
+         * @description My open reminders: fired ones first (newest nudge on top), then pending by time.
+         */
+        get: operations["list_reminders_api_v1_reminders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminders/{reminder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Close Reminder
+         * @description Cancels a pending reminder or marks a fired one done.
+         */
+        delete: operations["close_reminder_api_v1_reminders__reminder_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1680,6 +1740,55 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** ReminderCreate */
+        ReminderCreate: {
+            /** Note */
+            note?: string | null;
+            /**
+             * Remind At
+             * Format: date-time
+             */
+            remind_at: string;
+        };
+        /** ReminderOut */
+        ReminderOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fired At */
+            fired_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Note */
+            note: string | null;
+            /** Preview */
+            preview: string;
+            /**
+             * Remind At
+             * Format: date-time
+             */
+            remind_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "fired" | "done" | "cancelled";
         };
         /** ScheduledCreate */
         ScheduledCreate: {
@@ -3616,6 +3725,41 @@ export interface operations {
             };
         };
     };
+    create_reminder_api_v1_messages__message_id__reminders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_replies_api_v1_messages__message_id__replies_get: {
         parameters: {
             query?: never;
@@ -3736,6 +3880,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ThreadState"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reminders_api_v1_reminders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderOut"][];
+                };
+            };
+        };
+    };
+    close_reminder_api_v1_reminders__reminder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

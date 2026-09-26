@@ -16,6 +16,7 @@ import { PinsPane } from "./PinsPane";
 import { MentionsView } from "./MentionsView";
 import { DraftsView } from "./DraftsView";
 import { FilesView } from "./FilesView";
+import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { SavedView } from "./SavedView";
 import { SearchPane } from "./SearchPane";
@@ -48,7 +49,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files">("channel");
+  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders">("channel");
   /** M11i: the channel the files view is scoped to (null: all my channels). */
   const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
@@ -147,7 +148,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setView("files");
   };
 
-  const openView = (next: "mentions" | "drafts") => {
+  const openView = (next: "mentions" | "drafts" | "reminders") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -304,6 +305,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onFiles={() => (view === "files" ? setView("channel") : openFiles(null))}
         filesActive={view === "files"}
         onReadAll={() => void controller.markAllRead()}
+        onReminders={() => openView("reminders")}
+        remindersActive={view === "reminders"}
       />
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
       <main className="relative flex min-h-0 min-w-0 flex-col">
@@ -330,6 +333,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <SavedView controller={controller} onOpen={revealFromList} />
         ) : view === "mentions" ? (
           <MentionsView controller={controller} onOpen={revealFromList} />
+        ) : view === "reminders" ? (
+          <RemindersView controller={controller} onOpen={(row) => void controller.openPermalink(row.message_id)} />
         ) : view === "files" ? (
           <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
         ) : view === "drafts" ? (

@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -449,6 +449,21 @@ export class FakeServer {
     return updated;
   }
 
+  /** "user" → open reminders (M12e). */
+  readonly reminders = new Map<string, ReminderOut[]>();
+
+  remind(userId: string, channelId: string, messageId: string, remindAt: string, note: string | null = null): ReminderOut {
+    const row: ReminderOut = { id: `rem-${++this.eventId}`, message_id: messageId, channel_id: channelId, note, preview: "preview", remind_at: remindAt, status: "pending", fired_at: null, created_at: now() };
+    this.reminders.set(userId, [...(this.reminders.get(userId) ?? []), row]);
+    return row;
+  }
+
+  emitReminder(userId: string, row: ReminderOut): void {
+    const open = row.status === "pending" || row.status === "fired";
+    this.reminders.set(userId, (this.reminders.get(userId) ?? []).filter((r) => r.id !== row.id).concat(open ? [row] : []));
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "reminder.updated", ts: now(), channel_id: row.channel_id, seq: null, data: { reminder: row } });
+  }
+
   /** "user" → pending scheduled messages (M12d). */
   readonly scheduled = new Map<string, ScheduledOut[]>();
 
@@ -599,6 +614,10 @@ export class FakeServer {
         if (!record) return [];
         this.requireMember(record.channel.id, userId);
         return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
+      },
+      listReminders: async (): Promise<ReminderOut[]> => {
+        maybeFail();
+        return this.reminders.get(userId) ?? [];
       },
       listScheduled: async (): Promise<ScheduledOut[]> => {
         maybeFail();

@@ -1796,6 +1796,111 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "ReminderCreate": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "remind_at": {
+            "format": "date-time",
+            "title": "Remind At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "remind_at"
+        ],
+        "title": "ReminderCreate",
+        "type": "object"
+      },
+      "ReminderOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          },
+          "remind_at": {
+            "format": "date-time",
+            "title": "Remind At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "fired",
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "message_id",
+          "channel_id",
+          "note",
+          "preview",
+          "remind_at",
+          "status",
+          "fired_at",
+          "created_at"
+        ],
+        "title": "ReminderOut",
+        "type": "object"
+      },
       "ScheduledCreate": {
         "properties": {
           "attachment_ids": {
@@ -5370,6 +5475,65 @@
         ]
       }
     },
+    "/api/v1/messages/{message_id}/reminders": {
+      "post": {
+        "description": "M12e 「リマインド」: a nudge about this message at remind_at (at least a minute ahead).",
+        "operationId": "create_reminder_api_v1_messages__message_id__reminders_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Reminder",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
     "/api/v1/messages/{message_id}/replies": {
       "get": {
         "operationId": "list_replies_api_v1_messages__message_id__replies_get",
@@ -5586,6 +5750,79 @@
         "summary": "Mark Thread Read",
         "tags": [
           "threads"
+        ]
+      }
+    },
+    "/api/v1/reminders": {
+      "get": {
+        "description": "My open reminders: fired ones first (newest nudge on top), then pending by time.",
+        "operationId": "list_reminders_api_v1_reminders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReminderOut"
+                  },
+                  "title": "Response List Reminders Api V1 Reminders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Reminders",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/v1/reminders/{reminder_id}": {
+      "delete": {
+        "description": "Cancels a pending reminder or marks a fired one done.",
+        "operationId": "close_reminder_api_v1_reminders__reminder_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reminder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reminder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close Reminder",
+        "tags": [
+          "reminders"
         ]
       }
     },

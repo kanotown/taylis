@@ -12,6 +12,8 @@ import type {
   ChannelReadStateOut,
   FavoriteStateOut,
   FileListOut,
+  ReminderCreate,
+  ReminderOut,
   ScheduledCreate,
   ScheduledOut,
   LinkPreviewOut,
@@ -216,6 +218,21 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- reminders (M12e) ------------------------------------------------------------------
+
+  createReminder(messageId: string, body: ReminderCreate): Promise<ReminderOut> {
+    return this.request("POST", `/api/v1/messages/${messageId}/reminders`, body);
+  }
+
+  listReminders(): Promise<ReminderOut[]> {
+    return this.request("GET", "/api/v1/reminders");
+  }
+
+  /** Cancels a pending reminder or marks a fired one done. */
+  closeReminder(reminderId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/reminders/${reminderId}`);
   }
 
   // --- scheduled messages (M12d) ---------------------------------------------------------

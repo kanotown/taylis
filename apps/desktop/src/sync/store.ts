@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -52,6 +52,8 @@ export class Store {
   readonly favorites = new Set<string>();
   /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
   readonly scheduled = new Map<string, ScheduledOut>();
+  /** My open reminders (M12e): fired ones wait for 完了, pending ones for their time. */
+  readonly reminders = new Map<string, ReminderOut>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -291,6 +293,34 @@ export class Store {
         mention_count: Math.max(0, this.threadSummary.mention_count + mention),
       };
     }
+    this.emit();
+  }
+
+  // --- reminders (M12e) --------------------------------------------------------------------
+
+  /** Fired first (newest nudge on top), then pending by time. */
+  listReminders(): ReminderOut[] {
+    return [...this.reminders.values()].sort((a, b) => {
+      if (a.status !== b.status) return a.status === "fired" ? -1 : 1;
+      return a.status === "fired" ? b.remind_at.localeCompare(a.remind_at) : a.remind_at.localeCompare(b.remind_at);
+    });
+  }
+
+  firedReminderCount(): number {
+    let n = 0;
+    for (const row of this.reminders.values()) if (row.status === "fired") n += 1;
+    return n;
+  }
+
+  replaceReminders(rows: ReminderOut[]): void {
+    this.reminders.clear();
+    for (const row of rows) if (row.status === "pending" || row.status === "fired") this.reminders.set(row.id, row);
+    this.emit();
+  }
+
+  applyReminder(row: ReminderOut): void {
+    if (row.status === "pending" || row.status === "fired") this.reminders.set(row.id, row);
+    else this.reminders.delete(row.id);
     this.emit();
   }
 
