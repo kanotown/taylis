@@ -40,10 +40,10 @@ fun MessageBody(text: String, users: Map<String, UserPublic>, modifier: Modifier
     fun inline(tokens: List<BodyToken>): AnnotatedString = buildAnnotatedString {
         for (token in tokens) {
             when (token) {
-                is BodyToken.Text -> append(token.text)
-                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(token.text) }
-                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(token.text) }
-                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(token.text) }
+                is BodyToken.Text -> append(Emoji.replaceShortcodes(token.text))
+                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(Emoji.replaceShortcodes(token.text)) }
+                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(Emoji.replaceShortcodes(token.text)) }
+                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(Emoji.replaceShortcodes(token.text)) }
                 is BodyToken.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(token.text) }
                 is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(token.text) }
                 is BodyToken.Link -> withLink(
