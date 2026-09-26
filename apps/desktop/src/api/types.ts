@@ -38,3 +38,10 @@ export type ThreadSummary = components["schemas"]["ThreadSummary"];
 export type ThreadFilter = "all" | "unread";
 /** thread.updated payload: the state plus why it changed (SYNC_PROTOCOL.md §6). */
 export type ThreadUpdated = ThreadState & { reason: "reply" | "deleted" | "read" | "follow" };
+
+/** Volatile WebSocket frames (SYNC_PROTOCOL.md §5.2, M11b). */
+export type PresenceStatus = "online" | "away" | "offline";
+export interface PresenceEntry {
+  user_id: string;
+  status: PresenceStatus;
+}

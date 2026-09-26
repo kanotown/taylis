@@ -550,3 +550,51 @@ describe("followed threads (M11a)", () => {
     paged.stop();
   });
 });
+
+describe("presence and typing (M11b)", () => {
+  it("tracks presence from bootstrap and frames, and shows typing for a few seconds", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    // alice is connected before bob bootstraps: listed in bootstrap.
+    const aliceSocket = await server.connectorFor(alice.id)("t");
+    aliceSocket.send(JSON.stringify({ type: "auth", token: "t" }));
+    await engine.start();
+    await engine.openChannel(channel.id);
+    expect(store.presenceOf(alice.id)).toBe("online");
+    expect(store.presenceOf(bob.id)).toBe("online"); // own connection announced too
+
+    server.awayUsers.add(alice.id);
+    server.announcePresence(alice.id);
+    await engine.idle();
+    expect(store.presenceOf(alice.id)).toBe("away");
+    aliceSocket.close();
+    await engine.idle();
+    expect(store.presenceOf(alice.id)).toBe("offline");
+    expect(store.presence.has(alice.id)).toBe(false);
+
+    // Typing from alice shows up for bob, expires, and is cleared by her message.
+    const aliceAgain = await server.connectorFor(alice.id)("t");
+    aliceAgain.send(JSON.stringify({ type: "auth", token: "t" }));
+    aliceAgain.send(JSON.stringify({ type: "typing", channel_id: channel.id }));
+    await engine.idle();
+    const t0 = Date.now();
+    expect(store.typingUsers(channel.id, null, t0)).toEqual([alice.id]);
+    expect(store.typingUsers(channel.id, null, t0 + 6_000)).toEqual([]); // 5 s TTL
+    aliceAgain.send(JSON.stringify({ type: "typing", channel_id: channel.id, parent_id: "p1" }));
+    await engine.idle();
+    expect(store.typingUsers(channel.id, "p1", Date.now())).toEqual([alice.id]);
+    expect(store.typingUsers(channel.id, null, Date.now())).toEqual([]); // thread typing stays in the thread
+    aliceAgain.send(JSON.stringify({ type: "typing", channel_id: channel.id }));
+    await engine.idle();
+    server.post(channel.id, alice.id, "here it is");
+    await engine.idle();
+    expect(store.typingUsers(channel.id, null, Date.now())).toEqual([]);
+
+    // Our own typing goes out at most once per interval and never comes back to us.
+    engine.sendTyping(channel.id);
+    engine.sendTyping(channel.id);
+    const sent = server.socketsOf(bob.id)[0]!.sent.filter((raw) => (JSON.parse(raw) as { type: string }).type === "typing");
+    expect(sent).toHaveLength(1);
+    expect(store.typingUsers(channel.id, null, Date.now())).toEqual([]);
+    engine.stop();
+  });
+});

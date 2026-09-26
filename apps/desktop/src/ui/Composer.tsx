@@ -266,6 +266,7 @@ export function Composer({
           onChange={(e) => {
             setText(e.target.value);
             syncCaret(e.target);
+            if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
           }}
           onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(event.clipboardData.files); } }}
           aria-label={parentId ? "スレッドの返信" : "メッセージ"}

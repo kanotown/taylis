@@ -8,6 +8,7 @@ import { Composer } from "./Composer";
 import { channelTitle } from "./MainScreen";
 import { Button, IconButton } from "./primitives";
 import { MessageRow } from "./Timeline";
+import { TypingIndicator } from "./Typing";
 
 /** The right pane: one thread (parent + replies) with its own composer, follow toggle and read position. */
 export function ThreadPane({ controller, channel, parentId, onClose }: { controller: AppController; channel: ChannelState; parentId: string; onClose: () => void }) {
@@ -129,6 +130,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <div className="py-8 text-center text-sm text-muted">メッセージが見つかりません</div>
         )}
       </div>
+      {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}
       {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
     </aside>
   );

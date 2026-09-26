@@ -1,6 +1,6 @@
-import type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
+import type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
-export type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
+export type { AttachmentOut, ChannelOut, MessageOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
 
 /** One row of the threads view: the parent message and my relation to the thread (THREADS.md §5). */
 export interface ThreadEntry {
@@ -68,10 +68,26 @@ export interface HelloFrame {
   heartbeat_interval_sec: number;
 }
 
+/** Volatile frames (M11b): never stored, never replayed. */
+export interface TypingFrame {
+  type: "typing";
+  channel_id: string;
+  parent_id: string | null;
+  user_id: string;
+}
+
+export interface PresenceFrame {
+  type: "presence";
+  user_id: string;
+  status: PresenceStatus;
+}
+
 export type ServerFrame =
   | HelloFrame
   | { type: "pong"; server_time: string }
   | { type: "error"; code: string; message: string }
-  | EventFrame;
+  | EventFrame
+  | TypingFrame
+  | PresenceFrame;
 
 export const LOCAL_PREFIX = "local:";

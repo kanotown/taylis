@@ -869,6 +869,11 @@ export interface components {
             limits: components["schemas"]["Limits"];
             me: components["schemas"]["UserMe"];
             /**
+             * Presence
+             * @default []
+             */
+            presence: components["schemas"]["PresenceEntry"][];
+            /**
              * Server Time
              * Format: date-time
              */
@@ -1216,6 +1221,19 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** PresenceEntry */
+        PresenceEntry: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "online" | "away" | "offline";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** ReactionOut */
         ReactionOut: {

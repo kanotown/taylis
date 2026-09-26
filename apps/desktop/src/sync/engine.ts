@@ -65,6 +65,9 @@ export interface EngineOptions {
   threadPageSize?: number;
   /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
   threadRefreshMs?: number;
+  /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
+  typingIntervalMs?: number;
+  typingTtlMs?: number;
 }
 
 export class SyncEngine {
@@ -79,6 +82,8 @@ export class SyncEngine {
   private readonly threadReadFloor = new Map<string, number>();
   private threadRefreshCancel: (() => void) | null = null;
   private threadRefresh: Promise<void> | null = null;
+  /** "channel[:parent]" → when the last typing frame went out. */
+  private readonly typingSent = new Map<string, number>();
   private ws: WsLike | null = null;
   private chain: Promise<void> = Promise.resolve();
   private helloResolve: (() => void) | null = null;
@@ -104,6 +109,8 @@ export class SyncEngine {
       readDebounceMs: options.readDebounceMs ?? 1_000,
       threadPageSize: options.threadPageSize ?? 50,
       threadRefreshMs: options.threadRefreshMs ?? 300,
+      typingIntervalMs: options.typingIntervalMs ?? 3_000,
+      typingTtlMs: options.typingTtlMs ?? 5_000,
     };
   }
 
@@ -260,6 +267,24 @@ export class SyncEngine {
       return;
     }
     if (frame.type === "event") void this.enqueue(() => this.applyEvent(frame));
+    else if (frame.type === "typing") {
+      // Volatile (SYNC_PROTOCOL.md §5.2): shown for a few seconds, never stored.
+      if (frame.user_id !== this.deps.store.me?.id) {
+        this.deps.store.noteTyping(frame.channel_id, frame.parent_id ?? null, frame.user_id, (this.deps.now ? Date.parse(this.deps.now()) : Date.now()) + this.opts.typingTtlMs);
+      }
+    } else if (frame.type === "presence") this.deps.store.setPresence(frame.user_id, frame.status);
+  }
+
+  /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
+  sendTyping(channelId: string, parentId: string | null = null): void {
+    const ws = this.ws;
+    if (!ws || this.status !== "online") return;
+    const key = parentId ? `${channelId}:${parentId}` : channelId;
+    const now = Date.now();
+    const last = this.typingSent.get(key) ?? 0;
+    if (now - last < this.opts.typingIntervalMs) return;
+    this.typingSent.set(key, now);
+    ws.send(JSON.stringify(parentId ? { type: "typing", channel_id: channelId, parent_id: parentId } : { type: "typing", channel_id: channelId }));
   }
 
   private startHeartbeat(intervalMs: number): void {
@@ -295,6 +320,7 @@ export class SyncEngine {
     }
     if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
     if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
+    store.replacePresence(bootstrap.presence ?? []);
   }
 
   /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -393,6 +419,7 @@ export class SyncEngine {
       }
       return;
     }
+    if (isNew) store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
     if (seq === channel.syncedSeq + 1) {
       store.upsertMessage(message);
       if (thread) store.applyParentThread(channel.id, thread);

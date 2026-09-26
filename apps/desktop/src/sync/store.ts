@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -42,6 +42,10 @@ export class Store {
   threadsLoaded = false;
   threadsCursor: string | null = null;
   threadsHasMore = false;
+  /** Who is connected right now (SYNC_PROTOCOL.md §5.2); absent = offline. Replaced by bootstrap. */
+  readonly presence = new Map<string, PresenceStatus>();
+  /** "channel[:parent]" → user id → expiry (ms); volatile typing indicators. */
+  readonly typing = new Map<string, Map<string, number>>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -270,6 +274,62 @@ export class Store {
       };
     }
     this.emit();
+  }
+
+  // --- presence / typing (volatile, SYNC_PROTOCOL.md §5.2) ---------------------------------
+
+  presenceOf(userId: string): PresenceStatus {
+    return this.presence.get(userId) ?? "offline";
+  }
+
+  setPresence(userId: string, status: PresenceStatus): void {
+    if (this.presenceOf(userId) === status) return;
+    if (status === "offline") this.presence.delete(userId);
+    else this.presence.set(userId, status);
+    this.emit();
+  }
+
+  /** bootstrap: the full picture; everyone not listed is offline. */
+  replacePresence(entries: PresenceEntry[]): void {
+    this.presence.clear();
+    for (const entry of entries) if (entry.status !== "offline") this.presence.set(entry.user_id, entry.status);
+    this.emit();
+  }
+
+  private typingKey(channelId: string, parentId: string | null): string {
+    return parentId ? `${channelId}:${parentId}` : channelId;
+  }
+
+  noteTyping(channelId: string, parentId: string | null, userId: string, until: number): void {
+    const key = this.typingKey(channelId, parentId);
+    const users = this.typing.get(key) ?? new Map<string, number>();
+    users.set(userId, until);
+    this.typing.set(key, users);
+    this.emit();
+  }
+
+  /** The user posted (or stopped): their indicator goes away at once. */
+  clearTyping(channelId: string, parentId: string | null, userId: string): void {
+    const users = this.typing.get(this.typingKey(channelId, parentId));
+    if (!users?.delete(userId)) return;
+    this.emit();
+  }
+
+  /** Users typing in this conversation, expired entries pruned (call with Date.now()). */
+  typingUsers(channelId: string, parentId: string | null, now: number): string[] {
+    const key = this.typingKey(channelId, parentId);
+    const users = this.typing.get(key);
+    if (!users) return [];
+    let pruned = false;
+    for (const [userId, until] of users) {
+      if (until <= now) {
+        users.delete(userId);
+        pruned = true;
+      }
+    }
+    if (users.size === 0) this.typing.delete(key);
+    if (pruned) this.emit();
+    return [...users.keys()];
   }
 
   /** The rows of the threads view: followed, newest reply first, unread only when that filter is on. */

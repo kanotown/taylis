@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { Avatar } from "./Avatar";
+import { Avatar, presenceLabel } from "./Avatar";
 import { type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
@@ -205,10 +205,13 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
               .sort((a, b) => (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja"))
               .map(({ member, user }) => (
                 <li key={member.user_id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} />
+                  <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} presence={controller.store.presenceOf(member.user_id)} />
                   <span className="flex-1 truncate">
                     {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
                   </span>
+                  {controller.store.presenceOf(member.user_id) !== "offline" && (
+                    <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
+                  )}
                   {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
                 </li>
               ))}
