@@ -120,6 +120,13 @@ class ApiClient(
 
     suspend fun joinChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/join", buildJsonObject {})
 
+    /** M11h: leaving answers 204, so nothing is decoded. */
+    suspend fun leaveChannel(id: String) {
+        requestRaw("POST", "/api/v1/channels/$id/leave", buildJsonObject {}, auth = true, retry401 = true)
+    }
+
+    suspend fun archiveChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/archive", buildJsonObject {})
+
     suspend fun updateChannel(channelId: String, topic: String? = null, name: String? = null, purpose: String? = null): ChannelOut =
         request("PATCH", "/api/v1/channels/$channelId", buildJsonObject {
             topic?.let { put("topic", it) }
@@ -262,6 +269,10 @@ class ApiClient(
     suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")
     suspend fun pinMessage(messageId: String): MessageOut = request("PUT", "/api/v1/messages/$messageId/pin")
     suspend fun unpinMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId/pin")
+    /** M11h: messages that mention me or everyone in my channels. */
+    suspend fun listMentions(cursor: String? = null, limit: Int = 50): MentionListOut =
+        request("GET", "/api/v1/mentions?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+
     suspend fun listBookmarks(cursor: String? = null, limit: Int = 50): BookmarkListOut =
         request("GET", "/api/v1/bookmarks?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
     suspend fun bookmarkMessage(messageId: String): BookmarkStateOut = request("PUT", "/api/v1/messages/$messageId/bookmark")

@@ -309,6 +309,10 @@ class AppController(private val app: Application) {
 
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = runCatching { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = runCatching { api!!.listBookmarks(cursor) }
+    suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = runCatching { api!!.listMentions(cursor) }
+    /** M11h: every public channel plus my private ones, for the channel browser. */
+    suspend fun browseChannels(): Result<List<jp.chikuwachat.android.api.ChannelOut>> =
+        runCatching { api!!.channels(includePublic = true).filter { it.type == "public" || it.type == "private" } }
 
     // --- link previews (M11g): one fetch per URL per session ------------------------------------
 
@@ -396,6 +400,30 @@ class AppController(private val app: Application) {
     suspend fun updateTopic(channelId: String, topic: String): Boolean = runCatching {
         val channel = api!!.updateChannel(channelId, topic = topic.trim())
         store.upsertChannel(channel)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    // --- channel management (M11h) ------------------------------------------------------------------
+
+    suspend fun updatePurpose(channelId: String, purpose: String): Boolean = runCatching {
+        store.upsertChannel(api!!.updateChannel(channelId, purpose = purpose.trim()))
+        true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun renameChannel(channelId: String, name: String): Boolean = runCatching {
+        store.upsertChannel(api!!.updateChannel(channelId, name = name.trim()))
+        true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun archiveChannel(channelId: String): Boolean = runCatching {
+        store.upsertChannel(api!!.archiveChannel(channelId))
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** Leaving drops the channel locally at once; the server's member_removed confirms it. */
+    suspend fun leaveChannel(channelId: String): Boolean = runCatching {
+        api!!.leaveChannel(channelId)
+        store.removeChannel(channelId)
         true
     }.getOrElse { error = describe(it); false }
 

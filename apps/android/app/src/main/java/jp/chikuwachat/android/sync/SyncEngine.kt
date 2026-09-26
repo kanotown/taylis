@@ -384,9 +384,18 @@ class SyncEngine(
             "channel.archived" -> frame.data.str("channel_id")?.let { id ->
                 store.updateChannel(id) { it.copy(channel = it.channel.copy(archived = true)) }
             }
+            "channel.member_added" -> frame.data.str("channel_id")?.let { id ->
+                // M11h: keep the intro's member count current; the member list itself is loaded on demand.
+                store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = it + 1)) } ?: state }
+            }
             "channel.member_removed" -> {
                 val me = store.me ?: return
-                if (frame.data.str("user_id") == me.id) frame.data.str("channel_id")?.let { store.removeChannel(it) }
+                val id = frame.data.str("channel_id") ?: return
+                if (frame.data.str("user_id") == me.id) {
+                    store.removeChannel(id)
+                } else {
+                    store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = maxOf(0, it - 1))) } ?: state }
+                }
             }
             "user.created", "user.updated", "user.deactivated" -> {
                 val user = Codec.snake.decodeFromJsonElement(UserPublic.serializer(), frame.data["user"] ?: return)

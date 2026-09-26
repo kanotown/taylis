@@ -472,9 +472,11 @@ class SyncEngineTest {
         val engine = SyncEngine(server.api(bob.id), server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
         engine.start(); settle(engine)
         assertEquals(false, store.channel(general.id)?.isMember)
+        assertEquals(1, store.channel(general.id)?.channel?.memberCount) // M11h: shown by the channel browser
         assertNull(store.channel(secret.id))
         server.join(general.id, bob.id); server.emitMembership(general.id, bob.id); settle(engine)
         assertEquals(true, store.channel(general.id)?.isMember)
+        assertEquals(2, store.channel(general.id)?.channel?.memberCount) // member_added keeps the count current
         engine.stop(); scope.cancel()
     }
 }

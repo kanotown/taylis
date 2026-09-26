@@ -197,7 +197,7 @@
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
 | `channel.updated` | channel | — | `{ channel, member_ids }` |
 | `channel.archived` | channel | — | `{ channel_id }` |
-| `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る |
+| `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る。クライアントは保持している `member_count` を +1 (`member_removed` は −1) して、次の一覧取得までの表示に使う (M11h) |
 | `channel.member_removed` | channel + 本人 (outbox 行を 2 つ書く) | — | `{ channel_id, user_id }` |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` |
 | `session.revoked` | session | — | `{ reason }` |
