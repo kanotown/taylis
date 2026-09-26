@@ -33,6 +33,7 @@ struct ChannelListView: View {
                 threadsRow
                 mentionsRow
                 draftsRow
+                remindersRow
                 filesRow
                 savedRow
             }
@@ -129,6 +130,29 @@ struct ChannelListView: View {
                 }
             }
             .padding(.vertical, 2)
+        }
+    }
+
+    /// 「リマインダー」 (M12e): listed while any is open; red when a nudge waits.
+    @ViewBuilder
+    private var remindersRow: some View {
+        let count = controller.store.reminders.count
+        let fired = controller.store.firedReminderCount
+        if count > 0 {
+            NavigationLink(value: RemindersView.selectionId) {
+                HStack(spacing: 12) {
+                    Image(systemName: "alarm").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                    Text("リマインダー").fontWeight(fired > 0 ? .semibold : .regular)
+                    Spacer()
+                    if fired > 0 {
+                        Text("\(fired)").font(.caption2).bold().foregroundStyle(.white)
+                            .padding(.horizontal, 7).padding(.vertical, 2).background(Color.red, in: Capsule())
+                    } else {
+                        Text("\(count)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
         }
     }
 

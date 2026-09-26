@@ -541,6 +541,40 @@ final class SyncEngineTests: XCTestCase {
         second.stop()
     }
 
+    func testRemindersLoadListFiredFirstAndNudgeOnce() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let general = server.createChannel("general", ownerId: alice.id)
+        let (message, _) = try server.post(channelId: general.id, senderId: alice.id, body: "remember me")
+        let later = server.remind(alice.id, channelId: general.id, messageId: message.id, remindAt: "2026-10-03T00:00:00Z")
+        let sooner = server.remind(alice.id, channelId: general.id, messageId: message.id, remindAt: "2026-10-02T00:00:00Z", note: "reply")
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        var nudges: [String] = []
+        engine.onReminder = { nudges.append($0.id) }
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(store.listReminders().map(\.id), [sooner.id, later.id])
+        let fired = ReminderOut(id: sooner.id, messageId: sooner.messageId, channelId: sooner.channelId, note: sooner.note, preview: sooner.preview,
+                                remindAt: sooner.remindAt, status: "fired", firedAt: "2026-10-02T00:00:00Z", createdAt: sooner.createdAt)
+        server.emitReminder(alice.id, fired)
+        server.emitReminder(alice.id, fired) // a replayed event
+        await settle(engine)
+        XCTAssertEqual(nudges, [sooner.id])
+        XCTAssertEqual(store.firedReminderCount, 1)
+        XCTAssertEqual(store.listReminders().map(\.status), ["fired", "pending"])
+        server.emitReminder(alice.id, ReminderOut(id: sooner.id, messageId: sooner.messageId, channelId: sooner.channelId, note: nil, preview: "", remindAt: sooner.remindAt,
+                                                  status: "done", firedAt: nil, createdAt: sooner.createdAt))
+        server.emitReminder(alice.id, ReminderOut(id: later.id, messageId: later.messageId, channelId: later.channelId, note: nil, preview: "", remindAt: later.remindAt,
+                                                  status: "cancelled", firedAt: nil, createdAt: later.createdAt))
+        await settle(engine)
+        XCTAssertTrue(store.listReminders().isEmpty)
+        engine.stop()
+    }
+
     func testScheduledRowsLoadAfterBootstrapAndFollowEvents() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

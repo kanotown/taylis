@@ -445,6 +445,11 @@ struct MessageRow: View {
                     Task { await controller.togglePin(message) }
                 }
                 Button("リンクをコピー", systemImage: "link") { controller.copyPermalink(message.id) }
+                Menu("リマインド", systemImage: "alarm") {
+                    ForEach(Schedule.reminderPresets()) { preset in
+                        Button("\(preset.label) (\(Schedule.label(preset.at)))") { Task { _ = await controller.setReminder(messageId: message.id, at: preset.at) } }
+                    }
+                }
                 if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }

@@ -312,6 +312,19 @@ struct FileListOut: Codable {
     let nextCursor: String?
 }
 
+/// A personal reminder about a message (M12e); `status` is pending | fired | done | cancelled.
+struct ReminderOut: Codable, Identifiable, Equatable {
+    let id: String
+    let messageId: String
+    let channelId: String
+    let note: String?
+    let preview: String
+    let remindAt: String
+    let status: String
+    let firedAt: String?
+    let createdAt: String
+}
+
 /// A message the server posts later (M12d); `status` is pending | sent | failed | cancelled.
 struct ScheduledOut: Codable, Identifiable, Equatable {
     let id: String
