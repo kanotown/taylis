@@ -256,6 +256,36 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    /// M11d: title / custom status. nil values clear; pass only the fields to change.
+    func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil) async -> Bool {
+        guard let api else { return false }
+        var fields: [String: JSONValue] = [:]
+        if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
+        if let statusText { fields["status_text"] = statusText.map(JSONValue.string) ?? .null }
+        if let statusEmoji { fields["status_emoji"] = statusEmoji.map(JSONValue.string) ?? .null }
+        if let statusExpiresAt { fields["status_expires_at"] = statusExpiresAt.map(JSONValue.string) ?? .null }
+        do {
+            let updated = try await api.updateProfile(fields)
+            me = updated
+            store.setMe(updated)
+            store.upsertUser(updated.asPublic)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// Open (or create) the DM with one user; returns its channel id.
+    func openDmWith(_ userId: String) async -> String? {
+        guard let api else { return nil }
+        if let existing = store.channels.values.first(where: { $0.channel.type == "dm" && ($0.channel.dmUserIds ?? []).contains(userId) && ($0.channel.dmUserIds ?? []).count <= 2 }) {
+            return existing.id
+        }
+        do {
+            let channel = try await api.createDm(userIds: [userId])
+            store.upsertChannel(channel, isMember: true)
+            return channel.id
+        } catch { self.error = describe(error); return nil }
+    }
+
     func updateDisplayName(_ displayName: String) async -> Bool {
         guard let api else { return false }
         do {

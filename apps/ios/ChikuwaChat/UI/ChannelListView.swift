@@ -129,6 +129,9 @@ struct ChannelListView: View {
                     }
                 }
                 Spacer()
+                if channel.channel.isDm, let other = (channel.channel.dmUserIds ?? []).first(where: { $0 != store.me?.id }) {
+                    StatusEmojiView(user: store.users[other])
+                }
                 if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
                 if unread && badge > 0 {
                     Text("\(badge)")

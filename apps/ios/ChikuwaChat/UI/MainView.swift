@@ -83,6 +83,9 @@ struct MainView: View {
                 controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
+            if let id = note.userInfo?["id"] as? String { selection = id }
+        }
         .onChange(of: PushCenter.shared.pendingChannelId, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id, controller.store.channel(id) != nil {

@@ -156,6 +156,11 @@ final class ApiClient: SyncApi {
         return try await request("PATCH", "/api/v1/users/me", body: .object(body))
     }
 
+    /// M11d: profile card fields; `.null` clears a field, omitted fields keep their value.
+    func updateProfile(_ fields: [String: JSONValue]) async throws -> UserMe {
+        try await request("PATCH", "/api/v1/users/me", body: .object(fields))
+    }
+
     func members(channelId: String) async throws -> [MemberOut] { try await request("GET", "/api/v1/channels/\(channelId)/members") }
 
     func addMember(channelId: String, userId: String) async throws -> MemberOut {

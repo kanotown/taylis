@@ -260,9 +260,12 @@ struct ChannelView: View {
     private func headerSubtitle(_ channel: ChannelState) -> String? {
         if let topic = channel.channel.topic, !topic.isEmpty { return topic }
         if channel.channel.isDm {
-            // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2).
+            // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) and custom status (M11d).
             let others = (channel.channel.dmUserIds ?? []).filter { $0 != controller.store.me?.id }
-            return others.count == 1 ? presenceLabel(controller.store.presenceOf(others[0])) : nil
+            guard others.count == 1 else { return nil }
+            let presence = presenceLabel(controller.store.presenceOf(others[0]))
+            if let status = activeStatus(controller.store.users[others[0]]) { return "\(presence) · \(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces) }
+            return presence
         }
         return channel.isMember && !channel.channel.archived ? "トピックを設定" : nil
     }
@@ -339,6 +342,7 @@ struct MessageRow: View {
     @State private var editing = false
     @State private var confirmingDelete = false
     @State private var showTime = false
+    @State private var showingProfile = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -351,6 +355,7 @@ struct MessageRow: View {
                 Color.clear.frame(width: 36, height: 1)
             } else {
                 AvatarView(id: message.senderId, name: senderName)
+                    .onTapGesture { if !message.pending { showingProfile = true } }
             }
             VStack(alignment: .leading, spacing: 2) {
                 let saved = store.isBookmarked(message.id)
@@ -364,7 +369,8 @@ struct MessageRow: View {
                 }
                 if !compact {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(senderName).bold()
+                        Text(senderName).bold().onTapGesture { if !message.pending { showingProfile = true } }
+                        StatusEmojiView(user: store.users[message.senderId])
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
                     }
@@ -423,6 +429,11 @@ struct MessageRow: View {
                 if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
+            }
+        }
+        .sheet(isPresented: $showingProfile) {
+            ProfileSheet(controller: controller, userId: message.senderId) { id in
+                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
             }
         }
         .sheet(isPresented: $editing) {
@@ -637,4 +648,10 @@ private struct VisibleMessageFrames: PreferenceKey {
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
     }
+}
+
+
+extension Notification.Name {
+    /// A profile card asked to open a conversation (userInfo["id"] = channel id).
+    static let chikuwaOpenChannel = Notification.Name("chikuwa.openChannel")
 }
