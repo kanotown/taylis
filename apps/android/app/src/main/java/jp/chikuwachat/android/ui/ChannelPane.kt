@@ -3,6 +3,8 @@ package jp.chikuwachat.android.ui
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.PushPin
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -242,6 +244,20 @@ fun MessageRow(
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
+                val saved = store.isBookmarked(message.id)
+                val pinnedBy = message.pinnedAt?.let { store.users[message.pinnedBy ?: ""]?.displayName ?: "?" }
+                if (pinnedBy != null || saved) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (pinnedBy != null) {
+                            Icon(Icons.Default.PushPin, contentDescription = null, tint = Color(0xFFFF9500), modifier = Modifier.size(12.dp))
+                            Text("$pinnedBy がピン留め", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFF9500))
+                        }
+                        if (saved) {
+                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                            Text("保存済み", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
                 if (!compact) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
@@ -277,6 +293,8 @@ fun MessageRow(
         MessageMenu(
             expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false },
             onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
+            pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
+            bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
         )
     }
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })

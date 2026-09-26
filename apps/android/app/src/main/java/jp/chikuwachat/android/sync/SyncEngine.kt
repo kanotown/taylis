@@ -340,6 +340,7 @@ class SyncEngine(
         bootstrap.threads?.let { store.setThreadSummary(it) }
         if (store.threadsLoaded) scheduleThreadRefresh() // the list may have moved while we were away
         store.replacePresence(bootstrap.presence)
+        store.replaceBookmarks(bootstrap.bookmarks)
     }
 
     /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
@@ -364,6 +365,10 @@ class SyncEngine(
     private suspend fun applyEvent(frame: EventFrame) {
         when (frame.event) {
             "message.created", "message.updated", "message.deleted" -> applyTimelineEvent(frame)
+            "bookmark.updated" -> {
+                val id = frame.data.str("message_id") ?: return
+                store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
                 // refreshed from the server shortly after, which also covers threads we do not hold.

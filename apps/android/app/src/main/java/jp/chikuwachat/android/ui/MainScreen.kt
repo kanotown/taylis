@@ -5,6 +5,9 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -83,6 +86,9 @@ fun MainScreen(controller: AppController) {
     // THREADS.md §5: the followed-threads list replaces the channel list; a row opens its thread with the list behind it.
     var showThreads by rememberSaveable { mutableStateOf(false) }
     var threadFromList by rememberSaveable { mutableStateOf(false) }
+    // M11c: 「保存済み」 replaces the channel list; the pins pane replaces the open channel's timeline.
+    var showSaved by rememberSaveable { mutableStateOf(false) }
+    var pinsOpen by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -113,9 +119,22 @@ fun MainScreen(controller: AppController) {
         if (threadFromList) { threadFromList = false; selection = null } // back to the threads list
     }
     BackHandler(enabled = searching) { searching = false }
-    BackHandler(enabled = !searching && threadId != null) { closeThread() }
-    BackHandler(enabled = threadId == null && selectedChannel != null) { selection = null }
-    BackHandler(enabled = !searching && selectedChannel == null && showThreads) { showThreads = false }
+    BackHandler(enabled = !searching && pinsOpen && selectedChannel != null) { pinsOpen = false }
+    BackHandler(enabled = !searching && !pinsOpen && threadId != null) { closeThread() }
+    BackHandler(enabled = threadId == null && !pinsOpen && selectedChannel != null) { selection = null }
+    BackHandler(enabled = !searching && selectedChannel == null && (showThreads || showSaved)) { showThreads = false; showSaved = false }
+    /** A card in the pins pane / saved list: show the message in its conversation. */
+    fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
+        scope.launch {
+            if (controller.revealMessage(message)) {
+                pinsOpen = false
+                showSaved = false
+                threadFromList = false
+                selection = message.channelId
+                threadId = message.parentId
+            }
+        }
+    }
 
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
@@ -127,6 +146,7 @@ fun MainScreen(controller: AppController) {
                 title = {
                     when {
                         searching -> Text("検索")
+                        pinsOpen && selectedChannel != null -> TwoLineTitle("ピン留め", channelTitle(selectedChannel, store))
                         threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
                         selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
                             TwoLineTitle(
@@ -135,16 +155,17 @@ fun MainScreen(controller: AppController) {
                             )
                         }
                         showThreads -> Text("スレッド")
+                        showSaved -> Text("保存済み")
                         else -> Text("ChikuwaChat")
                     }
                 },
                 navigationIcon = {
                     when {
                         searching -> IconButton(onClick = { searching = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
-                        selectedChannel != null -> IconButton(onClick = { if (threadId != null) closeThread() else selection = null }) {
+                        selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (threadId != null) closeThread() else selection = null }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                         }
-                        showThreads -> IconButton(onClick = { showThreads = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
+                        showThreads || showSaved -> IconButton(onClick = { showThreads = false; showSaved = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
                         me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
                     }
                 },
@@ -169,6 +190,9 @@ fun MainScreen(controller: AppController) {
                         )
                     }
                     if (selectedChannel != null && selectedChannel.isMember && threadId == null && !searching) {
+                        IconButton(onClick = { pinsOpen = !pinsOpen }) {
+                            Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
+                        }
                         val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                         val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
                         IconButton(onClick = { bellOpen = true }) {
@@ -223,8 +247,12 @@ fun MainScreen(controller: AppController) {
                             }
                         }
                     }
+                } else if (selectedChannel != null && pinsOpen) {
+                    PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal)
                 } else if (selectedChannel != null && openThread != null) {
                     ThreadPane(controller, selectedChannel.id, openThread, version)
+                } else if (showSaved) {
+                    SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
                 } else if (showThreads) {
@@ -240,6 +268,7 @@ fun MainScreen(controller: AppController) {
                         onSelect = { controller.messageFocus = null; threadFromList = false; selection = it },
                         onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } },
                         onThreads = { showThreads = true },
+                        onSaved = { showSaved = true },
                     )
                 }
             }
@@ -284,6 +313,7 @@ private fun ChannelList(
     onSelect: (String) -> Unit,
     onJoin: (String) -> Unit,
     onThreads: () -> Unit,
+    onSaved: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
     val channels = sections.channels
@@ -297,6 +327,7 @@ private fun ChannelList(
             }
         }
         item { ThreadsRow(store, onClick = onThreads) }
+        item { SavedRow(store, onClick = onSaved) }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
@@ -345,6 +376,25 @@ private fun ThreadsRow(store: Store, onClick: () -> Unit) {
                     .padding(horizontal = 7.dp, vertical = 2.dp),
             )
         }
+    }
+}
+
+/** 「保存済み」 (M11c): my bookmarked messages. */
+@Composable
+private fun SavedRow(store: Store, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text("保存済み", modifier = Modifier.weight(1f))
+        if (store.bookmarks.isNotEmpty()) Text(store.bookmarks.size.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -57,6 +57,9 @@ data class MessageState(
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
     val attachments: List<AttachmentOut> = emptyList(),
+    /** M11c: pinned in the channel; rows persisted earlier lack the fields. */
+    val pinnedAt: String? = null,
+    val pinnedBy: String? = null,
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
     val isReply: Boolean get() = parentId != null
@@ -68,6 +71,7 @@ data class MessageState(
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
             parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
+            pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy,
         )
 
         fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null) = MessageState(
@@ -133,6 +137,7 @@ fun MessageState.toOut(): MessageOut? {
         id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
         parentId = parentId, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
+        pinnedAt = pinnedAt, pinnedBy = pinnedBy,
     )
 }
 
@@ -158,6 +163,8 @@ class Store(private val persistence: Persistence? = null) {
     val presence = HashMap<String, String>()
     /** "channel[:parent]" → user id → expiry (epoch ms); volatile typing indicators. */
     private val typing = HashMap<String, HashMap<String, Long>>()
+    /** My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted. */
+    val bookmarks = HashSet<String>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -344,6 +351,21 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    // --- bookmarks (M11c) --------------------------------------------------------------------
+
+    fun isBookmarked(messageId: String): Boolean = messageId in bookmarks
+
+    fun setBookmarked(messageId: String, on: Boolean) {
+        val changed = if (on) bookmarks.add(messageId) else bookmarks.remove(messageId)
+        if (changed) emit()
+    }
+
+    fun replaceBookmarks(ids: List<String>) {
+        bookmarks.clear()
+        bookmarks.addAll(ids)
         emit()
     }
 

@@ -302,6 +302,30 @@ class AppController(private val app: Application) {
     suspend fun deleteMessage(messageId: String): Result<Unit> =
         runCatching { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }.onFailure { error = describe(it) }
 
+    suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = runCatching { api!!.listPins(channelId) }
+    suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = runCatching { api!!.listBookmarks(cursor) }
+
+    /** M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row. */
+    suspend fun togglePin(message: MessageState) {
+        val api = api ?: return
+        try {
+            store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
+        } catch (e: Exception) { error = describe(e) }
+    }
+
+    /** M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device. */
+    suspend fun toggleBookmark(messageId: String) {
+        val api = api ?: return
+        val on = !store.isBookmarked(messageId)
+        store.setBookmarked(messageId, on)
+        try {
+            if (on) api.bookmarkMessage(messageId) else api.unbookmarkMessage(messageId)
+        } catch (e: Exception) {
+            store.setBookmarked(messageId, !on)
+            error = describe(e)
+        }
+    }
+
     suspend fun toggleReaction(message: MessageState, emoji: String): Result<Unit> = runCatching {
         val me = store.me ?: return@runCatching
         val updated = if (message.reactedBy(me.id, emoji)) api!!.removeReaction(message.id, emoji) else api!!.addReaction(message.id, emoji)

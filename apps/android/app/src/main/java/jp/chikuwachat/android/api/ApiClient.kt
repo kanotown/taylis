@@ -249,6 +249,16 @@ class ApiClient(
 
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 
+    // --- pins and bookmarks (M11c) --------------------------------------------------------------
+
+    suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")
+    suspend fun pinMessage(messageId: String): MessageOut = request("PUT", "/api/v1/messages/$messageId/pin")
+    suspend fun unpinMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId/pin")
+    suspend fun listBookmarks(cursor: String? = null, limit: Int = 50): BookmarkListOut =
+        request("GET", "/api/v1/bookmarks?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+    suspend fun bookmarkMessage(messageId: String): BookmarkStateOut = request("PUT", "/api/v1/messages/$messageId/bookmark")
+    suspend fun unbookmarkMessage(messageId: String): BookmarkStateOut = request("DELETE", "/api/v1/messages/$messageId/bookmark")
+
     // --- threads (THREADS.md §3) --------------------------------------------------------------
 
     /** GET /threads: the threads I follow, newest reply first; `cursor` is the previous page's next_cursor. */
