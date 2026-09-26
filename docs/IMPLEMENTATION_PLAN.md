@@ -327,7 +327,7 @@ M11 と同じ進め方 (サーバ → Desktop → iOS → Android、機能ごと
 | # | 機能 | 内容 | 状況 |
 | --- | --- | --- | --- |
 | M12a | お気に入りと全既読 | `channel_favorites` (user_id, channel_id)、`PUT/DELETE /channels/{id}/favorite`、bootstrap の `favorites`、`favorite.updated` (audience=user)。`POST /channels/read-all` が参加中チャンネルの既読位置を末尾へ (チャンネルごとに `read.updated`)。3 端末: サイドバー先頭の「お気に入り」節、チャンネルメニュー / 情報から星の切替、「すべて既読にする」 | 未着手 |
-| M12b | メッセージへのリンク | `<server>/m/<message_id>` 形式のパーマリンク (コピー / 共有)。本文中の自サーバーのリンクは「メッセージを表示」として描画し、タップで該当メッセージへ (スレッド返信はスレッドを開く)。Desktop はチャンネル / メッセージの deep link をウィンドウで受ける | 未着手 |
+| M12b | メッセージへのリンク | `<server>/m/<message_id>` 形式のパーマリンク。メッセージ操作の「リンクをコピー」(3 端末、コピー後に短い通知)。本文中の自サーバーのリンクは 💬「メッセージを表示」として描画し、タップで `GET /messages/{id}` → 該当メッセージへ (スレッド返信はスレッドを開く)。他サーバーや別形式の URL は通常のリンクのまま、自サーバーのリンクにはプレビューカードを出さない。サーバの `GET /m/{id}` (認証なし、`include_in_schema=False`) はブラウザ向けの案内ページで本文には触れない (noindex)。OS レベルの deep link (ブラウザからアプリを開く) は M12j Web クライアントで扱う | **実装済み (2026-09-27)**: サーバ pytest 146、Desktop vitest 87 (実サーバで目視)、iOS XCTest 54、Android JUnit 55 + エミュレータで目視 |
 | M12c | 通知の一時停止と quiet hours | ユーザー設定 `dnd_until` と `quiet_hours` (開始 / 終了 / 曜日、端末のタイムゾーン)。サーバは outbox 配送時に push を抑止 (バッジは更新)、プレゼンスに 🔕 を添える。3 端末: 設定とステータス編集から「通知を一時停止 (30 分 / 1 時間 / 明日まで)」と quiet hours | 未着手 |
 | M12d | 予約送信 | `scheduled_messages` (下書きと同じ本文 / 添付、送信時刻)、ワーカーが時刻に投稿 (idempotent)、`scheduled.updated`。3 端末: 入力欄の「後で送信」(時刻プリセット + 任意)、「下書き」に予約分も並べて取消 / 今すぐ送信 | 未着手 |
 | M12e | リマインダー | メッセージの「リマインド (20 分 / 1 時間 / 明日 / 任意)」。時刻になると本人宛ての通知 (push + 自分への DM 風の system メッセージ)。予約送信と同じジョブ表を使う | 未着手 |

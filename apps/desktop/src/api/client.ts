@@ -399,6 +399,10 @@ export class ApiClient {
     return new ApiError(response.status, code, message);
   }
 
+  getMessage(messageId: string): Promise<MessageOut> {
+    return this.request("GET", `/api/v1/messages/${messageId}`);
+  }
+
   messageContext(messageId: string): Promise<MessageOut[]> {
     return this.request("GET", `/api/v1/messages/${messageId}/context`);
   }

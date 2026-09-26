@@ -23,7 +23,7 @@ import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
 import { Timeline } from "./Timeline";
-import { Toast } from "./Toast";
+import { NoticeToast, Toast } from "./Toast";
 import { TypingIndicator } from "./Typing";
 import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
@@ -476,6 +476,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
       ) : null}
       <Toast controller={controller} />
+      <NoticeToast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}

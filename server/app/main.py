@@ -14,6 +14,7 @@ from app.core.db import Database
 from app.core.errors import install_error_handlers
 from app.core.health import router as health_router
 from app.core.logging import RequestContextMiddleware, configure_logging
+from app.core.pages import router as pages_router
 from app.core.ratelimit import RateLimiter
 from app.core.settings import Settings, get_settings
 from app.core.time import utcnow
@@ -241,5 +242,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     install_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(pages_router)
     app.include_router(build_api_router())
     return app

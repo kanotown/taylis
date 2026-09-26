@@ -1,5 +1,6 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
+import { messagePermalink } from "../ui/permalink";
 import { ApiError } from "../api/errors";
 import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, TokenResponse, UserMe } from "../api/types";
 import { saveDownload } from "../platform/download";
@@ -24,6 +25,8 @@ const APP_VERSION = "0.1.0";
 export class AppController {
   screen: Screen = "boot";
   error: string | null = null;
+  /** A short confirmation (「リンクをコピーしました」); null when nothing to say. */
+  notice: string | null = null;
   api: ApiClient | null = null;
   store: Store = new Store();
   engine: SyncEngine | null = null;
@@ -226,6 +229,38 @@ export class AppController {
       this.store.upsertMessage(message.pinned_at ? await this.api.unpinMessage(message.id) : await this.api.pinMessage(message.id));
     } catch (error) {
       this.setError(error);
+    }
+  }
+
+  setNotice(text: string | null): void {
+    this.notice = text;
+    this.emit();
+  }
+
+  /** M12b: `<server>/m/<id>` for the server we are logged into. */
+  permalink(messageId: string): string | null {
+    return this.api ? messagePermalink(this.api.baseUrl, messageId) : null;
+  }
+
+  async copyPermalink(messageId: string): Promise<void> {
+    const url = this.permalink(messageId);
+    if (!url) return;
+    try {
+      await copyText(url);
+      this.setNotice("リンクをコピーしました");
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  /** A permalink tapped in a body: fetch the message (membership is checked there) and reveal it. */
+  async openPermalink(messageId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      return await this.revealMessage(await this.api.getMessage(messageId));
+    } catch (error) {
+      this.setError(error);
+      return false;
     }
   }
 
@@ -481,4 +516,24 @@ function describe(err: unknown): string {
 
 function safeProfile(account: string): string {
   return account.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 80);
+}
+
+/** The async clipboard first; a hidden textarea + execCommand when a webview refuses it (no permission API). */
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // fall through
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  const ok = document.execCommand("copy");
+  area.remove();
+  if (!ok) throw new Error("クリップボードに書き込めませんでした");
 }
