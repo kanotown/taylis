@@ -41,7 +41,7 @@ export function QuickSwitcher({ controller, onOpen, onClose }: { controller: App
                     key={channel.id}
                     value={`${title} ${channel.name ?? ""}`}
                     onSelect={() => onOpen(channel.id)}
-                    className="flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm"
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm"
                   >
                     {isDmChannel(channel) ? (
                       other ? <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={22} className="rounded-md text-[10px]" /> : <AtSign size={16} className="text-muted" />

@@ -62,6 +62,10 @@
   body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  /* Tailwind v4's preflight leaves buttons with the platform's default arrow; a chat UI wants the hand. */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [role="menuitem"], [role="menuitemradio"], [role="option"], [cmdk-item], a[href], label:has(input[type="checkbox"]), summary { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  textarea, input:not([type="checkbox"]):not([type="radio"]) { cursor: text; }
 }
 
 /* Radix open/close motion */
