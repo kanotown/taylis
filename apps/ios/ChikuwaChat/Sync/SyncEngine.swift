@@ -324,8 +324,10 @@ final class SyncEngine {
         // seq <= synced: already applied.
     }
 
+    /// DMs always notify; channels only when I am mentioned (PUSH_NOTIFICATIONS.md §4 defaults).
     private func maybeNotify(_ message: MessageOut, _ channel: ChannelState) {
-        guard let me = store.me, message.senderId != me.id, channel.channel.isDm else { return }
+        guard let me = store.me, message.senderId != me.id else { return }
+        if !channel.channel.isDm && !message.mentions(me.id) { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
     }

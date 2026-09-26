@@ -11,6 +11,9 @@ import type { EventFrame } from "../src/sync/types";
 let counter = 0;
 const nextId = (): string => `00000000-0000-7000-8000-${String(++counter).padStart(12, "0")}`;
 const now = (): string => new Date().toISOString();
+const MENTION_USER = /<@([0-9a-f-]{36})>/g;
+const MENTION_ALL = /<!(channel|here)>/;
+const mentionedIds = (body: string): string[] => [...new Set([...body.matchAll(MENTION_USER)].map((m) => m[1] ?? ""))];
 
 interface ChannelRecord {
   channel: ChannelOut;
@@ -152,7 +155,11 @@ export class FakeServer {
       seq,
       updated_seq: seq,
       client_msg_id: clientMsgId,
+      type: "user",
       body,
+      mentioned_user_ids: mentionedIds(body),
+      mention_all: MENTION_ALL.test(body),
+      reactions: [],
       created_at: now(),
       edited_at: null,
       deleted: false,
@@ -170,6 +177,65 @@ export class FakeServer {
       data: { message },
     });
     return { message, created: true };
+  }
+
+  messageByBody(channelId: string, body: string): MessageOut {
+    const message = this.record(channelId).messages.find((m) => m.body === body && !m.deleted);
+    if (!message) throw new Error(`no message with body ${body}`);
+    return message;
+  }
+
+  private replace(record: ChannelRecord, updated: MessageOut, event: string, change?: string): void {
+    const index = record.messages.findIndex((m) => m.id === updated.id);
+    record.messages[index] = updated;
+    const data: Record<string, unknown> = change ? { message: updated, change } : { message: updated };
+    this.emit(record.members, { type: "event", id: ++this.eventId, event, ts: now(), channel_id: updated.channel_id, seq: updated.updated_seq, data });
+  }
+
+  private live(channelId: string, userId: string, messageId: string): { record: ChannelRecord; message: MessageOut } {
+    const record = this.requireMember(channelId, userId);
+    const message = record.messages.find((m) => m.id === messageId && !m.deleted);
+    if (!message) throw new ApiError(404, "message_not_found", "not found");
+    return { record, message };
+  }
+
+  edit(channelId: string, userId: string, messageId: string, body: string): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    if (message.sender_id !== userId) throw new ApiError(403, "not_message_owner", "not the author");
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, body, edited_at: now(), updated_seq: seq, mentioned_user_ids: mentionedIds(body), mention_all: MENTION_ALL.test(body) };
+    this.replace(record, updated, "message.updated", "body");
+    return updated;
+  }
+
+  delete(channelId: string, userId: string, messageId: string): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const seq = ++record.channel.last_seq;
+    const tombstone: MessageOut = { ...message, body: "", deleted: true, updated_seq: seq, reactions: [], mentioned_user_ids: [], mention_all: false };
+    this.replace(record, tombstone, "message.deleted");
+    return tombstone;
+  }
+
+  react(channelId: string, userId: string, messageId: string, emoji: string, present: boolean): { message: MessageOut; changed: boolean } {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const groups = new Map<string, string[]>();
+    for (const reaction of message.reactions ?? []) groups.set(reaction.emoji, [...reaction.user_ids]);
+    const users = groups.get(emoji) ?? [];
+    let changed = false;
+    if (present && !users.includes(userId)) {
+      users.push(userId);
+      changed = true;
+    } else if (!present && users.includes(userId)) {
+      users.splice(users.indexOf(userId), 1);
+      changed = true;
+    }
+    if (users.length > 0) groups.set(emoji, users);
+    else groups.delete(emoji);
+    if (!changed) return { message, changed: false };
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, updated_seq: seq, reactions: [...groups].map(([e, ids]) => ({ emoji: e, count: ids.length, user_ids: ids })) };
+    this.replace(record, updated, "message.updated", "reactions");
+    return { message: updated, changed: true };
   }
 
   private emit(userIds: Set<string>, frame: EventFrame): void {

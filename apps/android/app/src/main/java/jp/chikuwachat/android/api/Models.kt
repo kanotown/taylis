@@ -83,6 +83,9 @@ data class ChannelOut(
 }
 
 @Serializable
+data class ReactionOut(val emoji: String, val count: Int, val userIds: List<String> = emptyList())
+
+@Serializable
 data class MessageOut(
     val id: String,
     val channelId: String,
@@ -90,11 +93,17 @@ data class MessageOut(
     val seq: Int,
     val updatedSeq: Int,
     val clientMsgId: String? = null,
+    val type: String = "user",
     val body: String,
+    val mentionedUserIds: List<String> = emptyList(),
+    val mentionAll: Boolean = false,
+    val reactions: List<ReactionOut> = emptyList(),
     val createdAt: String,
     val editedAt: String? = null,
     val deleted: Boolean,
-)
+) {
+    fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
+}
 
 @Serializable
 data class HistoryOut(val channelLastSeq: Int, val messages: List<MessageOut>, val hasMore: Boolean)

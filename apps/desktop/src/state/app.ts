@@ -2,6 +2,7 @@
 import { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
 import type { TokenResponse, UserMe } from "../api/types";
+import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
 import { notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
@@ -109,6 +110,42 @@ export class AppController {
       await this.startEngine();
     } catch (err) {
       this.setScreen("change_password", describe(err));
+    }
+  }
+
+  get isAdmin(): boolean {
+    return this.me?.role === "admin";
+  }
+
+  // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated ---
+
+  async editMessage(messageId: string, body: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      this.store.upsertMessage(await this.api.editMessage(messageId, body));
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      this.store.upsertMessage(await this.api.deleteMessage(messageId));
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async toggleReaction(message: MessageState, emoji: string): Promise<void> {
+    const me = this.store.me;
+    if (!this.api || !me) return;
+    const mine = (message.reactions ?? []).some((r) => r.emoji === emoji && r.user_ids.includes(me.id));
+    try {
+      const updated = mine ? await this.api.removeReaction(message.id, emoji) : await this.api.addReaction(message.id, emoji);
+      this.store.upsertMessage(updated);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
     }
   }
 

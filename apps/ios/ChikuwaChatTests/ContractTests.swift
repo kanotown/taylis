@@ -84,6 +84,18 @@ final class ContractTests: XCTestCase {
                 s.posted += 1
                 try s.server.post(channelId: s.channelId, senderId: sender.id, body: (step["body"]?.stringValue ?? "").replacingOccurrences(of: "{i}", with: String(s.posted)))
             }
+        case "edit":
+            let user = s.server.user(named: step["as"]?.stringValue ?? "")
+            let target = try s.server.messageByBody(s.channelId, step["body_of"]?.stringValue ?? "")
+            try s.server.edit(channelId: s.channelId, userId: user.id, messageId: target.id, body: step["body"]?.stringValue ?? "")
+        case "delete":
+            let user = s.server.user(named: step["as"]?.stringValue ?? "")
+            let target = try s.server.messageByBody(s.channelId, step["body_of"]?.stringValue ?? "")
+            try s.server.delete(channelId: s.channelId, userId: user.id, messageId: target.id)
+        case "react", "unreact":
+            let user = s.server.user(named: step["as"]?.stringValue ?? "")
+            let target = try s.server.messageByBody(s.channelId, step["body_of"]?.stringValue ?? "")
+            try s.server.react(channelId: s.channelId, userId: user.id, messageId: target.id, emoji: step["emoji"]?.stringValue ?? "", present: op == "react")
         case "client.start":
             s.clientUser = step["as"]?.stringValue ?? ""
             if case .object(let options) = step { s.options = options }
@@ -130,6 +142,12 @@ final class ContractTests: XCTestCase {
             if let catchUps = step["catch_ups"]?.doubleValue { XCTAssertEqual(s.engine?.catchUps, Int(catchUps)) }
             if let reloads = step["reloads"]?.doubleValue { XCTAssertEqual(s.engine?.reloads, Int(reloads)) }
             if let serverCount = step["server_message_count"]?.doubleValue { XCTAssertEqual(s.server.channels[s.channelId]?.messages.count, Int(serverCount)) }
+            if case .object(let reactions)? = step["reactions"] {
+                for (body, emojis) in reactions {
+                    let message = s.store.messages(s.channelId).first { $0.body == body }
+                    XCTAssertEqual(message?.reactions.map(\.emoji), emojis.arrayValue?.compactMap(\.stringValue), body)
+                }
+            }
         default:
             XCTFail("unknown op \(op)")
         }

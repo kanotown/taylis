@@ -158,6 +158,25 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    func editMessage(id: String, body: String) async throws -> MessageOut {
+        try await request("PATCH", "/api/v1/messages/\(id)", body: .object(["body": .string(body)]))
+    }
+
+    /// Returns the tombstone (deleted = true) so the caller can apply it locally.
+    func deleteMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)") }
+
+    func addReaction(id: String, emoji: String) async throws -> MessageOut {
+        try await request("PUT", "/api/v1/messages/\(id)/reactions/\(Self.encodeEmoji(emoji))", body: .object([:]))
+    }
+
+    func removeReaction(id: String, emoji: String) async throws -> MessageOut {
+        try await request("DELETE", "/api/v1/messages/\(id)/reactions/\(Self.encodeEmoji(emoji))")
+    }
+
+    private static func encodeEmoji(_ emoji: String) -> String {
+        emoji.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? emoji
+    }
+
     // MARK: transport
 
     private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true) async throws -> T {

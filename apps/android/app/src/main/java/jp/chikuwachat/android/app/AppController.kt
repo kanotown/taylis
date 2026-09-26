@@ -16,6 +16,7 @@ import jp.chikuwachat.android.platform.fetchFcmToken
 import jp.chikuwachat.android.platform.RoomPersistence
 import jp.chikuwachat.android.platform.SecretStore
 import jp.chikuwachat.android.sync.EngineStatus
+import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OkHttpWsTransport
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
@@ -251,6 +252,23 @@ class AppController(private val app: Application) {
         store.upsertChannel(channel, isMember = true)
         true
     }.getOrElse { error = describe(it); false }
+
+    // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated -----
+
+    suspend fun editMessage(messageId: String, body: String): Result<Unit> =
+        runCatching { store.upsertMessage(api!!.editMessage(messageId, body)); Unit }.onFailure { error = describe(it) }
+
+    suspend fun deleteMessage(messageId: String): Result<Unit> =
+        runCatching { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }.onFailure { error = describe(it) }
+
+    suspend fun toggleReaction(message: MessageState, emoji: String): Result<Unit> = runCatching {
+        val me = store.me ?: return@runCatching
+        val updated = if (message.reactedBy(me.id, emoji)) api!!.removeReaction(message.id, emoji) else api!!.addReaction(message.id, emoji)
+        store.upsertMessage(updated)
+        Unit
+    }.onFailure { error = describe(it) }
+
+    val isAdmin: Boolean get() = me?.role == "admin"
 
     suspend fun members(channelId: String): Result<List<String>> = runCatching { api!!.members(channelId).map { it.userId } }
 

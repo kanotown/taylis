@@ -34,7 +34,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M5 | APNs | 端末登録、プッシュトークン登録、配送、通知処理、通知後の同期 | **実装済み (2026-09-26)**: `push_deliveries` / `notification_preferences`、PushPlanner (outbox ハンドラ)、PushSender (リース・backoff・期限)、`APNsPushProvider` (.p8)、通知設定 API、端末のトークン登録、`push-test` CLI、iOS の登録と通知処理。実機での受信確認は端末登録後に行う |
 | M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
 | M7 | FCM | 端末登録、トークン処理、配送 | **実装済み (2026-09-26)**: `FCMPushProvider` (HTTP v1、サービスアカウントの JWT bearer grant、data-only、応答対応表のテスト)、compose の鍵マウント、Android の `FirebaseMessagingService` / `PushCenter` (トークン登録・更新、通知の組み立て、タップで該当チャンネル)。Firebase プロジェクトでの実受信はユーザー側の設定後に確認する (infra/README.md) |
-| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | 3 クライアントで動作し、差分同期で回復する |
+| M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。M8b (未読) / M8c (スレッド) は未着手 |
 | M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
 | M10 | 運用 | backup、restore、security review、logging、deployment docs | 復元リハーサルが成功する |
 
@@ -168,6 +168,10 @@ FCM の実受信には Firebase プロジェクトが要るため、infra/README
 - **M8a 編集・削除・リアクション・メンション**: 編集 (`updated_seq`)、削除 (トゥームストーン、添付の `deleted` 化)、
   リアクション、メンショントークンの抽出と通知ルール、メンション補完 UI。サーバ + 3 クライアント。
   契約テスト 4。差分同期で編集・削除・リアクションが回復することを確認する。
+  実装メモ (2026-09-26): 編集は投稿者のみ、削除は投稿者と admin。編集・削除・リアクションの変更は seq を消費するが
+  `last_message_at` は動かさない。リアクションは `PUT/DELETE /messages/{id}/reactions/{emoji}` (冪等。変化が無ければ seq を消費しない)。
+  クライアントは `@username` を送信時に `<@uuid>` へ、編集時に逆へ変換する。チャンネルのローカル通知はメンション時のみ。
+  添付の `deleted` 化は M9 で添付と一緒に入れる。
 - **M8b 未読**: `read_states`、`PUT /channels/{id}/read`、`read.updated`、bootstrap の未読数 / メンション数、
   送信時の自動既読、PushPlanner の既読チェックとバッジ、クライアントの未読バッジと既読送信。契約テスト 7。
   2 端末で既読が収束する。

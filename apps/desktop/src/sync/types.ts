@@ -1,6 +1,6 @@
-import type { ChannelOut, MessageOut, UserMe, UserPublic } from "../api/types";
+import type { ChannelOut, MessageOut, ReactionOut, UserMe, UserPublic } from "../api/types";
 
-export type { ChannelOut, MessageOut, UserMe, UserPublic };
+export type { ChannelOut, MessageOut, ReactionOut, UserMe, UserPublic };
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */
 export interface ChannelState extends ChannelOut {
@@ -14,8 +14,13 @@ export interface ChannelState extends ChannelOut {
 }
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
-export interface MessageState extends Omit<MessageOut, "seq"> {
+export interface MessageState extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions"> {
   seq: number | null;
+  /** M8a fields: optional so placeholders and rows persisted before M8a still load. */
+  type?: string;
+  mentioned_user_ids?: string[];
+  mention_all?: boolean;
+  reactions?: ReactionOut[];
   pending?: boolean;
   failed?: boolean;
 }

@@ -4,6 +4,7 @@ import json
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -26,6 +27,7 @@ class Scenario:
         self.client_user = ""
         self.client_options: dict[str, Any] = {}
         self.posted: dict[str, int] = {}
+        self.message_ids: dict[str, str] = {}  # body -> id, for edit / delete / react steps
 
     def _auth(self, name: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.tokens[name]['access_token']}"}
@@ -68,6 +70,32 @@ class Scenario:
                     headers=self._auth(name),
                 )
                 assert response.status_code == 201, response.text
+                self.message_ids[response.json()["body"]] = response.json()["id"]
+
+    async def _change(self, step: dict[str, Any], method: str, path: str, **kwargs: Any) -> None:
+        async with httpx.AsyncClient(base_url=self.live.base_url) as http:
+            response = await http.request(method, path, headers=self._auth(step["as"]), **kwargs)
+            assert response.status_code in (200, 201), response.text
+
+    async def op_edit(self, step: dict[str, Any]) -> None:
+        message_id = self.message_ids[step["body_of"]]
+        await self._change(
+            step, "PATCH", f"/api/v1/messages/{message_id}", json={"body": step["body"]}
+        )
+        self.message_ids[step["body"]] = message_id
+
+    async def op_delete(self, step: dict[str, Any]) -> None:
+        await self._change(step, "DELETE", f"/api/v1/messages/{self.message_ids[step['body_of']]}")
+
+    async def op_react(self, step: dict[str, Any]) -> None:
+        emoji = quote(str(step["emoji"]), safe="")
+        message_id = self.message_ids[step["body_of"]]
+        await self._change(step, "PUT", f"/api/v1/messages/{message_id}/reactions/{emoji}")
+
+    async def op_unreact(self, step: dict[str, Any]) -> None:
+        emoji = quote(str(step["emoji"]), safe="")
+        message_id = self.message_ids[step["body_of"]]
+        await self._change(step, "DELETE", f"/api/v1/messages/{message_id}/reactions/{emoji}")
 
     def _new_client(self, store: dict[str, Any] | None = None) -> ReferenceClient:
         return ReferenceClient(
@@ -151,6 +179,10 @@ class Scenario:
             assert self.client.catch_ups == step["catch_ups"]
         if "reloads" in step:
             assert self.client.reloads == step["reloads"]
+        if "reactions" in step:
+            by_body = {str(m["body"]): m for m in self.client.messages()}
+            for body, emojis in step["reactions"].items():
+                assert [r["emoji"] for r in by_body[body].get("reactions", [])] == emojis, body
         if "server_message_count" in step:
             async with httpx.AsyncClient(base_url=self.live.base_url) as http:
                 history = (

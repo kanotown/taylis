@@ -587,6 +587,28 @@
                 "title": "Id",
                 "type": "string"
               },
+              "mention_all": {
+                "default": false,
+                "title": "Mention All",
+                "type": "boolean"
+              },
+              "mentioned_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Mentioned User Ids",
+                "type": "array"
+              },
+              "reactions": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ReactionOut"
+                },
+                "title": "Reactions",
+                "type": "array"
+              },
               "sender_id": {
                 "format": "uuid",
                 "title": "Sender Id",
@@ -595,6 +617,11 @@
               "seq": {
                 "title": "Seq",
                 "type": "integer"
+              },
+              "type": {
+                "default": "user",
+                "title": "Type",
+                "type": "string"
               },
               "updated_seq": {
                 "title": "Updated Seq",
@@ -615,6 +642,33 @@
             ],
             "title": "MessageOut",
             "type": "object"
+          },
+          "ReactionOut": {
+            "properties": {
+              "count": {
+                "title": "Count",
+                "type": "integer"
+              },
+              "emoji": {
+                "title": "Emoji",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "emoji",
+              "count",
+              "user_ids"
+            ],
+            "title": "ReactionOut",
+            "type": "object"
           }
         },
         "properties": {
@@ -626,6 +680,317 @@
           "message"
         ],
         "title": "MessageCreatedData",
+        "type": "object"
+      }
+    },
+    "message.deleted": {
+      "audience": "channel",
+      "consumes_seq": true,
+      "data": {
+        "$defs": {
+          "MessageOut": {
+            "properties": {
+              "body": {
+                "title": "Body",
+                "type": "string"
+              },
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "client_msg_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Client Msg Id"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deleted": {
+                "title": "Deleted",
+                "type": "boolean"
+              },
+              "edited_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Edited At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "mention_all": {
+                "default": false,
+                "title": "Mention All",
+                "type": "boolean"
+              },
+              "mentioned_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Mentioned User Ids",
+                "type": "array"
+              },
+              "reactions": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ReactionOut"
+                },
+                "title": "Reactions",
+                "type": "array"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              },
+              "seq": {
+                "title": "Seq",
+                "type": "integer"
+              },
+              "type": {
+                "default": "user",
+                "title": "Type",
+                "type": "string"
+              },
+              "updated_seq": {
+                "title": "Updated Seq",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "sender_id",
+              "seq",
+              "updated_seq",
+              "client_msg_id",
+              "body",
+              "created_at",
+              "edited_at",
+              "deleted"
+            ],
+            "title": "MessageOut",
+            "type": "object"
+          },
+          "ReactionOut": {
+            "properties": {
+              "count": {
+                "title": "Count",
+                "type": "integer"
+              },
+              "emoji": {
+                "title": "Emoji",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "emoji",
+              "count",
+              "user_ids"
+            ],
+            "title": "ReactionOut",
+            "type": "object"
+          }
+        },
+        "description": "The tombstone: ``deleted`` is true and the body is empty.",
+        "properties": {
+          "message": {
+            "$ref": "#/$defs/MessageOut"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "MessageDeletedData",
+        "type": "object"
+      }
+    },
+    "message.updated": {
+      "audience": "channel",
+      "consumes_seq": true,
+      "data": {
+        "$defs": {
+          "MessageOut": {
+            "properties": {
+              "body": {
+                "title": "Body",
+                "type": "string"
+              },
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "client_msg_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Client Msg Id"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "deleted": {
+                "title": "Deleted",
+                "type": "boolean"
+              },
+              "edited_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Edited At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "mention_all": {
+                "default": false,
+                "title": "Mention All",
+                "type": "boolean"
+              },
+              "mentioned_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Mentioned User Ids",
+                "type": "array"
+              },
+              "reactions": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ReactionOut"
+                },
+                "title": "Reactions",
+                "type": "array"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              },
+              "seq": {
+                "title": "Seq",
+                "type": "integer"
+              },
+              "type": {
+                "default": "user",
+                "title": "Type",
+                "type": "string"
+              },
+              "updated_seq": {
+                "title": "Updated Seq",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "sender_id",
+              "seq",
+              "updated_seq",
+              "client_msg_id",
+              "body",
+              "created_at",
+              "edited_at",
+              "deleted"
+            ],
+            "title": "MessageOut",
+            "type": "object"
+          },
+          "ReactionOut": {
+            "properties": {
+              "count": {
+                "title": "Count",
+                "type": "integer"
+              },
+              "emoji": {
+                "title": "Emoji",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "emoji",
+              "count",
+              "user_ids"
+            ],
+            "title": "ReactionOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "change": {
+            "enum": [
+              "body",
+              "reactions",
+              "pin"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "message": {
+            "$ref": "#/$defs/MessageOut"
+          }
+        },
+        "required": [
+          "message",
+          "change"
+        ],
+        "title": "MessageUpdatedData",
         "type": "object"
       }
     },

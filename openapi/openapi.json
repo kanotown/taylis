@@ -922,6 +922,21 @@
         "title": "MessageCreate",
         "type": "object"
       },
+      "MessageEdit": {
+        "properties": {
+          "body": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "MessageEdit",
+        "type": "object"
+      },
       "MessageOut": {
         "properties": {
           "body": {
@@ -971,6 +986,28 @@
             "title": "Id",
             "type": "string"
           },
+          "mention_all": {
+            "default": false,
+            "title": "Mention All",
+            "type": "boolean"
+          },
+          "mentioned_user_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Mentioned User Ids",
+            "type": "array"
+          },
+          "reactions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReactionOut"
+            },
+            "title": "Reactions",
+            "type": "array"
+          },
           "sender_id": {
             "format": "uuid",
             "title": "Sender Id",
@@ -979,6 +1016,11 @@
           "seq": {
             "title": "Seq",
             "type": "integer"
+          },
+          "type": {
+            "default": "user",
+            "title": "Type",
+            "type": "string"
           },
           "updated_seq": {
             "title": "Updated Seq",
@@ -1087,6 +1129,33 @@
           "new_password"
         ],
         "title": "PasswordChange",
+        "type": "object"
+      },
+      "ReactionOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "emoji": {
+            "title": "Emoji",
+            "type": "string"
+          },
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "emoji",
+          "count",
+          "user_ids"
+        ],
+        "title": "ReactionOut",
         "type": "object"
       },
       "RefreshRequest": {
@@ -2676,6 +2745,53 @@
       }
     },
     "/api/v1/messages/{message_id}": {
+      "delete": {
+        "description": "Returns the tombstone so the caller can apply it locally.",
+        "operationId": "delete_message_api_v1_messages__message_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Message",
+        "tags": [
+          "messages"
+        ]
+      },
       "get": {
         "operationId": "get_message_api_v1_messages__message_id__get",
         "parameters": [
@@ -2718,6 +2834,180 @@
           }
         ],
         "summary": "Get Message",
+        "tags": [
+          "messages"
+        ]
+      },
+      "patch": {
+        "operationId": "edit_message_api_v1_messages__message_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/reactions/{emoji}": {
+      "delete": {
+        "operationId": "remove_reaction_api_v1_messages__message_id__reactions__emoji__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "emoji",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+              "title": "Emoji",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Reaction",
+        "tags": [
+          "messages"
+        ]
+      },
+      "put": {
+        "operationId": "add_reaction_api_v1_messages__message_id__reactions__emoji__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "emoji",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^(:[a-z0-9_+\\-]{1,30}:|[^\\x00-\\x7f]{1,16})$",
+              "title": "Emoji",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Reaction",
         "tags": [
           "messages"
         ]

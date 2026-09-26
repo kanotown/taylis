@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.net.URLEncoder
 
 /** Structured API errors (ARCHITECTURE.md §9). */
 sealed class ApiException(message: String) : Exception(message) {
@@ -134,6 +135,18 @@ class ApiClient(
 
     override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut =
         request("GET", "/api/v1/channels/$channelId/sync?since_seq=$sinceSeq&limit=$limit")
+
+    suspend fun editMessage(messageId: String, body: String): MessageOut =
+        request("PATCH", "/api/v1/messages/$messageId", buildJsonObject { put("body", body) })
+
+    /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
+    suspend fun deleteMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId")
+
+    suspend fun addReaction(messageId: String, emoji: String): MessageOut =
+        request("PUT", "/api/v1/messages/$messageId/reactions/" + URLEncoder.encode(emoji, "UTF-8"), buildJsonObject {})
+
+    suspend fun removeReaction(messageId: String, emoji: String): MessageOut =
+        request("DELETE", "/api/v1/messages/$messageId/reactions/" + URLEncoder.encode(emoji, "UTF-8"))
 
     override suspend fun postMessage(channelId: String, clientMsgId: String, body: String): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(

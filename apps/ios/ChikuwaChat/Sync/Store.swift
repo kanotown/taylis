@@ -30,6 +30,18 @@ struct MessageState: Codable, Identifiable, Equatable {
     var deleted: Bool
     var pending: Bool
     var failed: Bool
+    var reactions: [ReactionOut] = []
+    var mentionedUserIds: [String] = []
+    var mentionAll: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
+        case reactions, mentionedUserIds, mentionAll
+    }
+
+    func reactedBy(_ userId: String, _ emoji: String) -> Bool {
+        reactions.contains { $0.emoji == emoji && $0.userIds.contains(userId) }
+    }
 
     init(_ message: MessageOut) {
         id = message.id
@@ -44,6 +56,29 @@ struct MessageState: Codable, Identifiable, Equatable {
         deleted = message.deleted
         pending = false
         failed = false
+        reactions = message.reactions
+        mentionedUserIds = message.mentionedUserIds
+        mentionAll = message.mentionAll
+    }
+
+    /// Rows persisted before M8a lack the reaction / mention fields.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        channelId = try c.decode(String.self, forKey: .channelId)
+        senderId = try c.decode(String.self, forKey: .senderId)
+        seq = try c.decodeIfPresent(Int.self, forKey: .seq)
+        updatedSeq = try c.decode(Int.self, forKey: .updatedSeq)
+        clientMsgId = try c.decodeIfPresent(String.self, forKey: .clientMsgId)
+        body = try c.decode(String.self, forKey: .body)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        editedAt = try c.decodeIfPresent(String.self, forKey: .editedAt)
+        deleted = try c.decode(Bool.self, forKey: .deleted)
+        pending = try c.decode(Bool.self, forKey: .pending)
+        failed = try c.decode(Bool.self, forKey: .failed)
+        reactions = try c.decodeIfPresent([ReactionOut].self, forKey: .reactions) ?? []
+        mentionedUserIds = try c.decodeIfPresent([String].self, forKey: .mentionedUserIds) ?? []
+        mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String) {

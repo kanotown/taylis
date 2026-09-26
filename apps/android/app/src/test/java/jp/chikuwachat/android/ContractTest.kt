@@ -73,6 +73,18 @@ class ContractTest {
                     s.server.post(s.channelId, sender.id, step.str("body")!!.replace("{i}", s.posted.toString()))
                 }
             }
+            "edit" -> {
+                val user = s.server.user(step.str("as")!!)
+                s.server.edit(s.channelId, user.id, s.server.messageByBody(s.channelId, step.str("body_of")!!).id, step.str("body")!!)
+            }
+            "delete" -> {
+                val user = s.server.user(step.str("as")!!)
+                s.server.delete(s.channelId, user.id, s.server.messageByBody(s.channelId, step.str("body_of")!!).id)
+            }
+            "react", "unreact" -> {
+                val user = s.server.user(step.str("as")!!)
+                s.server.react(s.channelId, user.id, s.server.messageByBody(s.channelId, step.str("body_of")!!).id, step.str("emoji")!!, present = op == "react")
+            }
             "client.start" -> {
                 s.clientUser = step.str("as")!!
                 s.options = step
@@ -110,6 +122,10 @@ class ContractTest {
                 step.int("catch_ups")?.let { assertEquals(it, s.engine?.catchUps) }
                 step.int("reloads")?.let { assertEquals(it, s.engine?.reloads) }
                 step.int("server_message_count")?.let { assertEquals(it, s.server.channels.getValue(s.channelId).messages.size) }
+                (step["reactions"] as? JsonObject)?.forEach { (body, emojis) ->
+                    val message = s.store.messages(s.channelId).first { it.body == body }
+                    assertEquals(body, emojis.jsonArray.map { it.jsonPrimitive.content }, message.reactions.map { it.emoji })
+                }
             }
             else -> error("unknown op $op")
         }

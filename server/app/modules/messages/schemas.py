@@ -1,14 +1,24 @@
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.messages.models import Message
+from app.modules.messages.models import Message, Reaction
 
 MAX_BODY_LENGTH = 20_000
 # Control characters other than newline and tab are stripped (SECURITY.md §5).
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# A unicode emoji (sequence) or a :shortcode:.
+EMOJI_PATTERN = r"^(:[a-z0-9_+\-]{1,30}:|[^\x00-\x7f]{1,16})$"
+
+
+def clean_body(value: str) -> str:
+    cleaned = _CONTROL_CHARS.sub("", value)
+    if not cleaned.strip():
+        raise ValueError("body must not be empty")
+    return cleaned
 
 
 class MessageCreate(BaseModel):
@@ -18,10 +28,22 @@ class MessageCreate(BaseModel):
     @field_validator("body")
     @classmethod
     def _clean_body(cls, value: str) -> str:
-        cleaned = _CONTROL_CHARS.sub("", value)
-        if not cleaned.strip():
-            raise ValueError("body must not be empty")
-        return cleaned
+        return clean_body(value)
+
+
+class MessageEdit(BaseModel):
+    body: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
+
+    @field_validator("body")
+    @classmethod
+    def _clean_body(cls, value: str) -> str:
+        return clean_body(value)
+
+
+class ReactionOut(BaseModel):
+    emoji: str
+    count: int
+    user_ids: list[UUID]
 
 
 class MessageOut(BaseModel):
@@ -31,7 +53,11 @@ class MessageOut(BaseModel):
     seq: int
     updated_seq: int
     client_msg_id: UUID | None
+    type: str = "user"
     body: str
+    mentioned_user_ids: list[UUID] = []
+    mention_all: bool = False
+    reactions: list[ReactionOut] = []
     created_at: datetime
     edited_at: datetime | None
     deleted: bool
@@ -49,7 +75,16 @@ class DeltaOut(BaseModel):
     has_more: bool
 
 
-def to_message_out(message: Message) -> MessageOut:
+def reactions_out(reactions: Sequence[Reaction]) -> list[ReactionOut]:
+    """Grouped per emoji in order of first reaction (rows arrive sorted by created_at)."""
+    groups: dict[str, list[UUID]] = {}
+    for reaction in reactions:
+        groups.setdefault(reaction.emoji, []).append(reaction.user_id)
+    return [ReactionOut(emoji=emoji, count=len(ids), user_ids=ids) for emoji, ids in groups.items()]
+
+
+def to_message_out(message: Message, reactions: Sequence[Reaction] = ()) -> MessageOut:
+    deleted = message.is_deleted
     return MessageOut(
         id=message.id,
         channel_id=message.channel_id,
@@ -57,8 +92,12 @@ def to_message_out(message: Message) -> MessageOut:
         seq=message.seq,
         updated_seq=message.updated_seq,
         client_msg_id=message.client_msg_id,
-        body="" if message.is_deleted else message.body,
+        type=message.type,
+        body="" if deleted else message.body,
+        mentioned_user_ids=[] if deleted else list(message.mentioned_user_ids),
+        mention_all=False if deleted else message.mention_all,
+        reactions=[] if deleted else reactions_out(reactions),
         created_at=message.created_at,
         edited_at=message.edited_at,
-        deleted=message.is_deleted,
+        deleted=deleted,
     )

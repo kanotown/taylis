@@ -87,7 +87,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | `type = system` のメッセージ | 除外 | M5 |
 | `level = none`、または `muted_until > now()` | 除外 | M5 |
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
-| `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (メンション導入後。それまでチャンネルは `all` 設定時のみ) |
+| `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、親の投稿者と過去の返信者を対象 (level が `none` でなければ) | M8c |
 | 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b |
 | 別端末でアクティブ (§4.1) | 除外 | M5 |

@@ -3,6 +3,7 @@ package jp.chikuwachat.android.sync
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,12 +41,18 @@ data class MessageState(
     val deleted: Boolean = false,
     val pending: Boolean = false,
     val failed: Boolean = false,
+    val reactions: List<ReactionOut> = emptyList(),
+    val mentionedUserIds: List<String> = emptyList(),
+    val mentionAll: Boolean = false,
 ) {
+    fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
+
     companion object {
         fun from(message: MessageOut) = MessageState(
             id = message.id, channelId = message.channelId, senderId = message.senderId, seq = message.seq,
             updatedSeq = message.updatedSeq, clientMsgId = message.clientMsgId, body = message.body,
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
+            reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
         )
 
         fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String) = MessageState(

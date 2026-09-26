@@ -44,6 +44,45 @@ final class SyncEngineTests: XCTestCase {
         }
     }
 
+    func testAppliesLiveEditsDeletionsAndReactions() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        let (m1, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m1")
+        let (m2, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m2")
+        await settle(w.engine)
+        try w.server.edit(channelId: w.channel.id, userId: w.alice.id, messageId: m1.id, body: "m1 edited")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m1 edited", "m2"])
+        XCTAssertNotNil(w.store.messages(w.channel.id).first?.editedAt)
+        try w.server.react(channelId: w.channel.id, userId: w.bob.id, messageId: m2.id, emoji: "👍", present: true)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).last?.reactions.map(\.emoji), ["👍"])
+        XCTAssertEqual(w.store.messages(w.channel.id).last?.reactedBy(w.bob.id, "👍"), true)
+        try w.server.react(channelId: w.channel.id, userId: w.bob.id, messageId: m2.id, emoji: "👍", present: false)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).last?.reactions.count, 0)
+        try w.server.delete(channelId: w.channel.id, userId: w.alice.id, messageId: m2.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m1 edited"])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 6)
+        w.engine.stop()
+    }
+
+    func testChannelMentionsNotify() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "plain")
+        await settle(w.engine)
+        XCTAssertEqual(notifications, [])
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "hey <@\(w.bob.id)>")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<!channel> all")
+        await settle(w.engine)
+        XCTAssertEqual(notifications, ["hey <@\(w.bob.id)>", "<!channel> all"])
+        w.engine.stop()
+    }
+
     func testBootstrapLoadsLatestPageOfTheOpenedChannel() async throws {
         let w = makeWorld()
         for i in 1...5 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
