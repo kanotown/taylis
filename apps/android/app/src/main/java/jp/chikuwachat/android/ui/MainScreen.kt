@@ -243,7 +243,7 @@ private fun ChannelList(store: Store, version: Int, onSelect: (String) -> Unit, 
                 Row(Modifier.fillMaxWidth().clickable { onJoin(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     ChannelGlyph(channel)
                     Spacer(Modifier.width(12.dp))
-                    Text("#" + (channel.channel.name ?: ""), modifier = Modifier.weight(1f))
+                    Text(channel.channel.name ?: "", modifier = Modifier.weight(1f))
                     Text("参加", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -275,7 +275,7 @@ private fun ChannelGlyph(channel: ChannelState) {
 
 @Composable
 private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit) {
-    val title = channelTitle(channel, store)
+    val title = channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") }
     val muted = channel.channel.notification?.level == "none" || Timeline.muteLabel(channel.channel.notification?.mutedUntil) != null
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (channel.channel.isDm) {
