@@ -320,11 +320,29 @@ Desktop の見た目を、フリーで使える現行のフレームワークに
 | M11h | チャンネルまわり | `ChannelOut.member_count` (一覧・単体・`channel.*` イベントが持つ、クライアントは `member_added / removed` で加減) と `GET /mentions` (自分宛て + `<!channel>`、`created_at` カーソル、自分の投稿は除く)。3 端末: チャンネルブラウザ (公開 + 参加中の非公開、人数、検索、参加 / 退出、作成)、会話の先頭に紹介 (作成者と日付、公開 / 非公開、人数、説明)、サイドバーの「メンション」一覧と、未送信の下書きがあるときだけ出る「下書き」一覧 (行で会話を開き本文を復元)。iOS / Android のチャンネル情報に説明の編集、退出、オーナー / admin の改名とアーカイブ | **実装済み (2026-09-27)**: サーバ pytest 142、Desktop vitest 82 (実サーバで目視)、iOS XCTest 51 + スナップショット、Android JUnit 52 + エミュレータで目視 |
 | M11i | ファイル一覧 | `GET /files?channel_id&q&cursor&limit`: 参加中チャンネルの添付 (status=attached、削除済みは除く) を新しい順に、(attached_at, id) のキーセットカーソルで返す。行は添付 + message_id / channel_id / parent_id / uploader_id / attached_at。`q` はファイル名の部分一致 (大文字小文字を区別しない)。3 端末: サイドバーの「ファイル」(全チャンネル、チャンネル絞り込みと名前フィルタ) とチャンネルからの「ファイル」(そのチャンネル)、行はサムネイル / アイコン・サイズ・投稿者・チャンネル・日時、ダウンロードと該当メッセージの表示 (スレッド返信はスレッドを開く) | **実装済み (2026-09-27)**: サーバ pytest 143、Desktop vitest 83 (実サーバで目視)、iOS XCTest 51 + スナップショット、Android JUnit 52 + エミュレータで目視 |
 
+### M12: 日々の使い勝手 (Slack / Mattermost 相当の続き、2026-09-27〜)
+
+M11 と同じ進め方 (サーバ → Desktop → iOS → Android、機能ごとにコミット)。使う頻度と実装コストの釣り合いで順に並べる。
+
+| # | 機能 | 内容 | 状況 |
+| --- | --- | --- | --- |
+| M12a | お気に入りと全既読 | `channel_favorites` (user_id, channel_id)、`PUT/DELETE /channels/{id}/favorite`、bootstrap の `favorites`、`favorite.updated` (audience=user)。`POST /channels/read-all` が参加中チャンネルの既読位置を末尾へ (チャンネルごとに `read.updated`)。3 端末: サイドバー先頭の「お気に入り」節、チャンネルメニュー / 情報から星の切替、「すべて既読にする」 | 未着手 |
+| M12b | メッセージへのリンク | `<server>/m/<message_id>` 形式のパーマリンク (コピー / 共有)。本文中の自サーバーのリンクは「メッセージを表示」として描画し、タップで該当メッセージへ (スレッド返信はスレッドを開く)。Desktop はチャンネル / メッセージの deep link をウィンドウで受ける | 未着手 |
+| M12c | 通知の一時停止と quiet hours | ユーザー設定 `dnd_until` と `quiet_hours` (開始 / 終了 / 曜日、端末のタイムゾーン)。サーバは outbox 配送時に push を抑止 (バッジは更新)、プレゼンスに 🔕 を添える。3 端末: 設定とステータス編集から「通知を一時停止 (30 分 / 1 時間 / 明日まで)」と quiet hours | 未着手 |
+| M12d | 予約送信 | `scheduled_messages` (下書きと同じ本文 / 添付、送信時刻)、ワーカーが時刻に投稿 (idempotent)、`scheduled.updated`。3 端末: 入力欄の「後で送信」(時刻プリセット + 任意)、「下書き」に予約分も並べて取消 / 今すぐ送信 | 未着手 |
+| M12e | リマインダー | メッセージの「リマインド (20 分 / 1 時間 / 明日 / 任意)」。時刻になると本人宛ての通知 (push + 自分への DM 風の system メッセージ)。予約送信と同じジョブ表を使う | 未着手 |
+| M12f | カスタム絵文字 | admin が画像を登録 (`custom_emoji`、versitygw に保存)、`:name:` を 3 端末で画像として描画、リアクションにも使える。ピッカーに「カスタム」カテゴリ | 未着手 |
+| M12g | キーワード通知 | ユーザーごとの通知キーワード (例: 自分の名前の別表記)。本文に含まれればメンション扱い (unread の mention_count、push) | 未着手 |
+| M12h | 招待リンク | admin が発行する一度きり / 期限つきの招待 URL。開いた人がユーザー名・表示名・パスワードを決めて参加 (公開登録はしない) | 未着手 |
+| M12i | 2 要素認証 (TOTP) | 設定で有効化 (QR + 回復コード)、ログイン時にコード入力、admin によるリセット。3 端末のログイン画面 | 未着手 |
+| M12j | Web クライアント | Desktop の React バンドルをサーバ (Caddy) から配信し、ブラウザでも使えるようにする (通知 / 秘密情報 / ダウンロードは Web の実装に切替) | 未着手 |
+| M12k | ユーザーグループ | `@group` メンション (admin が作成、メンバー管理)、通知は個別メンションと同じ扱い | 未着手 |
+
 ### バックログ (未スケジュール)
 
-カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、Web クライアント、presigned URL、Redis による複数プロセス化、
-Mattermost からのインポート (`mmctl export` の bulk-import JSONL を読む `import-mattermost` CLI。設計メモは
-このセッションの会話に残しており、必要になった時点で docs に起こす)、意味検索 / 要約 / RAG。
+OIDC、presigned URL、Redis による複数プロセス化、Mattermost からのインポート (`mmctl export` の bulk-import JSONL を
+読む `import-mattermost` CLI。設計メモはこのセッションの会話に残しており、必要になった時点で docs に起こす)、
+意味検索 / 要約 / RAG。
 
 ## 3. 設計ポイントとマイルストーンの対応
 

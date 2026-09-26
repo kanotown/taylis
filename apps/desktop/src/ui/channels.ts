@@ -26,6 +26,8 @@ export function badgeCount(channel: ChannelState, now?: Date): number {
 }
 
 export interface ChannelSections {
+  /** Starred conversations (M12a); left out of `channels` / `dms`. */
+  favorites: ChannelState[];
   channels: ChannelState[];
   dms: ChannelState[];
   browse: ChannelState[];
@@ -35,16 +37,20 @@ export interface ChannelSections {
 export function sectionChannels(
   all: ChannelState[],
   title: (channel: ChannelState) => string,
-  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date } = {},
+  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string> } = {},
 ): ChannelSections {
   const byTitle = (a: ChannelState, b: ChannelState) => title(a).localeCompare(title(b), "ja");
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, options.now);
+  const starred = (channel: ChannelState) => options.favorites?.has(channel.id) ?? false;
   return {
+    favorites: all
+      .filter((c) => c.isMember && !c.archived && starred(c) && keep(c))
+      .sort(byTitle),
     channels: all
-      .filter((c) => c.isMember && !isDmChannel(c) && !c.archived && keep(c))
+      .filter((c) => c.isMember && !isDmChannel(c) && !c.archived && !starred(c) && keep(c))
       .sort(byTitle),
     dms: all
-      .filter((c) => c.isMember && isDmChannel(c) && keep(c))
+      .filter((c) => c.isMember && isDmChannel(c) && !starred(c) && keep(c))
       .sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")),
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byTitle),
   };

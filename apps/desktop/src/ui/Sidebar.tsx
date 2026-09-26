@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Bookmark, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
+import { AtSign, BellOff, Bookmark, CheckCheck, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -37,13 +37,15 @@ interface Props {
   /** M11i: files in my channels. */
   onFiles?: () => void;
   filesActive?: boolean;
+  /** M12a: every channel read to its end. */
+  onReadAll?: () => void;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll }: Props) {
   const store = controller.store;
   const draftCount = store.listDrafts().length;
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
+  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites });
   const status = controller.engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
@@ -226,10 +228,20 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         </ul>
       )}
 
+      {sections.favorites.length > 0 && (
+        <Section title="お気に入り">
+          <ul className="space-y-px">{sections.favorites.map(item)}</ul>
+        </Section>
+      )}
       <Section
         title="チャンネル"
         action={
           <span className="flex items-center">
+            {onReadAll && (
+              <IconButton tone="sidebar" label="すべて既読にする" className="h-6 w-6" onClick={onReadAll}>
+                <CheckCheck size={14} />
+              </IconButton>
+            )}
             {onBrowse && (
               <IconButton tone="sidebar" label={`チャンネルを探す (${modKey()}+Shift+E)`} className="h-6 w-6" onClick={onBrowse}>
                 <Compass size={14} />

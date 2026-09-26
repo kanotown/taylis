@@ -654,6 +654,29 @@
         "type": "object"
       }
     },
+    "favorite.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "favorite"
+        ],
+        "title": "FavoriteUpdatedData",
+        "type": "object"
+      }
+    },
     "message.created": {
       "audience": "channel",
       "consumes_seq": true,

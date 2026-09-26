@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -449,6 +449,23 @@ export class FakeServer {
     return updated;
   }
 
+  /** "user" → starred channel ids (M12a). */
+  readonly favorites = new Map<string, string[]>();
+
+  setFavorite(userId: string, channelId: string, on: boolean): void {
+    const list = this.favorites.get(userId) ?? [];
+    if (on ? list.includes(channelId) : !list.includes(channelId)) return;
+    this.favorites.set(userId, on ? [...list, channelId] : list.filter((id) => id !== channelId));
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "favorite.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, favorite: on } });
+  }
+
+  /** POST /channels/read-all: every membership read to its end; read.updated per moved channel. */
+  readAll(userId: string): ChannelReadStateOut[] {
+    return [...this.channels.values()]
+      .filter((r) => r.members.has(userId))
+      .map((r) => ({ channel_id: r.channel.id, ...this.markRead(userId, r.channel.id, r.channel.last_seq) }));
+  }
+
   /** "user" → saved message ids, newest first. */
   readonly bookmarks = new Map<string, string[]>();
 
@@ -536,6 +553,7 @@ export class FakeServer {
           threads: this.threadSummary(userId),
           presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
           bookmarks: this.bookmarks.get(userId) ?? [],
+          favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {
@@ -566,6 +584,10 @@ export class FakeServer {
         if (!record) return [];
         this.requireMember(record.channel.id, userId);
         return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
+      },
+      readAll: async (): Promise<ChannelReadStateOut[]> => {
+        maybeFail();
+        return this.readAll(userId);
       },
       markRead: async (channelId, lastReadSeq, mode = "advance"): Promise<ReadStateOut> => {
         maybeFail();

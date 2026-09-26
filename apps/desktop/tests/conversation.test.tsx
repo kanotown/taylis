@@ -22,7 +22,7 @@ function world() {
   store.upsertChannel(other, { isMember: true });
   const send = vi.fn(async () => {});
   const markRead = vi.fn();
-  const controller = { store, engine: { send, markRead, status: "online", unreadHold: new Map<string, number>() }, api: { uploadAttachment: vi.fn() }, setError: vi.fn(), messageFocus: null, sendKey: "shift-enter" } as unknown as AppController;
+  const controller = { store, engine: { send, markRead, sendTyping: vi.fn(), status: "online", unreadHold: new Map<string, number>() }, api: { uploadAttachment: vi.fn() }, setError: vi.fn(), messageFocus: null, sendKey: "shift-enter" } as unknown as AppController;
   function DraftComposer({ id = channel.id, parentId = null }: { id?: string; parentId?: string | null }) {
     useSyncExternalStore(store.subscribe.bind(store), () => store.version);
     return <Composer controller={controller} channel={store.getChannel(id)!} parentId={parentId} />;

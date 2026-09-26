@@ -9,6 +9,7 @@ from app.modules.channels import service
 from app.modules.channels.schemas import (
     ChannelCreate,
     ChannelOut,
+    ChannelReadStateOut,
     ChannelUpdate,
     DmCreate,
     MemberAdd,
@@ -84,6 +85,12 @@ async def get_or_create_dm(
     channel, created = await service.get_or_create_dm(db, user, participants)
     response.status_code = 201 if created else 200
     return channel
+
+
+@router.post("/channels/read-all", response_model=list[ChannelReadStateOut])
+async def mark_all_read(user: CurrentUser, db: Db) -> list[ChannelReadStateOut]:
+    """M12a 「すべて既読にする」: every channel I belong to is read to its end."""
+    return await service.mark_all_read(db, user)
 
 
 @router.put("/channels/{channel_id}/read", response_model=ReadStateOut)

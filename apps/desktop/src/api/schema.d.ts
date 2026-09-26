@@ -284,6 +284,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark All Read
+         * @description M12a 「すべて既読にする」: every channel I belong to is read to its end.
+         */
+        post: operations["mark_all_read_api_v1_channels_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}": {
         parameters: {
             query?: never;
@@ -314,6 +334,27 @@ export interface paths {
         /** Archive Channel */
         post: operations["archive_channel_api_v1_channels__channel_id__archive_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/favorite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Favorite
+         * @description Star a channel I belong to (M12a); 201 when it was not starred yet.
+         */
+        put: operations["add_favorite_api_v1_channels__channel_id__favorite_put"];
+        post?: never;
+        /** Remove Favorite */
+        delete: operations["remove_favorite_api_v1_channels__channel_id__favorite_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1033,6 +1074,11 @@ export interface components {
             bookmarks: string[];
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
+            /**
+             * Favorites
+             * @default []
+             */
+            favorites: string[];
             limits: components["schemas"]["Limits"];
             me: components["schemas"]["UserMe"];
             /**
@@ -1113,6 +1159,23 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ChannelReadStateOut
+         * @description One channel's read state after POST /channels/read-all (M12a).
+         */
+        ChannelReadStateOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Last Read Seq */
+            last_read_seq: number;
+            /** Mention Count */
+            mention_count: number;
+            /** Unread Count */
+            unread_count: number;
         };
         /** ChannelUpdate */
         ChannelUpdate: {
@@ -1203,6 +1266,16 @@ export interface components {
         DmCreate: {
             /** User Ids */
             user_ids: string[];
+        };
+        /** FavoriteStateOut */
+        FavoriteStateOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Favorite */
+            favorite: boolean;
         };
         /**
          * FileItem
@@ -2315,6 +2388,26 @@ export interface operations {
             };
         };
     };
+    mark_all_read_api_v1_channels_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelReadStateOut"][];
+                };
+            };
+        };
+    };
     get_channel_api_v1_channels__channel_id__get: {
         parameters: {
             query?: never;
@@ -2399,6 +2492,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_favorite_api_v1_channels__channel_id__favorite_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_favorite_api_v1_channels__channel_id__favorite_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FavoriteStateOut"];
                 };
             };
             /** @description Validation Error */

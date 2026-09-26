@@ -331,6 +331,15 @@
             "title": "Channels",
             "type": "array"
           },
+          "favorites": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Favorites",
+            "type": "array"
+          },
           "limits": {
             "$ref": "#/components/schemas/Limits"
           },
@@ -589,6 +598,36 @@
           "dm_user_ids"
         ],
         "title": "ChannelOut",
+        "type": "object"
+      },
+      "ChannelReadStateOut": {
+        "description": "One channel's read state after POST /channels/read-all (M12a).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id",
+          "last_read_seq",
+          "unread_count",
+          "mention_count"
+        ],
+        "title": "ChannelReadStateOut",
         "type": "object"
       },
       "ChannelUpdate": {
@@ -947,6 +986,25 @@
           "user_ids"
         ],
         "title": "DmCreate",
+        "type": "object"
+      },
+      "FavoriteStateOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "favorite"
+        ],
+        "title": "FavoriteStateOut",
         "type": "object"
       },
       "FileItem": {
@@ -3256,6 +3314,37 @@
         ]
       }
     },
+    "/api/v1/channels/read-all": {
+      "post": {
+        "description": "M12a 「すべて既読にする」: every channel I belong to is read to its end.",
+        "operationId": "mark_all_read_api_v1_channels_read_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelReadStateOut"
+                  },
+                  "title": "Response Mark All Read Api V1 Channels Read All Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark All Read",
+        "tags": [
+          "channels"
+        ]
+      }
+    },
     "/api/v1/channels/{channel_id}": {
       "get": {
         "operationId": "get_channel_api_v1_channels__channel_id__get",
@@ -3405,6 +3494,101 @@
         "summary": "Archive Channel",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/favorite": {
+      "delete": {
+        "operationId": "remove_favorite_api_v1_channels__channel_id__favorite_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavoriteStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Favorite",
+        "tags": [
+          "favorites"
+        ]
+      },
+      "put": {
+        "description": "Star a channel I belong to (M12a); 201 when it was not starred yet.",
+        "operationId": "add_favorite_api_v1_channels__channel_id__favorite_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavoriteStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Favorite",
+        "tags": [
+          "favorites"
         ]
       }
     },

@@ -67,3 +67,7 @@ export type MentionListOut = components["schemas"]["MentionListOut"];
 /** Files list (M11i). */
 export type FileItem = components["schemas"]["FileItem"];
 export type FileListOut = components["schemas"]["FileListOut"];
+
+/** Starred channels and 「すべて既読にする」 (M12a). */
+export type FavoriteStateOut = components["schemas"]["FavoriteStateOut"];
+export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];

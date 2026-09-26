@@ -263,6 +263,22 @@ CREATE INDEX bookmarks_user_idx ON bookmarks (user_id, created_at);
 - ピン留め (`messages.pinned_at`) はチャンネル全員に見えるので `seq` を消費し、`message.updated (change=pin)`
   で配る。両方ともメッセージの削除で消える (一覧から外れる)。
 
+### channel_favorites (お気に入りチャンネル、M12a)
+
+```sql
+CREATE TABLE channel_favorites (
+  user_id     uuid NOT NULL REFERENCES users(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, channel_id)
+);
+CREATE INDEX channel_favorites_user_idx ON channel_favorites (user_id, created_at);
+```
+
+- サイドバーの「お気に入り」節。個人データなので `seq` を消費せず、端末間は `favorite.updated` (audience=user)
+  で揃え、bootstrap には id の一覧 (`favorites`) を入れる。星を付けられるのはメンバーだけ。
+- 退出しても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える (再参加で戻る)。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

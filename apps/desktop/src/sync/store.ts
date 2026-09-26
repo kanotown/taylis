@@ -46,8 +46,10 @@ export class Store {
   readonly presence = new Map<string, PresenceStatus>();
   /** "channel[:parent]" → user id → expiry (ms); volatile typing indicators. */
   readonly typing = new Map<string, Map<string, number>>();
-  /** My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted. */
+  /** My saved message ids (M11c); from bookmark and bookmark.updated, not persisted. */
   readonly bookmarks = new Set<string>();
+  /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
+  readonly favorites = new Set<string>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -287,6 +289,25 @@ export class Store {
         mention_count: Math.max(0, this.threadSummary.mention_count + mention),
       };
     }
+    this.emit();
+  }
+
+  // --- favorites (M12a) --------------------------------------------------------------------
+
+  isFavorite(channelId: string): boolean {
+    return this.favorites.has(channelId);
+  }
+
+  setFavorite(channelId: string, on: boolean): void {
+    if (on ? this.favorites.has(channelId) : !this.favorites.has(channelId)) return;
+    if (on) this.favorites.add(channelId);
+    else this.favorites.delete(channelId);
+    this.emit();
+  }
+
+  replaceFavorites(ids: string[]): void {
+    this.favorites.clear();
+    for (const id of ids) this.favorites.add(id);
     this.emit();
   }
 

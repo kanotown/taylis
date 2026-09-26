@@ -9,6 +9,8 @@ import type {
   BookmarkStateOut,
   BootstrapOut,
   ChannelOut,
+  ChannelReadStateOut,
+  FavoriteStateOut,
   FileListOut,
   LinkPreviewOut,
   MentionListOut,
@@ -211,6 +213,21 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- favorites and read-all (M12a) ------------------------------------------------------
+
+  favoriteChannel(channelId: string): Promise<FavoriteStateOut> {
+    return this.request("PUT", `/api/v1/channels/${channelId}/favorite`);
+  }
+
+  unfavoriteChannel(channelId: string): Promise<FavoriteStateOut> {
+    return this.request("DELETE", `/api/v1/channels/${channelId}/favorite`);
+  }
+
+  /** Every channel I belong to is read to its end; the response carries the new states. */
+  readAll(): Promise<ChannelReadStateOut[]> {
+    return this.request("POST", "/api/v1/channels/read-all");
   }
 
   // --- recent mentions (M11h) ------------------------------------------------------------
