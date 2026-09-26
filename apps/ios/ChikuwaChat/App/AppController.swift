@@ -237,6 +237,25 @@ final class AppController {
         } catch { self.error = describe(error) }
     }
 
+    /// M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device.
+    func toggleFavorite(_ channelId: String) async {
+        guard let api else { return }
+        let on = !store.isFavorite(channelId)
+        store.setFavorite(channelId, on: on)
+        do {
+            if on { _ = try await api.favoriteChannel(id: channelId) } else { _ = try await api.unfavoriteChannel(id: channelId) }
+        } catch {
+            store.setFavorite(channelId, on: !on)
+            self.error = describe(error)
+        }
+    }
+
+    /// M12a 「すべて既読にする」.
+    func markAllRead() async {
+        guard let engine else { return }
+        do { try await engine.markAllRead() } catch { self.error = describe(error) }
+    }
+
     /// M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device.
     func toggleBookmark(_ messageId: String) async {
         guard let api else { return }

@@ -248,6 +248,22 @@ struct BootstrapOut: Codable {
     var presence: [PresenceEntry]? = nil
     /// My saved messages (M11c): ids only, newest first; the list itself is GET /bookmarks.
     var bookmarks: [String]? = nil
+    /// My starred channels (M12a) among `channels`.
+    var favorites: [String]? = nil
+}
+
+/// PUT / DELETE /channels/{id}/favorite (M12a).
+struct FavoriteStateOut: Codable, Equatable {
+    let channelId: String
+    let favorite: Bool
+}
+
+/// One row of POST /channels/read-all (M12a).
+struct ChannelReadStateOut: Codable, Equatable {
+    let channelId: String
+    let lastReadSeq: Int
+    let unreadCount: Int
+    let mentionCount: Int
 }
 
 struct BookmarkStateOut: Codable, Equatable {

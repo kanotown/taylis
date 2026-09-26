@@ -108,6 +108,10 @@ final class FakeServer {
             }
         }
 
+        func readAll() async throws -> [ChannelReadStateOut] {
+            try maybeFail()
+            return try server.readAll(userId)
+        }
         func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
             try maybeFail()
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq)
@@ -237,6 +241,27 @@ final class FakeServer {
 
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
+    /// "user" → starred channel ids (M12a).
+    var favorites: [String: [String]] = [:]
+
+    func setFavorite(_ userId: String, channelId: String, on: Bool) {
+        var list = favorites[userId] ?? []
+        if on == list.contains(channelId) { return }
+        if on { list.append(channelId) } else { list.removeAll { $0 == channelId } }
+        favorites[userId] = list
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("favorite.updated"), "ts": .string(now()),
+                                "channel_id": .string(channelId), "seq": .null,
+                                "data": .object(["channel_id": .string(channelId), "favorite": .bool(on)])]))
+    }
+
+    /// POST /channels/read-all: every membership read to its end; read.updated per moved channel.
+    func readAll(_ userId: String) throws -> [ChannelReadStateOut] {
+        try channels.values.filter { $0.members.contains(userId) }.map { record in
+            let state = try markRead(userId: userId, channelId: record.channel.id, seq: record.channel.lastSeq)
+            return ChannelReadStateOut(channelId: record.channel.id, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount, mentionCount: state.mentionCount)
+        }
+    }
 
     func setBookmark(_ userId: String, messageId: String, on: Bool) {
         var list = bookmarks[userId] ?? []
@@ -594,7 +619,8 @@ final class FakeServer {
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),
                             threads: threadSummary(for: userId),
                             presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
-                            bookmarks: bookmarks[userId] ?? [])
+                            bookmarks: bookmarks[userId] ?? [],
+                            favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true })
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

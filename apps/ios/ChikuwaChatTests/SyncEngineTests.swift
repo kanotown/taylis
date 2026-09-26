@@ -541,6 +541,40 @@ final class SyncEngineTests: XCTestCase {
         second.stop()
     }
 
+    func testFavoritesSyncAndReadAllClearsEveryChannel() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let general = server.createChannel("general", ownerId: alice.id)
+        let random = server.createChannel("random", ownerId: alice.id)
+        server.join(general.id, bob.id)
+        server.join(random.id, bob.id)
+        server.setFavorite(bob.id, channelId: random.id, on: true)
+        _ = try server.post(channelId: general.id, senderId: alice.id, body: "one")
+        _ = try server.post(channelId: general.id, senderId: alice.id, body: "two")
+        _ = try server.post(channelId: random.id, senderId: alice.id, body: "three")
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(store.favorites, [random.id])
+        XCTAssertEqual(store.channel(general.id)?.unreadCount, 2)
+        XCTAssertEqual(store.channel(random.id)?.unreadCount, 1)
+
+        server.setFavorite(bob.id, channelId: general.id, on: true) // another device starred it
+        await settle(engine)
+        XCTAssertTrue(store.isFavorite(general.id))
+
+        try await engine.markAllRead()
+        XCTAssertEqual(store.channel(general.id)?.unreadCount, 0)
+        XCTAssertEqual(store.channel(general.id)?.lastReadSeq, 2)
+        XCTAssertEqual(store.channel(random.id)?.unreadCount, 0)
+        engine.stop()
+    }
+
     func testBrowsablePublicChannelsAndJoining() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

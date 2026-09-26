@@ -240,6 +240,8 @@ final class Store {
     var typing: [String: [String: Date]] = [:]
     /// My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted.
     var bookmarks: Set<String> = []
+    /// My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted.
+    var favorites: Set<String> = []
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -393,6 +395,16 @@ final class Store {
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
     }
+
+    // MARK: favorites (M12a)
+
+    func isFavorite(_ channelId: String) -> Bool { favorites.contains(channelId) }
+
+    func setFavorite(_ channelId: String, on: Bool) {
+        if on { favorites.insert(channelId) } else { favorites.remove(channelId) }
+    }
+
+    func replaceFavorites(_ ids: [String]) { favorites = Set(ids) }
 
     // MARK: bookmarks (M11c)
 
