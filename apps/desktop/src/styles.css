@@ -90,7 +90,8 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 /* Highlight of a message revealed from search */
 @keyframes message-highlight { from { background: var(--mark); } to { background: transparent; } }
 .message.highlighted { animation: message-highlight 3s ease-out; }
-.message:focus-within .row-actions, .message:hover .row-actions { opacity: 1; pointer-events: auto; }
+/* Hover shows the action bar; keyboard focus keeps it, but a mouse click on one of its buttons must not pin it. */
+.message:hover .row-actions, .message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
 .message .time-hover { visibility: hidden; }
 .message:hover .time-hover { visibility: visible; }
 
