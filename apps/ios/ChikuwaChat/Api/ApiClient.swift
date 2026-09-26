@@ -1,0 +1,194 @@
+import Foundation
+
+/// Structured API errors (ARCHITECTURE.md §9).
+enum ApiError: Error {
+    case api(status: Int, code: String, message: String)
+    case network(Error)
+
+    var isAuth: Bool { if case .api(let status, _, _) = self { return status == 401 } else { return false } }
+
+    /// Temporary failures worth retrying; the idempotency key prevents duplicates.
+    var isRetryable: Bool {
+        switch self {
+        case .network: return true
+        case .api(let status, _, _): return status == 429 || status >= 500
+        }
+    }
+
+    var code: String {
+        if case .api(_, let code, _) = self { return code }
+        return "network_error"
+    }
+}
+
+/// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
+@MainActor
+final class ApiClient: SyncApi {
+    let baseUrl: URL
+    var accessToken: String?
+    var refreshToken: String?
+    var onTokens: ((TokenResponse) -> Void)?
+    var onSignedOut: (() -> Void)?
+    private let session: URLSession
+    private var refreshTask: Task<TokenResponse, Error>?
+
+    init(baseUrl: URL, session: URLSession = .shared) {
+        self.baseUrl = baseUrl
+        self.session = session
+    }
+
+    var wsUrl: URL {
+        var components = URLComponents(url: baseUrl, resolvingAgainstBaseURL: false)!
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path = "/api/v1/ws"
+        return components.url!
+    }
+
+    // MARK: auth
+
+    func login(username: String, password: String, device: DeviceInfo) async throws -> TokenResponse {
+        let body: JSONValue = .object([
+            "username": .string(username),
+            "password": .string(password),
+            "device": .object([
+                "platform": .string(device.platform),
+                "device_name": device.deviceName.map(JSONValue.string) ?? .null,
+                "app_version": device.appVersion.map(JSONValue.string) ?? .null,
+            ]),
+        ])
+        let tokens: TokenResponse = try await request("POST", "/api/v1/auth/login", body: body, auth: false)
+        apply(tokens)
+        return tokens
+    }
+
+    func refresh() async throws -> TokenResponse {
+        if let task = refreshTask { return try await task.value }
+        guard let token = refreshToken else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
+        let task = Task<TokenResponse, Error> {
+            do {
+                let tokens: TokenResponse = try await request("POST", "/api/v1/auth/refresh", body: .object(["refresh_token": .string(token)]), auth: false)
+                apply(tokens)
+                return tokens
+            } catch {
+                if let apiError = error as? ApiError, apiError.isAuth { signOut() }
+                throw error
+            }
+        }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
+    }
+
+    func logout() async {
+        _ = try? await requestRaw("POST", "/api/v1/auth/logout", body: nil, auth: true, retry401: false)
+        signOut()
+    }
+
+    func signOut() {
+        accessToken = nil
+        refreshToken = nil
+        onSignedOut?()
+    }
+
+    private func apply(_ tokens: TokenResponse) {
+        accessToken = tokens.accessToken
+        refreshToken = tokens.refreshToken
+        onTokens?(tokens)
+    }
+
+    // MARK: endpoints
+
+    func me() async throws -> UserMe { try await request("GET", "/api/v1/users/me") }
+
+    func changePassword(current: String, new: String) async throws {
+        _ = try await requestRaw("PUT", "/api/v1/users/me/password",
+                                 body: .object(["current_password": .string(current), "new_password": .string(new)]), auth: true, retry401: true)
+    }
+
+    func users() async throws -> [UserPublic] { try await request("GET", "/api/v1/users") }
+
+    func bootstrap() async throws -> BootstrapOut { try await request("GET", "/api/v1/sync/bootstrap") }
+
+    func channels(includePublic: Bool) async throws -> [ChannelOut] {
+        try await request("GET", "/api/v1/channels" + (includePublic ? "?include=public" : ""))
+    }
+
+    func publicChannels() async throws -> [ChannelOut] {
+        try await channels(includePublic: true).filter { $0.membership == nil }
+    }
+
+    func createChannel(name: String, type: String) async throws -> ChannelOut {
+        try await request("POST", "/api/v1/channels", body: .object(["name": .string(name), "type": .string(type)]))
+    }
+
+    func joinChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/join", body: .object([:])) }
+
+    func members(channelId: String) async throws -> [MemberOut] { try await request("GET", "/api/v1/channels/\(channelId)/members") }
+
+    func addMember(channelId: String, userId: String) async throws -> MemberOut {
+        try await request("POST", "/api/v1/channels/\(channelId)/members", body: .object(["user_id": .string(userId)]))
+    }
+
+    func createDm(userIds: [String]) async throws -> ChannelOut {
+        try await request("POST", "/api/v1/dms", body: .object(["user_ids": .array(userIds.map(JSONValue.string))]))
+    }
+
+    func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut {
+        var path = "/api/v1/channels/\(channelId)/messages?limit=\(limit)"
+        if let beforeSeq { path += "&before_seq=\(beforeSeq)" }
+        return try await request("GET", path)
+    }
+
+    func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut {
+        try await request("GET", "/api/v1/channels/\(channelId)/sync?since_seq=\(sinceSeq)&limit=\(limit)")
+    }
+
+    func postMessage(channelId: String, clientMsgId: String, body: String) async throws -> (MessageOut, Bool) {
+        let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages",
+                                                  body: .object(["client_msg_id": .string(clientMsgId), "body": .string(body)]), auth: true, retry401: true)
+        return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
+    }
+
+    // MARK: transport
+
+    private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true) async throws -> T {
+        let (data, _) = try await requestRaw(method, path, body: body, auth: auth, retry401: true)
+        do {
+            return try JSON.snakeDecoder.decode(T.self, from: data)
+        } catch {
+            throw ApiError.api(status: 0, code: "decode_error", message: "Unexpected response: \(error)")
+        }
+    }
+
+    private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool) async throws -> (Data, Int) {
+        var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSON.plainEncoder.encode(body)
+        }
+        if auth, let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            let (d, r) = try await session.data(for: request)
+            data = d
+            response = r as! HTTPURLResponse
+        } catch {
+            throw ApiError.network(error)
+        }
+        if (200..<300).contains(response.statusCode) { return (data, response.statusCode) }
+
+        let envelope = try? JSON.plainDecoder.decode(ErrorEnvelope.self, from: data)
+        let error = ApiError.api(status: response.statusCode, code: envelope?.error.code ?? "http_\(response.statusCode)",
+                                 message: envelope?.error.message ?? "Request failed")
+        if auth, response.statusCode == 401, error.code == "token_expired", retry401 {
+            _ = try await refresh()
+            return try await requestRaw(method, path, body: body, auth: auth, retry401: false)
+        }
+        if auth, response.statusCode == 401, error.code != "token_expired" { signOut() }
+        throw error
+    }
+}

@@ -1,0 +1,589 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01058071D83FDB3831C7411A /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF56C1D17673E9A46D280F6D /* Frames.swift */; };
+		1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6130C50876B86E11534F6 /* LiveBackendTests.swift */; };
+		214B994514BE464424A29889 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */; };
+		23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2F59D2D7208CD22462EB0C /* JSON.swift */; };
+		2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6511D58639F80B71BAF90EC5 /* Assets.xcassets */; };
+		2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */; };
+		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
+		4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD73867C215B4C74259890CB /* AppController.swift */; };
+		4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B03D2E682612B378434AF45 /* Store.swift */; };
+		4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7662F23ED981268EBFB0F8 /* ChannelView.swift */; };
+		73929A42759EC180C603E753 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A676948BB8E2458464753586 /* Models.swift */; };
+		870A22BBBA909116002B711D /* FakeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048A41BC92EAD6644AFA7294 /* FakeServer.swift */; };
+		8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */; };
+		94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */; };
+		A08D418A6147AFDDCBB082B3 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */; };
+		A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */; };
+		A4237035856B7D0FB8927960 /* WebSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4324FDC43FE12F139725608A /* WebSocketTransport.swift */; };
+		A891B9120FA22239813BEACD /* Sheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6BACB32869D36BC76BFACD3 /* Sheets.swift */; };
+		ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C74AC169B95554B18E616A6 /* MessageBodyView.swift */; };
+		B229EA04E953D0194682727E /* ApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20149D2520CFB689B293AEB2 /* ApiClient.swift */; };
+		B707F0057EF21D3BDE715582 /* contract in Resources */ = {isa = PBXBuildFile; fileRef = C1B1B9CFD4F32337DCDC0CCA /* contract */; };
+		BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7251E3E02E155A12489239 /* ChannelListView.swift */; };
+		BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */; };
+		CBD65280B7792F5C68583C5D /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24269094945450CF90BCAC33 /* SyncEngine.swift */; };
+		CCDA600DF1E454593B370952 /* BodyTokenizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */; };
+		F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91851A02B144D3F57EB66170 /* ContractTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		332DE3ADC7FC72DC0EBD8C1E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A8F363DCE70EC6B8FB238379 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D3BCBDFCF8E43CBE7EF61917;
+			remoteInfo = ChikuwaChat;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		048A41BC92EAD6644AFA7294 /* FakeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeServer.swift; sourceTree = "<group>"; };
+		13B6130C50876B86E11534F6 /* LiveBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBackendTests.swift; sourceTree = "<group>"; };
+		20149D2520CFB689B293AEB2 /* ApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClient.swift; sourceTree = "<group>"; };
+		24269094945450CF90BCAC33 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
+		39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
+		3F7662F23ED981268EBFB0F8 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
+		4324FDC43FE12F139725608A /* WebSocketTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketTransport.swift; sourceTree = "<group>"; };
+		523DFDB1261A9B828CA81605 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		5B03D2E682612B378434AF45 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		5E2F59D2D7208CD22462EB0C /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
+		6511D58639F80B71BAF90EC5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordView.swift; sourceTree = "<group>"; };
+		6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		7C74AC169B95554B18E616A6 /* MessageBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBodyView.swift; sourceTree = "<group>"; };
+		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
+		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
+		9B7251E3E02E155A12489239 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
+		A676948BB8E2458464753586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		AD73867C215B4C74259890CB /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
+		B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClientTests.swift; sourceTree = "<group>"; };
+		B6BACB32869D36BC76BFACD3 /* Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sheets.swift; sourceTree = "<group>"; };
+		B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngineTests.swift; sourceTree = "<group>"; };
+		C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChikuwaChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1B1B9CFD4F32337DCDC0CCA /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
+		CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChikuwaChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChikuwaChatApp.swift; sourceTree = "<group>"; };
+		FF56C1D17673E9A46D280F6D /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		009AE0B6956192294EE6E9C3 /* Sync */ = {
+			isa = PBXGroup;
+			children = (
+				FF56C1D17673E9A46D280F6D /* Frames.swift */,
+				5B03D2E682612B378434AF45 /* Store.swift */,
+				24269094945450CF90BCAC33 /* SyncEngine.swift */,
+				4324FDC43FE12F139725608A /* WebSocketTransport.swift */,
+			);
+			path = Sync;
+			sourceTree = "<group>";
+		};
+		00AE4D72C9ABEBACDC023B81 /* Api */ = {
+			isa = PBXGroup;
+			children = (
+				20149D2520CFB689B293AEB2 /* ApiClient.swift */,
+				5E2F59D2D7208CD22462EB0C /* JSON.swift */,
+				A676948BB8E2458464753586 /* Models.swift */,
+			);
+			path = Api;
+			sourceTree = "<group>";
+		};
+		13A2B3CCB81E377D6014568B /* Platform */ = {
+			isa = PBXGroup;
+			children = (
+				6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */,
+				39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */,
+			);
+			path = Platform;
+			sourceTree = "<group>";
+		};
+		2726A13E90F14ECBF20319B0 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				6511D58639F80B71BAF90EC5 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		281A86D9F01B78F75A5D270D /* ChikuwaChat */ = {
+			isa = PBXGroup;
+			children = (
+				00AE4D72C9ABEBACDC023B81 /* Api */,
+				746FC348230CABD2E5584727 /* App */,
+				13A2B3CCB81E377D6014568B /* Platform */,
+				2726A13E90F14ECBF20319B0 /* Resources */,
+				009AE0B6956192294EE6E9C3 /* Sync */,
+				85EFA806F94F76DDF816356E /* UI */,
+			);
+			path = ChikuwaChat;
+			sourceTree = "<group>";
+		};
+		4BE6D43FC9CA997FB9A40D7F /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				C1B1B9CFD4F32337DCDC0CCA /* contract */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
+		5F7C0C680CF150C309C3DE55 /* ChikuwaChat */ = {
+			isa = PBXGroup;
+			children = (
+				8E8F211CDE90788388A745FB /* server */,
+			);
+			name = ChikuwaChat;
+			path = ../..;
+			sourceTree = "<group>";
+		};
+		746FC348230CABD2E5584727 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AD73867C215B4C74259890CB /* AppController.swift */,
+				E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		85964B35FF364CC28075330D /* ChikuwaChatTests */ = {
+			isa = PBXGroup;
+			children = (
+				B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */,
+				84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */,
+				91851A02B144D3F57EB66170 /* ContractTests.swift */,
+				048A41BC92EAD6644AFA7294 /* FakeServer.swift */,
+				13B6130C50876B86E11534F6 /* LiveBackendTests.swift */,
+				B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */,
+			);
+			path = ChikuwaChatTests;
+			sourceTree = "<group>";
+		};
+		85EFA806F94F76DDF816356E /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */,
+				9B7251E3E02E155A12489239 /* ChannelListView.swift */,
+				3F7662F23ED981268EBFB0F8 /* ChannelView.swift */,
+				B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */,
+				523DFDB1261A9B828CA81605 /* MainView.swift */,
+				7C74AC169B95554B18E616A6 /* MessageBodyView.swift */,
+				B6BACB32869D36BC76BFACD3 /* Sheets.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		8E8F211CDE90788388A745FB /* server */ = {
+			isa = PBXGroup;
+			children = (
+				4BE6D43FC9CA997FB9A40D7F /* tests */,
+			);
+			path = server;
+			sourceTree = "<group>";
+		};
+		9EBFF18BABA664437095FFC6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */,
+				CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EF7AAD189524D9626BFB43BC = {
+			isa = PBXGroup;
+			children = (
+				281A86D9F01B78F75A5D270D /* ChikuwaChat */,
+				5F7C0C680CF150C309C3DE55 /* ChikuwaChat */,
+				85964B35FF364CC28075330D /* ChikuwaChatTests */,
+				9EBFF18BABA664437095FFC6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B442D86066CE8BBC0D268F8F /* ChikuwaChatTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0AC6D817D8D43CE8F8E84E57 /* Build configuration list for PBXNativeTarget "ChikuwaChatTests" */;
+			buildPhases = (
+				061D7389F5F40396762BB139 /* Sources */,
+				8D0EA038307BC362D9E02D29 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E38952548AA7A017E56F1511 /* PBXTargetDependency */,
+			);
+			name = ChikuwaChatTests;
+			packageProductDependencies = (
+			);
+			productName = ChikuwaChatTests;
+			productReference = CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D3BCBDFCF8E43CBE7EF61917 /* ChikuwaChat */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40761CA9CCDB088522CB91B0 /* Build configuration list for PBXNativeTarget "ChikuwaChat" */;
+			buildPhases = (
+				6D5D5433CF6D9EDCA0FBD7AD /* Sources */,
+				3D6E350A166A8548732ABCF1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ChikuwaChat;
+			packageProductDependencies = (
+			);
+			productName = ChikuwaChat;
+			productReference = C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A8F363DCE70EC6B8FB238379 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					B442D86066CE8BBC0D268F8F = {
+						DevelopmentTeam = 3WF4YQB4L6;
+						ProvisioningStyle = Automatic;
+					};
+					D3BCBDFCF8E43CBE7EF61917 = {
+						DevelopmentTeam = 3WF4YQB4L6;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6EF8B7D9E98740C43CDCB4CE /* Build configuration list for PBXProject "ChikuwaChat" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = EF7AAD189524D9626BFB43BC;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D3BCBDFCF8E43CBE7EF61917 /* ChikuwaChat */,
+				B442D86066CE8BBC0D268F8F /* ChikuwaChatTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3D6E350A166A8548732ABCF1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8D0EA038307BC362D9E02D29 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B707F0057EF21D3BDE715582 /* contract in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		061D7389F5F40396762BB139 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */,
+				CCDA600DF1E454593B370952 /* BodyTokenizerTests.swift in Sources */,
+				F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */,
+				870A22BBBA909116002B711D /* FakeServer.swift in Sources */,
+				1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */,
+				BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6D5D5433CF6D9EDCA0FBD7AD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B229EA04E953D0194682727E /* ApiClient.swift in Sources */,
+				4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */,
+				8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */,
+				BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */,
+				4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */,
+				2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */,
+				01058071D83FDB3831C7411A /* Frames.swift in Sources */,
+				23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */,
+				214B994514BE464424A29889 /* Keychain.swift in Sources */,
+				A08D418A6147AFDDCBB082B3 /* LoginView.swift in Sources */,
+				48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */,
+				ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */,
+				73929A42759EC180C603E753 /* Models.swift in Sources */,
+				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
+				A891B9120FA22239813BEACD /* Sheets.swift in Sources */,
+				4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */,
+				CBD65280B7792F5C68583C5D /* SyncEngine.swift in Sources */,
+				A4237035856B7D0FB8927960 /* WebSocketTransport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E38952548AA7A017E56F1511 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D3BCBDFCF8E43CBE7EF61917 /* ChikuwaChat */;
+			targetProxy = 332DE3ADC7FC72DC0EBD8C1E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1E162CCEA232740BF3E13873 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.chikuwachat.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ChikuwaChat.app/ChikuwaChat";
+			};
+			name = Release;
+		};
+		9074DB2586258F19450B086C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = ChikuwaChat/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.chikuwachat.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A25C1DC7FA9034B282A9E69C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 3WF4YQB4L6;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A4ED01CF71229E228390248F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3WF4YQB4L6;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A966F4395B6B300E9387C5A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = ChikuwaChat/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.chikuwachat.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D367514152767A0266DA033A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = jp.chikuwachat.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ChikuwaChat.app/ChikuwaChat";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0AC6D817D8D43CE8F8E84E57 /* Build configuration list for PBXNativeTarget "ChikuwaChatTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D367514152767A0266DA033A /* Debug */,
+				1E162CCEA232740BF3E13873 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		40761CA9CCDB088522CB91B0 /* Build configuration list for PBXNativeTarget "ChikuwaChat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9074DB2586258F19450B086C /* Debug */,
+				A966F4395B6B300E9387C5A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6EF8B7D9E98740C43CDCB4CE /* Build configuration list for PBXProject "ChikuwaChat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A25C1DC7FA9034B282A9E69C /* Debug */,
+				A4ED01CF71229E228390248F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A8F363DCE70EC6B8FB238379 /* Project object */;
+}
