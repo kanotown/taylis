@@ -306,3 +306,16 @@ describe("threads (M8c)", () => {
     engine.stop();
   });
 });
+
+describe("attachments (M9a)", () => {
+  it("attachment ids travel with the outbox and come back on the message", async () => {
+    const { server, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    await engine.send(channel.id, "", undefined, null, ["a1", "a2"]);
+    await engine.idle();
+    const sent = store.messages(channel.id)[0]!;
+    expect(sent.attachments?.map((a) => a.id)).toEqual(["a1", "a2"]);
+    expect(server.channels.get(channel.id)!.messages[0]!.attachments.map((a) => a.id)).toEqual(["a1", "a2"]);
+  });
+});

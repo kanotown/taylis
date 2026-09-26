@@ -34,7 +34,7 @@ interface SyncApi {
     suspend fun bootstrap(): BootstrapOut
     suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut
     suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut
-    suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null): Pair<MessageOut, Boolean>
+    suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
@@ -475,10 +475,10 @@ class SyncEngine(
 
     // --- §9 optimistic send -------------------------------------------------------------------
 
-    suspend fun send(channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null) {
+    suspend fun send(channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList()) {
         val key = clientMsgId ?: options.newId()
         val createdAt = options.now()
-        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId))
+        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId, attachmentIds = attachmentIds))
         store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId))
         flushOutbox()
     }
@@ -502,7 +502,7 @@ class SyncEngine(
             for (item in store.outbox.toList()) {
                 if (item.failed != null) continue
                 try {
-                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId)
+                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds)
                     store.upsertMessage(message)
                     store.removeOutbox(item.clientMsgId)
                 } catch (e: Exception) {

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -151,17 +152,59 @@ class ApiClient(
     override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut =
         request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq) })
 
-    override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?): Pair<MessageOut, Boolean> {
+    override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",
             buildJsonObject {
                 put("client_msg_id", clientMsgId)
                 put("body", body)
                 put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
             },
             auth = true, retry401 = true,
         )
         return Codec.snake.decodeFromString(MessageOut.serializer(), text) to (status == 201)
+    }
+
+    /** POST /attachments (multipart): the server sniffs the type and keeps it pending until a send binds it. */
+    suspend fun uploadAttachment(bytes: ByteArray, filename: String, contentType: String?): AttachmentOut {
+        val part = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", filename, bytes.toRequestBody((contentType ?: "application/octet-stream").toMediaType()))
+            .build()
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v1/attachments").post(part).header("Accept", "application/json")
+        accessToken?.let { request.header("Authorization", "Bearer $it") }
+        val (status, text) = execute(request.build())
+        if (status == 401) { refresh(); return uploadAttachment(bytes, filename, contentType) }
+        if (status !in 200..299) throw decodeError(status, text)
+        return Codec.snake.decodeFromString(AttachmentOut.serializer(), text)
+    }
+
+    /** Authenticated GET returning raw bytes (thumbnails and downloads). */
+    suspend fun fetchBytes(path: String): ByteArray {
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
+        accessToken?.let { request.header("Authorization", "Bearer $it") }
+        return withContext(Dispatchers.IO) {
+            try {
+                http.newCall(request.build()).execute().use { response ->
+                    if (response.code == 401) null else if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed") else response.body.bytes()
+                }
+            } catch (e: IOException) {
+                throw ApiException.Network(e)
+            }
+        } ?: run { refresh(); fetchBytes(path) }
+    }
+
+    private suspend fun execute(request: Request): Pair<Int, String> = withContext(Dispatchers.IO) {
+        try {
+            http.newCall(request).execute().use { response -> response.code to response.body.string() }
+        } catch (e: IOException) {
+            throw ApiException.Network(e)
+        }
+    }
+
+    private fun decodeError(status: Int, text: String): ApiException.Api {
+        val envelope = runCatching { Codec.plain.decodeFromString(ErrorEnvelope.serializer(), text) }.getOrNull()
+        return ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed")
     }
 
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")

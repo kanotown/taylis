@@ -90,6 +90,21 @@ data class ChannelOut(
 data class ReactionOut(val emoji: String, val count: Int, val userIds: List<String> = emptyList())
 
 @Serializable
+data class AttachmentOut(
+    val id: String,
+    val filename: String,
+    val contentType: String,
+    val sizeBytes: Long,
+    val width: Int? = null,
+    val height: Int? = null,
+    val hasThumbnail: Boolean = false,
+    val status: String = "attached",
+    val createdAt: String = "",
+) {
+    val isImage: Boolean get() = hasThumbnail
+}
+
+@Serializable
 data class MessageOut(
     val id: String,
     val channelId: String,
@@ -103,6 +118,7 @@ data class MessageOut(
     val mentionedUserIds: List<String> = emptyList(),
     val mentionAll: Boolean = false,
     val reactions: List<ReactionOut> = emptyList(),
+    val attachments: List<AttachmentOut> = emptyList(),
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
     val createdAt: String,

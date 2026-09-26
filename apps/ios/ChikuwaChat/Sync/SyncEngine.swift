@@ -7,7 +7,7 @@ protocol SyncApi: AnyObject {
     func bootstrap() async throws -> BootstrapOut
     func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut
     func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut
-    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?) async throws -> (MessageOut, Bool)
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
@@ -461,10 +461,10 @@ final class SyncEngine {
 
     // MARK: §9 optimistic send
 
-    func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil) async {
+    func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = []) async {
         let clientMsgId = clientMsgId ?? options.newId()
         let createdAt = options.now()
-        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId))
+        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId, attachmentIds: attachmentIds))
         store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt, parentId: parentId))
         await flushOutbox()
     }
@@ -491,7 +491,7 @@ final class SyncEngine {
         defer { flushing = false }
         for item in store.outbox where item.failed == nil {
             do {
-                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId)
+                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId, attachmentIds: item.attachmentIds)
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
             } catch {

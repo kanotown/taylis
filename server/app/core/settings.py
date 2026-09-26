@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     push_concurrency: int = 10
     push_lease_seconds: int = 60
     push_retention_days: int = 7
+    attachment_max_bytes: int = 100 * 1024 * 1024
+    attachment_pending_ttl_hours: int = 24
+    attachment_gc_interval_seconds: int = 3600
+    attachment_thumbnail_px: int = 512
+    upload_rate_limit_per_user: int = 20
 
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0

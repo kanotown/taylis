@@ -27,6 +27,7 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test"
 )
 TABLES = [
+    "attachments",
     "read_states",
     "reactions",
     "push_deliveries",
@@ -87,6 +88,8 @@ def test_settings() -> Settings:
         log_json=False,
         login_rate_limit_per_ip=100_000,
         login_rate_limit_per_account=100_000,
+        upload_rate_limit_per_user=100_000,
+        attachment_max_bytes=200_000,
     )
 
 

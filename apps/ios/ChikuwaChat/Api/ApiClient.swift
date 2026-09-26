@@ -152,11 +152,54 @@ final class ApiClient: SyncApi {
         try await request("GET", "/api/v1/channels/\(channelId)/sync?since_seq=\(sinceSeq)&limit=\(limit)")
     }
 
-    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil) async throws -> (MessageOut, Bool) {
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil, attachmentIds: [String] = []) async throws -> (MessageOut, Bool) {
         let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages",
                                                   body: .object(["client_msg_id": .string(clientMsgId), "body": .string(body),
-                                                                 "parent_id": parentId.map(JSONValue.string) ?? .null]), auth: true, retry401: true)
+                                                                 "parent_id": parentId.map(JSONValue.string) ?? .null,
+                                                                 "attachment_ids": .array(attachmentIds.map(JSONValue.string))]), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
+    }
+
+    /// POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent.
+    func uploadAttachment(data fileData: Data, filename: String, contentType: String) async throws -> AttachmentOut {
+        let boundary = "chikuwa-" + UUID().uuidString
+        var body = Data()
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename.replacingOccurrences(of: "\"", with: "_"))\"\r\nContent-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        let (data, _) = try await requestData("POST", "/api/v1/attachments", body: body, contentType: "multipart/form-data; boundary=\(boundary)", retry401: true)
+        return try JSON.snakeDecoder.decode(AttachmentOut.self, from: data)
+    }
+
+    /// Authenticated GET returning the raw body (thumbnails, downloads).
+    func fetchData(_ path: String) async throws -> Data {
+        try await requestData("GET", path, body: nil, contentType: nil, retry401: true).0
+    }
+
+    private func requestData(_ method: String, _ path: String, body: Data?, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
+        var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+        if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = body
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw ApiError.network(error)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 && retry401 {
+            _ = try await refresh()
+            return try await requestData(method, path, body: body, contentType: contentType, retry401: false)
+        }
+        if !(200...299).contains(status) {
+            struct Envelope: Decodable { struct Inner: Decodable { let code: String; let message: String }; let error: Inner }
+            let envelope = try? JSON.plainDecoder.decode(Envelope.self, from: data)
+            throw ApiError.api(status: status, code: envelope?.error.code ?? "http_\(status)", message: envelope?.error.message ?? "Request failed")
+        }
+        return (data, status)
     }
 
     func replies(messageId: String) async throws -> [MessageOut] { try await request("GET", "/api/v1/messages/\(messageId)/replies") }

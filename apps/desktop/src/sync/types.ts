@@ -1,6 +1,6 @@
-import type { ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
+import type { AttachmentOut, ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic } from "../api/types";
 
-export type { ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic };
+export type { AttachmentOut, ChannelOut, MessageOut, ParentThread, ReactionOut, ReadStateOut, UserMe, UserPublic };
 
 /** A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1). */
 export interface ChannelState extends ChannelOut {
@@ -17,7 +17,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -27,6 +27,7 @@ export interface MessageState
   parent_id?: string | null;
   reply_count?: number;
   last_reply_at?: string | null;
+  attachments?: AttachmentOut[];
   pending?: boolean;
   failed?: boolean;
 }
@@ -38,6 +39,7 @@ export interface OutboxItem {
   created_at: string;
   failed?: string;
   parent_id?: string | null;
+  attachment_ids?: string[];
 }
 
 export interface EventFrame {

@@ -271,7 +271,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
   スキーマは DATA_MODEL.md。
 - **versitygw**: S3 互換のオブジェクトストレージ。posix バックエンドで、バケットはディレクトリ、オブジェクトは
   通常のファイルとして `/data/<bucket>/<key>` に置かれる。添付ファイル本体とサムネイルを格納する。キーは
-  `attachments/{id}`、`attachments/{id}/thumb.jpg`。バケットは非公開。クライアントはオブジェクトストレージに
+  `attachments/{id}`、`attachments/{id}.thumb.jpg`。バケットは非公開。クライアントはオブジェクトストレージに
   直接アクセスせず、API 経由で読み書きする (§10 の presigned URL は将来の最適化)。大きなファイルを PostgreSQL に
   入れない。アプリは `BlobStore` (S3 API) 経由でしか触らないので、他の S3 互換ストアやクラウドの S3 に
   差し替えられる。オブジェクトのメタデータ (content type 等) は PostgreSQL が正で、ストレージ側の拡張属性に

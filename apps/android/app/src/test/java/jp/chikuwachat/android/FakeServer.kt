@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.BootstrapOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -80,7 +81,7 @@ class FakeServer {
         }
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
-        override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId) }
+        override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds) }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
@@ -162,7 +163,7 @@ class FakeServer {
         return record
     }
 
-    fun post(channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null): Pair<MessageOut, Boolean> {
+    fun post(channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
         byClientKey["$senderId:$key"]?.let { existing ->
@@ -178,6 +179,7 @@ class FakeServer {
         val message = MessageOut(
             id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
+            attachments = attachmentIds.map { AttachmentOut(it, "file-$it", "application/octet-stream", 1, status = "attached", createdAt = now()) },
         )
         record.messages.add(message)
         byClientKey["$senderId:$key"] = message

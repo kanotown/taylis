@@ -88,3 +88,12 @@ label { display: block; margin: 8px 0; }
 .thread-panel.open .channel-header { display: flex; justify-content: space-between; align-items: center; }
 .thread-count { font-size: 12px; margin: 4px 0 8px; }
 .message .replies { padding: 0; font-size: 12px; color: #3b6cf6; text-decoration: none; }
+
+/* M9a: attachments */
+.attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.attachments .thumbnail { padding: 0; border: 1px solid var(--border); border-radius: 6px; background: #f4f4f4; overflow: hidden; max-width: 280px; }
+.attachments .thumbnail img { display: block; max-width: 280px; max-height: 240px; }
+.attachments .file { background: #f4f4f4; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+.pending-attachments { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 16px 0; }
+.pending-attachments .chip { font-size: 12px; border-radius: 12px; border: 1px solid var(--border); background: #e6eefc; color: var(--fg); padding: 1px 8px; }
+.composer .attach { padding: 4px 8px; }

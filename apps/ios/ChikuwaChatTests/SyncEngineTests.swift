@@ -149,6 +149,17 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testAttachmentIdsTravelWithTheOutbox() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.send(w.channel.id, body: "", attachmentIds: ["a1", "a2"])
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).first?.attachments.map(\.id), ["a1", "a2"])
+        XCTAssertEqual(w.server.channels[w.channel.id]?.messages.first?.attachments.map(\.id), ["a1", "a2"])
+        w.engine.stop()
+    }
+
     func testBootstrapLoadsLatestPageOfTheOpenedChannel() async throws {
         let w = makeWorld()
         for i in 1...5 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }

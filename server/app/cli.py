@@ -163,6 +163,31 @@ async def _push_test(username: str, body: str) -> int:
         await db.dispose()
 
 
+async def _verify_attachments() -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments import service as attachments
+    from app.modules.attachments.blobstore import build_blobstore
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    try:
+        async with db.session_factory() as session:
+            missing = await attachments.verify(session, blobs)
+        for attachment_id, key in missing:
+            print(f"missing blob: attachment {attachment_id} key {key}")
+        print(f"{len(missing)} missing object(s)")
+        return 1 if missing else 0
+    finally:
+        await db.dispose()
+
+
+def cmd_verify_attachments(args: argparse.Namespace) -> int:
+    """After a restore: report attachment rows whose bytes are missing (ARCHITECTURE.md §8)."""
+    return asyncio.run(_verify_attachments())
+
+
 def cmd_push_test(args: argparse.Namespace) -> int:
     """Send a test notification to every push-registered device of a user."""
     return asyncio.run(_push_test(args.username, args.body))
@@ -188,6 +213,9 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument("--user", dest="username", required=True)
     push.add_argument("--body", default="テスト通知です")
     push.set_defaults(func=cmd_push_test)
+
+    verify = sub.add_parser("verify-attachments", help="report attachments whose bytes are missing")
+    verify.set_defaults(func=cmd_verify_attachments)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

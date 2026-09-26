@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, TokenResponse, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, TokenResponse, UserMe, UserPublic } from "./types";
 
 export interface DeviceInfo {
   platform: "desktop" | "ios" | "android";
@@ -159,13 +159,59 @@ export class ApiClient {
     clientMsgId: string,
     body: string,
     parentId: string | null = null,
+    attachmentIds: string[] = [],
   ): Promise<{ message: MessageOut; created: boolean }> {
     const { data, status } = await this.requestWithStatus<MessageOut>(
       "POST",
       `/api/v1/channels/${channelId}/messages`,
-      { client_msg_id: clientMsgId, body, parent_id: parentId },
+      { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  /** POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent. */
+  async uploadAttachment(file: Blob, filename: string): Promise<AttachmentOut> {
+    const form = new FormData();
+    form.append("file", file, filename);
+    const send = async (): Promise<Response> =>
+      this.fetchImpl(`${this.baseUrl}/api/v1/attachments`, {
+        method: "POST",
+        headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
+        body: form,
+      });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return (await response.json()) as AttachmentOut;
+  }
+
+  /** Authenticated GET returning the raw body (thumbnails, downloads). */
+  async fetchBlob(path: string): Promise<Blob> {
+    const send = async (): Promise<Response> =>
+      this.fetchImpl(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return response.blob();
+  }
+
+  private async errorFromResponse(response: Response): Promise<ApiError> {
+    let code = `http_${response.status}`;
+    let message = "Request failed";
+    try {
+      const body = (await response.json()) as { error?: { code?: string; message?: string } };
+      code = body.error?.code ?? code;
+      message = body.error?.message ?? message;
+    } catch {
+      // not JSON
+    }
+    return new ApiError(response.status, code, message);
   }
 
   replies(messageId: string): Promise<MessageOut[]> {

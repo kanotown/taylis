@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
+import { AttachmentList } from "./Attachments";
 import { MessageBody } from "./MessageBody";
 import { decodeMentions, encodeMentions } from "./mentions";
 
@@ -124,7 +125,10 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
                 </div>
               </div>
             ) : (
-              <MessageBody body={message.body} users={store.users} />
+              <>
+                {message.body && <MessageBody body={message.body} users={store.users} />}
+                <AttachmentList attachments={message.attachments ?? []} controller={controller} />
+              </>
             )}
             {(message.reply_count ?? 0) > 0 && onOpenThread && (
               <button className="link replies" onClick={() => onOpenThread(message.id)}>

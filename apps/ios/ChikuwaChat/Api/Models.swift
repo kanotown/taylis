@@ -83,6 +83,20 @@ struct ReactionOut: Codable, Equatable {
     let userIds: [String]
 }
 
+struct AttachmentOut: Codable, Equatable, Identifiable {
+    let id: String
+    let filename: String
+    let contentType: String
+    let sizeBytes: Int64
+    let width: Int?
+    let height: Int?
+    let hasThumbnail: Bool
+    let status: String
+    let createdAt: String
+
+    var isImage: Bool { hasThumbnail }
+}
+
 struct MessageOut: Codable, Identifiable, Equatable {
     let id: String
     let channelId: String
@@ -101,10 +115,11 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var parentId: String? = nil
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
+    var attachments: [AttachmentOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
-        case type, mentionedUserIds, mentionAll, reactions, parentId, replyCount, lastReplyAt
+        case type, mentionedUserIds, mentionAll, reactions, parentId, replyCount, lastReplyAt, attachments
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -160,6 +175,7 @@ extension MessageOut {
         parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
+        attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
     }
 }
 

@@ -311,7 +311,7 @@ CREATE TABLE attachments (
   storage_key    text NOT NULL,                     -- 'attachments/{id}'
   width          integer,                           -- 画像のみ
   height         integer,
-  thumbnail_key  text,                              -- 'attachments/{id}/thumb.jpg'
+  thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg'
   created_at     timestamptz NOT NULL DEFAULT now(),
   attached_at    timestamptz,
   deleted_at     timestamptz
