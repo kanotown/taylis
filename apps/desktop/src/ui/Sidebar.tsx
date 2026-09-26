@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Bookmark, Hash, Lock, MessagesSquare, Plus, Search, Settings } from "lucide-react";
+import { AtSign, BellOff, Bookmark, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -26,9 +26,11 @@ interface Props {
   /** 「保存済み」 (M11c). */
   onSaved?: () => void;
   savedActive?: boolean;
+  /** Administration (M11e); shown to admins only. */
+  onAdmin?: () => void;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin }: Props) {
   const store = controller.store;
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
@@ -83,6 +85,11 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         {onSearch && (
           <IconButton tone="sidebar" label={`検索 (${modKey()}+F)`} onClick={onSearch}>
             <Search size={17} />
+          </IconButton>
+        )}
+        {onAdmin && controller.isAdmin && (
+          <IconButton tone="sidebar" label="管理" onClick={onAdmin}>
+            <ShieldCheck size={17} />
           </IconButton>
         )}
         {onSettings && (

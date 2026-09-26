@@ -190,6 +190,7 @@ export function NewChannelDialog({ controller, onClose, onOpen }: DialogProps) {
 /** Members of a channel with the option to add more (channels only). */
 export function MembersDialog({ controller, channel, onClose, onAdd }: { controller: AppController; channel: ChannelState; onClose: () => void; onAdd: () => void }) {
   const [members, setMembers] = useState<MemberOut[] | null>(null);
+  const canManage = controller.isAdmin || channel.membership?.role === "owner";
   useEffect(() => {
     if (!controller.api) return;
     void controller.api.members(channel.id).then(setMembers, (error) => controller.setError(error));
@@ -219,6 +220,17 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}
                   {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
+                  {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted hover:text-danger"
+                      title="チャンネルから外す"
+                      onClick={() => void controller.removeMember(channel.id, member.user_id).then((ok) => { if (ok) setMembers((list) => list?.filter((m) => m.user_id !== member.user_id) ?? null); })}
+                    >
+                      外す
+                    </Button>
+                  )}
                 </li>
               ))}
           </ul>
@@ -253,6 +265,34 @@ export function TopicDialog({ controller, channel, onClose }: { controller: AppC
             キャンセル
           </Button>
           <Button type="submit" disabled={busy}>
+            保存
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Rename a channel (owner or admin, M11e). */
+export function RenameChannelDialog({ controller, channel, onClose }: { controller: AppController; channel: ChannelState; onClose: () => void }) {
+  const [name, setName] = useState(channel.name ?? "");
+  const [busy, setBusy] = useState(false);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    const ok = await controller.renameChannel(channel.id, name);
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal onClose={onClose} title="チャンネル名を変更" description="小文字の英数字と . _ - が使えます。">
+      <form className="mt-4 space-y-4" onSubmit={save}>
+        <Input value={name} pattern="[a-z0-9][a-z0-9._-]*" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value.toLowerCase())} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            キャンセル
+          </Button>
+          <Button type="submit" disabled={busy || !name.trim() || name.trim() === channel.name}>
             保存
           </Button>
         </div>

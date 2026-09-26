@@ -231,6 +231,53 @@ export class AppController {
 
   // --- channel and profile settings (UI brush-up) -------------------------------------------------------
 
+  // --- channel management (M11e) ---------------------------------------------------------
+
+  async renameChannel(channelId: string, name: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.updateChannel(channelId, { name: name.trim() }));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async archiveChannel(channelId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.archiveChannel(channelId));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async leaveChannel(channelId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.leaveChannel(channelId);
+      this.store.removeChannel(channelId);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async removeMember(channelId: string, userId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.removeMember(channelId, userId);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   async updateTopic(channelId: string, topic: string): Promise<boolean> {
     if (!this.api) return false;
     try {
