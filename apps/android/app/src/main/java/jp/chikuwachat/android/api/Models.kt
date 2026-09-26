@@ -155,7 +155,34 @@ data class BootstrapOut(
     val users: List<UserPublic>,
     val channels: List<ChannelOut>,
     val limits: Limits,
+    /** Followed threads with unread replies / mentions (THREADS.md §3); the 「スレッド」 badge. */
+    val threads: ThreadSummary? = null,
 )
+
+/** My relation to one thread (THREADS.md §3). */
+@Serializable
+data class ThreadState(
+    val parentId: String,
+    val channelId: String,
+    val following: Boolean,
+    val lastReadSeq: Int,
+    val unreadCount: Int,
+    val mentionCount: Int,
+    val replyCount: Int,
+    val lastReplyAt: String? = null,
+    /** Current followers: who gets thread.updated and the reply's push. */
+    val participantIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class ThreadItem(val parent: MessageOut, val state: ThreadState)
+
+@Serializable
+data class ThreadSummary(val unreadCount: Int = 0, val mentionCount: Int = 0)
+
+/** `nextCursor` goes back as `cursor` for the next page; null when the page was empty. */
+@Serializable
+data class ThreadListOut(val items: List<ThreadItem>, val nextCursor: String? = null, val summary: ThreadSummary)
 
 @Serializable
 data class MemberOut(val userId: String, val role: String, val joinedAt: String)

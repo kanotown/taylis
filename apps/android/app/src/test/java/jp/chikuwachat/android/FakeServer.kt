@@ -13,6 +13,10 @@ import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReactionOut
 import jp.chikuwachat.android.api.ReadStateOut
+import jp.chikuwachat.android.api.ThreadItem
+import jp.chikuwachat.android.api.ThreadListOut
+import jp.chikuwachat.android.api.ThreadState
+import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.CLOSE_SESSION_REVOKED
@@ -92,6 +96,10 @@ class FakeServer {
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null) }
+        override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut { maybeFail(); return this@FakeServer.threads(userId, filter, cursor, limit) }
+        override suspend fun threadState(messageId: String): ThreadState { maybeFail(); return this@FakeServer.threadState(userId, messageId) }
+        override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState { maybeFail(); return this@FakeServer.markThreadRead(userId, messageId, lastReadSeq) }
+        override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState { maybeFail(); return this@FakeServer.setThreadFollow(userId, messageId, following) }
     }
 
     class ChannelRecord(var channel: ChannelOut, val members: MutableSet<String>, val messages: MutableList<MessageOut>)
@@ -108,7 +116,13 @@ class FakeServer {
     private var eventId = 0L
 
     fun nextId(): String = "00000000-0000-7000-8000-" + (++counter).toString().padStart(12, '0')
-    private fun now(): String = java.time.Instant.now().toString()
+    private val clockFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'").withZone(java.time.ZoneOffset.UTC)
+    private var clock: java.time.Instant = java.time.Instant.now()
+    /** Strictly increasing and fixed width, so timestamp cursors (threads) never tie and sort as strings. */
+    private fun now(): String {
+        clock = clock.plusMillis(1)
+        return clockFormat.format(clock)
+    }
 
     fun addUser(username: String, role: String = "member"): UserPublic {
         val user = UserPublic(nextId(), username, username.replaceFirstChar { it.uppercase() }, role, null, now(), now())
@@ -158,6 +172,95 @@ class FakeServer {
         return readState(userId, channelId)
     }
 
+    // --- threads (THREADS.md §2) ------------------------------------------------------------------
+
+    class ThreadFollow(val parentId: String, val userId: String, var following: Boolean, var lastReadSeq: Int, val order: Int)
+
+    /** "parent:user" → follow row; `order` doubles as created_at. */
+    val threadFollows = LinkedHashMap<String, ThreadFollow>()
+    private var followOrder = 0
+
+    private fun followers(parentId: String): List<String> =
+        threadFollows.values.filter { it.parentId == parentId && it.following }.sortedBy { it.order }.map { it.userId }
+
+    private fun autoFollow(parentId: String, userIds: List<String>) {
+        userIds.forEach { userId -> threadFollows.getOrPut("$parentId:$userId") { ThreadFollow(parentId, userId, true, 0, ++followOrder) } }
+    }
+
+    private fun threadParent(messageId: String): Pair<ChannelRecord, MessageOut> {
+        for (record in channels.values) {
+            val message = record.messages.firstOrNull { it.id == messageId && !it.deleted } ?: continue
+            val parent = message.parentId?.let { pid -> record.messages.first { it.id == pid } } ?: message
+            return record to parent
+        }
+        throw ApiException.Api(404, "message_not_found", "not found")
+    }
+
+    fun threadState(userId: String, parentId: String): ThreadState {
+        val (record, parent) = threadParent(parentId)
+        requireMember(record.channel.id, userId)
+        val row = threadFollows["${parent.id}:$userId"]
+        val lastRead = row?.lastReadSeq ?: 0
+        val unread = record.messages.filter { it.parentId == parent.id && !it.deleted && it.seq > lastRead && it.senderId != userId }
+        return ThreadState(
+            parent.id, record.channel.id, row?.following ?: false, lastRead, unread.size, unread.count { it.mentions(userId) },
+            parent.replyCount, parent.lastReplyAt, followers(parent.id),
+        )
+    }
+
+    private fun emitThread(parentId: String, userIds: List<String>, reason: String) {
+        userIds.forEach { userId ->
+            val state = runCatching { threadState(userId, parentId) }.getOrNull() ?: return@forEach
+            val data = buildJsonObject {
+                Codec.snake.encodeToJsonElement(ThreadState.serializer(), state).jsonObject.forEach { (k, v) -> put(k, v) }
+                put("reason", reason)
+            }
+            emit(setOf(userId), event("thread.updated", state.channelId, null, data))
+        }
+    }
+
+    fun threadSummary(userId: String): ThreadSummary {
+        val states = threadFollows.values.filter { it.userId == userId && it.following }.mapNotNull { runCatching { threadState(userId, it.parentId) }.getOrNull() }
+        return ThreadSummary(states.count { it.unreadCount > 0 }, states.count { it.mentionCount > 0 })
+    }
+
+    fun threads(userId: String, filter: String, cursor: String?, limit: Int): ThreadListOut {
+        var items = threadFollows.values.filter { it.userId == userId && it.following }.mapNotNull { row ->
+            val (_, parent) = runCatching { threadParent(row.parentId) }.getOrNull() ?: return@mapNotNull null
+            if (parent.deleted || parent.replyCount == 0) return@mapNotNull null
+            ThreadItem(parent, threadState(userId, row.parentId))
+        }.sortedWith(compareByDescending<ThreadItem> { it.parent.lastReplyAt ?: "" }.thenByDescending { it.parent.seq })
+        if (cursor != null) items = items.filter { (it.parent.lastReplyAt ?: "") < cursor }
+        if (filter == "unread") items = items.filter { it.state.unreadCount > 0 }
+        items = items.take(limit)
+        return ThreadListOut(items, items.lastOrNull()?.parent?.lastReplyAt, threadSummary(userId))
+    }
+
+    fun markThreadRead(userId: String, messageId: String, seq: Int): ThreadState {
+        val (record, parent) = threadParent(messageId)
+        requireMember(record.channel.id, userId)
+        val newest = record.messages.filter { it.parentId == parent.id && !it.deleted }.maxOfOrNull { it.seq } ?: 0
+        val target = minOf(seq, newest)
+        autoFollow(parent.id, listOf(userId))
+        val row = threadFollows.getValue("${parent.id}:$userId")
+        if (target > row.lastReadSeq) {
+            row.lastReadSeq = target
+            emitThread(parent.id, listOf(userId), "read")
+        }
+        return threadState(userId, parent.id)
+    }
+
+    fun setThreadFollow(userId: String, messageId: String, following: Boolean): ThreadState {
+        val (record, parent) = threadParent(messageId)
+        requireMember(record.channel.id, userId)
+        val key = "${parent.id}:$userId"
+        val changed = threadFollows[key]?.following != following
+        autoFollow(parent.id, listOf(userId))
+        threadFollows.getValue(key).following = following
+        if (changed) emitThread(parent.id, listOf(userId), "follow")
+        return threadState(userId, parent.id)
+    }
+
     private fun requireMember(channelId: String, userId: String): ChannelRecord {
         val record = channels[channelId] ?: throw ApiException.Api(404, "channel_not_found", "not found")
         if (userId !in record.members) throw ApiException.Api(403, "not_a_member", "not a member")
@@ -188,14 +291,17 @@ class FakeServer {
         if (parentIndex != null) {
             val parent = record.messages[parentIndex].let { it.copy(replyCount = it.replyCount + 1, lastReplyAt = message.createdAt, updatedSeq = seq) }
             record.messages[parentIndex] = parent
-            val participants = (listOf(parent.senderId) + record.messages.filter { it.parentId == parent.id && !it.deleted }.map { it.senderId }).distinct()
-            thread = ParentThread(parent.id, parent.replyCount, parent.lastReplyAt, seq, participants)
+            // THREADS.md §2: auto-follow, the replier has read their own reply, followers are the push targets.
+            autoFollow(parent.id, listOf(parent.senderId, senderId) + parent.mentionedUserIds + message.mentionedUserIds)
+            threadFollows.getValue("${parent.id}:$senderId").let { it.lastReadSeq = maxOf(it.lastReadSeq, seq) }
+            thread = ParentThread(parent.id, parent.replyCount, parent.lastReplyAt, seq, followers(parent.id))
         }
         emit(record.members, event("message.created", channelId, seq, buildJsonObject {
             put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message))
             if (thread != null) put("parent_thread", Codec.snake.encodeToJsonElement(ParentThread.serializer(), thread))
         }))
         markRead(senderId, channelId, seq) // the sender has read their own message (§10)
+        if (thread != null) emitThread(thread.id, followers(thread.id), "reply")
         return message to true
     }
 
@@ -296,7 +402,7 @@ class FakeServer {
         val mine = channels.values.filter { userId in it.members }.map { record ->
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id))
         }
-        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10))
+        return BootstrapOut(now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId))
     }
 
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {

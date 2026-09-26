@@ -3,6 +3,8 @@ package jp.chikuwachat.android.ui
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Forum
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,6 +80,9 @@ fun MainScreen(controller: AppController) {
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var unreadOnly by rememberSaveable { mutableStateOf(false) }
+    // THREADS.md §5: the followed-threads list replaces the channel list; a row opens its thread with the list behind it.
+    var showThreads by rememberSaveable { mutableStateOf(false) }
+    var threadFromList by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -103,9 +108,14 @@ fun MainScreen(controller: AppController) {
 
     val selectedChannel = selection?.let { store.channel(it) }
     if (selectedChannel == null) threadId = null
+    val closeThread: () -> Unit = {
+        threadId = null
+        if (threadFromList) { threadFromList = false; selection = null } // back to the threads list
+    }
     BackHandler(enabled = searching) { searching = false }
-    BackHandler(enabled = !searching && threadId != null) { threadId = null }
+    BackHandler(enabled = !searching && threadId != null) { closeThread() }
     BackHandler(enabled = threadId == null && selectedChannel != null) { selection = null }
+    BackHandler(enabled = !searching && selectedChannel == null && showThreads) { showThreads = false }
 
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
@@ -124,20 +134,40 @@ fun MainScreen(controller: AppController) {
                                 selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else null,
                             )
                         }
+                        showThreads -> Text("スレッド")
                         else -> Text("ChikuwaChat")
                     }
                 },
                 navigationIcon = {
                     when {
                         searching -> IconButton(onClick = { searching = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
-                        selectedChannel != null -> IconButton(onClick = { if (threadId != null) threadId = null else selection = null }) {
+                        selectedChannel != null -> IconButton(onClick = { if (threadId != null) closeThread() else selection = null }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                         }
+                        showThreads -> IconButton(onClick = { showThreads = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
                         me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
                     }
                 },
                 actions = {
                     StatusBadge(status)
+                    // THREADS.md §5: follow / unfollow the open thread.
+                    val openId = threadId
+                    val threadState = openId?.let { store.threads[it]?.state }
+                    if (openId != null && threadState != null && selectedChannel?.isMember == true && !searching) {
+                        FilterChip(
+                            selected = threadState.following,
+                            onClick = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } },
+                            label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
+                            leadingIcon = {
+                                Icon(
+                                    if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
+                    }
                     if (selectedChannel != null && selectedChannel.isMember && threadId == null && !searching) {
                         val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                         val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
@@ -197,11 +227,19 @@ fun MainScreen(controller: AppController) {
                     ThreadPane(controller, selectedChannel.id, openThread, version)
                 } else if (selectedChannel != null) {
                     ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
+                } else if (showThreads) {
+                    ThreadsPane(controller, version) { entry ->
+                        controller.messageFocus = null
+                        threadFromList = true
+                        selection = entry.state.channelId
+                        threadId = entry.parent.id
+                    }
                 } else {
                     ChannelList(
                         store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly },
-                        onSelect = { controller.messageFocus = null; selection = it },
+                        onSelect = { controller.messageFocus = null; threadFromList = false; selection = it },
                         onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } },
+                        onThreads = { showThreads = true },
                     )
                 }
             }
@@ -245,6 +283,7 @@ private fun ChannelList(
     onToggleUnreadOnly: () -> Unit,
     onSelect: (String) -> Unit,
     onJoin: (String) -> Unit,
+    onThreads: () -> Unit,
 ) {
     val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly) }
     val channels = sections.channels
@@ -257,6 +296,7 @@ private fun ChannelList(
                 FilterChip(selected = unreadOnly, onClick = onToggleUnreadOnly, label = { Text("未読のみ") })
             }
         }
+        item { ThreadsRow(store, onClick = onThreads) }
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
@@ -275,6 +315,36 @@ private fun ChannelList(
             }
         }
         item { Spacer(Modifier.padding(bottom = 24.dp)) }
+    }
+}
+
+/** 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me. */
+@Composable
+private fun ThreadsRow(store: Store, onClick: () -> Unit) {
+    val summary = store.threadSummary
+    val unread = summary.unreadCount > 0
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.Forum, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text("スレッド", fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
+        if (unread) {
+            Text(
+                summary.unreadCount.toString(),
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .background(if (summary.mentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
+                    .padding(horizontal = 7.dp, vertical = 2.dp),
+            )
+        }
     }
 }
 

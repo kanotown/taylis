@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Snapshot
@@ -326,6 +327,64 @@ class SyncEngineTest {
         assertEquals(0, restored.replies(w.channelId, parent.id).size)
         second.loadReplies(w.channelId, parent.id)
         assertEquals(listOf("reply 1", "reply 2", "reply 3"), restored.replies(w.channelId, parent.id).map { it.body })
+        second.stop(); w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun followedThreadsListUnreadRepliesAndReadPosition() = runBlocking {
+        val w = world()
+        w.engine.isActive = { true }
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        assertEquals(ThreadSummary(0, 0), w.store.threadSummary)
+
+        // bob's own topic: alice's reply makes it a followed, unread thread (badge via thread.updated).
+        w.engine.send(w.channelId, "topic"); settle(w.engine)
+        val parent = w.server.messageByBody(w.channelId, "topic")
+        w.server.post(w.channelId, w.alice, "<@${w.bob}> reply 1", parentId = parent.id)
+        w.engine.flushThreads(); settle(w.engine)
+        assertEquals(ThreadSummary(1, 1), w.store.threadSummary)
+        assertEquals(false, w.store.threadsLoaded) // only the badge until the view opens
+
+        w.engine.loadThreads("all")
+        val rows = w.store.threadList()
+        assertEquals(listOf("topic"), rows.map { it.parent.body })
+        assertEquals(1, rows.first().state.unreadCount)
+        assertEquals(1, rows.first().state.mentionCount)
+        assertEquals(listOf(w.bob, w.alice), rows.first().state.participantIds)
+
+        // Showing the reply marks the thread read (debounced PUT); the badge drops at once.
+        val reply = w.server.messageByBody(w.channelId, "<@${w.bob}> reply 1")
+        w.engine.loadReplies(w.channelId, parent.id)
+        w.engine.markThreadRead(parent.id, reply.seq)
+        assertEquals(0, w.store.threads[parent.id]?.state?.unreadCount)
+        assertEquals(ThreadSummary(0, 0), w.store.threadSummary)
+        w.engine.flushThreads(); settle(w.engine)
+        assertEquals(reply.seq, w.server.threadState(w.bob, parent.id).lastReadSeq)
+        assertEquals(0, w.store.threadList("unread").size)
+
+        // Unfollowing drops the thread from the list; the next reply does not bring it back.
+        w.engine.setThreadFollow(parent.id, false)
+        assertEquals(false, w.store.threads[parent.id]?.state?.following)
+        assertEquals(0, w.store.threadList().size)
+        w.server.post(w.channelId, w.alice, "reply 2", parentId = parent.id)
+        w.engine.flushThreads(); settle(w.engine)
+        assertEquals(0, w.store.threadList().size)
+        assertEquals(0, w.store.threadSummary.unreadCount)
+        assertEquals(listOf(w.alice), w.server.threadState(w.alice, parent.id).participantIds) // bob is no push target
+
+        w.engine.setThreadFollow(parent.id, true)
+        w.engine.flushThreads(); settle(w.engine)
+        assertEquals(listOf(parent.id), w.store.threadList().map { it.parent.id })
+        assertEquals(1, w.store.threads[parent.id]?.state?.unreadCount)
+
+        // A fresh client asks for the state when a thread opens from the channel.
+        val fresh = Store()
+        val second = SyncEngine(w.server.api(w.bob), w.server.connector(w.bob), "ws://fake", fresh, { "t" }, w.scope, EngineOptions(sleep = {}))
+        second.start(); second.openChannel(w.channelId); settle(second)
+        assertEquals(1, fresh.threadSummary.unreadCount) // from bootstrap
+        assertNull(fresh.threads[parent.id])
+        second.loadThreadState(parent.id)
+        assertEquals(true, fresh.threads[parent.id]?.state?.following)
+        assertEquals(1, fresh.threads[parent.id]?.state?.unreadCount)
         second.stop(); w.engine.stop(); w.scope.cancel()
     }
 

@@ -249,6 +249,22 @@ class ApiClient(
 
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 
+    // --- threads (THREADS.md §3) --------------------------------------------------------------
+
+    /** GET /threads: the threads I follow, newest reply first; `cursor` is the previous page's next_cursor. */
+    override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut {
+        val params = "filter=$filter&limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: "")
+        return request("GET", "/api/v1/threads?$params")
+    }
+
+    override suspend fun threadState(messageId: String): ThreadState = request("GET", "/api/v1/messages/$messageId/thread")
+
+    override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState =
+        request("PUT", "/api/v1/messages/$messageId/thread/read", buildJsonObject { put("last_read_seq", lastReadSeq) })
+
+    override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState =
+        request("PUT", "/api/v1/messages/$messageId/thread/follow", buildJsonObject { put("following", following) })
+
     // --- transport --------------------------------------------------------------------------
 
     private suspend inline fun <reified T> request(method: String, path: String, body: JsonElement? = null, auth: Boolean = true): T {
