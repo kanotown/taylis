@@ -382,6 +382,13 @@ describe("mark as unread (§10 mode=set)", () => {
     await engine.idle();
     expect(store.getChannel(channel.id)?.lastReadSeq).toBe(0);
     expect(store.getChannel(channel.id)?.unreadCount).toBe(3);
+    // A plain advance event that is behind the local position (an older PUT of ours) must not lower it.
+    engine.markRead(channel.id, 3);
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(3);
+    server.markRead(bob.id, channel.id, 2);
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.lastReadSeq).toBe(3);
+    await engine.flushReads();
     engine.stop();
   });
 });

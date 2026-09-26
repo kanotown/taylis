@@ -67,6 +67,12 @@ fun MessageBody(text: String, users: Map<String, UserPublic>, modifier: Modifier
     Column(modifier = modifier) {
         for (block in parseBlocks(text)) {
             when (block) {
+                is BodyBlock.Heading -> Text(
+                    inline(block.tokens),
+                    style = when (block.level) { 1 -> MaterialTheme.typography.titleLarge; 2 -> MaterialTheme.typography.titleMedium; else -> MaterialTheme.typography.titleSmall },
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
                 is BodyBlock.Paragraph -> Text(joined(block.lines), style = MaterialTheme.typography.bodyLarge)
                 is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
                     Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))

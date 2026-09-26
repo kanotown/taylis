@@ -173,6 +173,12 @@ final class SyncEngineTests: XCTestCase {
         try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 0, mode: "set") // another device
         await settle(w.engine)
         XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [0, 3])
+        // A plain advance event behind the local position (an older PUT of ours) must not lower it.
+        w.engine.markRead(w.channel.id, seq: 3)
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 2)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastReadSeq, 3)
+        await w.engine.flushReads()
         w.engine.stop()
     }
 

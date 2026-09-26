@@ -314,7 +314,9 @@ final class SyncEngine {
             struct Payload: Decodable { let user: UserPublic }
             store.upsertUser(try frame.data.decode(Payload.self).user)
         case "read.updated":
-            if let id = frame.data["channel_id"]?.stringValue { applyReadState(id, try frame.data.decode(ReadStateOut.self)) }
+            if let id = frame.data["channel_id"]?.stringValue {
+                applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: frame.data["reason"]?.stringValue == "set")
+            }
         case "notification_preference.updated":
             if let id = frame.data["channel_id"]?.stringValue {
                 store.setNotification(id, level: frame.data["level"]?.stringValue ?? "mentions", mutedUntil: frame.data["muted_until"]?.stringValue)
@@ -372,11 +374,12 @@ final class SyncEngine {
         onBadge?(store.badgeCount)
     }
 
-    private func applyReadState(_ channelId: String, _ state: ReadStateOut) {
+    private func applyReadState(_ channelId: String, _ state: ReadStateOut, allowDecrease: Bool = false) {
         guard store.channel(channelId) != nil else { return }
-        // The server's position wins, downwards too (another device may have marked messages unread).
+        // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
+        // a mark-as-unread (reason "set") moves the position down as well.
         store.updateChannel(channelId) {
-            $0.lastReadSeq = state.lastReadSeq
+            $0.lastReadSeq = allowDecrease ? state.lastReadSeq : max($0.lastReadSeq, state.lastReadSeq)
             $0.unreadCount = state.unreadCount
             $0.mentionCount = state.mentionCount
         }
@@ -436,7 +439,7 @@ final class SyncEngine {
             guard let self else { return }
             self.pendingReads[channelId] = nil
             guard let state = try? await self.api.setReadPosition(channelId: channelId, lastReadSeq: target) else { return }
-            _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state) }.value
+            _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state, allowDecrease: true) }.value
         }
     }
 

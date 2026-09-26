@@ -47,5 +47,9 @@ class BodyTokenizerTest {
         assertEquals(BodyBlock.CodeBlock("const x = 1;", "ts"), blocks[4])
         assertEquals(BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("tail")))), blocks[5])
         assertEquals(listOf(BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("```")), listOf(BodyToken.Text("open"))))), parseBlocks("```\nopen"))
+        assertEquals(
+            listOf(BodyBlock.Heading(1, listOf(BodyToken.Text("Title"))), BodyBlock.Heading(2, listOf(BodyToken.Text("Sub "), BodyToken.Bold("b"))), BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("#### not"))))),
+            parseBlocks("# Title\n## Sub **b**\n#### not"),
+        )
     }
 }

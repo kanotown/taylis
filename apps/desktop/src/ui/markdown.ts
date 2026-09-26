@@ -4,8 +4,8 @@
  * escapes everything.
  *
  * Inline: **bold** / *bold*, _italic_, ~~strike~~, `code`, [label](url), bare https?:// links,
- * <@user-id>, <!channel> / <!here>. Blocks: ``` fences (optional language), "> " quotes,
- * "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level).
+ * <@user-id>, <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
+ * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level).
  */
 export type Token =
   | { kind: "text"; text: string }
@@ -20,6 +20,7 @@ export type Token =
   | { kind: "newline" };
 
 export type Block =
+  | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[] }
   | { kind: "paragraph"; lines: Token[][] }
   | { kind: "quote"; lines: Token[][] }
   | { kind: "list"; ordered: boolean; start: number; items: Array<{ level: number; tokens: Token[] }> }
@@ -76,6 +77,7 @@ function splitFence(raw: string): { text: string; lang: string | null } {
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
 const QUOTE = /^>\s?(.*)$/;
+const HEADING = /^(#{1,3})\s+(\S.*)$/;
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
 export function parseBlocks(body: string): Block[] {
@@ -94,6 +96,12 @@ export function parseBlocks(body: string): Block[] {
       const close = fenceCloseAfter(i);
       push({ kind: "codeblock", text: lines.slice(i + 1, close).join("\n"), lang: fence?.[1] ? fence[1].toLowerCase() : null });
       i = close + 1;
+      continue;
+    }
+    const heading = HEADING.exec(line);
+    if (heading) {
+      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? "") });
+      i++;
       continue;
     }
     const quote = QUOTE.exec(line);
@@ -130,7 +138,7 @@ export function parseBlocks(body: string): Block[] {
     const paragraph: Token[][] = [];
     while (i < lines.length) {
       const current = lines[i] ?? "";
-      if (paragraph.length > 0 && (opensFence(i) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
+      if (paragraph.length > 0 && (opensFence(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
       paragraph.push(tokenizeInline(current));
       i++;
     }

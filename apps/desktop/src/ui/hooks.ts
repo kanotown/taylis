@@ -9,7 +9,7 @@ export function useAppVersion(controller: AppController): number {
       const unsubscribers = [controller.subscribe(listener), controller.store.subscribe(listener)];
       return () => unsubscribers.forEach((u) => u());
     },
-    () => controller.store.version + (controller.engine ? 1 : 0) + screenIndex(controller.screen) * 1_000_000,
+    () => controller.store.version + controller.version * 1_000 + (controller.engine ? 1 : 0) + screenIndex(controller.screen) * 1_000_000_000,
   );
 }
 

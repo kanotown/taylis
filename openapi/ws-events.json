@@ -1554,6 +1554,15 @@
             "title": "Mention Count",
             "type": "integer"
           },
+          "reason": {
+            "default": "advance",
+            "enum": [
+              "advance",
+              "set"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
           "unread_count": {
             "title": "Unread Count",
             "type": "integer"

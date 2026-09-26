@@ -15,6 +15,10 @@ export function MessageBody({ body, users, className }: { body: string; users: M
 
 function BlockView({ block, users }: { block: Block; users: Map<string, UserPublic> }) {
   switch (block.kind) {
+    case "heading": {
+      const size = block.level === 1 ? "text-xl font-bold" : block.level === 2 ? "text-lg font-bold" : "text-base font-semibold";
+      return <div className={cn("mt-1 leading-tight", size)}>{inline(block.tokens, users)}</div>;
+    }
     case "paragraph":
       return <p className="m-0">{lines(block.lines, users)}</p>;
     case "quote":

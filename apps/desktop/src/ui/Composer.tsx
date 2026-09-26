@@ -1,4 +1,4 @@
-import { Bold, Code, Eye, EyeOff, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, SquareCode, Strikethrough, TextQuote } from "lucide-react";
+import { Bold, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, SquareCode, Strikethrough, TextQuote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
@@ -120,6 +120,7 @@ export function Composer({
     { icon: <Strikethrough size={15} />, label: `取り消し線 (${modKey()}+Shift+X)`, run: () => edit((s) => toggleWrap(s, "~~")) },
     { icon: <Code size={15} />, label: `コード (${modKey()}+Shift+C)`, run: () => edit((s) => toggleWrap(s, "`")) },
     { icon: <SquareCode size={15} />, label: "コードブロック", run: () => edit(toggleFence) },
+    { icon: <Heading size={15} />, label: "見出し (## )", run: () => edit((s) => toggleLinePrefix(s, "## ")) },
     { icon: <TextQuote size={15} />, label: "引用", run: () => edit((s) => toggleLinePrefix(s, "> ")) },
     { icon: <List size={15} />, label: "箇条書き", run: () => edit((s) => toggleLinePrefix(s, "- ")) },
     { icon: <ListOrdered size={15} />, label: "番号付きリスト", run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
@@ -312,6 +313,7 @@ const SYNTAX: Array<[string, string]> = [
   ["_斜体_", "斜体"],
   ["~~取り消し~~", "取り消し線"],
   ["`コード`", "インラインコード"],
+  ["# 見出し / ## / ###", "見出し (3 段階)"],
   ["```言語 … ``` (行頭)", "コードブロック。中では Enter で改行"],
   ["> 引用", "引用。Enter で次の行も引用"],
   ["- 項目 / 1. 項目", "箇条書き / 番号付き。Enter で次の項目、空の項目で Enter すると終了、Tab で字下げ"],

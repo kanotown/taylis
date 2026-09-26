@@ -173,7 +173,7 @@ final class FakeServer {
             eventId += 1
             emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("read.updated"), "ts": .string(now()),
                                     "channel_id": .string(channelId), "seq": .null,
-                                    "data": .object(["channel_id": .string(channelId), "last_read_seq": .number(Double(state.lastReadSeq)),
+                                    "data": .object(["channel_id": .string(channelId), "reason": .string(mode), "last_read_seq": .number(Double(state.lastReadSeq)),
                                                      "unread_count": .number(Double(state.unreadCount)), "mention_count": .number(Double(state.mentionCount))])]))
             return state
         }

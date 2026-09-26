@@ -17,6 +17,7 @@ sealed class BodyToken {
 data class BodyListItem(val level: Int, val tokens: List<BodyToken>)
 
 sealed class BodyBlock {
+    data class Heading(val level: Int, val tokens: List<BodyToken>) : BodyBlock()
     data class Paragraph(val lines: List<List<BodyToken>>) : BodyBlock()
     data class Quote(val lines: List<List<BodyToken>>) : BodyBlock()
     data class ListBlock(val ordered: Boolean, val start: Int, val items: List<BodyListItem>) : BodyBlock()
@@ -32,6 +33,7 @@ private val FENCE_CLOSE = Regex("""^```\s*$""")
 private val BULLET = Regex("""^(\s*)[-*•]\s+(.*)$""")
 private val NUMBERED = Regex("""^(\s*)(\d{1,3})\.\s+(.*)$""")
 private val QUOTE = Regex("""^>\s?(.*)$""")
+private val HEADING = Regex("""^(#{1,3})\s+(\S.*)$""")
 
 /** Whole-body tokens (inline markup, fenced code and newlines); kept for older callers and tests. */
 fun tokenizeBody(body: String): List<BodyToken> = scan(body, FULL_PATTERN, withBlocks = true)
@@ -92,6 +94,11 @@ fun parseBlocks(body: String): List<BodyBlock> {
             i = close + 1
             continue
         }
+        HEADING.find(line)?.let { h ->
+            blocks.add(BodyBlock.Heading(h.groupValues[1].length, tokenizeInline(h.groupValues[2])))
+            i++
+            continue
+        }
         if (QUOTE.matches(line)) {
             val quoted = ArrayList<List<BodyToken>>()
             while (i < lines.size) {
@@ -120,7 +127,7 @@ fun parseBlocks(body: String): List<BodyBlock> {
         val paragraph = ArrayList<List<BodyToken>>()
         while (i < lines.size) {
             val current = lines[i]
-            if (paragraph.isNotEmpty() && (opensFence(i) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current))) break
+            if (paragraph.isNotEmpty() && (opensFence(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current))) break
             paragraph.add(tokenizeInline(current))
             i++
         }
