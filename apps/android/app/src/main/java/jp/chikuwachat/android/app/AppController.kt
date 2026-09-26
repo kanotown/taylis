@@ -67,12 +67,16 @@ class AppController(private val app: Application) {
     var pendingChannelId by mutableStateOf<String?>(null)
     data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>)
     var messageFocus by mutableStateOf<MessageFocus?>(null)
-    suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean {
+    suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean =
+        revealMessage(message.id, message.channelId, message.parentId)
+
+    /** Focus a message known only by its ids (M11i files list): the context comes from the server. */
+    suspend fun revealMessage(messageId: String, channelId: String, parentId: String?): Boolean {
         val api = api ?: return false
         return try {
-            val context = api.messageContext(message.id)
-            message.parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
-            messageFocus = MessageFocus(message.channelId, message.id, message.parentId, context.map { MessageState.from(it) })
+            val context = api.messageContext(messageId)
+            parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
+            messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) })
             true
         } catch (e: Exception) { error = describe(e); false }
     }
@@ -310,6 +314,8 @@ class AppController(private val app: Application) {
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = runCatching { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = runCatching { api!!.listBookmarks(cursor) }
     suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = runCatching { api!!.listMentions(cursor) }
+    suspend fun listFiles(channelId: String? = null, query: String? = null, cursor: String? = null): Result<jp.chikuwachat.android.api.FileListOut> =
+        runCatching { api!!.listFiles(channelId, query, cursor) }
     /** M11h: every public channel plus my private ones, for the channel browser. */
     suspend fun browseChannels(): Result<List<jp.chikuwachat.android.api.ChannelOut>> =
         runCatching { api!!.channels(includePublic = true).filter { it.type == "public" || it.type == "private" } }

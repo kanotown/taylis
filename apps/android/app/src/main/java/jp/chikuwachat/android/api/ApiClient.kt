@@ -269,6 +269,16 @@ class ApiClient(
     suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")
     suspend fun pinMessage(messageId: String): MessageOut = request("PUT", "/api/v1/messages/$messageId/pin")
     suspend fun unpinMessage(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId/pin")
+    /** M11i: attached files in my channels (optionally one channel), newest first. */
+    suspend fun listFiles(channelId: String? = null, query: String? = null, cursor: String? = null, limit: Int = 50): FileListOut =
+        request(
+            "GET",
+            "/api/v1/files?limit=$limit" +
+                (channelId?.let { "&channel_id=$it" } ?: "") +
+                (query?.takeIf { it.isNotBlank() }?.let { "&q=" + Enc.encode(it, "UTF-8") } ?: "") +
+                (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""),
+        )
+
     /** M11h: messages that mention me or everyone in my channels. */
     suspend fun listMentions(cursor: String? = null, limit: Int = 50): MentionListOut =
         request("GET", "/api/v1/mentions?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
