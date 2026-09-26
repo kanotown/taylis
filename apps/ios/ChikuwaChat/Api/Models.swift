@@ -265,6 +265,23 @@ struct BookmarkListOut: Codable {
     let nextCursor: String?
 }
 
+/// GET /files (M11i): one attached file and where it was posted.
+struct FileItem: Codable, Identifiable {
+    let attachment: AttachmentOut
+    let messageId: String
+    let channelId: String
+    let parentId: String?
+    let uploaderId: String
+    let attachedAt: String
+
+    var id: String { attachment.id }
+}
+
+struct FileListOut: Codable {
+    let items: [FileItem]
+    let nextCursor: String?
+}
+
 /// GET /mentions (M11h): messages that mention me or everyone, newest first.
 struct MentionListOut: Codable {
     let items: [MessageOut]
