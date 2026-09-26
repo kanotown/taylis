@@ -20,7 +20,12 @@ from app.modules.attachments import repository as repo
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, make_thumbnail
 from app.modules.attachments.models import Attachment
-from app.modules.attachments.schemas import AttachmentOut, to_attachment_out
+from app.modules.attachments.schemas import (
+    AttachmentOut,
+    FileItem,
+    FileListOut,
+    to_attachment_out,
+)
 from app.modules.channels import service as channels
 from app.modules.users.models import User
 
@@ -153,6 +158,56 @@ async def for_messages(
         if attachment.message_id is not None:
             grouped.setdefault(attachment.message_id, []).append(to_attachment_out(attachment))
     return grouped
+
+
+def _parse_cursor(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    try:
+        raw_at, raw_id = cursor.split("|", 1)
+        return datetime.fromisoformat(raw_at), uuid.UUID(raw_id)
+    except ValueError as exc:
+        raise bad_request("invalid_cursor", "Malformed cursor") from exc
+
+
+async def list_files(
+    db: AsyncSession,
+    actor: User,
+    *,
+    channel_id: uuid.UUID | None,
+    query: str | None,
+    cursor: str | None,
+    limit: int,
+) -> FileListOut:
+    """Files in the channels the actor belongs to, newest first (M11i).
+
+    A channel the actor is not a member of yields nothing rather than an error.
+    """
+    rows = await repo.list_attached(
+        db,
+        actor.id,
+        channel_id=channel_id,
+        query=(query or "").strip() or None,
+        before=_parse_cursor(cursor),
+        limit=limit,
+    )
+    items = [
+        FileItem(
+            attachment=to_attachment_out(row),
+            message_id=row.message_id,
+            channel_id=row.channel_id,
+            parent_id=parent_id,
+            uploader_id=row.uploader_id,
+            attached_at=row.attached_at,
+        )
+        for row, parent_id in rows
+        if row.message_id is not None and row.channel_id is not None and row.attached_at
+    ]
+    next_cursor = None
+    if len(rows) == limit and items:
+        last = items[-1]
+        next_cursor = f"{last.attached_at.isoformat()}|{last.attachment.id}"
+    return FileListOut(items=items, next_cursor=next_cursor)
 
 
 async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID) -> Attachment:

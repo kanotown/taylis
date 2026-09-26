@@ -18,6 +18,22 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
 
+class FileItem(BaseModel):
+    """One row of the files list (M11i): the attachment and where it was posted."""
+
+    attachment: AttachmentOut
+    message_id: UUID
+    channel_id: UUID
+    parent_id: UUID | None
+    uploader_id: UUID
+    attached_at: datetime
+
+
+class FileListOut(BaseModel):
+    items: list[FileItem]
+    next_cursor: str | None
+
+
 def to_attachment_out(attachment: Attachment) -> AttachmentOut:
     return AttachmentOut(
         id=attachment.id,

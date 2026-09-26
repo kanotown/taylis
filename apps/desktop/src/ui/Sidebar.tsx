@@ -1,4 +1,4 @@
-import { AtSign, BellOff, Bookmark, Compass, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
+import { AtSign, BellOff, Bookmark, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -34,9 +34,12 @@ interface Props {
   mentionsActive?: boolean;
   onDrafts?: () => void;
   draftsActive?: boolean;
+  /** M11i: files in my channels. */
+  onFiles?: () => void;
+  filesActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false }: Props) {
   const store = controller.store;
   const draftCount = store.listDrafts().length;
   const me = store.me ?? controller.me;
@@ -182,6 +185,23 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 <FileText size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">下書き</span>
                 <span className="text-[11px] opacity-70">{draftCount}</span>
+              </button>
+            </li>
+          )}
+          {onFiles && (
+            <li>
+              <button
+                type="button"
+                onClick={onFiles}
+                aria-current={filesActive ? "page" : undefined}
+                title="チャンネルのファイル"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  filesActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <Files size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">ファイル</span>
               </button>
             </li>
           )}

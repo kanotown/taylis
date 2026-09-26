@@ -39,7 +39,7 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
 }
 
 /** Fetches an attachment image with the bearer token and hands back an object URL (revoked on unmount). */
-function useAttachmentUrl(controller: AppController, attachment: AttachmentOut, kind: "thumbnail" | "content", enabled = true): string | null {
+export function useAttachmentUrl(controller: AppController, attachment: AttachmentOut, kind: "thumbnail" | "content", enabled = true): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!enabled) return;
