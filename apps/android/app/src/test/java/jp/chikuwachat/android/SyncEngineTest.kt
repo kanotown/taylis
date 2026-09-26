@@ -242,6 +242,16 @@ class SyncEngineTest {
         second.stop(); w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun attachmentIdsTravelWithTheOutbox() = runBlocking {
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        w.engine.send(w.channelId, "", attachmentIds = listOf("a1", "a2")); settle(w.engine)
+        val sent = w.store.messages(w.channelId).single()
+        assertEquals(listOf("a1", "a2"), sent.attachments.map { it.id })
+        assertEquals(listOf("a1", "a2"), w.server.channels.getValue(w.channelId).messages.single().attachments.map { it.id })
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

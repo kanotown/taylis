@@ -1,7 +1,8 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient } from "../api/client";
 import { ApiError } from "../api/errors";
-import type { TokenResponse, UserMe } from "../api/types";
+import type { AttachmentOut, TokenResponse, UserMe } from "../api/types";
+import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
 import { notify } from "../platform/notify";
@@ -115,6 +116,17 @@ export class AppController {
 
   get isAdmin(): boolean {
     return this.me?.role === "admin";
+  }
+
+  /** Fetch the bytes with the bearer token and hand them to the platform save dialog. */
+  async downloadAttachment(attachment: AttachmentOut): Promise<void> {
+    if (!this.api) return;
+    try {
+      const blob = await this.api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`);
+      await saveDownload(attachment.filename, blob);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
   }
 
   // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated ---

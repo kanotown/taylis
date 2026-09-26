@@ -80,9 +80,9 @@ final class FakeServer {
             return try server.delta(userId: userId, channelId: channelId, sinceSeq: sinceSeq, limit: limit)
         }
 
-        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?) async throws -> (MessageOut, Bool) {
+        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool) {
             try maybeFail()
-            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId)
+            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds)
         }
 
         func replies(messageId: String) async throws -> [MessageOut] {
@@ -188,7 +188,7 @@ final class FakeServer {
     }
 
     @discardableResult
-    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil) throws -> (MessageOut, Bool) {
+    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = []) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
@@ -209,7 +209,8 @@ final class FakeServer {
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
         let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
                                  createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body),
-                                 parentId: parentId)
+                                 parentId: parentId,
+                                 attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) })
         record.messages.append(message)
         var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
         if let parentIndex {
@@ -257,7 +258,7 @@ final class FakeServer {
         MessageOut(id: m.id, channelId: m.channelId, senderId: m.senderId, seq: m.seq, updatedSeq: updatedSeq ?? m.updatedSeq, clientMsgId: m.clientMsgId,
                    body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
                    mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions,
-                   parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt)
+                   parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt, attachments: m.attachments)
     }
 
     private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {

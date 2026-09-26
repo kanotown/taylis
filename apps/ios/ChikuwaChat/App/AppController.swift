@@ -127,6 +127,29 @@ final class AppController {
 
     var isAdmin: Bool { me?.role == "admin" }
 
+    // MARK: attachments (M9a)
+
+    func uploadAttachment(data: Data, filename: String, contentType: String) async -> AttachmentOut? {
+        guard let api else { return nil }
+        do { return try await api.uploadAttachment(data: data, filename: filename, contentType: contentType) } catch { self.error = describe(error); return nil }
+    }
+
+    /// Fetch the bytes with the bearer token into a temporary file (shared through the system sheet).
+    func downloadAttachment(_ attachment: AttachmentOut) async -> URL? {
+        guard let api else { return nil }
+        do {
+            let data = try await api.fetchData("/api/v1/attachments/\(attachment.id)/content")
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(attachment.filename.replacingOccurrences(of: "/", with: "_"))
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            self.error = describe(error)
+            return nil
+        }
+    }
+
     // MARK: message actions (M8a): apply the server's answer at once; the WS event is deduplicated
 
     func editMessage(_ messageId: String, body: String) async {

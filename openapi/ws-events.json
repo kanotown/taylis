@@ -606,8 +606,85 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AttachmentOut": {
+            "properties": {
+              "content_type": {
+                "title": "Content Type",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "filename": {
+                "title": "Filename",
+                "type": "string"
+              },
+              "has_thumbnail": {
+                "title": "Has Thumbnail",
+                "type": "boolean"
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "size_bytes": {
+                "title": "Size Bytes",
+                "type": "integer"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "id",
+              "filename",
+              "content_type",
+              "size_bytes",
+              "width",
+              "height",
+              "has_thumbnail",
+              "status",
+              "created_at"
+            ],
+            "title": "AttachmentOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
+              "attachments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AttachmentOut"
+                },
+                "title": "Attachments",
+                "type": "array"
+              },
               "body": {
                 "title": "Body",
                 "type": "string"
@@ -845,8 +922,85 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AttachmentOut": {
+            "properties": {
+              "content_type": {
+                "title": "Content Type",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "filename": {
+                "title": "Filename",
+                "type": "string"
+              },
+              "has_thumbnail": {
+                "title": "Has Thumbnail",
+                "type": "boolean"
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "size_bytes": {
+                "title": "Size Bytes",
+                "type": "integer"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "id",
+              "filename",
+              "content_type",
+              "size_bytes",
+              "width",
+              "height",
+              "has_thumbnail",
+              "status",
+              "created_at"
+            ],
+            "title": "AttachmentOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
+              "attachments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AttachmentOut"
+                },
+                "title": "Attachments",
+                "type": "array"
+              },
               "body": {
                 "title": "Body",
                 "type": "string"
@@ -1085,8 +1239,85 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AttachmentOut": {
+            "properties": {
+              "content_type": {
+                "title": "Content Type",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "filename": {
+                "title": "Filename",
+                "type": "string"
+              },
+              "has_thumbnail": {
+                "title": "Has Thumbnail",
+                "type": "boolean"
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "size_bytes": {
+                "title": "Size Bytes",
+                "type": "integer"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "id",
+              "filename",
+              "content_type",
+              "size_bytes",
+              "width",
+              "height",
+              "has_thumbnail",
+              "status",
+              "created_at"
+            ],
+            "title": "AttachmentOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
+              "attachments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AttachmentOut"
+                },
+                "title": "Attachments",
+                "type": "array"
+              },
               "body": {
                 "title": "Body",
                 "type": "string"

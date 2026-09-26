@@ -6,7 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import jp.chikuwachat.android.BuildConfig
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.Notifier
@@ -270,6 +275,30 @@ class AppController(private val app: Application) {
     }.onFailure { error = describe(it) }
 
     val isAdmin: Boolean get() = me?.role == "admin"
+
+    // --- attachments (M9a) ---------------------------------------------------------------------------
+
+    suspend fun fetchBytes(path: String): ByteArray = api!!.fetchBytes(path)
+
+    /** Read a picked content URI and upload it; the id is bound when the message is sent. */
+    suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = runCatching {
+        val resolver = app.contentResolver
+        var name = "file"
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) name = cursor.getString(0) ?: name
+        }
+        val bytes = withContext(Dispatchers.IO) { resolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("読み込めませんでした")
+        api!!.uploadAttachment(bytes, name, resolver.getType(uri))
+    }.onFailure { error = describe(it) }
+
+    fun openAttachment(attachment: AttachmentOut) {
+        scope.launch {
+            runCatching {
+                val bytes = fetchBytes("/api/v1/attachments/${attachment.id}/content")
+                openDownloaded(app as Context, attachment, bytes)
+            }.onFailure { error = describe(it) }
+        }
+    }
 
     suspend fun members(channelId: String): Result<List<String>> = runCatching { api!!.members(channelId).map { it.userId } }
 

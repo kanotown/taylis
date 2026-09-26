@@ -12,7 +12,6 @@ from app.modules.messages.schemas import (
     MessageCreate,
     MessageEdit,
     MessageOut,
-    to_message_out,
 )
 
 router = APIRouter(tags=["messages"])
@@ -26,7 +25,7 @@ async def create_message(
 ) -> MessageOut:
     message, created = await service.create_message(db, user, channel_id, body)
     response.status_code = 201 if created else 200
-    return to_message_out(message)
+    return await service.message_out(db, message)
 
 
 @router.get("/channels/{channel_id}/messages", response_model=HistoryOut)

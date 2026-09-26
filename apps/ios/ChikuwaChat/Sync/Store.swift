@@ -66,10 +66,11 @@ struct MessageState: Codable, Identifiable, Equatable {
     var parentId: String? = nil
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
+    var attachments: [AttachmentOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
-        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt
+        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -97,6 +98,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         parentId = message.parentId
         replyCount = message.replyCount
         lastReplyAt = message.lastReplyAt
+        attachments = message.attachments
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -120,6 +122,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
+        attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil) {
@@ -146,6 +149,7 @@ struct OutboxItem: Codable, Identifiable, Equatable {
     var createdAt: String
     var failed: String?
     var parentId: String? = nil
+    var attachmentIds: [String] = []
 
     var id: String { clientMsgId }
 }

@@ -32,8 +32,8 @@ struct ThreadView: View {
                     }
                     .onChange(of: replies.last?.id) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
                 }
-                ComposerView(text: $draft, users: Array(controller.store.users.values), placeholder: "スレッドに返信") { body in
-                    Task { await controller.engine?.send(channelId, body: body, parentId: parentId) }
+                ComposerView(text: $draft, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
+                    Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds) }
                 }
             }
             .navigationTitle("スレッド")

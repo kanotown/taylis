@@ -1,7 +1,9 @@
 import { type KeyboardEvent, useRef, useState } from "react";
 
+import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { PendingAttachments } from "./Attachments";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 
 const MAX_LENGTH = 20_000;
@@ -22,6 +24,9 @@ export function Composer({
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
+  const [pending, setPending] = useState<AttachmentOut[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
   const composedAt = useRef(0);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -33,9 +38,26 @@ export function Composer({
 
   const send = () => {
     const body = encodeMentions(text.trim(), store.users.values());
-    if (!body || !controller.engine) return;
+    if ((!body && pending.length === 0) || !controller.engine) return;
+    const ids = pending.map((a) => a.id);
     setText("");
-    void controller.engine.send(channel.id, body, undefined, parentId);
+    setPending([]);
+    void controller.engine.send(channel.id, body, undefined, parentId, ids);
+  };
+
+  const pickFiles = async (files: FileList | null) => {
+    if (!files || !controller.api) return;
+    for (const file of Array.from(files)) {
+      setUploading((n) => n + 1);
+      try {
+        const uploaded = await controller.api.uploadAttachment(file, file.name);
+        setPending((items) => [...items, uploaded]);
+      } catch (error) {
+        controller.error = error instanceof Error ? error.message : String(error);
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
   };
 
   const pick = (candidate: MentionCandidate) => {
@@ -101,7 +123,21 @@ export function Composer({
           ))}
         </ul>
       )}
+      <PendingAttachments items={pending} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
       <div className="composer">
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            void pickFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button className="secondary attach" title="ファイルを添付" onClick={() => fileInput.current?.click()} disabled={uploading > 0}>
+          {uploading > 0 ? "…" : "📎"}
+        </button>
         <textarea
           ref={area}
           value={text}
@@ -123,7 +159,7 @@ export function Composer({
           }}
           rows={2}
         />
-        <button onClick={send} disabled={!text.trim()}>
+        <button onClick={send} disabled={!text.trim() && pending.length === 0}>
           送信
         </button>
       </div>

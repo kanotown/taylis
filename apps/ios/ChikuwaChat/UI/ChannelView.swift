@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChannelView: View {
     @Bindable var controller: AppController
@@ -54,8 +56,8 @@ struct ChannelView: View {
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
-                    ComposerView(text: $draft, users: Array(controller.store.users.values)) { body in
-                        Task { await controller.engine?.send(channelId, body: body) }
+                    ComposerView(text: $draft, users: Array(controller.store.users.values), controller: controller) { body, attachmentIds in
+                        Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds) }
                     }
                 }
             }
@@ -94,7 +96,8 @@ struct MessageRow: View {
                 Text(formatTime(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                 if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
             }
-            MessageBodyView(text: message.body, users: store.users)
+            if !message.body.isEmpty { MessageBodyView(text: message.body, users: store.users) }
+            if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
             if !message.reactions.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(message.reactions, id: \.emoji) { reaction in
@@ -191,7 +194,12 @@ struct ComposerView: View {
     @Binding var text: String
     let users: [UserPublic]
     var placeholder = "メッセージを入力"
-    let onSend: (String) -> Void
+    var controller: AppController? = nil
+    let onSend: (String, [String]) -> Void
+    @State private var pending: [AttachmentOut] = []
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var showFileImporter = false
+    @State private var uploading = 0
 
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
@@ -200,8 +208,16 @@ struct ComposerView: View {
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    private func upload(data: Data, filename: String, contentType: String) async {
+        guard let controller else { return }
+        uploading += 1
+        defer { uploading -= 1 }
+        if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) { pending.append(uploaded) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            PendingAttachmentsView(items: pending) { item in pending.removeAll { $0.id == item.id } }
             if !candidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
@@ -216,20 +232,54 @@ struct ComposerView: View {
                 .padding(.vertical, 4)
             }
             HStack(alignment: .bottom) {
+                if controller != nil {
+                    Menu {
+                        PhotosPicker(selection: $photoItems, maxSelectionCount: 5, matching: .images) { Label("写真", systemImage: "photo") }
+                        Button("ファイル", systemImage: "doc") { showFileImporter = true }
+                    } label: {
+                        Image(systemName: uploading > 0 ? "hourglass" : "paperclip")
+                    }
+                    .disabled(uploading > 0)
+                }
                 TextField(placeholder, text: $text, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
                 Button("送信", systemImage: "paperplane.fill") {
                     let body = Mentions.encode(trimmed, users: users)
-                    guard !body.isEmpty else { return }
+                    guard !body.isEmpty || !pending.isEmpty else { return }
+                    let ids = pending.map(\.id)
                     text = ""
-                    onSend(body)
+                    pending = []
+                    onSend(body, ids)
                 }
                 .labelStyle(.iconOnly)
-                .disabled(trimmed.isEmpty)
+                .disabled(trimmed.isEmpty && pending.isEmpty)
             }
             .padding()
         }
         .background(.bar)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            Task {
+                for item in items {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                    let type = item.supportedContentTypes.first
+                    await upload(data: data, filename: "photo." + (type?.preferredFilenameExtension ?? "jpg"), contentType: type?.preferredMIMEType ?? "image/jpeg")
+                }
+            }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            Task {
+                for url in urls {
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    guard let data = try? Data(contentsOf: url) else { continue }
+                    let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                    await upload(data: data, filename: url.lastPathComponent, contentType: type)
+                }
+            }
+        }
     }
 }

@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.attachments import service as attachments
+from app.modules.attachments.schemas import to_attachment_out
 from app.modules.channels import service as channels
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
@@ -78,6 +80,10 @@ async def create_message(
             )
             db.add(message)
             await db.flush()
+            bound = await attachments.bind_in_tx(
+                db, actor.id, channel_id, message.id, data.attachment_ids
+            )
+            attachments_out = [to_attachment_out(a) for a in bound]
             parent_thread = None
             if parent is not None:
                 # The reply consumes the seq; the parent's counters move to it (DATA_MODEL.md).
@@ -93,7 +99,8 @@ async def create_message(
                 channel_id=channel_id,
                 seq=seq,
                 payload=MessageCreatedData(
-                    message=to_message_out(message), parent_thread=parent_thread
+                    message=to_message_out(message, attachments=attachments_out),
+                    parent_thread=parent_thread,
                 ).model_dump(mode="json"),
             )
             # The sender has read their own message (SYNC_PROTOCOL.md §10).
@@ -151,9 +158,11 @@ async def get_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> M
 
 
 async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut]:
-    """Response shapes with reactions filled in (DATA_MODEL.md: 差分・履歴は reactions を JOIN)."""
-    reactions = await repo.reactions_for(db, [m.id for m in rows if not m.is_deleted])
-    return [to_message_out(m, reactions.get(m.id, [])) for m in rows]
+    """Response shapes with reactions and attachments filled in (DATA_MODEL.md)."""
+    live = [m.id for m in rows if not m.is_deleted]
+    reactions = await repo.reactions_for(db, live)
+    files = await attachments.for_messages(db, live)
+    return [to_message_out(m, reactions.get(m.id, []), files.get(m.id, [])) for m in rows]
 
 
 async def message_out(db: AsyncSession, message: Message) -> MessageOut:
@@ -205,6 +214,7 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message.mention_all = False
     message.updated_seq = seq
     await db.flush()
+    await attachments.mark_deleted_in_tx(db, message.id)
     parent_thread = None
     if message.parent_id is not None:
         parent = await repo.get_message(db, message.parent_id)

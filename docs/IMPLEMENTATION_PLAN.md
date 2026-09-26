@@ -35,7 +35,7 @@ CLAUDE.md の "Implementation Strategy" に定めるマイルストーン順序�
 | M6 | Android クライアント | login、channel list、messages、send、同期 | **実装済み (2026-09-26)**: Kotlin / Compose、Room (JSON blob 行)、Keystore + DataStore、OkHttp WebSocket、Desktop / iOS と同じ同期エンジン、契約フィクスチャ 7 本と実サーバに対するライブテスト (JVM、実トランスポート) が通過。`assembleDebug` / Lint / JUnit が緑。エミュレータでの会話確認は下記 |
 | M7 | FCM | 端末登録、トークン処理、配送 | **実装済み (2026-09-26)**: `FCMPushProvider` (HTTP v1、サービスアカウントの JWT bearer grant、data-only、応答対応表のテスト)、compose の鍵マウント、Android の `FirebaseMessagingService` / `PushCenter` (トークン登録・更新、通知の組み立て、タップで該当チャンネル)。Firebase プロジェクトでの実受信はユーザー側の設定後に確認する (infra/README.md) |
 | M8 | メッセージ機能 | threads、reactions、mentions、edit、delete、unread state | **M8a 実装済み (2026-09-26)**: 編集・削除 (トゥームストーン)・リアクション・メンション抽出とプッシュ対象、`PATCH/DELETE /messages/{id}`、`PUT/DELETE /messages/{id}/reactions/{emoji}`、契約フィクスチャ 04 (切断中の変更を差分 1 回で回復) を 4 実装で通過、3 クライアントの UI (アクション・リアクション・メンション補完)。**M8b 実装済み (2026-09-26)**: `read_states` (参加時に初期化、送信者は自分の投稿を既読)、`PUT /channels/{id}/read` (単調・clamp)、`read.updated`、bootstrap の `read_state` (未読数・メンション数を seq 範囲から導出)、PushPlanner の既読チェックとバッジ、PushSender の送信直前の既読チェック、契約フィクスチャ 07 を 4 実装で通過、3 クライアントの未読バッジと既読送信 (1 秒デバウンス、楽観的更新)。**M8c 実装済み (2026-09-26)**: `parent_id` (1 段)、返信で親の `reply_count` / `last_reply_at` / `updated_seq` を同じ seq に更新、`GET /messages/{id}/replies`、履歴は親のみ・差分は返信込み、返信は未読に数えない、通知対象に親の投稿者と返信者 (`parent_thread.participant_ids`)、3 クライアントのスレッド画面 (Desktop は右ペイン、モバイルはスレッド画面 / シート) |
-| M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | 画像を送って相手に表示。日本語 / 英語で検索できる |
+| M9 | 添付と検索 | versitygw、attachments、PGroonga、search UI | **M9a 実装済み (2026-09-26)**: `attachments` (pending → attached → deleted)、`BlobStore` (S3 API / boto3、起動時に `ensure_bucket`)、`POST /attachments` (サイズ上限、MIME sniff、サムネイル、レート制限)、`GET /attachments/{id}[/content|/thumbnail]` (メンバー判定、`inline` は画像のみ、nosniff)、送信時の bind、削除で即時 `deleted`、GC、`verify-attachments` CLI、3 クライアントのアップロード / サムネイル表示 / ダウンロード。compose の versitygw で通し確認済み。M9b (検索) は未着手 |
 | M10 | 運用 | backup、restore、security review、logging、deployment docs | 復元リハーサルが成功する |
 
 ## 2. 各マイルストーンの詳細
@@ -192,6 +192,11 @@ FCM の実受信には Firebase プロジェクトが要るため、infra/README
   サイズ上限、MIME sniff)、bind、`GET /attachments/{id}/content` (認可、ヘッダ)、サムネイル生成、
   GC ジョブ、`verify-attachments` CLI、3 クライアントのアップロード / 表示 / ダウンロード。
   完了条件: 画像とファイルを送って相手に表示できる。非メンバーは 403。メッセージ削除後は 404。
+  実装メモ (2026-09-26): サムネイルのキーは `attachments/{id}.thumb.jpg` (posix バックエンドでは
+  `attachments/{id}` と同名のディレクトリを作れないため。ARCHITECTURE.md / DATA_MODEL.md を更新)。
+  本文が空でも添付があれば送信できる。アップロードはメモリに読み込んでから S3 に置く (上限 100 MB。
+  ストリーミングのままマルチパートアップロードするのは将来の最適化)。Desktop の保存は Tauri の
+  dialog / fs プラグイン、iOS は共有シート、Android は FileProvider 経由の ACTION_VIEW。
 - **M9b 検索**: PGroonga インデックス (`messages.body`、`attachments.filename`)、`GET /search/messages`
   (権限フィルタ、`channel_id` / `from_user_id` / 期間、`pgroonga_score` 順、ハイライト)、構文エラー時の
   エスケープ再試行、3 クライアントの検索 UI。tokenizer は既定 (TokenBigram) から始め、MeCab は

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
@@ -50,6 +51,7 @@ data class MessageState(
     val parentId: String? = null,
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
+    val attachments: List<AttachmentOut> = emptyList(),
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
     val isReply: Boolean get() = parentId != null
@@ -60,7 +62,7 @@ data class MessageState(
             updatedSeq = message.updatedSeq, clientMsgId = message.clientMsgId, body = message.body,
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
-            parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt,
+            parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
         )
 
         fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null) = MessageState(
@@ -78,6 +80,7 @@ data class OutboxItem(
     val createdAt: String,
     val failed: String? = null,
     val parentId: String? = null,
+    val attachmentIds: List<String> = emptyList(),
 )
 
 @Serializable

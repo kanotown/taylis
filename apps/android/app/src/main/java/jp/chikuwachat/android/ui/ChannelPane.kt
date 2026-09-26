@@ -28,6 +28,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import jp.chikuwachat.android.api.AttachmentOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +63,10 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     val scope = rememberCoroutineScope()
     var draft by rememberSaveable(channelId) { mutableStateOf("") }
     var loadingOlder by remember { mutableStateOf(false) }
+    var pendingUploads by remember(channelId) { mutableStateOf(listOf<AttachmentOut>()) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach { uri -> scope.launch { controller.uploadAttachment(uri).onSuccess { pendingUploads = pendingUploads + it } } }
+    }
     // Viewing the newest messages marks them read (SYNC_PROTOCOL.md §10; debounced in the engine).
     LaunchedEffect(channel.lastSeq) { controller.engine?.markRead(channelId, channel.lastSeq) }
 
@@ -67,7 +74,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
             items(messages.asReversed(), key = { it.id }) { message ->
                 MessageRow(
-                    message, store,
+                    message, store, controller,
                     canEdit = !message.pending && message.senderId == store.me?.id,
                     canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
                     onRetry = { scope.launch { controller.engine?.retryFailed() } },
@@ -104,16 +111,20 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                     }
                 }
             }
+            PendingAttachments(pendingUploads) { removed -> pendingUploads = pendingUploads - removed }
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
+                IconButton(onClick = { picker.launch("*/*") }) { Text("📎") }
                 OutlinedTextField(draft, { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("メッセージ") }, maxLines = 6)
                 IconButton(
                     onClick = {
                         val body = Mentions.encode(draft.trim(), store.users.values)
-                        if (body.isEmpty()) return@IconButton
+                        val ids = pendingUploads.map { it.id }
+                        if (body.isEmpty() && ids.isEmpty()) return@IconButton
                         draft = ""
-                        scope.launch { controller.engine?.send(channelId, body) }
+                        pendingUploads = emptyList()
+                        scope.launch { controller.engine?.send(channelId, body, attachmentIds = ids) }
                     },
-                    enabled = draft.isNotBlank(),
+                    enabled = draft.isNotBlank() || pendingUploads.isNotEmpty(),
                 ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }
             }
         }
@@ -125,6 +136,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
 private fun MessageRow(
     message: MessageState,
     store: Store,
+    controller: AppController,
     canEdit: Boolean,
     canDelete: Boolean,
     onRetry: () -> Unit,
@@ -146,7 +158,8 @@ private fun MessageRow(
                 Text(formatTime(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (message.editedAt != null) { Spacer(Modifier.width(4.dp)); Text("(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            MessageBody(message.body, store.users)
+            if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
+            AttachmentList(message.attachments, controller)
             ReactionChips(message, store, onToggle = onReact)
             if (message.replyCount > 0) {
                 TextButton(onClick = onOpenThread, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {

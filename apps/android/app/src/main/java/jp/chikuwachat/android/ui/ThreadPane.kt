@@ -79,7 +79,8 @@ private fun ThreadMessage(message: jp.chikuwachat.android.sync.MessageState, sto
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(sender, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        MessageBody(message.body, store.users)
+        if (message.body.isNotEmpty()) MessageBody(message.body, store.users)
+        AttachmentList(message.attachments, controller)
         ReactionChips(message, store, onToggle = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } })
     }
 }

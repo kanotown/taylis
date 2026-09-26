@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
+import { AttachmentList } from "./Attachments";
 import { Composer } from "./Composer";
 import { MessageBody } from "./MessageBody";
 
@@ -49,7 +50,8 @@ function ThreadMessage({ message, controller }: { message: MessageState; control
       <div className="meta">
         <strong>{sender}</strong>
       </div>
-      <MessageBody body={message.body} users={store.users} />
+      {message.body && <MessageBody body={message.body} users={store.users} />}
+      <AttachmentList attachments={message.attachments ?? []} controller={controller} />
     </article>
   );
 }

@@ -20,6 +20,9 @@ from app.core.time import utcnow
 from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
 from app.modules.admin.router import router as admin_router
+from app.modules.attachments import service as attachments_service
+from app.modules.attachments.blobstore import build_blobstore
+from app.modules.attachments.router import router as attachments_router
 from app.modules.auth.router import router as auth_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
@@ -73,15 +76,41 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
             continue
 
 
+async def _attachment_gc_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """Expired pending uploads and the bytes of deleted messages (DATA_MODEL.md "attachments")."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            async with app.state.db.session_factory() as session:
+                removed, purged = await attachments_service.gc(
+                    session,
+                    app.state.blobs,
+                    pending_ttl_hours=settings.attachment_pending_ttl_hours,
+                )
+            if removed or purged:
+                log.info("attachment gc: %d expired uploads, %d purged", removed, purged)
+        except Exception:
+            log.exception("attachment gc failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.attachment_gc_interval_seconds)
+        except TimeoutError:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     stop = asyncio.Event()
     tasks: list[asyncio.Task[None]] = []
+    try:
+        await app.state.blobs.ensure_bucket()
+    except Exception:  # readiness reports the object store; uploads fail loudly until it is back
+        log.exception("object store is not reachable at startup")
     if settings.run_background_tasks:
         tasks.append(asyncio.create_task(app.state.relay.run(stop), name="outbox-relay"))
         tasks.append(asyncio.create_task(_purge_loop(app, stop), name="outbox-purge"))
         tasks.append(asyncio.create_task(app.state.push_sender.run(stop), name="push-sender"))
+        tasks.append(asyncio.create_task(_attachment_gc_loop(app, stop), name="attachment-gc"))
     try:
         yield
     finally:
@@ -99,6 +128,7 @@ def build_api_router() -> APIRouter:
     api.include_router(admin_router)
     api.include_router(channels_router)
     api.include_router(messages_router)
+    api.include_router(attachments_router)
     api.include_router(notifications_router)
     api.include_router(sync_router)
     api.include_router(realtime_router)
@@ -124,7 +154,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
+        "upload": RateLimiter(settings.upload_rate_limit_per_user),
     }
+    app.state.blobs = build_blobstore(settings)
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(queue_size=settings.ws_send_queue_size)
     app.state.bus.subscribe(app.state.hub.on_event)

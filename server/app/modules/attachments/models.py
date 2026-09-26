@@ -1,0 +1,49 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.base import Base
+from app.core.ids import uuid7
+from app.core.time import utcnow
+
+
+class Attachment(Base):
+    """Metadata in PostgreSQL; bytes live in the object store (DATA_MODEL.md "attachments")."""
+
+    __tablename__ = "attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    uploader_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("channels.id"))
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    filename: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[bytes | None] = mapped_column(LargeBinary)
+    storage_key: Mapped[str] = mapped_column(Text)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_key: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    attached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("attachments_message_idx", "message_id"),
+        Index("attachments_gc_idx", "status", "created_at"),
+    )

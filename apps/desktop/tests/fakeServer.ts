@@ -169,7 +169,7 @@ export class FakeServer {
   }
 
   /** Server-side post (used by fixtures for "other users" and by the api for the client). */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = []): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -196,6 +196,7 @@ export class FakeServer {
       mentioned_user_ids: mentionedIds(body),
       mention_all: MENTION_ALL.test(body),
       reactions: [],
+      attachments: attachmentIds.map((id) => ({ id, filename: `file-${id}`, content_type: "application/octet-stream", size_bytes: 1, width: null, height: null, has_thumbnail: false, status: "attached", created_at: now() })),
       reply_count: 0,
       last_reply_at: null,
       created_at: now(),
@@ -378,9 +379,9 @@ export class FakeServer {
         const hasMore = rows.length > limit;
         return { messages: page, next_since_seq: hasMore ? page[page.length - 1]!.updated_seq : Math.max(channelLastSeq, sinceSeq), has_more: hasMore };
       },
-      postMessage: async (channelId, clientMsgId, body, parentId = null) => {
+      postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = []) => {
         maybeFail();
-        return this.post(channelId, userId, body, clientMsgId, parentId);
+        return this.post(channelId, userId, body, clientMsgId, parentId, attachmentIds);
       },
       replies: async (messageId): Promise<MessageOut[]> => {
         maybeFail();

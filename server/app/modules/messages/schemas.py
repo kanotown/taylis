@@ -3,8 +3,9 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.modules.attachments.schemas import AttachmentOut
 from app.modules.messages.models import Message, Reaction
 
 MAX_BODY_LENGTH = 20_000
@@ -23,13 +24,20 @@ def clean_body(value: str) -> str:
 
 class MessageCreate(BaseModel):
     client_msg_id: UUID
-    body: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
+    body: str = Field(default="", max_length=MAX_BODY_LENGTH)
     parent_id: UUID | None = None
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
 
     @field_validator("body")
     @classmethod
     def _clean_body(cls, value: str) -> str:
-        return clean_body(value)
+        return _CONTROL_CHARS.sub("", value)
+
+    @model_validator(mode="after")
+    def _body_or_attachments(self) -> "MessageCreate":
+        if not self.body.strip() and not self.attachment_ids:
+            raise ValueError("body must not be empty")
+        return self
 
 
 class MessageEdit(BaseModel):
@@ -71,6 +79,7 @@ class MessageOut(BaseModel):
     mentioned_user_ids: list[UUID] = []
     mention_all: bool = False
     reactions: list[ReactionOut] = []
+    attachments: list[AttachmentOut] = []
     reply_count: int = 0
     last_reply_at: datetime | None = None
     created_at: datetime
@@ -98,7 +107,11 @@ def reactions_out(reactions: Sequence[Reaction]) -> list[ReactionOut]:
     return [ReactionOut(emoji=emoji, count=len(ids), user_ids=ids) for emoji, ids in groups.items()]
 
 
-def to_message_out(message: Message, reactions: Sequence[Reaction] = ()) -> MessageOut:
+def to_message_out(
+    message: Message,
+    reactions: Sequence[Reaction] = (),
+    attachments: Sequence[AttachmentOut] = (),
+) -> MessageOut:
     deleted = message.is_deleted
     return MessageOut(
         id=message.id,
@@ -113,6 +126,7 @@ def to_message_out(message: Message, reactions: Sequence[Reaction] = ()) -> Mess
         mentioned_user_ids=[] if deleted else list(message.mentioned_user_ids),
         mention_all=False if deleted else message.mention_all,
         reactions=[] if deleted else reactions_out(reactions),
+        attachments=[] if deleted else list(attachments),
         reply_count=message.reply_count,
         last_reply_at=message.last_reply_at,
         created_at=message.created_at,
