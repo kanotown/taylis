@@ -88,7 +88,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | `level = none`、または `muted_until > now()` | 除外 | M5 |
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
 | `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
-| スレッド返信 | 上記に加え、親の投稿者と過去の返信者を対象 (level が `none` でなければ) | M8c (実装済み。`message.created` の `parent_thread.participant_ids` から判定) |
+| スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
 | 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b (実装済み。送信直前にも再判定し `skipped / already_read`) |
 | 別端末でアクティブ (§4.1) | 除外 | M5 |
 | `push_token` を持つ有効な端末が無い | 除外 (Desktop のみのユーザー) | M5 |

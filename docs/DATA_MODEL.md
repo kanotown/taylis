@@ -221,6 +221,27 @@ WHERE m.channel_id = $channel AND m.seq > $last_read_seq
 
 自分の送信は同一トランザクションで `last_read_seq` を進めるので、自分のメッセージは未読にならない。
 
+### thread_follows (フォロー中スレッドと、その既読位置)
+
+```sql
+CREATE TABLE thread_follows (
+  parent_id      uuid NOT NULL REFERENCES messages(id),   -- parent_id IS NULL の行
+  user_id        uuid NOT NULL REFERENCES users(id),
+  following      boolean NOT NULL DEFAULT true,           -- false = 手動で外した
+  last_read_seq  bigint NOT NULL DEFAULT 0,               -- このスレッドで読んだ最後の返信の seq
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (parent_id, user_id)
+);
+CREATE INDEX thread_follows_user_idx ON thread_follows (user_id, following);
+```
+
+- 親メッセージ × ユーザーで 1 行。返信の作成時に親の投稿者・返信者・スレッド内でメンションされた人を自動で
+  フォローする (`INSERT … ON CONFLICT DO NOTHING`: 手動で外した `following=false` は戻さない)。
+- 返信もチャンネルの `seq` を消費するので、スレッド内の位置も `seq` で表せる。未読数は `read_states` と同じく
+  導出する (THREADS.md §2 のクエリ)。チャンネルの未読 (`read_states`) とは独立で、返信はそちらに数えない。
+- `message.created` の `parent_thread.participant_ids` と `thread.updated` の宛先はこの表の `following=true`。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

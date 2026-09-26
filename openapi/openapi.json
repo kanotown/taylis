@@ -267,6 +267,13 @@
             "title": "Server Time",
             "type": "string"
           },
+          "threads": {
+            "$ref": "#/components/schemas/ThreadSummary",
+            "default": {
+              "mention_count": 0,
+              "unread_count": 0
+            }
+          },
           "users": {
             "items": {
               "$ref": "#/components/schemas/UserPublic"
@@ -1560,6 +1567,169 @@
           "temporary_password"
         ],
         "title": "TemporaryPasswordOut",
+        "type": "object"
+      },
+      "ThreadFollowIn": {
+        "properties": {
+          "following": {
+            "title": "Following",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "following"
+        ],
+        "title": "ThreadFollowIn",
+        "type": "object"
+      },
+      "ThreadItem": {
+        "properties": {
+          "parent": {
+            "$ref": "#/components/schemas/MessageOut"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ThreadState"
+          }
+        },
+        "required": [
+          "parent",
+          "state"
+        ],
+        "title": "ThreadItem",
+        "type": "object"
+      },
+      "ThreadListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ThreadSummary"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "summary"
+        ],
+        "title": "ThreadListOut",
+        "type": "object"
+      },
+      "ThreadRead": {
+        "properties": {
+          "last_read_seq": {
+            "minimum": 0.0,
+            "title": "Last Read Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_read_seq"
+        ],
+        "title": "ThreadRead",
+        "type": "object"
+      },
+      "ThreadState": {
+        "description": "One user's view of one thread (THREADS.md §3).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "following": {
+            "title": "Following",
+            "type": "boolean"
+          },
+          "last_read_seq": {
+            "title": "Last Read Seq",
+            "type": "integer"
+          },
+          "last_reply_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply At"
+          },
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "parent_id": {
+            "format": "uuid",
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "participant_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Participant Ids",
+            "type": "array"
+          },
+          "reply_count": {
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parent_id",
+          "channel_id",
+          "following",
+          "last_read_seq",
+          "unread_count",
+          "mention_count",
+          "reply_count",
+          "last_reply_at"
+        ],
+        "title": "ThreadState",
+        "type": "object"
+      },
+      "ThreadSummary": {
+        "description": "Followed threads with unread replies / unread mentions (sidebar badge, bootstrap).",
+        "properties": {
+          "mention_count": {
+            "title": "Mention Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread_count",
+          "mention_count"
+        ],
+        "title": "ThreadSummary",
         "type": "object"
       },
       "TokenResponse": {
@@ -3756,6 +3926,124 @@
         ]
       }
     },
+    "/api/v1/messages/{message_id}/thread/follow": {
+      "put": {
+        "description": "false removes the thread from the list and from the reply pushes; auto-follow never\nflips it back.",
+        "operationId": "set_thread_follow_api_v1_messages__message_id__thread_follow_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadFollowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Thread Follow",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/thread/read": {
+      "put": {
+        "description": "Monotonic: the newest reply `seq` the client has shown (THREADS.md §3).",
+        "operationId": "mark_thread_read_api_v1_messages__message_id__thread_read_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadRead"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Thread Read",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/api/v1/search/messages": {
       "get": {
         "operationId": "search_messages_api_v1_search_messages_get",
@@ -3932,6 +4220,88 @@
         "summary": "Bootstrap",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/api/v1/threads": {
+      "get": {
+        "description": "Threads I follow, newest reply first (THREADS.md §3). `cursor` is the previous page's\n`next_cursor`.",
+        "operationId": "list_threads_api_v1_threads_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "unread"
+              ],
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Threads",
+        "tags": [
+          "threads"
         ]
       }
     },

@@ -62,7 +62,7 @@ class ParentThread(BaseModel):
     reply_count: int
     last_reply_at: datetime | None
     updated_seq: int
-    # Parent author and repliers: push targets for the reply (PUSH_NOTIFICATIONS.md §4).
+    # The thread's followers (THREADS.md §2): push targets for the reply (PUSH_NOTIFICATIONS.md §4).
     participant_ids: list[UUID] = []
 
 

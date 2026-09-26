@@ -32,6 +32,7 @@ from app.modules.messages.schemas import (
     to_message_out,
 )
 from app.modules.reads import service as reads
+from app.modules.threads import service as threads
 from app.modules.users.models import User
 
 
@@ -91,7 +92,9 @@ async def create_message(
                 parent.last_reply_at = message.created_at
                 parent.updated_seq = seq
                 await db.flush()
-                parent_thread = thread_of(parent, await repo.thread_participants(db, parent.id))
+                # Followers (THREADS.md): auto-follow, then they are the push targets.
+                await threads.on_reply_created_in_tx(db, parent, message)
+                parent_thread = thread_of(parent, await threads.followers(db, parent.id))
             await write_outbox(
                 db,
                 event_type=MESSAGE_CREATED,
@@ -231,7 +234,8 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
             parent.reply_count = max(0, parent.reply_count - 1)
             parent.updated_seq = seq
             await db.flush()
-            parent_thread = thread_of(parent, await repo.thread_participants(db, parent.id))
+            await threads.on_reply_deleted_in_tx(db, parent)
+            parent_thread = thread_of(parent, await threads.followers(db, parent.id))
     out = to_message_out(message)
     await write_outbox(
         db,

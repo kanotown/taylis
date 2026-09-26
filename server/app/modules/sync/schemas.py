@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.modules.channels.schemas import ChannelOut
+from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
 
 
@@ -18,3 +19,5 @@ class BootstrapOut(BaseModel):
     users: list[UserPublic]
     channels: list[ChannelOut]
     limits: Limits
+    # Followed threads with unread replies / mentions (THREADS.md §3); the sidebar badge.
+    threads: ThreadSummary = ThreadSummary(unread_count=0, mention_count=0)

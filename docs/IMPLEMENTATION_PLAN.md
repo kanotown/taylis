@@ -286,7 +286,7 @@ Mattermost の公開コードは「振る舞いの仕様書」として参照し
 検証: サーバの pytest / ruff / mypy、Desktop の typecheck / vitest / vite build、iOS の XCTest、
 Android の JUnit / Lint / assembleDebug がすべて成功 (契約テストと FakeServer を含む)。
 
-次: フォロー中スレッドの一覧は THREADS.md の設計に沿って実装する。
+次: フォロー中スレッドの一覧は THREADS.md の設計に沿って実装する (→ M11a)。
 
 ### Desktop UI の刷新 (2026-09-26)
 
@@ -303,10 +303,28 @@ Desktop の見た目を、フリーで使える現行のフレームワークに
 - `scripts/preview-shots.mjs`: ブラウザプレビュー (`npm run dev`) をヘッドレス Chrome で操作してログイン後の
   画面を撮る開発用スクリプト。目視確認に使う。
 
+### M11: Slack / Mattermost 相当の機能を順に足す (2026-09-27〜)
+
+方針: 1 機能ずつ「サーバ (テスト・OpenAPI・docs) → Desktop → iOS → Android」の順に実装し、機能ごとにコミットする。
+アーキテクチャは変えない (outbox + WS Hub、seq 同期、JSON 行の永続化)。順番は使う頻度の高いものから。
+
+| # | 機能 | 内容 | 状況 |
+| --- | --- | --- | --- |
+| M11a | フォロー中スレッド | THREADS.md。`thread_follows`、`GET /threads`、`PUT /messages/{id}/thread/read|follow`、`thread.updated`、bootstrap の `threads`、プッシュ対象をフォロワーに置き換え、3 端末の「スレッド」一覧とフォロー切替 | サーバ実装済み (2026-09-27、pytest 133)。クライアントは順次 |
+| M11b | プレゼンスと入力中表示 | WS の揮発イベント (outbox を通さない) で online / away と typing を配る。Hub が接続状態から導出、Redis は不要 | 未着手 |
+| M11c | ピン留めとブックマーク | `messages.pinned_at` + `PUT/DELETE /messages/{id}/pin` (`message.updated change=pin` は予約済み)、`bookmarks` (自分だけの保存) | 未着手 |
+| M11d | プロフィールとカスタムステータス | ユーザーのポップオーバー / シート、`users.status_text` / `status_emoji` / `status_expires_at`、`user.updated` で配る | 未着手 |
+| M11e | Desktop の管理 UI | ユーザー作成・パスワード再設定・無効化・ロール、チャンネルのアーカイブ・改名 (API は M10 までに実装済み) | 未着手 |
+| M11f | 絵文字ピッカーと `:shortcode:` | 補完と描画 (3 端末)。カスタム絵文字はその後 | 未着手 |
+| M11g | リンクプレビュー | サーバ側で OGP を取得 (SSRF 対策、サイズ・時間の上限、キャッシュ)、`link_previews` | 未着手 |
+| M11h | チャンネルまわり | チャンネルブラウザ、退出、チャンネル紹介、最近のメンション一覧、下書き一覧 | 未着手 |
+| M11i | ファイル一覧 | チャンネル / ワークスペースの添付一覧 (検索 API の `attachments.filename` を流用) | 未着手 |
+
 ### バックログ (未スケジュール)
 
-typing / presence、ピン留め、ブックマーク、カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、
-Web クライアント、presigned URL、Redis による複数プロセス化、意味検索 / 要約 / RAG。
+カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、Web クライアント、presigned URL、Redis による複数プロセス化、
+Mattermost からのインポート (`mmctl export` の bulk-import JSONL を読む `import-mattermost` CLI。設計メモは
+このセッションの会話に残しており、必要になった時点で docs に起こす)、意味検索 / 要約 / RAG。
 
 ## 3. 設計ポイントとマイルストーンの対応
 
