@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     attachment_gc_interval_seconds: int = 3600
     attachment_thumbnail_px: int = 512
     upload_rate_limit_per_user: int = 20
+    search_rate_limit_per_user: int = 30
 
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0

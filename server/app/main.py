@@ -32,6 +32,7 @@ from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
 from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
+from app.modules.search.router import router as search_router
 from app.modules.sync.router import router as sync_router
 from app.modules.users.router import router as users_router
 from app.realtime.hub import RealtimeHub
@@ -129,6 +130,7 @@ def build_api_router() -> APIRouter:
     api.include_router(channels_router)
     api.include_router(messages_router)
     api.include_router(attachments_router)
+    api.include_router(search_router)
     api.include_router(notifications_router)
     api.include_router(sync_router)
     api.include_router(realtime_router)
@@ -155,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
+        "search": RateLimiter(settings.search_rate_limit_per_user),
     }
     app.state.blobs = build_blobstore(settings)
     app.state.bus = InMemoryEventBus()

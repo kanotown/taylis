@@ -11,6 +11,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.SearchOut
 import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
@@ -275,6 +276,9 @@ class AppController(private val app: Application) {
     }.onFailure { error = describe(it) }
 
     val isAdmin: Boolean get() = me?.role == "admin"
+
+    suspend fun searchMessages(query: String, offset: Int = 0): Result<SearchOut> =
+        runCatching { api!!.searchMessages(query, offset = offset) }.onFailure { error = describe(it) }
 
     // --- attachments (M9a) ---------------------------------------------------------------------------
 

@@ -160,6 +160,16 @@ final class ApiClient: SyncApi {
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 
+    /// GET /search/messages: full-text search across my channels (the server applies the membership filter).
+    func searchMessages(_ query: String, channelId: String? = nil, limit: Int = 20, offset: Int = 0) async throws -> SearchOut {
+        var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "offset", value: String(offset))]
+        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        var components = URLComponents()
+        components.path = "/api/v1/search/messages"
+        components.queryItems = items
+        return try await request("GET", components.string ?? "/api/v1/search/messages")
+    }
+
     /// POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent.
     func uploadAttachment(data fileData: Data, filename: String, contentType: String) async throws -> AttachmentOut {
         let boundary = "chikuwa-" + UUID().uuidString

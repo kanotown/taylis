@@ -6,9 +6,10 @@ struct MainView: View {
     @State private var sheet: Sheet?
 
     enum Sheet: Identifiable {
-        case newDm, newChannel
-        var id: Int { self == .newDm ? 0 : 1 }
+        case newDm, newChannel, search
+        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2 } }
     }
+    @State private var pendingThreadId: String?
 
     var body: some View {
         NavigationSplitView {
@@ -26,6 +27,7 @@ struct MainView: View {
                         } label: { Image(systemName: "plus") }
                     }
                     ToolbarItem(placement: .topBarLeading) { StatusBadge(status: controller.engine?.status ?? .idle) }
+                    ToolbarItem(placement: .topBarLeading) { Button("検索", systemImage: "magnifyingglass") { sheet = .search } }
                 }
         } detail: {
             if let id = selection, let channel = controller.store.channel(id) {
@@ -38,6 +40,10 @@ struct MainView: View {
             switch which {
             case .newDm: NewDmView(controller: controller) { id in selection = id }
             case .newChannel: NewChannelView(controller: controller) { id in selection = id }
+            case .search: SearchView(controller: controller) { channelId, parentId in
+                selection = channelId
+                pendingThreadId = parentId
+            }
             }
         }
         .onChange(of: selection) { _, id in

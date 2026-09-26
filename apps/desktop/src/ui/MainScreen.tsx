@@ -4,6 +4,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Composer } from "./Composer";
 import { AddMemberDialog, NewChannelDialog, NewDmDialog } from "./Dialogs";
+import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
@@ -14,6 +15,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
   const [dialog, setDialog] = useState<"dm" | "channel" | "members" | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
@@ -51,6 +53,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onJoin={(id) => void join(id)}
         onNewDm={() => setDialog("dm")}
         onNewChannel={() => setDialog("channel")}
+        onSearch={() => setSearching(true)}
       />
       <main className="main">
         {current ? (
@@ -77,7 +80,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <div className="centered muted">チャンネルを選択してください</div>
         )}
       </main>
-      {current && threadId ? (
+      {searching ? (
+        <SearchPane
+          controller={controller}
+          onClose={() => setSearching(false)}
+          onOpen={(channelId, parentId) => {
+            setCurrentId(channelId);
+            setThreadId(parentId);
+            setSearching(false);
+          }}
+        />
+      ) : current && threadId ? (
         <ThreadPane controller={controller} channel={current} parentId={threadId} onClose={() => setThreadId(null)} />
       ) : (
         <aside className="thread-panel" aria-hidden="true" />

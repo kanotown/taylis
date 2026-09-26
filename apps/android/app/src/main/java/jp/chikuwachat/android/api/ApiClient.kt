@@ -18,6 +18,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.URLEncoder
+import java.net.URLEncoder as Enc
 
 /** Structured API errors (ARCHITECTURE.md §9). */
 sealed class ApiException(message: String) : Exception(message) {
@@ -164,6 +165,12 @@ class ApiClient(
             auth = true, retry401 = true,
         )
         return Codec.snake.decodeFromString(MessageOut.serializer(), text) to (status == 201)
+    }
+
+    /** GET /search/messages: full-text search across my channels (SECURITY.md: server-side permission filter). */
+    suspend fun searchMessages(query: String, channelId: String? = null, limit: Int = 20, offset: Int = 0): SearchOut {
+        val params = "q=" + Enc.encode(query, "UTF-8") + "&limit=$limit&offset=$offset" + (channelId?.let { "&channel_id=$it" } ?: "")
+        return request("GET", "/api/v1/search/messages?$params")
     }
 
     /** POST /attachments (multipart): the server sniffs the type and keeps it pending until a send binds it. */

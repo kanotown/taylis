@@ -97,3 +97,10 @@ label { display: block; margin: 8px 0; }
 .pending-attachments { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 16px 0; }
 .pending-attachments .chip { font-size: 12px; border-radius: 12px; border: 1px solid var(--border); background: #e6eefc; color: var(--fg); padding: 1px 8px; }
 .composer .attach { padding: 4px 8px; }
+
+/* M9b: search */
+.search-form { display: flex; gap: 8px; padding: 8px 16px; }
+.search-form input { flex: 1; }
+.search-hit { cursor: pointer; border-radius: 6px; padding: 6px 8px; }
+.search-hit:hover { background: #f4f4f4; }
+.search-hit mark { background: #ffe58a; padding: 0 1px; }

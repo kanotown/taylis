@@ -10,9 +10,10 @@ interface Props {
   onJoin: (id: string) => void;
   onNewDm: () => void;
   onNewChannel: () => void;
+  onSearch?: () => void;
 }
 
-export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNewDm, onNewChannel }: Props) {
+export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNewDm, onNewChannel, onSearch }: Props) {
   const engine = controller.engine;
   const mine = channels.filter((c) => c.isMember && (c.type === "public" || c.type === "private") && !c.archived);
   const dms = channels.filter((c) => c.isMember && (c.type === "dm" || c.type === "group_dm"));
@@ -40,6 +41,11 @@ export function Sidebar({ controller, channels, currentId, onOpen, onJoin, onNew
         <button className="link" onClick={() => void controller.logout()}>
           ログアウト
         </button>
+        {onSearch && (
+          <button className="link" onClick={onSearch}>
+            検索
+          </button>
+        )}
       </div>
       <section>
         <h2>

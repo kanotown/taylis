@@ -1,0 +1,41 @@
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Query, Request
+
+from app.core.db import Db
+from app.core.errors import rate_limited
+from app.modules.auth.deps import CurrentUser
+from app.modules.search import service
+from app.modules.search.schemas import MAX_QUERY_LENGTH, SearchOut, SearchQuery
+
+router = APIRouter(prefix="/search", tags=["search"])
+
+
+@router.get("/messages", response_model=SearchOut)
+async def search_messages(
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    q: str = Query(min_length=1, max_length=MAX_QUERY_LENGTH),
+    channel_id: UUID | None = None,
+    from_user_id: UUID | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+) -> SearchOut:
+    limiter = request.app.state.limiters["search"]
+    key = str(user.id)
+    if not limiter.try_acquire(key):
+        raise rate_limited(limiter.retry_after_seconds(key))
+    params = SearchQuery(
+        q=q,
+        channel_id=channel_id,
+        from_user_id=from_user_id,
+        after=after,
+        before=before,
+        limit=limit,
+        offset=offset,
+    )
+    return await service.search(db, user, params)

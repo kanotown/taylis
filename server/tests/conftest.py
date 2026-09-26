@@ -89,6 +89,7 @@ def test_settings() -> Settings:
         login_rate_limit_per_ip=100_000,
         login_rate_limit_per_account=100_000,
         upload_rate_limit_per_user=100_000,
+        search_rate_limit_per_user=100_000,
         attachment_max_bytes=200_000,
     )
 

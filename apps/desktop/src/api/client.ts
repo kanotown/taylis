@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, TokenResponse, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, BootstrapOut, ChannelOut, DeltaOut, HistoryOut, MemberOut, MessageOut, ReadStateOut, SearchOut, TokenResponse, UserMe, UserPublic } from "./types";
 
 export interface DeviceInfo {
   platform: "desktop" | "ios" | "android";
@@ -167,6 +167,13 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  /** GET /search/messages: full-text search across my channels (the server applies the membership filter). */
+  searchMessages(query: string, options: { channelId?: string | null; limit?: number; offset?: number } = {}): Promise<SearchOut> {
+    const params = new URLSearchParams({ q: query, limit: String(options.limit ?? 20), offset: String(options.offset ?? 0) });
+    if (options.channelId) params.set("channel_id", options.channelId);
+    return this.request("GET", `/api/v1/search/messages?${params}`);
   }
 
   /** POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent. */
