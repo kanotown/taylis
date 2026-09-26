@@ -242,6 +242,8 @@ final class Store {
     var bookmarks: Set<String> = []
     /// My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted.
     var favorites: Set<String> = []
+    /// My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted.
+    var scheduled: [String: ScheduledOut] = [:]
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -394,6 +396,19 @@ final class Store {
             let mention = (state.following && state.mentionCount > 0 ? 1 : 0) - (before.following && before.mentionCount > 0 ? 1 : 0)
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
+    }
+
+    // MARK: scheduled messages (M12d)
+
+    func listScheduled() -> [ScheduledOut] { scheduled.values.sorted { $0.sendAt < $1.sendAt } }
+
+    func replaceScheduled(_ rows: [ScheduledOut]) {
+        scheduled = Dictionary(uniqueKeysWithValues: rows.filter { $0.status == "pending" }.map { ($0.id, $0) })
+    }
+
+    /// scheduled.updated: a pending row is kept (created / edited); any other status drops it.
+    func applyScheduled(_ row: ScheduledOut) {
+        if row.status == "pending" { scheduled[row.id] = row } else { scheduled.removeValue(forKey: row.id) }
     }
 
     // MARK: favorites (M12a)

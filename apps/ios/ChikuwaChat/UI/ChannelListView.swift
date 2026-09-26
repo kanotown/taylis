@@ -85,7 +85,7 @@ struct ChannelListView: View {
     /// 「下書き」 (M11h): listed only while something is unsent.
     @ViewBuilder
     private var draftsRow: some View {
-        let count = controller.store.listDrafts().count
+        let count = controller.store.listDrafts().count + controller.store.scheduled.count
         if count > 0 {
             NavigationLink(value: DraftsView.selectionId) {
                 HStack(spacing: 12) {

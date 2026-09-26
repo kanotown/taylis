@@ -204,6 +204,22 @@ final class ApiClient: SyncApi {
         return try await request("GET", components.string ?? "/api/v1/link-previews")
     }
 
+    // MARK: scheduled messages (M12d)
+
+    func scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], sendAt: Date) async throws -> ScheduledOut {
+        try await request("POST", "/api/v1/channels/\(channelId)/scheduled", body: .object([
+            "client_msg_id": .string(clientMsgId), "body": .string(body),
+            "parent_id": parentId.map(JSONValue.string) ?? .null,
+            "attachment_ids": .array(attachmentIds.map(JSONValue.string)),
+            "send_at": .string(ISO8601DateFormatter().string(from: sendAt)),
+        ]))
+    }
+    func listScheduled() async throws -> [ScheduledOut] { try await request("GET", "/api/v1/scheduled") }
+    func cancelScheduled(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/scheduled/\(id)", body: nil, auth: true, retry401: true)
+    }
+    func sendScheduledNow(id: String) async throws -> MessageOut { try await request("POST", "/api/v1/scheduled/\(id)/send-now", body: .object([:])) }
+
     // MARK: favorites and read-all (M12a)
 
     func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }

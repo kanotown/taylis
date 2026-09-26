@@ -239,6 +239,38 @@ final class AppController {
         } catch { self.error = describe(error) }
     }
 
+    // MARK: scheduled messages (M12d)
+
+    /// 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き.
+    func scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: [String], sendAt: Date) async -> Bool {
+        guard let api else { return false }
+        do {
+            let row = try await api.scheduleMessage(channelId: channelId, clientMsgId: UUID().uuidString.lowercased(), body: body,
+                                                    parentId: parentId, attachmentIds: attachmentIds, sendAt: sendAt)
+            store.applyScheduled(row)
+            notice = "\(Schedule.label(sendAt)) に送信します"
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost.
+    func cancelScheduled(_ row: ScheduledOut) async {
+        guard let api else { return }
+        do {
+            try await api.cancelScheduled(id: row.id)
+            store.scheduled.removeValue(forKey: row.id)
+            if !row.body.isEmpty { store.setDraft(row.channelId, parentId: row.parentId) { $0.text = row.body } }
+        } catch { self.error = describe(error) }
+    }
+
+    func sendScheduledNow(_ row: ScheduledOut) async {
+        guard let api else { return }
+        do {
+            _ = try await api.sendScheduledNow(id: row.id)
+            store.scheduled.removeValue(forKey: row.id)
+        } catch { self.error = describe(error) }
+    }
+
     // MARK: permalinks (M12b)
 
     func permalink(_ messageId: String) -> String? {

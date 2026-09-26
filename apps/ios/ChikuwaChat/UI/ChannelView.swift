@@ -527,6 +527,9 @@ struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showCamera = false
     @State private var showEmojiPicker = false
+    @State private var showSchedule = false
+    @State private var showCustomSchedule = false
+    @State private var customSendAt = Date().addingTimeInterval(3600)
     @FocusState private var focused: Bool
 
     private var candidates: [Mentions.Candidate] {
@@ -552,6 +555,19 @@ struct ComposerView: View {
         }
     }
 
+    /// M12d 「後で送信」: the same draft, posted by the server at the chosen time.
+    private func schedule(_ at: Date) {
+        guard canSend, let controller else { return }
+        guard at.timeIntervalSinceNow >= 60 else { controller.error = "1 分以上先の時刻を選んでください"; return }
+        let body = Mentions.encode(trimmed, users: users)
+        let ids = pending.map(\.id)
+        Task {
+            if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at) {
+                controller.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
+            }
+        }
+    }
+
     private func send() {
         let body = Mentions.encode(trimmed, users: users)
         guard canSend else { return }
@@ -566,6 +582,27 @@ struct ComposerView: View {
             Divider()
             PendingAttachmentsView(items: pending) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
+            }
+            .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
+                ForEach(Schedule.presets()) { preset in
+                    Button("\(preset.label) (\(Schedule.label(preset.at)))") { schedule(preset.at) }
+                }
+                Button("日時を指定…") { customSendAt = Date().addingTimeInterval(3600); showCustomSchedule = true }
+            }
+            .sheet(isPresented: $showCustomSchedule) {
+                NavigationStack {
+                    Form {
+                        DatePicker("送信日時", selection: $customSendAt, in: Date().addingTimeInterval(60)..., displayedComponents: [.date, .hourAndMinute])
+                        Text(Schedule.label(customSendAt) + " に送信します").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .navigationTitle("後で送信")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { showCustomSchedule = false } }
+                        ToolbarItem(placement: .confirmationAction) { Button("予約") { showCustomSchedule = false; schedule(customSendAt) } }
+                    }
+                }
+                .presentationDetents([.medium])
             }
             if !emojiCandidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -607,6 +644,8 @@ struct ComposerView: View {
                         if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
                         Button("ファイル", systemImage: "folder") { showFileImporter = true }
                         Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true }
+                        Divider()
+                        Button("後で送信…", systemImage: "clock") { showSchedule = true }.disabled(!canSend)
                     } label: {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 30))

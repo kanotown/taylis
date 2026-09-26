@@ -12,6 +12,8 @@ protocol SyncApi: AnyObject {
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     /// M12a: every channel read to its end; returns the new states.
     func readAll() async throws -> [ChannelReadStateOut]
+    /// M12d: my pending scheduled messages.
+    func listScheduled() async throws -> [ScheduledOut]
     func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     func replies(messageId: String) async throws -> [MessageOut]
     /// THREADS.md §3.
@@ -304,6 +306,7 @@ final class SyncEngine {
         store.replacePresence(bootstrap.presence ?? [])
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
+        Task { await self.loadScheduled() }
         onBadge?(store.badgeCount)
     }
 
@@ -370,6 +373,9 @@ final class SyncEngine {
             if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
                 store.setBookmarked(id, on: on)
             }
+        case "scheduled.updated":
+            struct Payload: Decodable { let scheduled: ScheduledOut }
+            store.applyScheduled(try frame.data.decode(Payload.self).scheduled)
         case "favorite.updated":
             if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["favorite"] {
                 store.setFavorite(id, on: on)
@@ -436,6 +442,11 @@ final class SyncEngine {
             }
         }
         onBadge?(store.badgeCount)
+    }
+
+    /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
+    func loadScheduled() async {
+        if let rows = try? await api.listScheduled() { store.replaceScheduled(rows) }
     }
 
     /// 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated.

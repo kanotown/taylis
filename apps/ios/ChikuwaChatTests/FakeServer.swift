@@ -108,6 +108,10 @@ final class FakeServer {
             }
         }
 
+        func listScheduled() async throws -> [ScheduledOut] {
+            try maybeFail()
+            return server.scheduled[userId] ?? []
+        }
         func readAll() async throws -> [ChannelReadStateOut] {
             try maybeFail()
             return try server.readAll(userId)
@@ -241,6 +245,25 @@ final class FakeServer {
 
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
+    /// "user" → pending scheduled messages (M12d).
+    var scheduled: [String: [ScheduledOut]] = [:]
+
+    func schedule(_ userId: String, channelId: String, body: String, sendAt: String) -> ScheduledOut {
+        eventId += 1
+        let row = ScheduledOut(id: "sch-\(eventId)", channelId: channelId, parentId: nil, clientMsgId: "c-\(eventId)", body: body, attachments: [],
+                               sendAt: sendAt, status: "pending", error: nil, sentMessageId: nil, createdAt: now())
+        scheduled[userId, default: []].append(row)
+        return row
+    }
+
+    func emitScheduled(_ userId: String, _ row: ScheduledOut) {
+        scheduled[userId] = (scheduled[userId] ?? []).filter { $0.id != row.id } + (row.status == "pending" ? [row] : [])
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("scheduled.updated"), "ts": .string(now()),
+                                "channel_id": .string(row.channelId), "seq": .null,
+                                "data": .object(["scheduled": try! JSONValue.from(row)])]))
+    }
+
     /// "user" → starred channel ids (M12a).
     var favorites: [String: [String]] = [:]
 

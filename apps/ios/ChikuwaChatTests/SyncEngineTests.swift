@@ -541,6 +541,32 @@ final class SyncEngineTests: XCTestCase {
         second.stop()
     }
 
+    func testScheduledRowsLoadAfterBootstrapAndFollowEvents() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let general = server.createChannel("general", ownerId: alice.id)
+        let row = server.schedule(alice.id, channelId: general.id, body: "later", sendAt: "2026-10-03T00:00:00Z")
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(store.listScheduled().map(\.body), ["later"])
+        let second = server.schedule(alice.id, channelId: general.id, body: "sooner", sendAt: "2026-10-02T00:00:00Z")
+        server.emitScheduled(alice.id, second)
+        await settle(engine)
+        XCTAssertEqual(store.listScheduled().map(\.body), ["sooner", "later"]) // soonest first
+        server.emitScheduled(alice.id, ScheduledOut(id: row.id, channelId: row.channelId, parentId: nil, clientMsgId: row.clientMsgId, body: row.body, attachments: [],
+                                                     sendAt: row.sendAt, status: "sent", error: nil, sentMessageId: "m1", createdAt: row.createdAt))
+        server.emitScheduled(alice.id, ScheduledOut(id: second.id, channelId: second.channelId, parentId: nil, clientMsgId: second.clientMsgId, body: second.body, attachments: [],
+                                                     sendAt: second.sendAt, status: "cancelled", error: nil, sentMessageId: nil, createdAt: second.createdAt))
+        await settle(engine)
+        XCTAssertTrue(store.listScheduled().isEmpty)
+        engine.stop()
+    }
+
     func testFavoritesSyncAndReadAllClearsEveryChannel() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")
