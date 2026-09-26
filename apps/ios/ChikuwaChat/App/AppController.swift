@@ -10,6 +10,8 @@ final class AppController {
 
     var screen: Screen = .boot
     var error: String?
+    /// A short confirmation (「リンクをコピーしました」); nil when nothing to say.
+    var notice: String?
     var me: UserMe?
     struct MessageFocus {
         var channelId: String
@@ -234,6 +236,30 @@ final class AppController {
         guard let api else { return }
         do {
             _ = store.upsertMessage(message.pinnedAt != nil ? try await api.unpinMessage(id: message.id) : try await api.pinMessage(id: message.id))
+        } catch { self.error = describe(error) }
+    }
+
+    // MARK: permalinks (M12b)
+
+    func permalink(_ messageId: String) -> String? {
+        api.map { Permalink.url(base: $0.baseUrl, messageId: messageId) }
+    }
+
+    func copyPermalink(_ messageId: String) {
+        guard let url = permalink(messageId) else { return }
+        UIPasteboard.general.string = url
+        notice = "リンクをコピーしました"
+    }
+
+    /// A permalink tapped in a body: fetch the message (membership is checked there), reveal it and open its conversation.
+    func openPermalink(_ messageId: String) async {
+        guard let api else { return }
+        do {
+            let message = try await api.message(id: messageId)
+            if await revealMessage(message) {
+                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
+                                                userInfo: ["id": message.channelId, "parentId": message.parentId as Any])
+            }
         } catch { self.error = describe(error) }
     }
 

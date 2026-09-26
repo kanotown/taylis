@@ -349,6 +349,7 @@ final class ApiClient: SyncApi {
 
     /// Returns the tombstone (deleted = true) so the caller can apply it locally.
     func deleteMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)") }
+    func message(id: String) async throws -> MessageOut { try await request("GET", "/api/v1/messages/\(id)") }
 
     func addReaction(id: String, emoji: String) async throws -> MessageOut {
         try await request("PUT", "/api/v1/messages/\(id)/reactions/\(Self.encodeEmoji(emoji))", body: .object([:]))

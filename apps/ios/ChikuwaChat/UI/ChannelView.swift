@@ -385,9 +385,18 @@ struct MessageRow: View {
                     Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
-                if !message.body.isEmpty { MessageBodyView(text: message.body, users: store.users) }
+                if !message.body.isEmpty {
+                    MessageBodyView(text: message.body, users: store.users, internalBase: controller.api?.baseUrl)
+                        .environment(\.openURL, OpenURLAction { url in
+                            guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
+                            Task { await controller.openPermalink(id) }
+                            return .handled
+                        })
+                }
                 if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
-                if !message.pending, let link = Links.first(in: message.body) { LinkPreviewCard(controller: controller, url: link) }
+                if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil {
+                    LinkPreviewCard(controller: controller, url: link)
+                }
                 if !message.reactions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in
@@ -435,6 +444,7 @@ struct MessageRow: View {
                 Button(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", systemImage: message.pinnedAt != nil ? "pin.slash" : "pin") {
                     Task { await controller.togglePin(message) }
                 }
+                Button("リンクをコピー", systemImage: "link") { controller.copyPermalink(message.id) }
                 if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
                 if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }

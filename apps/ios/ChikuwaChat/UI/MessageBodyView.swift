@@ -162,6 +162,8 @@ enum BodyTokenizer {
 struct MessageBodyView: View {
     let text: String
     let users: [String: UserPublic]
+    /// M12b: links on this server (`<base>/m/<id>`) become in-app links; the row's `openURL` handler reveals the message.
+    var internalBase: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -231,6 +233,11 @@ struct MessageBodyView: View {
         case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
         case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
         case .link(let url, let label):
+            if let id = Permalink.messageId(base: internalBase, url: url) {
+                var attributed = AttributedString("💬 " + ((label != nil && label != url) ? label! : "メッセージを表示"))
+                attributed.link = Permalink.internalLink(messageId: id)
+                return Text(attributed)
+            }
             var attributed = AttributedString(label ?? url)
             attributed.link = URL(string: url)
             return Text(attributed)
