@@ -10,7 +10,7 @@ modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android 
 
 ```
 server/         FastAPI サーバ (modular monolith)
-apps/desktop/   Desktop クライアント (Tauri 2 + React + TypeScript、Windows / macOS)
+apps/desktop/   Desktop クライアント (Tauri 2 + React + TypeScript + Tailwind CSS + Radix UI + Lucide、Windows / macOS)
 apps/ios/       iOS クライアント (Swift / SwiftUI)
 apps/android/   Android クライアント (Kotlin / Jetpack Compose)
 infra/          Docker Compose、Caddy、運用手順

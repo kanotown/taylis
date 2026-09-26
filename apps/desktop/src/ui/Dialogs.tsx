@@ -1,9 +1,11 @@
+import { Check, Hash, Lock, LogOut } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import type { MemberOut } from "../api/types";
+import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
+import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
 interface DialogProps {
   controller: AppController;
@@ -11,12 +13,43 @@ interface DialogProps {
   onOpen: (channelId: string) => void;
 }
 
+/** Selectable user rows shared by the DM and add-member dialogs. */
+function UserPicker({ users, selected, onToggle, empty }: { users: UserPublic[]; selected: string[]; onToggle: (id: string) => void; empty: string }) {
+  if (users.length === 0) return <p className="py-6 text-center text-sm text-muted">{empty}</p>;
+  return (
+    <ul className="max-h-72 overflow-y-auto rounded-xl border border-line">
+      {users.map((u) => {
+        const on = selected.includes(u.id);
+        return (
+          <li key={u.id}>
+            <button
+              type="button"
+              onClick={() => onToggle(u.id)}
+              aria-pressed={on}
+              className={cn("flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-panel", on && "bg-accent-soft/60")}
+            >
+              <Avatar id={u.id} name={u.display_name} size={28} />
+              <span className="flex-1 truncate">
+                {u.display_name} <span className="text-muted">@{u.username}</span>
+              </span>
+              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", on ? "border-accent bg-accent text-white" : "border-line")}>{on && <Check size={12} />}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ErrorText({ error }: { error: string | null }) {
+  return error ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null;
+}
+
 export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   const me = controller.store.me?.id;
-  const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at);
+  const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const create = async () => {
@@ -27,35 +60,25 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
       onOpen(channel.id);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(controller.describe(err));
     }
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>ダイレクトメッセージ</h2>
-        <ul className="user-list">
-          {users.map((u) => (
-            <li key={u.id}>
-              <label>
-                <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} /> {u.display_name}{" "}
-                <span className="muted">@{u.username}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        {error && <p className="error">{error}</p>}
-        <div className="row">
-          <button onClick={() => void create()} disabled={selected.length === 0 || selected.length > 8}>
-            開く
-          </button>
-          <button className="secondary" onClick={onClose}>
+    <Modal onClose={onClose} title="ダイレクトメッセージ" description="相手を選びます。複数選ぶとグループ DM になります。">
+      <div className="mt-4 space-y-3">
+        <UserPicker users={users} selected={selected} onToggle={toggle} empty="相手になるユーザーがいません" />
+        <ErrorText error={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
             閉じる
-          </button>
+          </Button>
+          <Button onClick={() => void create()} disabled={selected.length === 0 || selected.length > 8}>
+            開く
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -64,11 +87,12 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
   const [members, setMembers] = useState<Set<string> | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at && !members?.has(u.id));
+  const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at && !members?.has(u.id)).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
 
-  if (members === null && controller.api) {
+  useEffect(() => {
+    if (!controller.api) return;
     void controller.api.members(channelId).then((list) => setMembers(new Set(list.map((m) => m.user_id))), () => setMembers(new Set()));
-  }
+  }, [controller.api, channelId]);
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -78,41 +102,25 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
       for (const userId of selected) await controller.api.addMember(channelId, userId);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(controller.describe(err));
     }
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>メンバーを追加</h2>
-        {members === null ? (
-          <p className="muted">読み込み中…</p>
-        ) : users.length === 0 ? (
-          <p className="muted">追加できるユーザーはいません</p>
-        ) : (
-          <ul className="user-list">
-            {users.map((u) => (
-              <li key={u.id}>
-                <label>
-                  <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} /> {u.display_name}{" "}
-                  <span className="muted">@{u.username}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-        {error && <p className="error">{error}</p>}
-        <div className="row">
-          <button onClick={() => void add()} disabled={selected.length === 0}>
-            追加
-          </button>
-          <button className="secondary" onClick={onClose}>
+    <Modal onClose={onClose} title="メンバーを追加">
+      <div className="mt-4 space-y-3">
+        {members === null ? <p className="py-6 text-center text-sm text-muted">読み込み中…</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty="追加できるユーザーはいません" />}
+        <ErrorText error={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
             閉じる
-          </button>
+          </Button>
+          <Button onClick={() => void add()} disabled={selected.length === 0}>
+            追加
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -130,33 +138,49 @@ export function NewChannelDialog({ controller, onClose, onOpen }: DialogProps) {
       onOpen(channel.id);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(controller.describe(err));
     }
   };
 
+  const option = (value: "public" | "private", icon: React.ReactNode, title: string, text: string) => (
+    <button
+      type="button"
+      onClick={() => setType(value)}
+      aria-pressed={type === value}
+      className={cn("flex flex-1 items-start gap-3 rounded-xl border p-3 text-left transition-colors", type === value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel")}
+    >
+      <span className="mt-0.5 text-muted">{icon}</span>
+      <span>
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted">{text}</span>
+      </span>
+    </button>
+  );
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={create}>
-        <h2>チャンネルを作成</h2>
-        <label>
-          名前
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="general" pattern="[^\s#@/]{1,80}" required />
-        </label>
-        <label>
-          <input type="radio" checked={type === "public"} onChange={() => setType("public")} /> パブリック
-        </label>
-        <label>
-          <input type="radio" checked={type === "private"} onChange={() => setType("private")} /> プライベート
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="row">
-          <button type="submit">作成</button>
-          <button type="button" className="secondary" onClick={onClose}>
+    <Modal onClose={onClose} title="チャンネルを作成">
+      <form className="mt-4 space-y-4" onSubmit={create}>
+        <Field label="名前" hint="小文字の英数字とハイフンがおすすめです">
+          <div className="relative">
+            <Hash size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="general" pattern="[^\s#@/]{1,80}" required autoFocus className="pl-8" />
+          </div>
+        </Field>
+        <div className="flex gap-2">
+          {option("public", <Hash size={18} />, "パブリック", "誰でも参加できます")}
+          {option("private", <Lock size={18} />, "プライベート", "招待されたメンバーだけ")}
+        </div>
+        <ErrorText error={error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
             閉じる
-          </button>
+          </Button>
+          <Button type="submit" disabled={!name.trim()}>
+            作成
+          </Button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -169,34 +193,34 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
   }, [controller, channel.id]);
   const users = controller.store.users;
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>メンバー {members ? `(${members.length})` : ""}</h2>
+    <Modal onClose={onClose} title={`メンバー${members ? ` (${members.length})` : ""}`}>
+      <div className="mt-4 space-y-3">
         {members === null ? (
-          <p className="muted">読み込み中…</p>
+          <p className="py-6 text-center text-sm text-muted">読み込み中…</p>
         ) : (
-          <ul className="user-list members">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line">
             {members
               .map((m) => ({ member: m, user: users.get(m.user_id) }))
               .sort((a, b) => (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja"))
               .map(({ member, user }) => (
-                <li key={member.user_id}>
+                <li key={member.user_id} className="flex items-center gap-3 px-3 py-2 text-sm">
                   <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} />
-                  <span>{user?.display_name ?? "?"}</span>
-                  <span className="muted">@{user?.username ?? ""}</span>
-                  {member.role === "owner" && <span className="badge">オーナー</span>}
+                  <span className="flex-1 truncate">
+                    {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
+                  </span>
+                  {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
                 </li>
               ))}
           </ul>
         )}
-        <div className="row">
-          {channel.isMember && !channel.archived && <button onClick={onAdd}>メンバーを追加</button>}
-          <button className="secondary" onClick={onClose}>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
             閉じる
-          </button>
+          </Button>
+          {channel.isMember && !channel.archived && <Button onClick={onAdd}>メンバーを追加</Button>}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -211,21 +235,19 @@ export function TopicDialog({ controller, channel, onClose }: { controller: AppC
     if (ok) onClose();
   };
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
-        <h2>トピック</h2>
-        <p className="muted">このチャンネルで何を話すのかを一行で。</p>
-        <input value={topic} maxLength={250} autoFocus onChange={(e) => setTopic(e.target.value)} placeholder="例: 週次の進捗共有" />
-        <div className="row">
-          <button type="submit" disabled={busy}>
-            保存
-          </button>
-          <button type="button" className="secondary" onClick={onClose}>
+    <Modal onClose={onClose} title="トピック" description="このチャンネルで何を話すのかを一行で。">
+      <form className="mt-4 space-y-4" onSubmit={save}>
+        <Input value={topic} maxLength={250} autoFocus onChange={(e) => setTopic(e.target.value)} placeholder="例: 週次の進捗共有" />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
             キャンセル
-          </button>
+          </Button>
+          <Button type="submit" disabled={busy}>
+            保存
+          </Button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -265,61 +287,54 @@ export function SettingsDialog({ controller, onClose }: { controller: AppControl
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal settings" onClick={(e) => e.stopPropagation()}>
-        <h2>設定</h2>
+    <Modal onClose={onClose} title="設定" className="w-[480px]">
+      <div className="mt-4 space-y-6">
         {me && (
-          <div className="profile">
-            <Avatar id={me.id} name={me.display_name} size={44} />
-            <div>
-              <strong>{me.display_name}</strong>
-              <div className="muted">@{me.username}</div>
+          <div className="flex items-center gap-3 rounded-xl bg-panel p-3">
+            <Avatar id={me.id} name={me.display_name} size={44} className="rounded-xl" />
+            <div className="min-w-0">
+              <div className="truncate font-semibold">{me.display_name}</div>
+              <div className="text-sm text-muted">@{me.username}</div>
             </div>
           </div>
         )}
-        <form onSubmit={saveName}>
-          <label>
-            表示名
-            <input value={displayName} maxLength={80} onChange={(e) => setDisplayName(e.target.value)} required />
-          </label>
-          <div className="row">
-            <button type="submit" disabled={busy || !displayName.trim() || displayName.trim() === me?.display_name}>
+        <form className="space-y-3" onSubmit={saveName}>
+          <Field label="表示名">
+            <Input value={displayName} maxLength={80} onChange={(e) => { setDisplayName(e.target.value); setSavedName(false); }} required />
+          </Field>
+          <div className="flex items-center gap-3">
+            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || displayName.trim() === me?.display_name}>
               表示名を保存
-            </button>
-            {savedName && <span className="muted">保存しました</span>}
+            </Button>
+            {savedName && <span className="text-xs text-muted">保存しました</span>}
           </div>
         </form>
-        <form onSubmit={savePassword}>
-          <h3>パスワードの変更</h3>
-          <label>
-            現在のパスワード
-            <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
-          </label>
-          <label>
-            新しいパスワード (8 文字以上)
-            <input type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
-          </label>
-          <label>
-            新しいパスワード (確認)
-            <input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
-          </label>
-          {passwordMessage && <p className={passwordMessage.includes("しました") ? "muted" : "error"}>{passwordMessage}</p>}
-          <div className="row">
-            <button type="submit" disabled={busy}>
-              変更する
-            </button>
-          </div>
+        <form className="space-y-3" onSubmit={savePassword}>
+          <h3 className="text-sm font-semibold">パスワードの変更</h3>
+          <Field label="現在のパスワード">
+            <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
+          </Field>
+          <Field label="新しいパスワード (8 文字以上)">
+            <Input type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
+          </Field>
+          <Field label="新しいパスワード (確認)">
+            <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
+          </Field>
+          {passwordMessage && <p className={cn("text-sm", passwordMessage.includes("しました") ? "text-muted" : "text-danger")}>{passwordMessage}</p>}
+          <Button type="submit" size="sm" disabled={busy}>
+            変更する
+          </Button>
         </form>
-        <div className="row footer">
-          <button className="secondary" onClick={() => void controller.logout()}>
-            ログアウト
-          </button>
-          <button className="secondary" onClick={onClose}>
+        <div className="flex items-center justify-between border-t border-line pt-4">
+          <Button variant="secondary" size="sm" onClick={() => void controller.logout()}>
+            <LogOut size={14} /> ログアウト
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>
             閉じる
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -333,6 +348,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["↑ (空の入力欄)", "自分の最後のメッセージを編集"],
   ["Shift + ↑ (空の入力欄)", "最後のメッセージにスレッドで返信"],
   ["Enter / Shift + Enter", "送信 / 改行"],
+  ["Alt/⌥ + クリック", "そのメッセージから未読にする"],
   ["Ctrl/⌘ + U", "ファイルを添付"],
   ["Ctrl/⌘ + Shift + L", "入力欄にフォーカス"],
   ["Ctrl/⌘ + /", "この一覧"],
@@ -340,27 +356,19 @@ const SHORTCUTS: Array<[string, string]> = [
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal shortcuts" onClick={(e) => e.stopPropagation()}>
-        <h2>キーボードショートカット</h2>
-        <table>
-          <tbody>
-            {SHORTCUTS.map(([keys, what]) => (
-              <tr key={keys}>
-                <td>
-                  <kbd>{keys}</kbd>
-                </td>
-                <td>{what}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="row">
-          <button className="secondary" onClick={onClose}>
-            閉じる
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal onClose={onClose} title="キーボードショートカット" className="w-[520px]">
+      <table className="mt-4 w-full text-sm">
+        <tbody className="divide-y divide-line">
+          {SHORTCUTS.map(([keys, what]) => (
+            <tr key={keys}>
+              <td className="whitespace-nowrap py-2 pr-4 align-top">
+                <Kbd>{keys}</Kbd>
+              </td>
+              <td className="py-2 text-ink">{what}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Modal>
   );
 }

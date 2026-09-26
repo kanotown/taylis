@@ -1,8 +1,11 @@
+import { AtSign, BellOff, Hash, Lock, Plus, Search, Settings } from "lucide-react";
+
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { badgeCount, hasUnread, isMutedChannel, sectionChannels } from "./channels";
+import { badgeCount, hasUnread, isDmChannel, isMutedChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
+import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 
 interface Props {
   controller: AppController;
@@ -19,99 +22,148 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings }: Props) {
-  const engine = controller.engine;
-  const me = controller.store.me ?? controller.me;
+  const store = controller.store;
+  const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId });
-  const status = engine?.status ?? "idle";
+  const status = controller.engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
     const muted = isMutedChannel(channel);
     const unread = hasUnread(channel) && channel.id !== currentId;
     const badge = badgeCount(channel);
+    const active = channel.id === currentId;
+    const other = isDmChannel(channel) ? (channel.dm_user_ids ?? []).find((id) => id !== me?.id) : undefined;
     return (
-      <li key={channel.id} className={`${channel.id === currentId ? "active" : ""}${unread ? " unread" : ""}${muted ? " muted-channel" : ""}`}>
-        <button onClick={() => onOpen(channel.id)} title={channelTitle(channel, controller)}>
-          <span className="prefix">{channel.type === "private" ? "🔒" : channel.type === "public" ? "#" : "@"}</span>
-          <span className="name">{channelTitle(channel, controller).replace(/^#/, "")}</span>
-          {muted && <span className="muted-icon" title="通知オフ">🔕</span>}
-          {unread && badge > 0 ? <span className="badge">{badge}</span> : unread ? <span className="dot" /> : null}
+      <li key={channel.id}>
+        <button
+          type="button"
+          onClick={() => onOpen(channel.id)}
+          title={channelTitle(channel, controller)}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+            active ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+            unread && "font-semibold text-white",
+            muted && !unread && !active && "opacity-55",
+          )}
+        >
+          {isDmChannel(channel) ? (
+            other ? <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={18} className="rounded-md text-[9px]" /> : <AtSign size={15} className="shrink-0 opacity-70" />
+          ) : channel.type === "private" ? (
+            <Lock size={15} className="shrink-0 opacity-70" />
+          ) : (
+            <Hash size={15} className="shrink-0 opacity-70" />
+          )}
+          <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
+          {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
+          {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : null}
         </button>
       </li>
     );
   };
 
   return (
-    <nav className="sidebar">
-      <div className="me">
-        {me && <Avatar id={me.id} name={me.display_name} size={32} />}
-        <div className="who">
-          <strong>{me?.display_name ?? ""}</strong>
-          <span className={`status status-${status}`}>{statusLabel(status)}</span>
+    <nav className="flex h-full flex-col overflow-y-auto bg-sidebar px-2 pb-4 text-sidebar-fg">
+      <div className="flex items-center gap-2.5 border-b border-white/10 px-2 py-3">
+        {me && <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" />}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-white">{me?.display_name ?? ""}</div>
+          <div className="flex items-center gap-1.5 text-[11px] opacity-80">
+            <span className={cn("h-2 w-2 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-white/30")} />
+            {statusLabel(status)}
+          </div>
         </div>
-        <div className="me-actions">
-          {onSearch && (
-            <button className="icon" title="検索 (Ctrl/⌘+F)" onClick={onSearch}>
-              🔍
-            </button>
-          )}
-          {onSettings && (
-            <button className="icon" title="設定" onClick={onSettings}>
-              ⚙️
-            </button>
-          )}
-        </div>
+        {onSearch && (
+          <IconButton tone="sidebar" label={`検索 (${modKey()}+F)`} onClick={onSearch}>
+            <Search size={17} />
+          </IconButton>
+        )}
+        {onSettings && (
+          <IconButton tone="sidebar" label="設定" onClick={onSettings}>
+            <Settings size={17} />
+          </IconButton>
+        )}
       </div>
-      <div className="tools-row">
-        <button className="switcher-hint" onClick={() => window.dispatchEvent(new CustomEvent("chikuwa:quick-switch"))}>
-          移動… <kbd>Ctrl/⌘ K</kbd>
+
+      <div className="flex gap-1.5 px-1 py-2.5">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("chikuwa:quick-switch"))}
+          className="flex h-8 flex-1 items-center gap-2 rounded-lg bg-white/8 px-2.5 text-left text-[13px] hover:bg-white/14 hover:text-white"
+        >
+          <Search size={14} className="opacity-70" />
+          <span className="flex-1">移動…</span>
+          <Kbd className="border-white/20 bg-transparent text-sidebar-fg/80">{modKey()} K</Kbd>
         </button>
         <button
-          className={`filter${unreadOnly ? " active" : ""}`}
-          title={unreadOnly ? "すべて表示" : "未読のみ表示"}
+          type="button"
           aria-pressed={unreadOnly}
+          title={unreadOnly ? "すべて表示" : "未読のみ表示"}
           onClick={onToggleUnreadOnly}
+          className={cn("h-8 rounded-lg px-2.5 text-xs font-medium transition-colors", unreadOnly ? "bg-accent text-white" : "bg-white/8 hover:bg-white/14 hover:text-white")}
         >
           未読
         </button>
       </div>
-      <section>
-        <h2>
-          チャンネル
-          <button className="icon" title="チャンネルを作成" onClick={onNewChannel}>
-            +
-          </button>
-        </h2>
-        <ul>{sections.channels.map(item)}</ul>
-        {sections.channels.length === 0 && <p className="hint">{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</p>}
-      </section>
-      <section>
-        <h2>
-          ダイレクトメッセージ
-          <button className="icon" title="DM を開始 (Ctrl/⌘+Shift+K)" onClick={onNewDm}>
-            +
-          </button>
-        </h2>
-        <ul>{sections.dms.map(item)}</ul>
-        {sections.dms.length === 0 && <p className="hint">{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</p>}
-      </section>
+
+      <Section
+        title="チャンネル"
+        action={
+          <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
+            <Plus size={14} />
+          </IconButton>
+        }
+      >
+        <ul className="space-y-px">{sections.channels.map(item)}</ul>
+        {sections.channels.length === 0 && <Hint>{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</Hint>}
+      </Section>
+      <Section
+        title="ダイレクトメッセージ"
+        action={
+          <IconButton tone="sidebar" label={`DM を開始 (${modKey()}+Shift+K)`} className="h-6 w-6" onClick={onNewDm}>
+            <Plus size={14} />
+          </IconButton>
+        }
+      >
+        <ul className="space-y-px">{sections.dms.map(item)}</ul>
+        {sections.dms.length === 0 && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
+      </Section>
       {sections.browse.length > 0 && (
-        <section>
-          <h2>参加できるチャンネル</h2>
-          <ul>
+        <Section title="参加できるチャンネル">
+          <ul className="space-y-px">
             {sections.browse.map((c) => (
               <li key={c.id}>
-                <button onClick={() => onJoin(c.id)} title="参加する">
-                  <span className="prefix">#</span>
-                  <span className="name">{c.name}</span>
-                  <span className="join">参加</span>
+                <button
+                  type="button"
+                  onClick={() => onJoin(c.id)}
+                  className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] opacity-80 hover:bg-sidebar-hover hover:text-white hover:opacity-100"
+                >
+                  <Hash size={15} className="shrink-0 opacity-70" />
+                  <span className="flex-1 truncate">{c.name}</span>
+                  <span className="text-[11px] opacity-0 transition-opacity group-hover:opacity-100">参加</span>
                 </button>
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
     </nav>
   );
+}
+
+function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="mt-3">
+      <h2 className="mb-1 flex h-6 items-center justify-between px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-fg/70">
+        {title}
+        {action}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="px-2.5 py-1 text-xs opacity-60">{children}</p>;
 }
 
 function statusLabel(status: string): string {
@@ -123,6 +175,6 @@ function statusLabel(status: string): string {
     case "offline":
       return "再接続を待っています";
     default:
-      return "";
+      return "オフライン";
   }
 }

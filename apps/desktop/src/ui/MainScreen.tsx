@@ -1,11 +1,13 @@
+import { AtSign, Bell, BellOff, Hash, Keyboard, Lock, MessagesSquare, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
-import { hasUnread, sectionChannels, stepChannel } from "./channels";
+import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
+import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { SearchPane } from "./SearchPane";
 import { Sidebar } from "./Sidebar";
@@ -33,7 +35,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [switcher, setSwitcher] = useState(false);
-  const [bellOpen, setBellOpen] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
 
   const channels = [...store.channels.values()];
@@ -114,7 +115,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
           const channel = controller.store.getChannel(s.currentId);
           if (channel && hasUnread(channel)) controller.engine?.markRead(channel.id, channel.lastSeq, { force: true });
         }
-        setBellOpen(false);
       }
     };
     const onSwitch = () => setSwitcher(true);
@@ -147,8 +147,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const level: NotificationLevel = current?.notificationLevel ?? (current && (current.type === "dm" || current.type === "group_dm") ? "all" : "mentions");
   const isChannel = current?.type === "public" || current?.type === "private";
 
+  const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];
+
   return (
-    <div className="layout">
+    <div className="grid h-full grid-cols-[260px_minmax(0,1fr)_auto] bg-canvas text-ink">
       <Sidebar
         controller={controller}
         channels={channels}
@@ -162,87 +164,88 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onSearch={() => setSearching(true)}
         onSettings={() => setDialog("settings")}
       />
-      <main className="main">
+      <main className="relative flex min-w-0 flex-col">
         {status !== "online" && status !== "idle" && (
-          <div className={`connection ${status}`}>{status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}</div>
+          <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
+            {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
+          </div>
         )}
         {current ? (
           <>
-            <header className="channel-header">
-              <div className="title">
-                <strong>{channelTitle(current, controller)}</strong>
-                {current.archived && <span className="badge">アーカイブ済み</span>}
+            <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="text-muted">
+                  {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
+                </span>
+                <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+                {current.archived && <Badge>アーカイブ済み</Badge>}
                 {isChannel && current.isMember && !current.archived && (
-                  <button className="link topic" onClick={() => setDialog("topic")} title="トピックを編集">
+                  <button
+                    type="button"
+                    className={cn("min-w-0 truncate text-sm hover:underline", current.topic ? "text-muted" : "text-muted/70")}
+                    onClick={() => setDialog("topic")}
+                    title="トピックを編集"
+                  >
                     {current.topic ? current.topic : "トピックを追加"}
                   </button>
                 )}
-                {!isChannel && current.topic && <span className="muted">{current.topic}</span>}
+                {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{dmOther.length + 1} 人</span>}
               </div>
-              <div className="tools">
+              <div className="flex items-center gap-0.5">
                 {isChannel && (
-                  <button className="icon" title="メンバー" onClick={() => setDialog("members")}>
-                    👥
-                  </button>
+                  <IconButton label="メンバー" onClick={() => setDialog("members")}>
+                    <Users size={18} />
+                  </IconButton>
                 )}
                 {current.isMember && (
-                  <span className="bell">
-                    <button className="icon" title="通知設定" onClick={() => setBellOpen((v) => !v)}>
-                      {level === "none" || muteLabel ? "🔕" : "🔔"}
-                    </button>
-                    {bellOpen && (
-                      <div className="menu" onMouseLeave={() => setBellOpen(false)}>
-                        {(
-                          [
-                            ["all", "すべてのメッセージ"],
-                            ["mentions", "メンションのみ"],
-                            ["none", "通知しない"],
-                          ] as Array<[NotificationLevel, string]>
-                        ).map(([value, label]) => (
-                          <button
-                            key={value}
-                            className={level === value ? "active" : ""}
-                            onClick={() => {
-                              setBellOpen(false);
-                              void controller.setNotification(current.id, value, null);
-                            }}
-                          >
-                            {level === value ? "✓ " : ""}
-                            {label}
-                          </button>
-                        ))}
-                        <hr />
-                        {muteLabel ? (
-                          <button onClick={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</button>
-                        ) : (
-                          <button onClick={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>
-                            8 時間ミュート
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </span>
+                  <Menu>
+                    <MenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="通知設定"
+                        title="通知設定"
+                        className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", (level === "none" || muteLabel) ? "text-muted" : "text-ink")}
+                      >
+                        {level === "none" || muteLabel ? <BellOff size={18} /> : <Bell size={18} />}
+                      </button>
+                    </MenuTrigger>
+                    <MenuContent>
+                      <MenuLabel>通知</MenuLabel>
+                      <MenuRadioGroup value={level} onValueChange={(value) => void controller.setNotification(current.id, value as NotificationLevel, null)}>
+                        <MenuRadioItem value="all">すべてのメッセージ</MenuRadioItem>
+                        <MenuRadioItem value="mentions">メンションのみ</MenuRadioItem>
+                        <MenuRadioItem value="none">通知しない</MenuRadioItem>
+                      </MenuRadioGroup>
+                      <MenuSeparator />
+                      {muteLabel ? (
+                        <MenuItem onSelect={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</MenuItem>
+                      ) : (
+                        <MenuItem onSelect={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
+                      )}
+                    </MenuContent>
+                  </Menu>
                 )}
-                <button className="icon" title="キーボードショートカット (Ctrl/⌘+/)" onClick={() => setDialog("shortcuts")}>
-                  ⌨️
-                </button>
+                <IconButton label={`キーボードショートカット (${modKey()}+/)`} onClick={() => setDialog("shortcuts")}>
+                  <Keyboard size={18} />
+                </IconButton>
                 {!current.isMember && (
-                  <button className="secondary" onClick={() => void join(current.id)}>
+                  <Button size="sm" className="ml-2" onClick={() => void join(current.id)}>
                     参加する
-                  </button>
+                  </Button>
                 )}
               </div>
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={setThreadId} />
             {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />}
-            {current.archived && <div className="muted archived-note">アーカイブされたチャンネルには投稿できません</div>}
+            {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
           </>
         ) : (
-          <div className="centered muted">
-            <div className="empty-state">
-              <strong>チャンネルを選択してください</strong>
-              <span>左のリストから選ぶか、Ctrl/⌘+K で移動できます。</span>
-            </div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+              <MessagesSquare size={26} />
+            </span>
+            <strong className="text-base">チャンネルを選択してください</strong>
+            <span className="text-sm text-muted">左のリストから選ぶか、{modKey()}+K で移動できます。</span>
           </div>
         )}
       </main>
@@ -258,9 +261,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         />
       ) : current && threadId ? (
         <ThreadPane controller={controller} channel={current} parentId={threadId} onClose={() => setThreadId(null)} />
-      ) : (
-        <aside className="thread-panel" aria-hidden="true" />
-      )}
+      ) : null}
       <Toast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}

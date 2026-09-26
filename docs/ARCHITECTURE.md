@@ -79,7 +79,7 @@ Redis、Kafka、RabbitMQ、Celery、Kubernetes、Elasticsearch、分散 DB、サ
 
 | アプリ | スタック | ローカルストア | 備考 |
 | --- | --- | --- | --- |
-| Desktop (Windows / macOS) | Tauri 2 + React + TypeScript | SQLite (tauri-plugin-sql) | OS ネイティブ通知。左: チャンネル / DM、中央: メッセージと入力、右: スレッド |
+| Desktop (Windows / macOS) | Tauri 2 + React + TypeScript。UI は Tailwind CSS v4 (MIT) + Radix UI プリミティブ `radix-ui` (MIT) + cmdk (MIT) + Lucide アイコン (ISC) | SQLite (tauri-plugin-sql) | OS ネイティブ通知。左: チャンネル / DM、中央: メッセージと入力、右: スレッド / 検索 |
 | iOS | Swift / SwiftUI / Swift Concurrency | SQLite (SQLite3 C API の薄いラッパ。第三者依存なし) | Keychain、APNs 直接。Xcode から実機に直接インストール (App Store 配布を前提にしない) |
 | Android | Kotlin / Jetpack Compose / Coroutines + Flow | Room | FCM。Jetpack 標準 API を優先し、サードパーティ依存は最小限 |
 

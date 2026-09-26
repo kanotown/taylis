@@ -3,7 +3,7 @@ import { tokenize } from "./markdown";
 
 export function MessageBody({ body, users }: { body: string; users: Map<string, UserPublic> }) {
   return (
-    <div className="body">
+    <div className="body text-[14.5px] leading-6">
       {tokenize(body).map((token, i) => {
         switch (token.kind) {
           case "text":

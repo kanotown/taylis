@@ -59,6 +59,11 @@ export class AppController {
     this.emit();
   }
 
+  /** Human-readable text for an error (dialogs show it inline). */
+  describe(error: unknown): string {
+    return describe(error);
+  }
+
   /** Surface a problem to the UI (toast on the main screen); null clears it. */
   setError(error: unknown): void {
     this.error = error === null ? null : error instanceof Error ? error.message : String(error);

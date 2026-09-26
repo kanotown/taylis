@@ -1,3 +1,4 @@
+import { AlertCircle, X } from "lucide-react";
 import { useEffect } from "react";
 
 import type { AppController } from "../state/app";
@@ -12,10 +13,14 @@ export function Toast({ controller }: { controller: AppController }) {
   }, [message, controller]);
   if (!message) return null;
   return (
-    <div className="toast" role="alert">
+    <div
+      role="alert"
+      className="fixed bottom-6 left-1/2 z-50 flex max-w-[80vw] -translate-x-1/2 items-center gap-3 rounded-xl border border-danger/40 bg-canvas px-4 py-3 text-sm text-ink shadow-2xl"
+    >
+      <AlertCircle size={18} className="shrink-0 text-danger" />
       <span>{message}</span>
-      <button className="link" onClick={() => controller.setError(null)} aria-label="閉じる">
-        ✕
+      <button type="button" className="rounded-md p-1 text-muted hover:bg-ink/6 hover:text-ink" onClick={() => controller.setError(null)} aria-label="閉じる">
+        <X size={14} />
       </button>
     </div>
   );

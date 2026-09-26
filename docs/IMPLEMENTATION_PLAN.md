@@ -288,6 +288,21 @@ Android の JUnit / Lint / assembleDebug がすべて成功 (契約テストと 
 
 次: フォロー中スレッドの一覧は THREADS.md の設計に沿って実装する。
 
+### Desktop UI の刷新 (2026-09-26)
+
+Desktop の見た目を、フリーで使える現行のフレームワークに載せ替えた。ロジック (Store / SyncEngine / 契約テスト)
+は変えていない。
+
+- Tailwind CSS v4 (`@tailwindcss/vite`、MIT): `src/styles.css` の `@theme inline` でセマンティックな色トークンを
+  定義し、ライト / ダークは OS の `prefers-color-scheme` に従う。
+- Radix UI (`radix-ui` 単一パッケージ、MIT): Dialog / DropdownMenu / Popover / Tooltip。`src/ui/primitives.tsx` に
+  Button / Input / Modal / Menu などの薄いラッパを置き、画面はそれだけを使う。
+- cmdk (MIT): Ctrl/⌘+K のチャンネル移動。
+- Lucide (`lucide-react`、ISC): 絵文字で代用していたアイコンを置き換えた。Android は Material Icons Extended
+  (Apache 2.0)、iOS は SF Symbols で同じ意図のアイコンにそろえる。
+- `scripts/preview-shots.mjs`: ブラウザプレビュー (`npm run dev`) をヘッドレス Chrome で操作してログイン後の
+  画面を撮る開発用スクリプト。目視確認に使う。
+
 ### バックログ (未スケジュール)
 
 typing / presence、ピン留め、ブックマーク、カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、

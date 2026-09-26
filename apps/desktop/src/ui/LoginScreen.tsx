@@ -1,6 +1,8 @@
+import { Loader2, MessageCircle } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { AppController } from "../state/app";
+import { Button, Field, Input } from "./primitives";
 
 export function LoginScreen({ controller, onDone }: { controller: AppController; onDone: () => void }) {
   const [server, setServer] = useState(controller.serverUrl);
@@ -17,26 +19,41 @@ export function LoginScreen({ controller, onDone }: { controller: AppController;
   };
 
   return (
-    <div className="centered">
-      <form className="card" onSubmit={submit}>
-        <h1>ChikuwaChat</h1>
-        <label>
-          サーバ URL
-          <input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required />
-        </label>
-        <label>
-          ユーザー名
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
-        </label>
-        <label>
-          パスワード
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-        </label>
-        {controller.error && <p className="error">{controller.error}</p>}
-        <button type="submit" disabled={busy}>
+    <AuthShell>
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
+            <MessageCircle size={24} />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">ChikuwaChat</h1>
+            <p className="text-xs text-muted">チームのチャットにログイン</p>
+          </div>
+        </div>
+        <Field label="サーバ URL">
+          <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" />
+        </Field>
+        <Field label="ユーザー名">
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoCapitalize="off" />
+        </Field>
+        <Field label="パスワード">
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+        </Field>
+        {controller.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{controller.error}</p>}
+        <Button type="submit" disabled={busy} className="w-full">
+          {busy && <Loader2 size={16} className="animate-spin" />}
           {busy ? "ログイン中…" : "ログイン"}
-        </button>
+        </Button>
       </form>
+    </AuthShell>
+  );
+}
+
+/** Centered card on a soft gradient, shared by the login and password screens. */
+export function AuthShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-[radial-gradient(ellipse_at_top_left,var(--accent-soft),transparent_60%),radial-gradient(ellipse_at_bottom_right,color-mix(in_srgb,var(--sidebar)_25%,transparent),transparent_60%)] bg-panel p-6">
+      <div className="w-[380px] max-w-full rounded-2xl border border-line bg-canvas p-7 shadow-xl">{children}</div>
     </div>
   );
 }
