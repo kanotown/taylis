@@ -46,7 +46,9 @@ services:
       objectstore:
         condition: service_started
     ports:
-      - "127.0.0.1:${APP_HOST_PORT:-8000}:8000"
+      # 既定は localhost のみ。同じ LAN の iPhone / Android 実機から試すときは APP_BIND=0.0.0.0 にする
+      # (infra/README.md「実機での動作確認」)。本番では docker-compose.prod.yml で打ち消す。
+      - "${APP_BIND:-127.0.0.1}:${APP_HOST_PORT:-8000}:8000"
     volumes:
       # APNs 認証キー (infra/.env の APNS_KEY_FILE で指定。未設定なら存在しないダミーパス)
       - ${APNS_KEY_FILE:-./secrets/apns_key.p8}:/run/secrets/apns_key.p8:ro
