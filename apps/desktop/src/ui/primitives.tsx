@@ -163,7 +163,7 @@ export function MenuContent({ className, children, ...props }: ComponentProps<ty
   );
 }
 
-const ITEM = "flex cursor-default select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
+const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
 
 export function MenuItem({ className, ...props }: ComponentProps<typeof DropdownMenu.Item>) {
   return <DropdownMenu.Item className={cn(ITEM, className)} {...props} />;

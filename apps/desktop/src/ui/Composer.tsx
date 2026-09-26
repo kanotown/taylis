@@ -155,7 +155,7 @@ export function Composer({
           {candidates.map((candidate, index) => (
             <li
               key={candidate.username}
-              className={cn("flex cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
+              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
               onMouseDown={(event) => {
                 event.preventDefault();
                 pick(candidate);
