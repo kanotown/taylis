@@ -1,37 +1,140 @@
 /**
- * Message body format (DATA_MODEL.md "本文の形式"): plain text with mention tokens plus a small
- * inline subset. This is a tokenizer, not an HTML renderer: React escapes everything.
+ * Message body format (DATA_MODEL.md "本文の形式"): plain text with mention tokens plus a light
+ * markdown subset shared by the three clients. This is a tokenizer, not an HTML renderer: React
+ * escapes everything.
+ *
+ * Inline: **bold** / *bold*, _italic_, ~~strike~~, `code`, [label](url), bare https?:// links,
+ * <@user-id>, <!channel> / <!here>. Blocks: ``` fences (optional language), "> " quotes,
+ * "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level).
  */
 export type Token =
   | { kind: "text"; text: string }
   | { kind: "bold"; text: string }
   | { kind: "italic"; text: string }
+  | { kind: "strike"; text: string }
   | { kind: "code"; text: string }
-  | { kind: "codeblock"; text: string }
-  | { kind: "link"; url: string }
+  | { kind: "codeblock"; text: string; lang?: string | null }
+  | { kind: "link"; url: string; label?: string }
   | { kind: "mention"; userId: string }
   | { kind: "mention_all"; target: string }
   | { kind: "newline" };
 
-const PATTERN =
-  /(```([\s\S]*?)```)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\n)/g;
+export type Block =
+  | { kind: "paragraph"; lines: Token[][] }
+  | { kind: "quote"; lines: Token[][] }
+  | { kind: "list"; ordered: boolean; start: number; items: Array<{ level: number; tokens: Token[] }> }
+  | { kind: "codeblock"; text: string; lang: string | null };
 
+const INLINE =
+  /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)/g;
+const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "g");
+
+/** Whole-body tokens (inline markup, fenced code and newlines); kept for highlighting and old callers. */
 export function tokenize(body: string): Token[] {
+  return scan(body, WITH_BLOCKS, true);
+}
+
+/** Inline tokens of one line (no fences, no newlines). */
+export function tokenizeInline(line: string): Token[] {
+  return scan(line, new RegExp(INLINE.source, "g"), false);
+}
+
+function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
   const tokens: Token[] = [];
   let last = 0;
-  for (const match of body.matchAll(PATTERN)) {
+  for (const match of body.matchAll(pattern)) {
     const index = match.index ?? 0;
     if (index > last) tokens.push({ kind: "text", text: body.slice(last, index) });
-    if (match[1] !== undefined) tokens.push({ kind: "codeblock", text: (match[2] ?? "").replace(/^\n|\n$/g, "") });
-    else if (match[3] !== undefined) tokens.push({ kind: "code", text: match[4] ?? "" });
-    else if (match[5] !== undefined) tokens.push({ kind: "bold", text: match[6] ?? "" });
-    else if (match[7] !== undefined) tokens.push({ kind: "italic", text: match[8] ?? "" });
-    else if (match[9] !== undefined) tokens.push({ kind: "mention", userId: match[10] ?? "" });
-    else if (match[11] !== undefined) tokens.push({ kind: "mention_all", target: match[12] ?? "" });
-    else if (match[13] !== undefined) tokens.push({ kind: "link", url: match[13] });
+    // The fence groups exist only in WITH_BLOCKS; shift the inline group indices accordingly.
+    const g = (n: number) => match[withBlocks ? n + 2 : n];
+    if (withBlocks && match[1] !== undefined) {
+      const fenced = splitFence(match[2] ?? "");
+      tokens.push({ kind: "codeblock", text: fenced.text, lang: fenced.lang });
+    } else if (g(1) !== undefined) tokens.push({ kind: "bold", text: g(2) ?? "" });
+    else if (g(3) !== undefined) tokens.push({ kind: "code", text: g(4) ?? "" });
+    else if (g(5) !== undefined) tokens.push({ kind: "bold", text: g(6) ?? "" });
+    else if (g(7) !== undefined) tokens.push({ kind: "italic", text: g(8) ?? "" });
+    else if (g(9) !== undefined) tokens.push({ kind: "strike", text: g(10) ?? "" });
+    else if (g(11) !== undefined) tokens.push({ kind: "link", url: g(13) ?? "", label: g(12) ?? "" });
+    else if (g(14) !== undefined) tokens.push({ kind: "mention", userId: g(15) ?? "" });
+    else if (g(16) !== undefined) tokens.push({ kind: "mention_all", target: g(17) ?? "" });
+    else if (g(18) !== undefined) tokens.push({ kind: "link", url: g(18) ?? "" });
     else tokens.push({ kind: "newline" });
     last = index + match[0].length;
   }
   if (last < body.length) tokens.push({ kind: "text", text: body.slice(last) });
   return tokens;
+}
+
+/** "lang\ncode" → language tag and code; a fence without a language keeps the whole text. */
+function splitFence(raw: string): { text: string; lang: string | null } {
+  const match = /^([A-Za-z0-9_+#.-]{1,20})?\n([\s\S]*)$/.exec(raw);
+  if (match && match[1] !== undefined) return { lang: match[1].toLowerCase(), text: (match[2] ?? "").replace(/\n$/, "") };
+  return { lang: null, text: raw.replace(/^\n|\n$/g, "") };
+}
+
+const BULLET = /^(\s*)[-*•]\s+(.*)$/;
+const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
+const QUOTE = /^>\s?(.*)$/;
+
+/** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
+export function parseBlocks(body: string): Block[] {
+  const blocks: Block[] = [];
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  let i = 0;
+  const push = (block: Block) => blocks.push(block);
+  const FENCE = /^```([A-Za-z0-9_+#.-]{0,20})\s*$/;
+  // A fence opens a code block only when a closing ``` line follows; otherwise it is ordinary text.
+  const fenceCloseAfter = (index: number) => lines.findIndex((l, k) => k > index && /^```\s*$/.test(l));
+  const opensFence = (index: number) => FENCE.test(lines[index] ?? "") && fenceCloseAfter(index) !== -1;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (opensFence(i)) {
+      const fence = FENCE.exec(line);
+      const close = fenceCloseAfter(i);
+      push({ kind: "codeblock", text: lines.slice(i + 1, close).join("\n"), lang: fence?.[1] ? fence[1].toLowerCase() : null });
+      i = close + 1;
+      continue;
+    }
+    const quote = QUOTE.exec(line);
+    if (quote) {
+      const quoted: Token[][] = [];
+      while (i < lines.length) {
+        const q = QUOTE.exec(lines[i] ?? "");
+        if (!q) break;
+        quoted.push(tokenizeInline(q[1] ?? ""));
+        i++;
+      }
+      push({ kind: "quote", lines: quoted });
+      continue;
+    }
+    const bullet = BULLET.exec(line);
+    const numbered = NUMBERED.exec(line);
+    if (bullet || numbered) {
+      const ordered = !bullet;
+      const items: Array<{ level: number; tokens: Token[] }> = [];
+      const start = numbered ? Number(numbered[2]) : 1;
+      while (i < lines.length) {
+        const current = lines[i] ?? "";
+        const m = ordered ? NUMBERED.exec(current) : BULLET.exec(current);
+        if (!m) break;
+        const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
+        const text = ordered ? (m[3] ?? "") : (m[2] ?? "");
+        items.push({ level: indent >= 2 ? 1 : 0, tokens: tokenizeInline(text) });
+        i++;
+      }
+      push({ kind: "list", ordered, start, items });
+      continue;
+    }
+    // Paragraph: consecutive ordinary lines (blank lines stay as empty lines inside it).
+    const paragraph: Token[][] = [];
+    while (i < lines.length) {
+      const current = lines[i] ?? "";
+      if (paragraph.length > 0 && (opensFence(i) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
+      paragraph.push(tokenizeInline(current));
+      i++;
+    }
+    push({ kind: "paragraph", lines: paragraph });
+  }
+  return blocks;
 }

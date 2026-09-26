@@ -13,7 +13,28 @@ final class BodyTokenizerTests: XCTestCase {
 
     func testCodeBlocksAndUnmatchedMarkers() {
         XCTAssertEqual(BodyTokenizer.tokenize("```\nlet *x* = 1\n```"), [.codeBlock("let *x* = 1")])
+        XCTAssertEqual(BodyTokenizer.tokenize("```py\nprint(1)\n```"), [.codeBlock("print(1)", lang: "py")])
         XCTAssertEqual(BodyTokenizer.tokenize("<script>alert(1)</script>"), [.text("<script>alert(1)</script>")])
+        XCTAssertEqual(BodyTokenizer.tokenizeInline("**both** ~~gone~~ [docs](https://example.com/d) 2 * 3"), [
+            .bold("both"), .text(" "), .strike("gone"), .text(" "), .link("https://example.com/d", label: "docs"), .text(" 2 * 3"),
+        ])
+    }
+
+    func testBlocksQuotesListsAndFences() {
+        let body = ["plan:", "- one **strong**", "- two", "  - nested", "1. first", "2. second", "> quoted _q_", "> more", "```ts", "const x = 1;", "```", "tail"].joined(separator: "\n")
+        let blocks = BodyTokenizer.parseBlocks(body)
+        XCTAssertEqual(blocks.count, 6)
+        XCTAssertEqual(blocks[0], .paragraph([[.text("plan:")]]))
+        XCTAssertEqual(blocks[1], .list(ordered: false, start: 1, items: [
+            BodyListItem(level: 0, tokens: [.text("one "), .bold("strong")]),
+            BodyListItem(level: 0, tokens: [.text("two")]),
+            BodyListItem(level: 1, tokens: [.text("nested")]),
+        ]))
+        XCTAssertEqual(blocks[2], .list(ordered: true, start: 1, items: [BodyListItem(level: 0, tokens: [.text("first")]), BodyListItem(level: 0, tokens: [.text("second")])]))
+        XCTAssertEqual(blocks[3], .quote([[.text("quoted "), .italic("q")], [.text("more")]]))
+        XCTAssertEqual(blocks[4], .codeBlock("const x = 1;", lang: "ts"))
+        XCTAssertEqual(blocks[5], .paragraph([[.text("tail")]]))
+        XCTAssertEqual(BodyTokenizer.parseBlocks("```\nopen"), [.paragraph([[.text("```")], [.text("open")]])])
     }
 
     func testIsoDatesWithMicroseconds() {
