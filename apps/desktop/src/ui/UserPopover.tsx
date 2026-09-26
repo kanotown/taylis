@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
 import { expiryLabel } from "./users";
+import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
 import { Button, cn, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
@@ -40,6 +41,9 @@ export function UserPopover({ controller, userId, children, className }: { contr
             <div className="truncate text-base font-semibold">{user?.display_name ?? "?"}</div>
             <div className="truncate text-xs text-muted">@{user?.username ?? ""}{user?.title ? ` · ${user.title}` : ""}</div>
             <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
+            {dndActive(user) && (
+              <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? `おやすみ時間 ${quietHoursLabel(user.quiet_hours)}` : undefined}>🔕 通知を一時停止中</div>
+            )}
           </div>
         </div>
         {status && (
@@ -69,10 +73,13 @@ export function UserPopover({ controller, userId, children, className }: { contr
 /** The status emoji shown next to a name when the person has an active custom status. */
 export function StatusEmoji({ controller, userId, className }: { controller: AppController; userId: string; className?: string }) {
   const status = activeStatus(controller.store.users.get(userId));
-  if (!status?.emoji) return null;
+  const quiet = dndActive(controller.store.users.get(userId));
+  if (!status?.emoji && !quiet) return null;
+  const label = [status?.text, quiet ? "通知を一時停止中" : null].filter(Boolean).join(" · ");
   return (
-    <span className={cn("text-[13px] leading-none", className)} title={status.text} aria-label={status.text}>
-      {status.emoji}
+    <span className={cn("text-[13px] leading-none", className)} title={label} aria-label={label}>
+      {status?.emoji}
+      {quiet && "🔕"}
     </span>
   );
 }

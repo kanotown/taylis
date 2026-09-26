@@ -80,6 +80,11 @@ CREATE TABLE users (
   status_text           text,                             -- M11d: カスタムステータス。期限切れは無いものとして返す
   status_emoji          text,
   status_expires_at     timestamptz,
+  dnd_until             timestamptz,            -- M12c 通知を一時停止 (過ぎたら無いものとして返す)
+  quiet_hours_start     smallint,               -- M12c 分 (0-1439)、start > end なら日をまたぐ
+  quiet_hours_end       smallint,
+  quiet_hours_days      smallint[],             -- 0 = 月 … 6 = 日 (NULL = 毎日)
+  quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)

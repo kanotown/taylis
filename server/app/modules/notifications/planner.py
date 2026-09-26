@@ -21,6 +21,7 @@ from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
 from app.modules.reads import service as reads
 from app.modules.users import service as users
+from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
 
 log = logging.getLogger("app.push")
@@ -102,6 +103,7 @@ class PushPlanner:
         mention_all = bool((message or {}).get("mention_all"))
         seq = (message or {}).get("seq")
         positions = await reads.last_read_seqs(db, recipients, channel.id)
+        rows = await users.get_users(db, recipients)
         targets: list[uuid.UUID] = []
         for user_id in recipients:
             pref = prefs.get(user_id)
@@ -110,6 +112,9 @@ class PushPlanner:
                 continue
             if pref is not None and pref.muted_until is not None and pref.muted_until > now:
                 continue
+            user = rows.get(user_id)
+            if user is not None and dnd_active(user, now):
+                continue  # paused / quiet hours (M12c); the badge catches up with the next push
             involved = mention_all or user_id in mentioned or user_id in (participants or set())
             if level == "mentions" and not involved:
                 continue

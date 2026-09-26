@@ -1668,6 +1668,46 @@
         "title": "PresenceEntry",
         "type": "object"
       },
+      "QuietHours": {
+        "additionalProperties": false,
+        "description": "A daily window (in the user's zone) during which pushes are held back (M12c).",
+        "properties": {
+          "days": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 7,
+            "title": "Days",
+            "type": "array"
+          },
+          "end": {
+            "description": "HH:MM local time; before start = overnight",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "HH:MM local time",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Start",
+            "type": "string"
+          },
+          "tz": {
+            "description": "IANA zone, e.g. Asia/Tokyo",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Tz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "tz"
+        ],
+        "title": "QuietHours",
+        "type": "object"
+      },
       "ReactionOut": {
         "properties": {
           "count": {
@@ -2178,6 +2218,18 @@
             "title": "Display Name",
             "type": "string"
           },
+          "dnd_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Until"
+          },
           "email": {
             "anyOf": [
               {
@@ -2197,6 +2249,16 @@
           "must_change_password": {
             "title": "Must Change Password",
             "type": "boolean"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHours"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role": {
             "title": "Role",
@@ -2294,10 +2356,32 @@
             "title": "Display Name",
             "type": "string"
           },
+          "dnd_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Until"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHours"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role": {
             "title": "Role",
@@ -2386,6 +2470,18 @@
             ],
             "title": "Display Name"
           },
+          "dnd_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Until"
+          },
           "email": {
             "anyOf": [
               {
@@ -2398,6 +2494,16 @@
               }
             ],
             "title": "Email"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHours"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status_emoji": {
             "anyOf": [

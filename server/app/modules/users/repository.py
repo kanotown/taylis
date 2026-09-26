@@ -24,6 +24,12 @@ async def get_by_username(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def get_many(db: AsyncSession, ids: list[uuid.UUID]) -> list[User]:
+    if not ids:
+        return []
+    return list((await db.execute(select(User).where(User.id.in_(ids)))).scalars().all())
+
+
 async def list_users(db: AsyncSession) -> list[User]:
     return list((await db.scalars(select(User).order_by(User.username))).all())
 

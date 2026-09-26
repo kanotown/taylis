@@ -86,6 +86,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | 送信者本人 | 除外 | M5 |
 | `type = system` のメッセージ | 除外 | M5 |
 | `level = none`、または `muted_until > now()` | 除外 | M5 |
+| 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
 | `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
