@@ -264,6 +264,12 @@ class ApiClient(
 
     suspend fun linkPreview(url: String): LinkPreviewOut = request("GET", "/api/v1/link-previews?url=" + Enc.encode(url, "UTF-8"))
 
+    // --- favorites and read-all (M12a) ----------------------------------------------------------
+
+    suspend fun favoriteChannel(channelId: String): FavoriteStateOut = request("PUT", "/api/v1/channels/$channelId/favorite")
+    suspend fun unfavoriteChannel(channelId: String): FavoriteStateOut = request("DELETE", "/api/v1/channels/$channelId/favorite")
+    override suspend fun readAll(): List<ChannelReadStateOut> = request("POST", "/api/v1/channels/read-all", buildJsonObject {})
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------
 
     suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")

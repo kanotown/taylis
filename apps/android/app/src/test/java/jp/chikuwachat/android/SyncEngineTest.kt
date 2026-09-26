@@ -462,6 +462,30 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun favoritesSyncAndReadAllClearsEveryChannel() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        val general = server.createChannel("general", alice.id)
+        val random = server.createChannel("random", alice.id)
+        server.join(general.id, bob.id); server.join(random.id, bob.id)
+        server.setFavorite(bob.id, random.id, true)
+        server.post(general.id, alice.id, "one"); server.post(general.id, alice.id, "two"); server.post(random.id, alice.id, "three")
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(bob.id), server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); settle(engine)
+        assertEquals(setOf(random.id), store.favorites)
+        assertEquals(2, store.channel(general.id)?.unreadCount)
+        assertEquals(1, store.channel(random.id)?.unreadCount)
+        server.setFavorite(bob.id, general.id, true); settle(engine) // another device starred it
+        assertTrue(store.isFavorite(general.id))
+        engine.markAllRead(); settle(engine)
+        assertEquals(0, store.channel(general.id)?.unreadCount)
+        assertEquals(2, store.channel(general.id)?.lastReadSeq)
+        assertEquals(0, store.channel(random.id)?.unreadCount)
+        engine.stop(); scope.cancel()
+    }
+
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

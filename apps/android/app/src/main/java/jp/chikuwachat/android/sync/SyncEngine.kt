@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.api.ApiException
+import jp.chikuwachat.android.api.ChannelReadStateOut
 import jp.chikuwachat.android.api.BootstrapOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -39,6 +40,8 @@ interface SyncApi {
     suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
+    /** M12a: every channel read to its end; returns the new states. */
+    suspend fun readAll(): List<ChannelReadStateOut>
     suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut
     suspend fun replies(messageId: String): List<MessageOut>
     /** THREADS.md §3. */
@@ -341,6 +344,15 @@ class SyncEngine(
         if (store.threadsLoaded) scheduleThreadRefresh() // the list may have moved while we were away
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
+        store.replaceFavorites(bootstrap.favorites)
+    }
+
+    /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
+    suspend fun markAllRead() {
+        val states = api.readAll()
+        enqueue {
+            states.forEach { applyReadState(it.channelId, ReadStateOut(lastReadSeq = it.lastReadSeq, unreadCount = it.unreadCount, mentionCount = it.mentionCount)) }
+        }
     }
 
     /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
@@ -368,6 +380,10 @@ class SyncEngine(
             "bookmark.updated" -> {
                 val id = frame.data.str("message_id") ?: return
                 store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
+            "favorite.updated" -> {
+                val id = frame.data.str("channel_id") ?: return
+                store.setFavorite(id, frame.data.bool("favorite") ?: false)
             }
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
