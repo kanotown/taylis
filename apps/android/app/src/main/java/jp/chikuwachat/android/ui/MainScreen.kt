@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -139,7 +142,7 @@ fun MainScreen(controller: AppController) {
                         val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                         val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
                         IconButton(onClick = { bellOpen = true }) {
-                            if (level == "none" || mute != null) Text("🔕") else Icon(Icons.Default.Notifications, contentDescription = "通知設定")
+                            Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = "通知設定")
                         }
                         DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
                             listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
@@ -292,7 +295,12 @@ private fun ChannelGlyph(channel: ChannelState) {
         Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (channel.channel.type == "private") "🔒" else "#", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            if (channel.channel.type == "private") Icons.Default.Lock else Icons.Default.Tag,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -318,7 +326,7 @@ private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit)
             val subtitle = channel.channel.topic?.takeIf { it.isNotBlank() && !channel.channel.isDm }
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (muted) Text("🔕", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 6.dp))
+        if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         if (unread && badge > 0) {
             Text(
                 badge.toString(),

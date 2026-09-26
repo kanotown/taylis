@@ -21,7 +21,7 @@ struct AttachmentsView: View {
                     ThumbnailView(attachment: attachment, controller: controller)
                 } else {
                     HStack(spacing: 8) {
-                        Text("📄")
+                        Image(systemName: "doc").foregroundStyle(.secondary)
                         VStack(alignment: .leading) {
                             Text(attachment.filename).font(.subheadline)
                             Text(formatSize(attachment.sizeBytes)).font(.caption).foregroundStyle(.secondary)
@@ -90,7 +90,7 @@ struct PendingAttachmentsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     ForEach(items) { item in
-                        Button { onRemove(item) } label: { Text("\(item.filename) ✕").font(.caption) }
+                        Button { onRemove(item) } label: { Label(item.filename, systemImage: "xmark").font(.caption) }
                             .buttonStyle(.bordered).controlSize(.small)
                     }
                 }
