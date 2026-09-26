@@ -222,6 +222,20 @@ FCM の実受信には Firebase プロジェクトが要るため、infra/README
 バックエンドのディレクトリを tar する (オブジェクトは通常のファイル)。`audit` は葉モジュール
 (ARCHITECTURE.md §5)。監査ログの閲覧は当面 psql (UI はバックログ)。
 
+### UI ブラッシュアップ (2026-09-26、M10 後)
+
+3 クライアント共通で使い勝手を揃えた。タイムラインは日付区切り (今日 / 昨日 / M月D日)、同じ送信者の
+5 分以内の連続投稿をまとめる表示、ユーザー ID から決まる色のイニシャルアバター、チャンネルを開いた時点の
+既読位置に置く「新着メッセージ」区切り、最新へ戻るボタン、空状態の案内。チャンネルヘッダからトピックの
+表示 / 編集 (`PATCH /channels/{id}`)、メンバー一覧、通知レベル (all / mentions / none) と 8 時間ミュート
+(`PUT /channels/{id}/notification-preference`) を操作できる。設定画面で表示名の変更 (`PATCH /users/me`)、
+ログイン中のパスワード変更、ログアウト。ログイン後のエラーはトースト / Snackbar で表示し、WebSocket が
+切れている間は接続バナーを出す。Desktop はダークモード (OS 設定に追従) と Ctrl/⌘+K のチャンネル移動、
+Ctrl/⌘+F の検索、Esc で右ペインを閉じる操作を追加。
+
+同期側の注意: `channel.updated` の payload には利用者ごとの通知設定が含まれないため、各クライアントの
+Store は既知の設定を保持し、`notification_preference.updated` イベントで更新する。
+
 ### バックログ (未スケジュール)
 
 typing / presence、ピン留め、ブックマーク、カスタム絵文字、quiet hours、招待リンク、OIDC、2FA、
