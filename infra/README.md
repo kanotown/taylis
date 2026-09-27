@@ -150,6 +150,8 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 
 ## デプロイ手順 (M10)
 
+手動で出す手順。GitHub のタグから自動で出すなら次の「自動デプロイ」を使う (最初の準備だけこの章と共通)。
+
 前提: Linux サーバ 1 台 (2 vCPU / 4 GB 以上)、Docker Engine + compose plugin、DNS が `CHAT_DOMAIN` を向いている、
 80 / 443 が開いている。すべてのデータは PostgreSQL のボリュームと versitygw のボリュームにある。
 
@@ -229,6 +231,115 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 
 9. **ログ**: JSON 行 (`LOG_JSON=true`) を `docker compose logs app` か journald で集める。トークン・パスワード・
    本文は出さない。`DEBUG=true` は本番では無視される。
+
+## 自動デプロイ (GitHub Actions → VPS)
+
+`v1.2.3` の形のタグを push すると、本番の VPS まで自動で出る (`.github/workflows/release.yml`)。
+
+```
+git tag v1.2.3 → git push origin v1.2.3
+  1. checks   サーバのテスト (lint / 型 / pytest / OpenAPI) と Web クライアント (型 / テスト / ビルド)
+  2. images   サーバと Web (Caddy + ブラウザ版) のイメージを作り GHCR (非公開) に push
+              ghcr.io/<owner>/chikuwachat-server:v1.2.3 / chikuwachat-web:v1.2.3
+  3. deploy   VPS に SSH (強制コマンド chikuwa-deploy だけ実行できる鍵)
+              upload: このリリースの infra ファイル (compose / Caddyfile / スクリプト) を置き換える
+              deploy: infra/deploy.sh → バックアップ → イメージ取得 → 入れ替え → /readyz を確認
+                      起動しなければ直前のリリースに戻して失敗で終わる
+  (並行して macOS / Windows のデスクトップ版インストーラを作り、ワークフローの成果物に置く。未署名)
+```
+
+- DB のマイグレーションはアプリの起動時に走る。その直前に `backup.sh` のバックアップを必ず取る
+  (`deploy.conf` の `BACKUP_ROOT`)。
+- 秘密情報 (`.env`、`secrets/`) は VPS にだけ置き、GitHub には置かない。GitHub に置くのは SSH の
+  接続情報だけで、レジストリの認証にはそのワークフロー実行中だけ有効なトークンを使う
+  (サーバの `~/.docker/config.json` にも残さない)。
+- 切り替え中は数秒 API が止まる。クライアントは自動で再接続する。
+
+### 初回だけの準備
+
+**GitHub**
+
+1. 非公開リポジトリを作って push する (`git remote add origin git@github.com:<owner>/chikuwachat.git`
+   → `git push -u origin main`)。
+2. Settings → Environments → `production` を作り、Deployment branches and tags で **タグ `v*` だけ**を許可する。
+   この environment に Secrets を入れる:
+
+   | 名前 | 値 |
+   | --- | --- |
+   | `DEPLOY_HOST` | VPS のホスト名か IP |
+   | `DEPLOY_USER` | `deploy` (省略時も deploy) |
+   | `DEPLOY_PORT` | SSH のポート (省略時 22) |
+   | `DEPLOY_SSH_KEY` | 下で作る鍵の**秘密鍵** (全文) |
+   | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan -t ed25519 <host>` の出力 (指紋を VPS 上の `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` と照合してから入れる) |
+
+3. VPS が ARM の場合だけ、Variables に `DEPLOY_PLATFORMS=linux/arm64` を入れる (既定は linux/amd64)。
+4. Actions の無料枠 (非公開リポジトリは月 2,000 分、macOS は 10 倍で数える) を節約するため、iOS の
+   テスト (`ios.yml`) は iOS 関係のファイルが変わったときだけ、デスクトップのインストーラはタグのときだけ走る。
+
+**VPS** (Ubuntu / Debian の例)。VPS にリポジトリは置かない。手元から 3 つのファイルを送る:
+
+```sh
+scp infra/deploy-ssh.sh infra/.env.example infra/deploy.conf.example root@<VPS>:/tmp/
+```
+
+VPS で (root か sudo):
+
+```sh
+# Docker Engine と compose plugin (https://docs.docker.com/engine/install/ の手順)
+adduser --disabled-password --gecos "" deploy && usermod -aG docker deploy
+mkdir -p /srv/chikuwachat/infra/secrets /srv/backups && chown -R deploy:deploy /srv/chikuwachat /srv/backups
+chmod 700 /srv/chikuwachat/infra/secrets
+
+# 強制コマンド: CI の鍵で実行できるのはこれだけ。infra/ の外、root の持ち物なのでリリースでは変わらない
+install -m 755 /tmp/deploy-ssh.sh /usr/local/bin/chikuwa-deploy
+
+# 設定 (中身を埋める)
+install -o deploy -g deploy -m 600 /tmp/.env.example /srv/chikuwachat/infra/.env
+#   ENVIRONMENT=production、SECRET_KEY、POSTGRES_PASSWORD、S3_SECRET_KEY、CHAT_DOMAIN、WORKSPACE_NAME、PUSH_*
+install -o deploy -g deploy -m 644 /tmp/deploy.conf.example /srv/chikuwachat/infra/deploy.conf
+#   REGISTRY=ghcr.io/<GitHub のアカウント名を小文字で>、BACKUP_ROOT=/srv/backups
+rm /tmp/deploy-ssh.sh /tmp/.env.example /tmp/deploy.conf.example
+# APNs の .p8 / FCM のサービスアカウントは /srv/chikuwachat/infra/secrets/ へ (上の「APNs の準備」「FCM の準備」)
+
+# ファイアウォール: 22 (SSH)、80 / 443 (Caddy)、443/udp (HTTP/3)
+ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443 && ufw enable
+```
+
+デプロイ用の鍵 (手元で作り、秘密鍵は GitHub の `DEPLOY_SSH_KEY` へ。手元にも残さなくてよい):
+
+```sh
+ssh-keygen -t ed25519 -N "" -C chikuwa-deploy -f chikuwa-deploy
+# VPS の /home/deploy/.ssh/authorized_keys に 1 行 (restrict = ポート転送などをすべて禁止):
+command="/usr/local/bin/chikuwa-deploy",restrict ssh-ed25519 AAAA…(chikuwa-deploy.pub の中身) chikuwa-deploy
+```
+
+DNS で `CHAT_DOMAIN` を VPS に向ける。最初のタグを push すると DB・オブジェクトストア・アプリ・Caddy が
+すべて起動し、Caddy が TLS 証明書を取る。最初の管理者を作る:
+
+```sh
+cd /srv/chikuwachat/infra && set -a && . ./deploy.conf && set +a
+CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IMAGE=$REGISTRY/chikuwachat-web:$(cat .release) \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml --profile proxy \
+  exec app python -m app.cli create-admin --username admin
+```
+
+毎日のバックアップ (上の「デプロイ手順」4) も cron に入れておく。
+
+### リリースと戻し方
+
+- **出す**: `git tag v1.2.3 && git push origin v1.2.3`。Actions の release で経過が見える。
+- **失敗した**: `deploy.sh` が直前のリリースに戻してワークフローを失敗にする。アプリのログの末尾が
+  ワークフローのログに出る。直前のリリースに戻せるのは同じ DB で動く場合。新しいリリースのマイグレーションが
+  適用済みで古いコードが動かないときは、デプロイ直前のバックアップを戻す
+  (`CHIKUWA_PROD=1 ./restore.sh /srv/backups/<時刻>`。復元は `.release` のリリースで起動する)。
+- **前のリリースに戻したい**: Actions → release → Run workflow で戻したいタグ (例 `v1.2.2`) を入れる。
+  テストとイメージ作成は省き、デプロイだけを行う。
+- 状態: `/srv/chikuwachat/infra/.release` (今のリリース)、`.release.previous`、`releases/<tag>/`
+  (各リリースの infra ファイル)。イメージは今と直前の 2 つだけを残す。
+
+**手元で確かめた内容 (2026-09-27)**: ローカルのレジストリと別プロジェクトの compose で、強制コマンド経由の
+upload / deploy、初回起動、更新 (バックアップあり)、起動しないリリースの自動ロールバック、
+復元 (`restore.sh`) が通ることを確認した。GitHub Actions 上での実行は、リポジトリを push した後の最初のタグで確かめる。
 
 ## 実機での動作確認 (iPhone)
 
