@@ -151,9 +151,9 @@ final class ApiClientTests: XCTestCase {
         let preview = try await client.invitePreview(token: "t_k")
         XCTAssertEqual(preview.invitedBy, "Root")
         XCTAssertEqual(preview.channels, ["general"])
-        let tokens = try await client.acceptInvite(token: "t_k", username: "tanaka", displayName: "田中", password: "pw",
+        let accepted = try await client.acceptInvite(token: "t_k", username: "tanaka", displayName: "田中", password: "pw",
                                                    device: .init(platform: "ios", deviceName: nil, appVersion: nil))
-        XCTAssertEqual(tokens.user.username, "alice")
+        XCTAssertEqual(accepted.user.username, "alice")
         XCTAssertEqual(client.refreshToken, "refresh-3")
         XCTAssertEqual(seen.map(\.path), ["/api/v1/invites/t_k", "/api/v1/invites/t_k/accept"])
         XCTAssertEqual(seen.map(\.auth), [nil, nil])
@@ -184,8 +184,8 @@ final class ApiClientTests: XCTestCase {
         } catch {
             XCTAssertEqual((error as? ApiError)?.code, "totp_required")
         }
-        let tokens = try await client.login(username: "alice", password: "pw", device: device, totpCode: "123456")
-        XCTAssertEqual(tokens.refreshToken, "refresh-5")
+        let signedIn = try await client.login(username: "alice", password: "pw", device: device, totpCode: "123456")
+        XCTAssertEqual(signedIn.refreshToken, "refresh-5")
         XCTAssertFalse(bodies[0].contains("totp_code"))
         XCTAssertTrue(bodies[1].contains(#""totp_code":"123456""#), bodies[1])
         let status = try await client.totpStatus()
