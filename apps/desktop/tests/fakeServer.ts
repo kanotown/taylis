@@ -6,7 +6,7 @@
 import { ApiError } from "../src/api/errors";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
-import type { EventFrame } from "../src/sync/types";
+import type { EventFrame, SendOptions } from "../src/sync/types";
 
 let counter = 0;
 const nextId = (): string => `00000000-0000-7000-8000-${String(++counter).padStart(12, "0")}`;
@@ -281,7 +281,7 @@ export class FakeServer {
   }
 
   /** Server-side post (used by fixtures for "other users" and by the api for the client). */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], alsoInChannel = false): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions = {}): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -300,7 +300,10 @@ export class FakeServer {
       channel_id: channelId,
       sender_id: senderId,
       parent_id: parentId,
-      also_in_channel: alsoInChannel && parentId !== null,
+      also_in_channel: options.alsoInChannel === true && parentId !== null,
+      priority: parentId === null ? (options.priority ?? null) : null,
+      ack_requested: parentId === null && options.ackRequested === true,
+      acks: [],
       seq,
       updated_seq: seq,
       client_msg_id: clientMsgId,
@@ -664,9 +667,9 @@ export class FakeServer {
         const hasMore = rows.length > limit;
         return { messages: page, next_since_seq: hasMore ? page[page.length - 1]!.updated_seq : Math.max(channelLastSeq, sinceSeq), has_more: hasMore };
       },
-      postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = [], alsoInChannel = false) => {
+      postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = [], options = {}) => {
         maybeFail();
-        return this.post(channelId, userId, body, clientMsgId, parentId, attachmentIds, alsoInChannel);
+        return this.post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options);
       },
       replies: async (messageId): Promise<MessageOut[]> => {
         maybeFail();

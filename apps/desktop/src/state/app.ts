@@ -849,6 +849,19 @@ export class AppController {
     }
   }
 
+  // --- acknowledgements (M15e) ----------------------------------------------------------------
+
+  async toggleAck(message: MessageState): Promise<void> {
+    const me = this.store.me;
+    if (!this.api || !me) return;
+    const mine = (message.acks ?? []).some((a) => a.user_id === me.id);
+    try {
+      this.store.upsertMessage(await this.api.acknowledge(message.id, !mine));
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   async closePoll(message: MessageState): Promise<boolean> {
     if (!this.api) return false;
     try {

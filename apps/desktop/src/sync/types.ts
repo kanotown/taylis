@@ -1,6 +1,6 @@
-import type { AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
+import type { AckOut, AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
-export type { AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
+export type { AckOut, AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
 
 /** One row of the threads view: the parent message and my relation to the thread (THREADS.md §5). */
 export interface ThreadEntry {
@@ -26,7 +26,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by" | "poll"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by" | "poll" | "priority" | "ack_requested" | "acks"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -44,6 +44,10 @@ export interface MessageState
   pinned_by?: string | null;
   /** M14b: the poll, when the message carries one. */
   poll?: PollOut | null;
+  /** M15e: priority label and acknowledgements (only when asked for). */
+  priority?: Priority | null;
+  ack_requested?: boolean;
+  acks?: AckOut[];
   pending?: boolean;
   failed?: boolean;
 }
@@ -57,6 +61,18 @@ export interface OutboxItem {
   parent_id?: string | null;
   attachment_ids?: string[];
   also_in_channel?: boolean;
+  /** M15e */
+  priority?: Priority | null;
+  ack_requested?: boolean;
+}
+
+/** Extras for a send (they travel with the outbox so retries keep them). */
+export interface SendOptions {
+  /** M15c: a thread reply also shown in the channel. */
+  alsoInChannel?: boolean;
+  /** M15e: top-level posts only. */
+  priority?: Priority | null;
+  ackRequested?: boolean;
 }
 
 export interface EventFrame {
