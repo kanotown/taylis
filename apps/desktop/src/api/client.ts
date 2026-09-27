@@ -1,59 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type {
-  AdminUserCreate,
-  AdminUserCreated,
-  AdminUserOut,
-  AdminUserUpdate,
-  AttachmentOut,
-  BookmarkListOut,
-  BookmarkStateOut,
-  BootstrapOut,
-  ChannelOut,
-  ChannelReadStateOut,
-  FavoriteStateOut,
-  CustomEmojiOut,
-  FileListOut,
-  GroupCreate,
-  GroupOut,
-  GroupUpdate,
-  InviteAccept,
-  InviteCreate,
-  InviteCreated,
-  InviteOut,
-  InvitePreviewOut,
-  ReminderCreate,
-  ReminderOut,
-  ScheduledCreate,
-  ScheduledOut,
-  LinkPreviewOut,
-  MentionListOut,
-  DeltaOut,
-  HistoryOut,
-  MemberOut,
-  MessageOut,
-  MessageRevisionOut,
-  NotificationLevel,
-  PollCreate,
-  NotificationPreferenceOut,
-  ReadStateOut,
-  SearchOut,
-  SidebarSectionOut,
-  TemporaryPasswordOut,
-  ThreadFilter,
-  ThreadListOut,
-  ThreadState,
-  TokenResponse,
-  TotpEnabledOut,
-  TotpSetupOut,
-  TotpStatusOut,
-  UserMe,
-  UserUpdate,
-  UserPublic,
-  WebhookCreate,
-  WebhookCreated,
-  WebhookOut,
-  WebhookUpdate,
-} from "./types";
+import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
 export const COOKIE_SESSION = "cookie";
@@ -200,7 +146,7 @@ export class ApiClient {
     return this.request("POST", `/api/v1/channels/${channelId}/join`);
   }
 
-  updateChannel(channelId: string, patch: { name?: string; topic?: string | null; purpose?: string | null }): Promise<ChannelOut> {
+  updateChannel(channelId: string, patch: ChannelUpdate): Promise<ChannelOut> {
     return this.request("PATCH", `/api/v1/channels/${channelId}`, patch);
   }
 

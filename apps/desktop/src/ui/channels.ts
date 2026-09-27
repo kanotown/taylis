@@ -5,6 +5,11 @@ export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
 }
 
+/** M15a: whether I may start top-level posts here; thread replies stay open to every member. */
+export function canPostTopLevel(channel: ChannelState, isAdmin: boolean): boolean {
+  return channel.posting_policy !== "owners" || isAdmin || channel.membership?.role === "owner";
+}
+
 /** Level "none" or an active timed mute. */
 export function isMutedChannel(channel: ChannelState, now: Date = new Date()): boolean {
   if (channel.notificationLevel === "none") return true;

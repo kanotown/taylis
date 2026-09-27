@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
+import { badgeCount, canPostTopLevel, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -18,6 +18,7 @@ const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState =>
   updated_at: "",
   membership: null,
   dm_user_ids: null,
+  posting_policy: "everyone",
   isMember: true,
   syncedSeq: null,
   lastSeq: 0,
@@ -98,5 +99,17 @@ describe("custom sidebar sections (M14f)", () => {
     expect(result.custom.map((g) => [g.section.name, g.channels.map((c) => c.id)])).toEqual([["プロジェクト", ["gamma", "d1"]], ["空", []]]);
     expect(result.channels.map((c) => c.id)).toEqual(["alpha"]);
     expect(result.dms.map((c) => c.id)).toEqual(["d2"]);
+  });
+});
+
+describe("announcement channels (M15a)", () => {
+  it("lets owners and admins start posts and everyone else only reply", () => {
+    const open = channel("a");
+    const announce = channel("b", { posting_policy: "owners", membership: { role: "member", joined_at: "" } });
+    const owned = channel("c", { posting_policy: "owners", membership: { role: "owner", joined_at: "" } });
+    expect(canPostTopLevel(open, false)).toBe(true);
+    expect(canPostTopLevel(announce, false)).toBe(false);
+    expect(canPostTopLevel(announce, true)).toBe(true);
+    expect(canPostTopLevel(owned, false)).toBe(true);
   });
 });

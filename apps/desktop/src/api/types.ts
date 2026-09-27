@@ -24,6 +24,9 @@ export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];
 export type MemberOut = components["schemas"]["MemberOut"];
 export type ChannelType = ChannelOut["type"];
+export type ChannelUpdate = components["schemas"]["ChannelUpdate"];
+/** M15a: "owners" = an announcement channel. */
+export type PostingPolicy = ChannelOut["posting_policy"];
 
 export type SearchHit = components["schemas"]["SearchHit"];
 export type SearchOut = components["schemas"]["SearchOut"];

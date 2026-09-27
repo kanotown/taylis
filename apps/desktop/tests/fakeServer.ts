@@ -132,6 +132,7 @@ export class FakeServer {
       updated_at: now(),
       membership: null,
       dm_user_ids: null,
+      posting_policy: "everyone",
     };
     this.channels.set(channel.id, { channel, members: new Set([ownerId]), messages: [] });
     this.readPositions.set(`${ownerId}:${channel.id}`, 0);
@@ -535,6 +536,16 @@ export class FakeServer {
     const held = this.held;
     this.held = [];
     for (const { userIds, frame } of held) this.emit(userIds, frame);
+  }
+
+  /** PATCH /channels/{id} as the real server announces it (M15): to the members, to everyone for a conversion. */
+  updateChannel(channelId: string, patch: Partial<Pick<ChannelOut, "posting_policy" | "type">>): void {
+    const record = this.record(channelId);
+    const converted = patch.type !== undefined && patch.type !== record.channel.type;
+    Object.assign(record.channel, patch, { updated_at: now() });
+    const memberIds = [...record.members];
+    const audience = converted ? new Set(this.users.keys()) : record.members;
+    this.emit(audience, { type: "event", id: ++this.eventId, event: "channel.updated", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, membership: null }, member_ids: memberIds } });
   }
 
   /** What the real server emits after a join / add: member_added to the channel, channel.created to the user. */
