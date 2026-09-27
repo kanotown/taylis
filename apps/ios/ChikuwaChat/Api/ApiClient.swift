@@ -195,11 +195,13 @@ final class ApiClient: SyncApi {
         try await request("GET", "/api/v1/channels/\(channelId)/sync?since_seq=\(sinceSeq)&limit=\(limit)")
     }
 
-    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil, attachmentIds: [String] = []) async throws -> (MessageOut, Bool) {
-        let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages",
-                                                  body: .object(["client_msg_id": .string(clientMsgId), "body": .string(body),
-                                                                 "parent_id": parentId.map(JSONValue.string) ?? .null,
-                                                                 "attachment_ids": .array(attachmentIds.map(JSONValue.string))]), auth: true, retry401: true)
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil, attachmentIds: [String] = [],
+                     alsoInChannel: Bool = false) async throws -> (MessageOut, Bool) {
+        var fields: [String: JSONValue] = ["client_msg_id": .string(clientMsgId), "body": .string(body),
+                                           "parent_id": parentId.map(JSONValue.string) ?? .null,
+                                           "attachment_ids": .array(attachmentIds.map(JSONValue.string))]
+        if alsoInChannel { fields["also_in_channel"] = .bool(true) } // M15c
+        let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages", body: .object(fields), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
     }
 

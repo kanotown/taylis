@@ -186,6 +186,8 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var mentionAll: Bool = false
     var reactions: [ReactionOut] = []
     var parentId: String? = nil
+    /// M15c: a reply shown in the channel timeline as well as in its thread.
+    var alsoInChannel: Bool = false
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
     var attachments: [AttachmentOut] = []
@@ -197,7 +199,7 @@ struct MessageOut: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
-        case type, mentionedUserIds, mentionAll, reactions, parentId, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy
+        case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -251,11 +253,13 @@ extension MessageOut {
         mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
         reactions = try c.decodeIfPresent([ReactionOut].self, forKey: .reactions) ?? []
         parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        alsoInChannel = try c.decodeIfPresent(Bool.self, forKey: .alsoInChannel) ?? false
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
         attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
+        poll = try c.decodeIfPresent(PollOut.self, forKey: .poll)
     }
 }
 
