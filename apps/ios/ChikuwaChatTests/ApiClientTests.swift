@@ -126,4 +126,30 @@ final class ApiClientTests: XCTestCase {
         XCTAssertEqual(ApiClient(baseUrl: URL(string: "https://chat.example.com")!).wsUrl.absoluteString, "wss://chat.example.com/api/v1/ws")
         XCTAssertEqual(ApiClient(baseUrl: URL(string: "http://127.0.0.1:8000")!).wsUrl.absoluteString, "ws://127.0.0.1:8000/api/v1/ws")
     }
+
+    func testAcceptingAnInviteNeedsNoTokenAndLogsIn() async throws {
+        var seen: [(path: String, auth: String?, body: String)] = []
+        StubProtocol.handler = { [self] request in
+            let body = request.httpBodyStream.map { stream -> String in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; data.append(buffer, count: n) }
+                return String(decoding: data, as: UTF8.self)
+            } ?? ""
+            seen.append((request.url!.path, request.value(forHTTPHeaderField: "Authorization"), body))
+            if request.url!.path.hasSuffix("/accept") { return (201, tokens(3)) }
+            return (200, Data(#"{"invited_by":"Root","role":"member","channels":["general"],"expires_at":"2026-10-04T00:00:00Z","password_min_length":8}"#.utf8))
+        }
+        let client = makeClient()
+        let preview = try await client.invitePreview(token: "t_k")
+        XCTAssertEqual(preview.invitedBy, "Root")
+        XCTAssertEqual(preview.channels, ["general"])
+        let tokens = try await client.acceptInvite(token: "t_k", username: "tanaka", displayName: "田中", password: "pw",
+                                                   device: .init(platform: "ios", deviceName: nil, appVersion: nil))
+        XCTAssertEqual(tokens.user.username, "alice")
+        XCTAssertEqual(client.refreshToken, "refresh-3")
+        XCTAssertEqual(seen.map(\.path), ["/api/v1/invites/t_k", "/api/v1/invites/t_k/accept"])
+        XCTAssertEqual(seen.map(\.auth), [nil, nil])
+        XCTAssertTrue(seen[1].body.contains(#""display_name":"田中""#), seen[1].body)
+    }
 }

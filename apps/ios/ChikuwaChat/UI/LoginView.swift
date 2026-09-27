@@ -34,6 +34,10 @@ struct LoginView: View {
                     }
                     .disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
                 }
+                Section {
+                    NavigationLink("招待リンクをお持ちの方はこちら") { InviteView(controller: controller) }
+                        .font(.footnote)
+                }
             }
             .navigationTitle("ChikuwaChat")
             .onAppear {
