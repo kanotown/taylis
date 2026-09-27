@@ -41,3 +41,21 @@ async def test_cors_preflight_for_the_desktop_webview(client: AsyncClient) -> No
         headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"},
     )
     assert "access-control-allow-origin" not in denied.headers
+
+
+async def test_cors_preflight_allows_the_desktop_refresh(client: AsyncClient) -> None:
+    """The desktop's refresh carries X-Requested-With (the browser build's CSRF header, M12j):
+    a preflight that refuses it leaves the Tauri app unable to renew its token, forever offline."""
+    for origin in ("tauri://localhost", "http://localhost:1420"):
+        preflight = await client.options(
+            "/api/v1/auth/refresh",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,x-requested-with",
+            },
+        )
+        assert preflight.status_code == 200, preflight.text
+        assert preflight.headers["access-control-allow-origin"] == origin
+        assert "x-requested-with" in preflight.headers["access-control-allow-headers"].lower()
+        assert "access-control-allow-credentials" not in preflight.headers
