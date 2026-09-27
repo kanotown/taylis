@@ -202,7 +202,9 @@ class ApiClient(
     override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut =
         request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq); put("mode", "set") })
 
-    override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>): Pair<MessageOut, Boolean> {
+    override suspend fun postMessage(
+        channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, alsoInChannel: Boolean,
+    ): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",
             buildJsonObject {
@@ -210,6 +212,7 @@ class ApiClient(
                 put("body", body)
                 put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
+                if (alsoInChannel) put("also_in_channel", true) // M15c
             },
             auth = true, retry401 = true,
         )

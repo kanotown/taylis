@@ -65,6 +65,8 @@ data class MessageState(
     val mentionedUserIds: List<String> = emptyList(),
     val mentionAll: Boolean = false,
     val parentId: String? = null,
+    /** M15c: a reply shown in the channel timeline as well as in its thread. */
+    val alsoInChannel: Boolean = false,
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
     val attachments: List<AttachmentOut> = emptyList(),
@@ -76,6 +78,8 @@ data class MessageState(
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
     val isReply: Boolean get() = parentId != null
+    /** The channel timeline shows top-level messages and replies also sent to the channel (M15c). */
+    val inTimeline: Boolean get() = parentId == null || alsoInChannel
 
     companion object {
         fun from(message: MessageOut) = MessageState(
@@ -83,13 +87,15 @@ data class MessageState(
             updatedSeq = message.updatedSeq, clientMsgId = message.clientMsgId, body = message.body,
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
-            parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
+            parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
         )
 
-        fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null) = MessageState(
+        fun placeholder(
+            clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null, alsoInChannel: Boolean = false,
+        ) = MessageState(
             id = LOCAL_PREFIX + clientMsgId, channelId = channelId, senderId = senderId, seq = null, updatedSeq = -1,
-            clientMsgId = clientMsgId, body = body, createdAt = createdAt, pending = true, parentId = parentId,
+            clientMsgId = clientMsgId, body = body, createdAt = createdAt, pending = true, parentId = parentId, alsoInChannel = alsoInChannel,
         )
     }
 }
@@ -103,6 +109,7 @@ data class OutboxItem(
     val failed: String? = null,
     val parentId: String? = null,
     val attachmentIds: List<String> = emptyList(),
+    val alsoInChannel: Boolean = false,
 )
 
 @Serializable
@@ -148,9 +155,9 @@ fun MessageState.toOut(): MessageOut? {
     if (pending) return null
     return MessageOut(
         id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
-        parentId = parentId, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
+        parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
-        pinnedAt = pinnedAt, pinnedBy = pinnedBy,
+        pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll,
     )
 }
 
@@ -321,7 +328,7 @@ class Store(private val persistence: Persistence? = null) {
     private fun bucket(channelId: String): LinkedHashMap<String, MessageState> = messagesByChannel.getOrPut(channelId) { LinkedHashMap() }
 
     /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
-    fun messages(channelId: String): List<MessageState> = ordered(bucket(channelId).values.filter { !it.isReply })
+    fun messages(channelId: String): List<MessageState> = ordered(bucket(channelId).values.filter { it.inTimeline })
 
     /** A thread: the replies of one parent, oldest first (pending ones last). */
     fun replies(channelId: String, parentId: String): List<MessageState> =

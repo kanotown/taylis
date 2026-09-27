@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -140,7 +141,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
                                 onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
-                                onOpenThread = { onOpenThread(message.id) },
+                                onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                 onMarkUnread = message.seq?.takeIf { !message.pending }?.let { seq -> { controller.engine?.markUnread(channelId, seq); unreadMark = seq - 1 } },
                             )
                         }
@@ -225,6 +226,23 @@ private fun UnreadSeparator() {
     }
 }
 
+/** M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared. */
+@Composable
+private fun ReplyLine(message: MessageState, store: Store, onOpenThread: (() -> Unit)?) {
+    val style = MaterialTheme.typography.labelSmall
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    if (onOpenThread != null) {
+        val parent = message.parentId?.let { store.message(message.channelId, it) }
+        val excerpt = parent?.let { p -> plainText(Mentions.toNames(p.body, store.users, store.groups), 80).ifEmpty { if (p.attachments.isEmpty()) "" else "(添付ファイル)" } }
+        Text(
+            "スレッドに返信: " + (excerpt ?: "元のメッセージ"), style = style, color = color, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.clickable { onOpenThread() },
+        )
+    } else if (message.alsoInChannel) {
+        Text("チャンネルにも送信済み", style = style, color = color)
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageRow(
@@ -256,6 +274,7 @@ fun MessageRow(
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
+                if (message.isReply) ReplyLine(message, store, onOpenThread)  // M15c
                 val saved = store.isBookmarked(message.id)
                 val pinnedBy = message.pinnedAt?.let { store.users[message.pinnedBy ?: ""]?.displayName ?: "?" }
                 if (pinnedBy != null || saved) {
@@ -415,6 +434,16 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         PendingAttachments(pendingUploads) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
+        // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack).
+        var alsoInChannel by remember(channelId, parentId) { mutableStateOf(false) }
+        val channel = store.channel(channelId)
+        val canShare = parentId != null && channel?.canPostTopLevel(isAdmin = store.me?.role == "admin") == true
+        if (canShare) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+                Checkbox(checked = alsoInChannel, onCheckedChange = { alsoInChannel = it })
+                Text(if (channel?.channel?.isDm == true) "会話にも送信" else "#${channel?.channel?.name ?: ""} にも送信", style = MaterialTheme.typography.bodySmall)
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
@@ -456,7 +485,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
                     if (body.length > 20_000) { controller.error = "本文は20,000文字までです"; return@IconButton }
                     store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
-                    controller.scope.launch { controller.engine?.send(channelId, body, parentId = parentId, attachmentIds = ids) }
+                    val shared = canShare && alsoInChannel
+                    alsoInChannel = false
+                    controller.scope.launch { controller.engine?.send(channelId, body, parentId = parentId, attachmentIds = ids, alsoInChannel = shared) }
                 },
                 enabled = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty()),
             ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }

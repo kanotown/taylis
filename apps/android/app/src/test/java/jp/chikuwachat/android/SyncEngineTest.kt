@@ -304,6 +304,28 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun replyAlsoSentToTheChannelShowsInBothPlacesAndCountsUnread() = runBlocking { // M15c
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        val (parent, _) = w.server.post(w.channelId, w.alice, "topic"); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "quiet", parentId = parent.id)
+        w.server.post(w.channelId, w.alice, "loud", parentId = parent.id, alsoInChannel = true); settle(w.engine)
+        assertEquals(listOf("topic", "loud"), w.store.messages(w.channelId).map { it.body })
+        assertEquals(listOf("quiet", "loud"), w.store.replies(w.channelId, parent.id).map { it.body })
+        assertEquals(2, w.store.channel(w.channelId)?.unreadCount) // the topic and the shared reply
+
+        w.engine.send(w.channelId, "mine too", parentId = parent.id, alsoInChannel = true); settle(w.engine)
+        val mine = w.store.messages(w.channelId).last()
+        assertEquals(Triple("mine too", true, false), Triple(mine.body, mine.alsoInChannel, mine.pending))
+
+        // Another device finds both shared replies in the channel history.
+        val restored = Store()
+        val second = SyncEngine(w.server.api(w.bob), w.server.connector(w.bob), "ws://fake", restored, { "t" }, w.scope, EngineOptions(pageSize = 3, sleep = {}))
+        second.start(); second.openChannel(w.channelId); settle(second)
+        assertEquals(listOf("topic", "loud", "mine too"), restored.messages(w.channelId).map { it.body })
+        second.stop(); w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun threadsKeepRepliesOutOfTheTimelineAndUpdateTheParent() = runBlocking {
         val w = world()
         w.engine.start(); w.engine.openChannel(w.channelId)

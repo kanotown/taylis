@@ -84,7 +84,8 @@ object Timeline {
                 previous = null
             }
             val prev = previous
-            val compact = prev != null && prev.senderId == message.senderId && !prev.pending && !message.pending &&
+            // A reply also sent to the channel (M15c) keeps its own header.
+            val compact = prev != null && prev.senderId == message.senderId && !prev.pending && !message.pending && !prev.isReply && !message.isReply &&
                 (parse(prev.createdAt, zone)?.let { kotlin.math.abs(at.toEpochSecond() - it.toEpochSecond()) < GROUP_WINDOW_SECONDS } ?: false)
             items.add(TimelineItem.Message(message, compact))
             previous = message
