@@ -196,13 +196,22 @@ final class ApiClient: SyncApi, DraftApi {
     }
 
     func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = nil, attachmentIds: [String] = [],
-                     alsoInChannel: Bool = false) async throws -> (MessageOut, Bool) {
+                     options: SendOptions = SendOptions()) async throws -> (MessageOut, Bool) {
         var fields: [String: JSONValue] = ["client_msg_id": .string(clientMsgId), "body": .string(body),
                                            "parent_id": parentId.map(JSONValue.string) ?? .null,
                                            "attachment_ids": .array(attachmentIds.map(JSONValue.string))]
-        if alsoInChannel { fields["also_in_channel"] = .bool(true) } // M15c
+        if options.alsoInChannel { fields["also_in_channel"] = .bool(true) } // M15c
+        if let priority = options.priority { fields["priority"] = .string(priority) } // M15e
+        if options.ackRequested { fields["ack_requested"] = .bool(true) }
         let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages", body: .object(fields), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
+    }
+
+    // MARK: acknowledgements (M15e)
+
+    func acknowledge(messageId: String, present: Bool) async throws -> MessageOut {
+        present ? try await request("PUT", "/api/v1/messages/\(messageId)/ack", body: .object([:]))
+                : try await request("DELETE", "/api/v1/messages/\(messageId)/ack")
     }
 
     // MARK: drafts (M15d)

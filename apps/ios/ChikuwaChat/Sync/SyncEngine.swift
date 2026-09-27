@@ -7,7 +7,7 @@ protocol SyncApi: AnyObject {
     func bootstrap() async throws -> BootstrapOut
     func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut
     func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut
-    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], alsoInChannel: Bool) async throws -> (MessageOut, Bool)
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], options: SendOptions) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     /// M12a: every channel read to its end; returns the new states.
@@ -26,6 +26,15 @@ protocol SyncApi: AnyObject {
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
+
+/// Extras for a send (they travel with the outbox so retries keep them).
+struct SendOptions: Equatable {
+    /// M15c: a thread reply also shown in the channel.
+    var alsoInChannel = false
+    /// M15e: top-level posts only.
+    var priority: String? = nil
+    var ackRequested = false
+}
 
 struct EngineOptions {
     var pageSize = 50
@@ -729,14 +738,17 @@ final class SyncEngine {
     // MARK: §9 optimistic send
 
     func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
-              alsoInChannel: Bool = false) async {
+              options sendOptions: SendOptions = SendOptions()) async {
         let clientMsgId = clientMsgId ?? options.newId()
         let createdAt = options.now()
-        let shared = alsoInChannel && parentId != nil // M15c: only replies can also go to the channel
+        let shared = sendOptions.alsoInChannel && parentId != nil // M15c: only replies can also go to the channel
+        let priority = parentId == nil ? sendOptions.priority : nil // M15e: top-level posts only
+        let ackRequested = parentId == nil && sendOptions.ackRequested
         store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId,
-                                   attachmentIds: attachmentIds, alsoInChannel: shared ? true : nil))
+                                   attachmentIds: attachmentIds, alsoInChannel: shared ? true : nil, priority: priority,
+                                   ackRequested: ackRequested ? true : nil))
         store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt,
-                                          parentId: parentId, alsoInChannel: shared))
+                                          parentId: parentId, alsoInChannel: shared, priority: priority, ackRequested: ackRequested))
         await flushOutbox()
     }
 
@@ -763,7 +775,9 @@ final class SyncEngine {
         for item in store.outbox where item.failed == nil {
             do {
                 let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId,
-                                                             attachmentIds: item.attachmentIds, alsoInChannel: item.alsoInChannel ?? false)
+                                                             attachmentIds: item.attachmentIds,
+                                                             options: SendOptions(alsoInChannel: item.alsoInChannel ?? false, priority: item.priority,
+                                                                                  ackRequested: item.ackRequested ?? false))
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
             } catch {

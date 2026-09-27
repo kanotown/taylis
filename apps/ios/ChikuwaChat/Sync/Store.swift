@@ -88,10 +88,15 @@ struct MessageState: Codable, Identifiable, Equatable {
     var pinnedBy: String? = nil
     /// M14b: the poll, when the message carries one.
     var poll: PollOut? = nil
+    /// M15e: priority label and acknowledgements (only when asked for).
+    var priority: String? = nil
+    var ackRequested: Bool = false
+    var acks: [AckOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
+        case priority, ackRequested, acks
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -126,6 +131,9 @@ struct MessageState: Codable, Identifiable, Equatable {
         pinnedAt = message.pinnedAt
         pinnedBy = message.pinnedBy
         poll = message.poll
+        priority = message.priority
+        ackRequested = message.ackRequested
+        acks = message.acks
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -154,10 +162,13 @@ struct MessageState: Codable, Identifiable, Equatable {
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
         poll = try c.decodeIfPresent(PollOut.self, forKey: .poll)
+        priority = try c.decodeIfPresent(String.self, forKey: .priority)
+        ackRequested = try c.decodeIfPresent(Bool.self, forKey: .ackRequested) ?? false
+        acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
-         alsoInChannel: Bool = false) {
+         alsoInChannel: Bool = false, priority: String? = nil, ackRequested: Bool = false) {
         id = localPrefix + clientMsgId
         self.channelId = channelId
         self.senderId = senderId
@@ -172,6 +183,8 @@ struct MessageState: Codable, Identifiable, Equatable {
         failed = false
         self.parentId = parentId
         self.alsoInChannel = alsoInChannel
+        self.priority = priority
+        self.ackRequested = ackRequested
     }
 }
 
@@ -191,7 +204,8 @@ extension MessageOut {
                   clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
                   mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
-                  pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll)
+                  pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
+                  priority: state.priority, ackRequested: state.ackRequested, acks: state.acks)
     }
 }
 
@@ -203,8 +217,10 @@ struct OutboxItem: Codable, Identifiable, Equatable {
     var failed: String?
     var parentId: String? = nil
     var attachmentIds: [String] = []
-    /// M15c; optional so that rows queued by earlier versions still decode.
+    /// M15c / M15e; optional so that rows queued by earlier versions still decode.
     var alsoInChannel: Bool? = nil
+    var priority: String? = nil
+    var ackRequested: Bool? = nil
 
     var id: String { clientMsgId }
 }

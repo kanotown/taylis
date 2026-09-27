@@ -206,8 +206,8 @@ struct ChannelView: View {
                         .font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
                     TypingLine(controller: controller, channelId: channelId)
-                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds in
-                        Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds) }
+                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds, options in
+                        Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds, options: options) }
                     }
                 }
             }
@@ -386,6 +386,7 @@ struct MessageRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 if message.isReply { replyLine }  // M15c
+                if let priority = message.priority { PriorityLabelView(priority: priority) }  // M15e
                 let saved = store.isBookmarked(message.id)
                 let pinnedBy = message.pinnedAt.map { _ in store.users[message.pinnedBy ?? ""]?.displayName ?? "?" }
                 if pinnedBy != nil || saved {
@@ -431,6 +432,7 @@ struct MessageRow: View {
                     LinkPreviewCard(controller: controller, url: link)
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller) }  // M14b
+                if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller) }  // M15e
                 if !message.reactions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in
@@ -567,7 +569,7 @@ struct ComposerView: View {
     let users: [UserPublic]
     var placeholder = "メッセージを入力"
     var controller: AppController? = nil
-    let onSend: (String, [String]) -> Void
+    let onSend: (String, [String], SendOptions) -> Void
     private var text: String { controller?.store.draft(channelId, parentId: parentId).text ?? "" }
     private var pending: [AttachmentOut] { controller?.store.draft(channelId, parentId: parentId).attachments ?? [] }
     private var uploading: Int { controller?.store.uploading(channelId, parentId: parentId) ?? 0 }
@@ -583,6 +585,9 @@ struct ComposerView: View {
     @State private var showSchedule = false
     @State private var showCustomSchedule = false
     @State private var customSendAt = Date().addingTimeInterval(3600)
+    /// M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
+    @State private var priority: String?
+    @State private var ackRequested = false
     @FocusState private var focused: Bool
 
     /// `/st` at the very start offers the slash commands (M13b).
@@ -628,6 +633,19 @@ struct ComposerView: View {
         }
     }
 
+    /// M15e: what the next post will carry, with a way to clear it.
+    private var priorityChips: some View {
+        HStack(spacing: 8) {
+            if let priority { PriorityLabelView(priority: priority) }
+            if ackRequested { Label("確認を求める", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary) }
+            Button { priority = nil; ackRequested = false } label: { Image(systemName: "xmark.circle.fill") }
+                .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("重要度を外す")
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
     private func send() {
         if let command = SlashCommands.parse(trimmed) {  // M13b
             guard let controller else { return }
@@ -641,7 +659,10 @@ struct ComposerView: View {
         guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
         let ids = pending.map(\.id)
         controller?.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
-        onSend(body, ids)
+        let options = SendOptions(priority: parentId == nil ? priority : nil, ackRequested: parentId == nil && ackRequested)
+        priority = nil
+        ackRequested = false
+        onSend(body, ids, options)
     }
 
     var body: some View {
@@ -719,6 +740,7 @@ struct ComposerView: View {
                 }
                 .padding(.top, 6)
             }
+            if priority != nil || ackRequested { priorityChips }
             HStack(alignment: .bottom, spacing: 8) {
                 if controller != nil {
                     // "+" like Slack / Mattermost: photos, camera and files from one place.
@@ -729,6 +751,15 @@ struct ComposerView: View {
                         Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true }
                         Divider()
                         Button("後で送信…", systemImage: "clock") { showSchedule = true }.disabled(!canSend)
+                        if parentId == nil {
+                            Divider()
+                            Picker("重要度", selection: $priority) {
+                                Text("通常").tag(String?.none)
+                                Label("重要", systemImage: "info.circle").tag(String?.some("important"))
+                                Label("緊急", systemImage: "exclamationmark.triangle").tag(String?.some("urgent"))
+                            }
+                            Toggle("確認を求める", systemImage: "checkmark.circle", isOn: $ackRequested)
+                        }
                     } label: {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 30))

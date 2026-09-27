@@ -468,6 +468,13 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    /// M15e: 「確認しました」 on a message that asks for it, or take it back.
+    func toggleAck(_ message: MessageState) async {
+        guard let api, let me = store.me else { return }
+        let mine = message.acks.contains { $0.userId == me.id }
+        do { store.upsertMessage(try await api.acknowledge(messageId: message.id, present: !mine)) } catch { self.error = describe(error) }
+    }
+
     /// M15a: "owners" makes an announcement channel (owners and admins start the posts).
     func setPostingPolicy(_ channelId: String, policy: String) async -> Bool {
         guard let api else { return false }

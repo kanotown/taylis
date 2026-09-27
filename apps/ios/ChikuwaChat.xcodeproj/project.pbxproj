@@ -24,6 +24,7 @@
 		2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6511D58639F80B71BAF90EC5 /* Assets.xcassets */; };
 		2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */; };
 		2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551D58741D5F426321F75F3F /* AppDelegate.swift */; };
+		31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */; };
 		33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC121C06BFAA7AB89AC54106 /* DNDTests.swift */; };
 		34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */; };
 		380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCAE33D55025EFA146CADC2 /* MentionsView.swift */; };
@@ -158,6 +159,7 @@
 		7787A42779309636F0D889A4 /* DirectoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryView.swift; sourceTree = "<group>"; };
 		7C74AC169B95554B18E616A6 /* MessageBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBodyView.swift; sourceTree = "<group>"; };
 		7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerSnapshotTests.swift; sourceTree = "<group>"; };
+		7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriorityViews.swift; sourceTree = "<group>"; };
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSyncTests.swift; sourceTree = "<group>"; };
 		8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 				C5B17C0044CEFA7773C29BDC /* Permalink.swift */,
 				B5CFB01E67A972B78B96D8C2 /* PinsView.swift */,
 				11ADABD71F51A91011248A1E /* PollCardView.swift */,
+				7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */,
 				62B9AE41DC03738ACC485851 /* ProfileSheet.swift */,
 				D5025810DA770D8747ACC610 /* RemindersView.swift */,
 				411D0F28175679909161F694 /* RevisionsView.swift */,
@@ -574,6 +577,7 @@
 				028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */,
 				DD186BA276E115EA76964F24 /* PinsView.swift in Sources */,
 				A99FA5C06C95385D0101DF52 /* PollCardView.swift in Sources */,
+				31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */,
 				6FC3F67CB482231A52586E10 /* ProfileSheet.swift in Sources */,
 				6B2FA428DA0DFA1858ACA00C /* PushCenter.swift in Sources */,
 				E4DA52B9A5BEDC920C00F9D2 /* RemindersView.swift in Sources */,
