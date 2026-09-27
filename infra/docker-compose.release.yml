@@ -1,0 +1,10 @@
+# 本番サーバー用 (自動デプロイ、infra/README.md「自動デプロイ」): app と caddy をレジストリのイメージで動かし、
+# サーバー上ではビルドしない。イメージ名は infra/deploy.sh が deploy.conf と .release から決める。
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml --profile proxy up -d
+services:
+  app:
+    image: ${CHIKUWA_SERVER_IMAGE:?set by infra/deploy.sh}
+    build: !reset null
+  caddy:
+    image: ${CHIKUWA_WEB_IMAGE:?set by infra/deploy.sh}
+    build: !reset null

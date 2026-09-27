@@ -46,3 +46,11 @@ infra/secrets/*
 
 # server local env
 server/.env
+
+# production server state written by infra/deploy.sh / the administrator (never committed)
+infra/deploy.conf
+infra/.release
+infra/.release.previous
+infra/releases/
+# backups contain every message: they never go into git (infra/backup.sh default location)
+infra/backups/

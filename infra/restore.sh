@@ -11,6 +11,16 @@ PROJECT="${2:-}"
 COMPOSE=(docker compose -f "$HERE/docker-compose.yml")
 [ -n "$PROJECT" ] && COMPOSE+=(-p "$PROJECT")
 [ "${CHIKUWA_PROD:-0}" = "1" ] && COMPOSE+=(-f "$HERE/docker-compose.prod.yml")
+# A server that runs registry images (infra/deploy.sh) starts the deployed release again instead of building.
+BUILD=(--build)
+if [ "${CHIKUWA_PROD:-0}" = "1" ] && [ -f "$HERE/.release" ] && [ -f "$HERE/deploy.conf" ]; then
+  # shellcheck disable=SC1091
+  . "$HERE/deploy.conf"
+  RELEASE="$(cat "$HERE/.release")"
+  export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$RELEASE" CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$RELEASE"
+  COMPOSE+=(-f "$HERE/docker-compose.release.yml")
+  BUILD=()
+fi
 # shellcheck disable=SC1091
 set -a; . "$HERE/.env"; set +a
 DBUSER="${POSTGRES_USER:-chikuwa}"; DBNAME="${POSTGRES_DB:-chikuwa}"
@@ -37,7 +47,7 @@ echo "== object store"
   -c 'rm -rf /data/* && cd /data && tar xzf /backup/objects.tgz'
 
 echo "== app"
-"${COMPOSE[@]}" up -d --build app
+"${COMPOSE[@]}" up -d ${BUILD[@]+"${BUILD[@]}"} app
 for _ in $(seq 1 60); do
   "${COMPOSE[@]}" exec -T app python -c "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/readyz'); sys.exit(0 if b'\"status\":\"ok\"' in r.read() else 1)" >/dev/null 2>&1 && break
   sleep 2

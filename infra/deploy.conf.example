@@ -1,0 +1,5 @@
+# infra/deploy.conf: written once by the administrator on the production server; releases never change it.
+# The registry the release workflow pushes to: ghcr.io/<GitHub account or organisation, in lower case>.
+REGISTRY=ghcr.io/your-github-name
+# Where deploy.sh keeps the backup it takes before every release (default: infra/backups).
+BACKUP_ROOT=/srv/backups

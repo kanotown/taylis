@@ -265,6 +265,16 @@ guest に見えるのは同じチャンネルの人だけで、次の経路も�
   refresh token はハッシュ保存なので影響しない。
 - ログに出さないもの: パスワード (仮パスワード含む)、トークン (access / refresh / push)、メッセージ本文、
   添付の内容。`DEBUG=true` は SQL のバインドパラメータをログに出すため開発専用とし、本番環境では無視する。
+- 自動デプロイ (infra/README.md「自動デプロイ」): 本番の秘密 (`.env`、`secrets/`、`deploy.conf`) は VPS にだけ置き、
+  GitHub には SSH の接続情報 (environment `production` の Secrets、タグ `v*` だけに限定) だけを置く。
+  - デプロイ鍵は VPS の `deploy` ユーザー (docker グループ = 実質 root) で、`authorized_keys` の
+    `command="/usr/local/bin/chikuwa-deploy",restrict` により `upload <tag>` と `deploy <tag>` しか実行できない。
+    強制コマンド本体は root の持ち物で infra/ の外にあり、リリースでは置き換わらない。取り込むレジストリは
+    VPS の `deploy.conf` が決める (CI からは指定できない)。それでもリリースの compose / イメージはサーバ上で
+    何でも実行できるので、鍵は root 相当として扱い、漏れたら `authorized_keys` から消して作り直す。
+  - GHCR の取得にはワークフロー実行中だけ有効な `GITHUB_TOKEN` (packages: read) を使い、pull の後に
+    `docker logout` する。長期のトークンをサーバに置かない。
+  - ホスト鍵は `DEPLOY_KNOWN_HOSTS` で固定し (`StrictHostKeyChecking yes`)、初回接続の信頼に頼らない。
 
 ## 8. ログと監査
 
