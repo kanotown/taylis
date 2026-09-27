@@ -364,7 +364,7 @@ M13 と同じ進め方。目に見える差が大きいものから。
 | M14c | メッセージの編集履歴 | `message_revisions` (マイグレーション 0026): 本文が変わる編集ごとに置き換えられた本文と時刻を残す。`GET /messages/{id}/revisions` (古い順) は**投稿者本人だけ** (誤って貼った秘密を編集で消したとき他人に残さないため、Mattermost と同じ)。メッセージ削除で履歴も消す。3 端末: 自分のメッセージの「(編集済み)」から「編集履歴」(以前の版と現在の版) | **実装済み (2026-09-27)**: サーバ pytest 182、Desktop vitest 123 (実サーバで目視)、iOS XCTest 80、Android JUnit 81 + ビルド |
 | M14d | OIDC ログイン | 外部 IdP (Google / Microsoft / Keycloak など) の authorization code + PKCE。メールでアカウントを紐付け、初回は招待相当の扱い。Desktop はループバック、モバイルはシステムブラウザ | 未着手 |
 | M14e | 添付の直接配信 | `BlobStore` の presigned URL で大きな添付のダウンロード / アップロードを API プロセスから外す | 未着手 |
-| M14f | サイドバーの節 | 自分で作る節 (例: 「プロジェクト」) にチャンネルを振り分ける。端末間で同期 | 未着手 |
+| M14f | サイドバーの節 | `sidebar_sections` / `sidebar_section_channels` (マイグレーション 0027、葉モジュール `sidebar`): 1 人 20 セクションまで、会話 (チャンネルと DM) は自分のセクションのどれか 1 つに入る。作成 / 名前・位置の変更 / 削除 / 会話の出し入れの各 API はセクション一覧全体を返し、同じ一覧が `sidebar.updated` (audience=user) と bootstrap の `sidebar_sections` で全端末に届く。お気に入りが優先。3 端末: お気に入りとチャンネルの間に自分のセクション、会話の右クリック (Desktop) / 長押し (iOS / Android) で「セクションに移動 / 新しいセクション… / セクションから外す」、セクション見出しの「…」で名前変更・上下・作成・削除。Desktop の Alt+↑/↓ も表示順どおり | **実装済み (2026-09-27)**: サーバ pytest 184、Desktop vitest 125 (実サーバで目視)、iOS XCTest 81、Android JUnit 82 + ビルド |
 
 ### バックログ (未スケジュール)
 
