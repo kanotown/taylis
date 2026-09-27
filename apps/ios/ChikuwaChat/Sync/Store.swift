@@ -255,6 +255,8 @@ final class Store {
     var emojiImages: [String: UIImage] = [:]
     /// User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server.
     var groups: [String: GroupOut] = [:]
+    /// My sidebar sections (M14f), in order; from bootstrap and sidebar.updated.
+    var sidebarSections: [SidebarSectionOut] = []
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -419,6 +421,13 @@ final class Store {
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
     }
+
+    // MARK: sidebar sections (M14f)
+
+    func replaceSidebar(_ rows: [SidebarSectionOut]) { sidebarSections = rows.sorted { $0.position < $1.position } }
+
+    /// The id of my section the conversation sits in, if any.
+    func sectionOf(_ channelId: String) -> String? { sidebarSections.first { $0.channelIds.contains(channelId) }?.id }
 
     // MARK: user groups (M12k)
 

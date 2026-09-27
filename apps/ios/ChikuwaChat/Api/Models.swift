@@ -291,6 +291,16 @@ struct BootstrapOut: Codable {
     var customEmoji: [CustomEmojiOut]? = nil
     /// User groups (M12k): every group with its members; changes arrive as group.updated.
     var groups: [GroupOut]? = nil
+    /// My sidebar sections (M14f); changes arrive as sidebar.updated.
+    var sidebarSections: [SidebarSectionOut]? = nil
+}
+
+/// One of my sidebar sections (M14f); `channelIds` are the conversations placed in it.
+struct SidebarSectionOut: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let position: Int
+    var channelIds: [String] = []
 }
 
 /// A named set of members that `@name` notifies (M12k).

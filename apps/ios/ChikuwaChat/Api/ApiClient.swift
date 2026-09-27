@@ -433,6 +433,31 @@ final class ApiClient: SyncApi {
         _ = try await requestRaw("POST", "/api/v1/auth/totp/disable", body: .object(["password": .string(password)]), auth: true, retry401: true)
     }
 
+    // MARK: sidebar sections (M14f): every call returns my whole list
+
+    func createSidebarSection(name: String) async throws -> [SidebarSectionOut] {
+        try await request("POST", "/api/v1/sidebar/sections", body: .object(["name": .string(name)]))
+    }
+
+    func updateSidebarSection(_ id: String, name: String? = nil, position: Int? = nil) async throws -> [SidebarSectionOut] {
+        var fields: [String: JSONValue] = [:]
+        if let name { fields["name"] = .string(name) }
+        if let position { fields["position"] = .number(Double(position)) }
+        return try await request("PATCH", "/api/v1/sidebar/sections/\(id)", body: .object(fields))
+    }
+
+    func deleteSidebarSection(_ id: String) async throws -> [SidebarSectionOut] {
+        try await request("DELETE", "/api/v1/sidebar/sections/\(id)")
+    }
+
+    func placeInSidebarSection(_ sectionId: String, channelId: String) async throws -> [SidebarSectionOut] {
+        try await request("PUT", "/api/v1/sidebar/sections/\(sectionId)/channels/\(channelId)", body: .object([:]))
+    }
+
+    func removeFromSidebarSection(_ channelId: String) async throws -> [SidebarSectionOut] {
+        try await request("DELETE", "/api/v1/sidebar/channels/\(channelId)")
+    }
+
     // MARK: polls (M14b)
 
     func vote(messageId: String, option: Int, present: Bool) async throws -> MessageOut {

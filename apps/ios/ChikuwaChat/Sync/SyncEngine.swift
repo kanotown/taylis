@@ -310,6 +310,7 @@ final class SyncEngine {
         store.replaceFavorites(bootstrap.favorites ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceGroups(bootstrap.groups ?? [])
+        store.replaceSidebar(bootstrap.sidebarSections ?? [])
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
         onBadge?(store.badgeCount)
@@ -382,6 +383,9 @@ final class SyncEngine {
             struct Payload: Decodable { let emoji: CustomEmojiOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyCustomEmoji(payload.emoji, deleted: payload.deleted)
+        case "sidebar.updated":
+            struct Payload: Decodable { let sections: [SidebarSectionOut] }
+            store.replaceSidebar(try frame.data.decode(Payload.self).sections)
         case "group.updated":
             struct Payload: Decodable { let group: GroupOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)

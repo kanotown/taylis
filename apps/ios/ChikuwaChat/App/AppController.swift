@@ -589,6 +589,38 @@ final class AppController {
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
+    // MARK: sidebar sections (M14f)
+
+    private func sidebarChange(_ work: (ApiClient) async throws -> [SidebarSectionOut]) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.replaceSidebar(try await work(api))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// A new section at the end; with `channelId`, that conversation moves into it.
+    func createSection(_ name: String, channelId: String?) async -> Bool {
+        let before = Set(store.sidebarSections.map(\.id))
+        guard await sidebarChange({ try await $0.createSidebarSection(name: name) }) else { return false }
+        if let channelId, let created = store.sidebarSections.first(where: { !before.contains($0.id) }) {
+            return await moveToSection(channelId, sectionId: created.id)
+        }
+        return true
+    }
+
+    func renameSection(_ id: String, name: String) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, name: name) } }
+    func moveSection(_ id: String, position: Int) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, position: position) } }
+    func deleteSection(_ id: String) async -> Bool { await sidebarChange { try await $0.deleteSidebarSection(id) } }
+
+    /// `sectionId` nil puts the conversation back in the default sections.
+    func moveToSection(_ channelId: String, sectionId: String?) async -> Bool {
+        await sidebarChange { api in
+            if let sectionId { return try await api.placeInSidebarSection(sectionId, channelId: channelId) }
+            return try await api.removeFromSidebarSection(channelId)
+        }
+    }
+
     // MARK: edit history (M14c)
 
     func messageRevisions(_ messageId: String) async -> [MessageRevisionOut]? {
