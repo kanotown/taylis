@@ -372,6 +372,14 @@
             "title": "Favorites",
             "type": "array"
           },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "limits": {
             "$ref": "#/components/schemas/Limits"
           },
@@ -1162,6 +1170,147 @@
           "next_cursor"
         ],
         "title": "FileListOut",
+        "type": "object"
+      },
+      "GroupCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "member_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Member Ids",
+            "type": "array"
+          },
+          "name": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{1,31}$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "GroupCreate",
+        "type": "object"
+      },
+      "GroupOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Member Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "member_ids",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GroupOut",
+        "type": "object"
+      },
+      "GroupUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "member_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{1,31}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "GroupUpdate",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3341,6 +3490,149 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/groups": {
+      "post": {
+        "operationId": "create_group_api_v1_admin_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Group",
+        "tags": [
+          "groups"
+        ]
+      }
+    },
+    "/api/v1/admin/groups/{group_id}": {
+      "delete": {
+        "operationId": "delete_group_api_v1_admin_groups__group_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Group Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Group",
+        "tags": [
+          "groups"
+        ]
+      },
+      "patch": {
+        "operationId": "update_group_api_v1_admin_groups__group_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Group Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Group",
+        "tags": [
+          "groups"
+        ]
+      }
+    },
     "/api/v1/admin/invites": {
       "get": {
         "operationId": "list_invites_api_v1_admin_invites_get",
@@ -5793,6 +6085,37 @@
         "summary": "List Files",
         "tags": [
           "attachments"
+        ]
+      }
+    },
+    "/api/v1/groups": {
+      "get": {
+        "description": "Every group with its members (M12k); also part of the bootstrap.",
+        "operationId": "list_groups_api_v1_groups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GroupOut"
+                  },
+                  "title": "Response List Groups Api V1 Groups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Groups",
+        "tags": [
+          "groups"
         ]
       }
     },

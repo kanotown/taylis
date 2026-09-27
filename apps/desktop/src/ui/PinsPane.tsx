@@ -54,7 +54,7 @@ export function MessageCard({ message, controller, onOpen, onRemove, removeLabel
   const store = controller.store;
   const channel = store.getChannel(message.channel_id);
   const sender = store.users.get(message.sender_id)?.display_name ?? "?";
-  const text = plainText(mentionsToNames(message.body, store.users), 300) || message.attachments.map((a) => a.filename).join(", ");
+  const text = plainText(mentionsToNames(message.body, store.users, store.groups), 300) || message.attachments.map((a) => a.filename).join(", ");
   return (
     <div className="group relative rounded-xl border border-transparent transition-colors hover:border-line hover:bg-panel">
       <button type="button" className="block w-full px-3 py-2 text-left" onClick={onOpen}>

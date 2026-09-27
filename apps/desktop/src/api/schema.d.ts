@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/v1/admin/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_api_v1_admin_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Group */
+        delete: operations["delete_group_api_v1_admin_groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Group */
+        patch: operations["update_group_api_v1_admin_groups__group_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/invites": {
         parameters: {
             query?: never;
@@ -791,6 +826,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Groups
+         * @description Every group with its members (M12k); also part of the bootstrap.
+         */
+        get: operations["list_groups_api_v1_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invites/{token}": {
         parameters: {
             query?: never;
@@ -1466,6 +1521,11 @@ export interface components {
              * @default []
              */
             favorites: string[];
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["GroupOut"][];
             limits: components["schemas"]["Limits"];
             me: components["schemas"]["UserMe"];
             /**
@@ -1725,6 +1785,53 @@ export interface components {
             items: components["schemas"]["FileItem"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** GroupCreate */
+        GroupCreate: {
+            /** Description */
+            description?: string | null;
+            /** Member Ids */
+            member_ids?: string[];
+            /** Name */
+            name: string;
+        };
+        /** GroupOut */
+        GroupOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Ids */
+            member_ids: string[];
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** GroupUpdate */
+        GroupUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Member Ids */
+            member_ids?: string[] | null;
+            /** Name */
+            name?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2566,6 +2673,103 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    create_group_api_v1_admin_groups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_api_v1_admin_groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_group_api_v1_admin_groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_invites_api_v1_admin_invites_get: {
         parameters: {
             query?: never;
@@ -4115,6 +4319,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_api_v1_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupOut"][];
                 };
             };
         };

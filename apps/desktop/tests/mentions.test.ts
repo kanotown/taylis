@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { UserPublic } from "../src/api/types";
+import type { GroupOut, UserPublic } from "../src/api/types";
 import { decodeMentions, encodeMentions, mentionCandidates, mentionQuery } from "../src/ui/mentions";
 import { mentionsToNames } from "../src/ui/mentions";
 
@@ -43,4 +43,22 @@ describe("mentions", () => {
 it("renders mention tokens as display names for notifications", () => {
   const users = new Map([["00000000-0000-7000-8000-000000000001", { id: "00000000-0000-7000-8000-000000000001", username: "kano", display_name: "Toru Kano", role: "member", deactivated_at: null, created_at: "", updated_at: "" }]]);
   expect(mentionsToNames("hi <@00000000-0000-7000-8000-000000000001> and <@00000000-0000-7000-8000-000000000002> <!channel>", users)).toBe("hi @Toru Kano and @メンバー @channel");
+});
+
+describe("group mentions (M12k)", () => {
+  const design: GroupOut = { id: "00000000-0000-7000-8000-00000000000a", name: "design", description: "デザイン担当", member_ids: [alice.id, bob.id], created_by: alice.id, created_at: "", updated_at: "" };
+  const groups = new Map([[design.id, design]]);
+
+  it("encodes @group to the group token and decodes it back", () => {
+    expect(encodeMentions("@design please, @alice too", users, [design])).toBe(`<@group:${design.id}> please, <@${alice.id}> too`);
+    expect(decodeMentions(`<@group:${design.id}> hi`, new Map(users.map((u) => [u.id, u])), groups)).toBe("@design hi");
+    expect(mentionsToNames(`<@group:${design.id}> and <@group:00000000-0000-7000-8000-000000000009>`, new Map(), groups)).toBe("@design and @グループ");
+  });
+
+  it("offers groups among the candidates", () => {
+    const rows = mentionCandidates("de", users, [design]);
+    expect(rows.map((r) => [r.username, r.kind])).toEqual([["design", "group"]]);
+    expect(rows[0]!.label).toBe("グループ · 2 人 · デザイン担当");
+    expect(mentionCandidates("", users, [design]).map((r) => r.username)).toEqual(["alice", "bob.k", "design", "channel", "here"]);
+  });
 });

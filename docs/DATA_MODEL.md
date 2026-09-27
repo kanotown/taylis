@@ -406,6 +406,31 @@ CREATE TABLE user_totp (
 - `users` には列を足さない。有効かどうかは `GET /auth/totp` と admin のユーザー一覧 (`totp_enabled`) で見る。
 - 無効化 / admin のリセットは行を消す。
 
+### user_groups / user_group_members (ユーザーグループ、M12k)
+
+```sql
+CREATE TABLE user_groups (
+  id           uuid PRIMARY KEY,
+  name         citext NOT NULL UNIQUE,   -- [a-z0-9][a-z0-9._-]{1,31}。ユーザー名と同じ名前空間 (@name が一意になるよう互いに衝突を拒否)
+  description  varchar(200),
+  created_by   uuid NOT NULL REFERENCES users(id),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE user_group_members (
+  group_id  uuid NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+  user_id   uuid NOT NULL REFERENCES users(id),
+  added_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (group_id, user_id)
+);
+CREATE INDEX user_group_members_user_idx ON user_group_members (user_id);
+```
+
+- admin が作成・編集・削除する (`/admin/groups`)。全員が一覧を見る (bootstrap の `groups`、`group.updated` は
+  audience=all)。本文の `<@group:{group_id}>` は投稿 / 編集時に (無効化されていない) メンバー全員 (送信者を除く) に
+  展開して `messages.mentioned_user_ids` に足すので、未読のメンション数・`GET /mentions`・プッシュはそのまま効く。
+  グループの id は本文に残るだけで messages には列を足さない。削除されたグループのトークンは誰にも展開されない。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql
@@ -453,7 +478,7 @@ CREATE INDEX messages_pinned_idx               ON messages (channel_id, pinned_a
 -- M9: CREATE INDEX messages_body_pgroonga_idx ON messages USING pgroonga (body);
 ```
 
-本文の形式: プレーンテキスト。メンションは `<@{user_id}>`、全体メンションは `<!channel>` / `<!here>` の
+本文の形式: プレーンテキスト。メンションは `<@{user_id}>`、グループは `<@group:{group_id}>` (M12k)、全体メンションは `<!channel>` / `<!here>` の
 トークンで埋め込む (表示名の変更に追従するため)。軽量 markdown の解釈はクライアント側で行い、サーバは
 解釈しない。
 絵文字の `:shortcode:` (例 `:tada:`) も本文にはそのまま入り、表示時にクライアントが `apps/shared/emoji.json` の表で

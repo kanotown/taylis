@@ -82,3 +82,11 @@ describe("plain text for notifications", () => {
     expect(plainText("a".repeat(300)).length).toBe(200);
   });
 });
+
+describe("group mention tokens (M12k)", () => {
+  it("tokenises <@group:id> separately from user mentions", () => {
+    const tokens = tokenize("<@group:00000000-0000-7000-8000-00000000000a> and <@00000000-0000-7000-8000-000000000001>");
+    expect(tokens.map((t) => t.kind)).toEqual(["mention_group", "text", "mention"]);
+    expect(tokens[0]).toEqual({ kind: "mention_group", groupId: "00000000-0000-7000-8000-00000000000a" });
+  });
+});

@@ -600,6 +600,7 @@ export class FakeServer {
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           custom_emoji: [...this.customEmoji.values()],
+          groups: [],
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {

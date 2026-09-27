@@ -89,7 +89,7 @@ function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry
   const author = store.users.get(parent.sender_id);
   const unread = state.unread_count > 0;
   const last = state.last_reply_at ?? parent.created_at;
-  const excerpt = plainText(mentionsToNames(parent.body, store.users), 200) || (parent.attachments?.length ? "(添付ファイル)" : "");
+  const excerpt = plainText(mentionsToNames(parent.body, store.users, store.groups), 200) || (parent.attachments?.length ? "(添付ファイル)" : "");
   const others = state.participant_ids.filter((id) => id !== parent.sender_id).slice(0, 3);
   return (
     <li>

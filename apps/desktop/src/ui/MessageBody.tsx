@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { MessageSquareText } from "lucide-react";
-import type { CustomEmojiOut, UserPublic } from "../api/types";
+import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { type Block, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
@@ -10,7 +10,7 @@ import { parsePermalink } from "./permalink";
 import { cn } from "./primitives";
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
-export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller, keywords }: {
+export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller, keywords, groups }: {
   body: string;
   users: Map<string, UserPublic>;
   className?: string;
@@ -21,8 +21,10 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
   customEmoji?: ReadonlyMap<string, CustomEmojiOut>;
   controller?: AppController;
   keywords?: readonly string[];
+  /** M12k: user groups by id, for `<@group:id>`. */
+  groups?: ReadonlyMap<string, GroupOut>;
 }) {
-  const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller, keywords };
+  const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller, keywords, groups };
   return (
     <div className={cn("body text-[14.5px] leading-6", className)}>
       {parseBlocks(body).map((block, i) => (
@@ -74,6 +76,7 @@ export interface InlineOptions {
   controller?: AppController;
   /** M12g: my notification keywords, highlighted where they occur. */
   keywords?: readonly string[];
+  groups?: ReadonlyMap<string, GroupOut>;
 }
 
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {
@@ -86,7 +89,7 @@ function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineO
 }
 
 export function inline(tokens: Token[], users: Map<string, UserPublic>, options: InlineOptions = {}) {
-  const { internalBase, onOpenMessage, customEmoji, controller, keywords } = options;
+  const { internalBase, onOpenMessage, customEmoji, controller, keywords, groups } = options;
   /** Keyword hits (M12g) get a soft highlight, like a mention would. */
   const keywordNodes = (text: string, keyPrefix: string): ReactNode => {
     if (!keywords || keywords.length === 0 || !text) return text;
@@ -144,6 +147,12 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
         return (
           <span key={i} className="mention">
             @{users.get(token.userId)?.display_name ?? "unknown"}
+          </span>
+        );
+      case "mention_group":
+        return (
+          <span key={i} className="mention" title="グループ">
+            @{groups?.get(token.groupId)?.name ?? "グループ"}
           </span>
         );
       case "mention_all":

@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -56,6 +56,8 @@ export class Store {
   readonly reminders = new Map<string, ReminderOut>();
   /** Custom emoji by name (M12f); from bootstrap and emoji.updated, not persisted. */
   readonly customEmoji = new Map<string, CustomEmojiOut>();
+  /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
+  readonly groups = new Map<string, GroupOut>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -309,6 +311,20 @@ export class Store {
   applyCustomEmoji(row: CustomEmojiOut, deleted: boolean): void {
     if (deleted) this.customEmoji.delete(row.name);
     else this.customEmoji.set(row.name, row);
+    this.emit();
+  }
+
+  // --- user groups (M12k) ------------------------------------------------------------------
+
+  replaceGroups(rows: GroupOut[]): void {
+    this.groups.clear();
+    for (const row of rows) this.groups.set(row.id, row);
+    this.emit();
+  }
+
+  applyGroup(row: GroupOut, deleted: boolean): void {
+    if (deleted) this.groups.delete(row.id);
+    else this.groups.set(row.id, row);
     this.emit();
   }
 

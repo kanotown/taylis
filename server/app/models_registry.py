@@ -4,6 +4,7 @@ from app.core.base import Base
 from app.events import models as _event_models
 from app.modules.auth import models as _auth_models
 from app.modules.channels import models as _channel_models
+from app.modules.groups import models as _group_models
 from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
@@ -15,6 +16,7 @@ __all__ = [
     "_auth_models",
     "_channel_models",
     "_event_models",
+    "_group_models",
     "_invite_models",
     "_message_models",
     "_notification_models",

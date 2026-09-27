@@ -13,6 +13,7 @@ from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
+from app.modules.groups import service as groups
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
     MESSAGE_CREATED,
@@ -22,7 +23,7 @@ from app.modules.messages.events import (
     MessageDeletedData,
     MessageUpdatedData,
 )
-from app.modules.messages.mentions import extract_mentions
+from app.modules.messages.mentions import extract_group_mentions, extract_mentions
 from app.modules.messages.models import Message
 from app.modules.messages.schemas import (
     DeltaOut,
@@ -47,6 +48,21 @@ def _same_channel(existing: Message, channel_id: uuid.UUID) -> Message:
             "client_msg_id was already used for a message in another channel",
         )
     return existing
+
+
+async def _with_group_members(
+    db: AsyncSession, sender_id: uuid.UUID, body: str, mentioned: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """M12k: `<@group:id>` counts as a mention of every active member (except the sender)."""
+    group_ids = extract_group_mentions(body)
+    if not group_ids:
+        return mentioned
+    extra = [
+        uid
+        for uid in await groups.expand(db, group_ids)
+        if uid != sender_id and uid not in mentioned
+    ]
+    return list(mentioned) + extra
 
 
 async def _with_keyword_hits(
@@ -83,6 +99,7 @@ async def create_message(
             raise bad_request("reply_depth", "Replies to replies are not allowed")
 
     mentioned, mention_all = extract_mentions(data.body)
+    mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
     mentioned = await _with_keyword_hits(db, channel_id, actor.id, data.body, mentioned)
     try:
         async with db.begin_nested():
@@ -217,6 +234,9 @@ async def edit_message(
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.body = data.body
     message.mentioned_user_ids, message.mention_all = extract_mentions(data.body)
+    message.mentioned_user_ids = await _with_group_members(
+        db, message.sender_id, data.body, message.mentioned_user_ids
+    )
     message.mentioned_user_ids = await _with_keyword_hits(
         db, message.channel_id, message.sender_id, data.body, message.mentioned_user_ids
     )
