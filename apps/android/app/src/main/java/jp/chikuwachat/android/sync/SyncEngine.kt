@@ -19,6 +19,7 @@ import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.isRetryable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -90,6 +91,8 @@ data class EngineOptions(
     /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
     val typingIntervalMs: Long = 3_000,
     val typingTtlMs: Long = 5_000,
+    /** M15d: a draft is saved on the server this long after typing pauses. */
+    val draftSaveMs: Long = 1_000,
     /** Injectable so tests can skip reconnect pacing. */
     val sleep: suspend (Long) -> Unit = { delay(it) },
     val random: () -> Double = { Random.nextDouble() },
@@ -113,6 +116,15 @@ class SyncEngine(
 ) {
     private val _status = MutableStateFlow(EngineStatus.IDLE)
     val status: StateFlow<EngineStatus> = _status
+    /** M15d: my drafts across devices. */
+    val drafts = DraftSync(api as? DraftApi, store, scope, { _status.value == EngineStatus.ONLINE }, options.draftSaveMs)
+
+    init {
+        store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
+    }
+
+    /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
+    suspend fun flushDrafts() = drafts.flush()
     var currentChannelId: String? = null
         private set
     var onSignedOut: (() -> Unit)? = null
@@ -251,7 +263,10 @@ class SyncEngine(
             scheduleReconnect()
             return
         }
-        if (_status.value == EngineStatus.ONLINE) scope.launch { flushOutbox() }
+        if (_status.value == EngineStatus.ONLINE) {
+            scope.launch { flushOutbox() }
+            scope.launch { drafts.flush() } // edited while offline (M15d)
+        }
     }
 
     private suspend fun waitForHello(): Boolean {
@@ -360,6 +375,7 @@ class SyncEngine(
         store.replaceCustomEmoji(bootstrap.customEmoji)
         store.replaceGroups(bootstrap.groups)
         store.replaceSidebar(bootstrap.sidebarSections)
+        drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
     }
@@ -415,6 +431,7 @@ class SyncEngine(
                 val row = Codec.snake.decodeFromJsonElement(CustomEmojiOut.serializer(), frame.data["emoji"] ?: return)
                 store.applyCustomEmoji(row, frame.data.bool("deleted") ?: false)
             }
+            "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
                 store.replaceSidebar(rows)

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.api
 
+import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SyncApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -38,7 +39,7 @@ fun Throwable.isRetryable(): Boolean = this is ApiException.Network || (this is 
 class ApiClient(
     val baseUrl: String,
     private val http: OkHttpClient = OkHttpClient(),
-) : SyncApi {
+) : SyncApi, DraftApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -318,6 +319,21 @@ class ApiClient(
             put("send_at", sendAt)
         })
     override suspend fun listScheduled(): List<ScheduledOut> = request("GET", "/api/v1/scheduled")
+    // --- drafts (M15d) -----------------------------------------------------------------------------
+
+    override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut =
+        request("PUT", "/api/v1/drafts", buildJsonObject {
+            put("channel_id", channelId)
+            put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("body", body)
+        })
+
+    override suspend fun deleteDraft(channelId: String, parentId: String?) {
+        val query = "channel_id=" + java.net.URLEncoder.encode(channelId, "UTF-8") +
+            (parentId?.let { "&parent_id=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")
+        requestRaw("DELETE", "/api/v1/drafts?$query", null, auth = true, retry401 = true)
+    }
+
     suspend fun cancelScheduled(id: String) { requestRaw("DELETE", "/api/v1/scheduled/$id", null, auth = true, retry401 = true) }
     suspend fun sendScheduledNow(id: String): MessageOut = request("POST", "/api/v1/scheduled/$id/send-now", buildJsonObject {})
 

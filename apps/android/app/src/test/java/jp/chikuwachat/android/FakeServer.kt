@@ -9,6 +9,9 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.BootstrapOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.api.DraftOut
+import jp.chikuwachat.android.api.DraftUpdated
+import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.Limits
@@ -85,7 +88,10 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi {
+        override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
+        override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
+
         var pendingFailure: Throwable? = null
         /** When set, bootstrap() suspends until it completes (lets tests deliver events mid-bootstrap). */
         var bootstrapGate: CompletableDeferred<Unit>? = null
@@ -256,6 +262,23 @@ class FakeServer {
 
     /** "user" → starred channel ids (M12a). */
     val favorites = HashMap<String, MutableList<String>>()
+    /** M15d: "user:channel:parent" → the saved draft. */
+    val drafts = LinkedHashMap<String, DraftOut>()
+
+    fun saveDraft(userId: String, channelId: String, parentId: String?, body: String): DraftOut {
+        requireMember(channelId, userId)
+        val draft = DraftOut(channelId, parentId, body, now())
+        drafts["$userId:$channelId:${parentId ?: ""}"] = draft
+        emit(setOf(userId), event("draft.updated", null, null, Codec.snake.encodeToJsonElement(DraftUpdated.serializer(), DraftUpdated(channelId, parentId, body, draft.updatedAt, false)) as JsonObject))
+        return draft
+    }
+
+    fun deleteDraft(userId: String, channelId: String, parentId: String?) {
+        drafts.remove("$userId:$channelId:${parentId ?: ""}") ?: return
+        emit(setOf(userId), event("draft.updated", null, null, Codec.snake.encodeToJsonElement(DraftUpdated.serializer(), DraftUpdated(channelId, parentId, "", now(), true)) as JsonObject))
+    }
+
+    fun draftsOf(userId: String): List<DraftOut> = drafts.filterKeys { it.startsWith("$userId:") }.values.toList()
 
     fun setFavorite(userId: String, channelId: String, on: Boolean) {
         val list = favorites.getOrPut(userId) { ArrayList() }
@@ -561,6 +584,7 @@ class FakeServer {
             bookmarks[userId]?.toList() ?: emptyList(),
             favorites = (favorites[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true },
             customEmoji = customEmoji.values.toList(),
+            drafts = draftsOf(userId),
         )
     }
 

@@ -113,7 +113,14 @@ data class OutboxItem(
 )
 
 @Serializable
-data class Draft(val text: String = "", val attachments: List<AttachmentOut> = emptyList())
+data class Draft(
+    val text: String = "",
+    val attachments: List<AttachmentOut> = emptyList(),
+    /** M15d: edited here and not yet saved on the server (an emptied draft stays until its delete is saved). */
+    val dirty: Boolean = false,
+    /** M15d: the server's `updated_at` of the version this device last matched. */
+    val syncedAt: String? = null,
+)
 
 @Serializable
 data class Snapshot(
@@ -203,12 +210,54 @@ class Store(private val persistence: Persistence? = null) {
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
     fun draft(channelId: String, parentId: String? = null) = drafts[draftKey(channelId, parentId)] ?: Draft()
+    /** M15d: told about every local text change (the engine saves it on the server a moment later). */
+    var onDraftEdited: ((channelId: String, parentId: String?) -> Unit)? = null
+
     fun setDraft(channelId: String, parentId: String? = null, mutate: (Draft) -> Draft) {
-        val key = draftKey(channelId, parentId)
-        val value = mutate(draft(channelId, parentId))
-        if (value.text.isEmpty() && value.attachments.isEmpty()) drafts.remove(key) else drafts[key] = value
+        val previous = draft(channelId, parentId)
+        var value = mutate(previous)
+        val edited = value.text != previous.text
+        if (edited) value = value.copy(dirty = true)
+        writeDraft(draftKey(channelId, parentId), value)
+        if (edited) onDraftEdited?.invoke(channelId, parentId)
+    }
+
+    private fun writeDraft(key: String, value: Draft) {
+        val keep = value.text.isNotEmpty() || value.attachments.isNotEmpty() || value.dirty
+        if (keep) drafts[key] = value else drafts.remove(key)
         persist { it.saveMeta(key, drafts[key]?.let { d -> Codec.plain.encodeToString(Draft.serializer(), d) }) }
         emit()
+    }
+
+    /** M15d: every stored draft, including emptied ones whose delete is not saved yet. */
+    fun draftEntries(): List<DraftEntry> = drafts.entries.mapNotNull { (key, draft) ->
+        val parts = key.split(":", limit = 3)
+        if (parts.size != 3) null else DraftEntry(parts[1], parts[2].ifEmpty { null }, draft)
+    }
+
+    /** M15d: a version from my other devices (`body` null = deleted there); ignored while this device has unsaved edits. */
+    fun applyRemoteDraft(channelId: String, parentId: String?, body: String?, updatedAt: String?) {
+        val key = draftKey(channelId, parentId)
+        val current = drafts[key]
+        if (current?.dirty == true) return
+        val next = Draft(text = body ?: "", attachments = current?.attachments ?: emptyList(), syncedAt = if (body == null) null else updatedAt)
+        if (current != null && current.text == next.text && current.syncedAt == next.syncedAt) return
+        if (current == null && next.text.isEmpty()) return
+        writeDraft(key, next)
+    }
+
+    /** M15d: the server now holds `text` (no draft when `updatedAt` is null), unless it was edited again meanwhile. */
+    fun markDraftSaved(channelId: String, parentId: String?, text: String, updatedAt: String?) {
+        val key = draftKey(channelId, parentId)
+        val current = drafts[key] ?: return
+        if (current.text != text) return
+        writeDraft(key, current.copy(dirty = false, syncedAt = updatedAt))
+    }
+
+    fun markDraftDirty(channelId: String, parentId: String?) {
+        val key = draftKey(channelId, parentId)
+        val current = drafts[key] ?: return
+        if (!current.dirty) writeDraft(key, current.copy(dirty = true))
     }
     fun uploading(channelId: String, parentId: String? = null) = uploads[draftKey(channelId, parentId)] ?: 0
 
