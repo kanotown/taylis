@@ -199,7 +199,7 @@ export function suggestions(
   const text = input.trim();
   if (!text) {
     return [
-      ...context.recent.slice(0, 6).map((params): Suggestion => ({ kind: "recent", params })),
+      ...context.recent.slice(0, RECENT_MAX).map((params): Suggestion => ({ kind: "recent", params })),
       ...HAS_FLAGS.slice(0, 3).map((flag): Suggestion => ({ kind: "has", flag })),
       { kind: "thread" },
     ];

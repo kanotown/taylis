@@ -86,7 +86,7 @@ describe("search results", () => {
     expect(w.search).toHaveBeenCalledWith(expect.objectContaining({ q: "設計", sort: "relevance", limit: 30, offset: 0 }));
     expect(screen.getAllByText("設計", { selector: "mark" })).toHaveLength(2);
     expect(screen.getByText("スレッドの返信")).toBeTruthy();
-    expect(screen.getByText(/見つからない条件は無視しました: from:@nobody/)).toBeTruthy();
+    expect(screen.getByText(/見つからない条件があります.*from:@nobody/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /スレッド内/ }));
     expect(onChange).toHaveBeenCalledWith({ ...params, isThread: true });
     fireEvent.click(screen.getAllByRole("button").find((b) => b.textContent?.includes("設計レビューの資料です"))!);
