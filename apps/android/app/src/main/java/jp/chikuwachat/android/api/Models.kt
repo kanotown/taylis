@@ -205,8 +205,21 @@ data class MessageOut(
     val ackRequested: Boolean = false,
     val acks: List<AckOut> = emptyList(),
 ) {
-    fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
+    /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
+    fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =
+        mentionAll || userId in mentionedUserIds || hitsKeyword(body, keywords)
     val isReply: Boolean get() = parentId != null
+}
+
+/**
+ * M12g: one of my notification keywords is in the body, with the server's rule (case-insensitive, anywhere).
+ * The server keeps keyword hits private (they would show my keywords to the others, SYNC_PROTOCOL.md §7.4),
+ * so each client finds its own.
+ */
+fun hitsKeyword(body: String, keywords: List<String>): Boolean {
+    if (keywords.isEmpty() || body.isEmpty()) return false
+    val text = body.lowercase()
+    return keywords.any { it.isNotEmpty() && text.contains(it.lowercase()) }
 }
 
 /** The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6). */

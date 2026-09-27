@@ -280,6 +280,19 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun myNotificationKeywordsCountAndNotifyEvenThoughTheServerKeepsThemPrivate() = runBlocking {
+        val w = world()
+        w.server.keywords[w.bob] = listOf("デプロイ")
+        w.engine.start(); settle(w.engine)
+        val before = w.store.channel(w.channelId)!!.mentionCount
+        w.server.post(w.channelId, w.alice, "今夜デプロイします"); settle(w.engine)
+        assertEquals(listOf("今夜デプロイします"), w.notifications)
+        assertEquals(before + 1, w.store.channel(w.channelId)!!.mentionCount)
+        assertTrue(jp.chikuwachat.android.api.hitsKeyword("DEPLOY now", listOf("deploy")))
+        assertFalse(jp.chikuwachat.android.api.hitsKeyword("nothing", listOf("deploy", "")))
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun markUnreadMovesBackHoldsVisibleMarkingAndFollowsOtherDevices() = runBlocking {
         val w = world()
         w.engine.isActive = { true }

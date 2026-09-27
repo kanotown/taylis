@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.hitsKeyword
 import jp.chikuwachat.android.api.SidebarSectionOut
 import kotlinx.serialization.builtins.ListSerializer
 import jp.chikuwachat.android.api.ReminderOut
@@ -678,7 +679,7 @@ class SyncEngine(
         if (message.isReply && !message.alsoInChannel) return // replies are not unread items unless also sent to the channel (M15c)
         store.updateChannel(message.channelId) { channel ->
             if (message.seq <= channel.lastReadSeq) channel
-            else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id)) 1 else 0)
+            else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id, me.notifyKeywords)) 1 else 0)
         }
     }
 
@@ -704,7 +705,7 @@ class SyncEngine(
         val level = channel.channel.notification?.level ?: if (channel.channel.isDm) "all" else "mentions"
         val mutedUntil = channel.channel.notification?.mutedUntil?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
         if (level == "none" || (mutedUntil != null && mutedUntil.isAfter(java.time.Instant.now()))) return
-        val involved = message.mentions(me.id) || (thread != null && me.id in thread.participantIds)
+        val involved = message.mentions(me.id, me.notifyKeywords) || (thread != null && me.id in thread.participantIds)
         if (level == "mentions" && !involved) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
@@ -742,13 +743,13 @@ class SyncEngine(
         val target = seq - 1
         unreadHold[channelId] = target
         pendingReads.remove(channelId)?.cancel()
-        val me = store.me?.id
-        val later = store.messages(channelId).filter { (it.seq ?: 0) > target && it.senderId != me }
+        val me = store.me
+        val later = store.messages(channelId).filter { (it.seq ?: 0) > target && it.senderId != me?.id }
         store.updateChannel(channelId) {
             it.copy(
                 lastReadSeq = target,
                 unreadCount = later.size,
-                mentionCount = later.count { m -> me != null && (m.mentionAll || me in m.mentionedUserIds) },
+                mentionCount = later.count { m -> me != null && (m.mentionAll || me.id in m.mentionedUserIds || hitsKeyword(m.body, me.notifyKeywords)) },
                 unsentReadSeq = null, // the set replaces a mark not sent yet
             )
         }
