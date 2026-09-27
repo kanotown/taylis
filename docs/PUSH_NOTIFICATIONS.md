@@ -88,11 +88,11 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | 送信者本人 | 除外 | M5 |
 | `type = system` のメッセージ | 除外 | M5 |
 | `level = none`、または `muted_until > now()` | 除外 | M5 |
-| 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `mentioned_user_ids` に加わるので `level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる | M12g |
+| 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `messages.keyword_user_ids` に入り、`level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる。この列はクライアントに送らない (他のメンバーに本人のキーワードが分かってしまうため。M16a)。PushPlanner は行から読む | M12g / M16a |
 | `reminder.updated` (status=fired、M12e) | 本人の端末へ `kind = reminder` (タイトル「リマインダー」、本文はメモ + 設定時の本文、`channel_id` / `message_id` で該当メッセージを開く)。DND 中は出さない | M12e |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
-| `level = mentions` (チャンネルの既定) | `mentioned_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
+| `level = mentions` (チャンネルの既定) | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
 | 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b (実装済み。送信直前にも再判定し `skipped / already_read`) |
 | 別端末でアクティブ (§4.1) | 除外 | M5 |

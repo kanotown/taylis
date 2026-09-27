@@ -49,6 +49,11 @@ class Message(Base):
         ARRAY(Uuid()), default=list, server_default=text("'{}'::uuid[]")
     )
     mention_all: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # M12g keyword hits: members whose private notification keywords the body contains. Never sent
+    # to clients (it would show one member's keywords to the others); counts and pushes read it.
+    keyword_user_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid()), default=list, server_default=text("'{}'::uuid[]")
+    )
     # Thread parent bookkeeping (DATA_MODEL.md "各操作と seq").
     reply_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -159,3 +164,12 @@ class MessageRevision(Base):
     replaced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # when the edit came
 
     __table_args__ = (Index("message_revisions_message_idx", "message_id", "replaced_at"),)
+
+
+def mentions_of(message: Any, user_id: uuid.UUID) -> ColumnElement[bool]:
+    """The message (or an alias of it) mentions the user: by name, group, keyword or @channel."""
+    return or_(
+        message.mentioned_user_ids.contains([user_id]),
+        message.keyword_user_ids.contains([user_id]),
+        message.mention_all.is_(True),
+    )

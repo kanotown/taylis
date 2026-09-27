@@ -91,7 +91,9 @@ async def on_reply_created_in_tx(db: AsyncSession, parent: Message, reply: Messa
         parent.sender_id,
         reply.sender_id,
         *parent.mentioned_user_ids,
+        *parent.keyword_user_ids,
         *reply.mentioned_user_ids,
+        *reply.keyword_user_ids,
     ]
     # Mentions may name people outside the channel (or whole groups): only members follow.
     await repo.auto_follow(db, parent.id, await repo.member_ids(db, parent.channel_id, candidates))

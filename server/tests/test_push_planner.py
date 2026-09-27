@@ -134,6 +134,27 @@ async def test_channel_default_is_mentions_so_only_level_all_members_get_pushes(
     assert rows[0].payload["title"] == "#general" and rows[0].payload["subtitle"] == "Alice"
 
 
+async def test_a_private_keyword_hit_still_pushes_to_its_owner(
+    app: FastAPI, db: AsyncSession, test_settings: Settings
+) -> None:
+    """M12g keyword hits are no longer in the event (M16a); the planner reads them from the row."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    channel = await channels.create_channel(db, alice, ChannelCreate(name="general"))
+    for user in (bob, carol):
+        await channels.join_channel(db, user, channel.id)
+        await add_device(db, user, token=f"tok-{user.username}")
+    bob.notify_keywords = ["デプロイ"]
+    await db.commit()
+    await post(db, alice, channel.id, "今夜デプロイします")
+
+    relay = relay_with_planner(app, test_settings)
+    while await relay.process_batch():
+        pass
+    assert [r.user_id for r in await deliveries(db)] == [bob.id]  # carol: default level, no hit
+
+
 async def test_reprocessing_the_event_plans_no_duplicate(
     app: FastAPI, db: AsyncSession, test_settings: Settings
 ) -> None:

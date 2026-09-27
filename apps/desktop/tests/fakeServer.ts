@@ -99,6 +99,8 @@ export class FakeServer {
   holdEvents = false;
   private held: { userIds: Set<string>; frame: EventFrame }[] = [];
   private byClientKey = new Map<string, MessageOut>();
+  /** M12g notification keywords per user; like the server, hits never appear in mentioned_user_ids. */
+  readonly keywords = new Map<string, string[]>();
 
   addUser(username: string, role: "admin" | "member" = "member"): UserPublic {
     const user: UserPublic = {
@@ -641,7 +643,7 @@ export class FakeServer {
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
         const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: [] };
+        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [] };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({

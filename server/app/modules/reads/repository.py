@@ -1,12 +1,13 @@
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
 from app.modules.messages.models import (  # read-only (ARCHITECTURE.md §5 exception)
     Message,
+    mentions_of,
     timeline_filter,
 )
 from app.modules.reads.models import ReadState
@@ -88,7 +89,7 @@ async def counts(
     db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, last_read_seq: int
 ) -> tuple[int, int]:
     """(unread, mentions) derived from seq ranges (DATA_MODEL.md: no counters to keep in sync)."""
-    mentioned = or_(Message.mentioned_user_ids.contains([user_id]), Message.mention_all.is_(True))
+    mentioned = mentions_of(Message, user_id)
     stmt = select(func.count(), func.count().filter(mentioned)).where(
         Message.channel_id == channel_id,
         Message.seq > last_read_seq,
