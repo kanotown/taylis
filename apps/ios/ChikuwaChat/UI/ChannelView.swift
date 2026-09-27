@@ -578,7 +578,7 @@ struct ComposerView: View {
     private func schedule(_ at: Date) {
         guard canSend, let controller else { return }
         guard at.timeIntervalSinceNow >= 60 else { controller.error = "1 分以上先の時刻を選んでください"; return }
-        let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
+        let body = Mentions.encode(trimmed, users: users, groups: Array(controller.store.groups.values))
         let ids = pending.map(\.id)
         Task {
             if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at) {
