@@ -345,7 +345,7 @@ CI / 監視の通知がチームチャットの主用途のひとつなので最
 
 | # | 機能 | 内容 | 状況 |
 | --- | --- | --- | --- |
-| M13a | 受信 Webhook | admin が「名前 + 投稿先チャンネル」で発行する URL (`<server>/hooks/<token>`) に `{"text": "..."}` を POST すると、その Webhook 専用の bot ユーザー (role = bot、ログイン不可) として投稿する。Slack 互換の `payload=` フォームも受ける。トークンごとにレートリミット。3 端末で bot の名前に BOT バッジ。Desktop の管理画面に「Webhook」タブ (発行 / チャンネル変更 / 無効化 / 削除) | 未着手 |
+| M13a | 受信 Webhook | `webhooks` (マイグレーション 0023、葉モジュール `webhooks`)。admin が「名前 + 投稿先チャンネル」で発行する URL (`<server>/api/v1/hooks/<token>`、トークンは SHA-256 だけ保存し発行応答に 1 回だけ) に `{"text": "..."}` (JSON か Slack 互換の `payload=` フォーム、任意の `id` で再送を冪等に) を POST すると、その Webhook 専用の bot ユーザー (role = bot、ログイン不可、投稿先チャンネルのメンバー) として通常の投稿経路で投稿する。トークンごと 60 回 / 分。停止 / 未知は 404。削除で bot は無効化、投稿は残る。3 端末で bot の名前に BOT バッジ。Desktop の管理画面に「Webhook」タブ (発行 / URL コピー / 名前・チャンネル変更 / 停止・再開 / 削除) | **実装済み (2026-09-27)**: サーバ pytest 176、Desktop vitest 114 (実サーバで目視: 発行 → POST → BOT 表示)、iOS XCTest 74、Android JUnit 75 + ビルド |
 | M13b | スラッシュコマンド | 入力欄の `/status`, `/dnd`, `/remind`, `/topic`, `/leave`, `/invite @name`, `/me` を既存 API に対応づける (クライアントのみ) | 未着手 |
 | M13c | メッセージの共有 | メッセージ操作の「別のチャンネルに共有」: 引用 + パーマリンクを付けて投稿 (既存 API のみ) | 未着手 |
 | M13d | アーカイブの解除 | `POST /channels/{id}/unarchive` (owner / admin)。3 端末のチャンネル情報 / 管理画面から | 未着手 |
