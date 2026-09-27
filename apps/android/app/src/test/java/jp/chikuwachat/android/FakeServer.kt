@@ -101,7 +101,9 @@ class FakeServer {
         }
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
-        override suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds) }
+        override suspend fun postMessage(
+            channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, alsoInChannel: Boolean,
+        ): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, alsoInChannel) }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
@@ -170,7 +172,7 @@ class FakeServer {
     fun readState(userId: String, channelId: String): ReadStateOut {
         val record = channels.getValue(channelId)
         val position = readPositions["$userId:$channelId"] ?: 0
-        val unread = record.messages.filter { it.seq > position && !it.deleted && it.parentId == null }
+        val unread = record.messages.filter { it.seq > position && !it.deleted && (it.parentId == null || it.alsoInChannel) }
         return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) })
     }
 
@@ -403,7 +405,10 @@ class FakeServer {
         return record
     }
 
-    fun post(channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean> {
+    fun post(
+        channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(),
+        alsoInChannel: Boolean = false,
+    ): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
         byClientKey["$senderId:$key"]?.let { existing ->
@@ -417,7 +422,8 @@ class FakeServer {
         record.channel = record.channel.copy(lastSeq = seq, lastMessageAt = now())
         val mentioned = Regex("<@([0-9a-f-]{36})>").findAll(body).map { it.groupValues[1] }.distinct().toList()
         val message = MessageOut(
-            id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
+            id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, alsoInChannel = alsoInChannel && parentId != null,
+            seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
             attachments = attachmentIds.map { AttachmentOut(it, "file-$it", "application/octet-stream", 1, status = "attached", createdAt = now()) },
         )
@@ -561,7 +567,7 @@ class FakeServer {
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
         val record = requireMember(channelId, userId)
         val channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
-        var rows = record.messages.filter { !it.deleted && it.parentId == null }
+        var rows = record.messages.filter { !it.deleted && (it.parentId == null || it.alsoInChannel) }
         if (beforeSeq != null) rows = rows.filter { it.seq < beforeSeq }
         rows = rows.sortedByDescending { it.seq }
         return HistoryOut(channelLastSeq, rows.take(limit), rows.size > limit)

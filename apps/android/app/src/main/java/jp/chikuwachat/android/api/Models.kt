@@ -182,6 +182,8 @@ data class MessageOut(
     val updatedSeq: Int,
     val clientMsgId: String? = null,
     val parentId: String? = null,
+    /** M15c: a reply shown in the channel timeline as well as in its thread. */
+    val alsoInChannel: Boolean = false,
     val type: String = "user",
     val body: String,
     val mentionedUserIds: List<String> = emptyList(),

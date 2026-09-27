@@ -43,7 +43,9 @@ interface SyncApi {
     suspend fun bootstrap(): BootstrapOut
     suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut
     suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut
-    suspend fun postMessage(channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList()): Pair<MessageOut, Boolean>
+    suspend fun postMessage(
+        channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList(), alsoInChannel: Boolean = false,
+    ): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
     /** M12a: every channel read to its end; returns the new states. */
@@ -519,7 +521,7 @@ class SyncEngine(
             store.updateChannel(message.channelId) { it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0) }
             return
         }
-        if (message.isReply) return // replies are not unread items (DATA_MODEL.md read_states)
+        if (message.isReply && !message.alsoInChannel) return // replies are not unread items unless also sent to the channel (M15c)
         store.updateChannel(message.channelId) { channel ->
             if (message.seq <= channel.lastReadSeq) channel
             else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id)) 1 else 0)
@@ -723,11 +725,14 @@ class SyncEngine(
 
     // --- §9 optimistic send -------------------------------------------------------------------
 
-    suspend fun send(channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList()) {
+    suspend fun send(
+        channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(), alsoInChannel: Boolean = false,
+    ) {
         val key = clientMsgId ?: options.newId()
         val createdAt = options.now()
-        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId, attachmentIds = attachmentIds))
-        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId))
+        val shared = alsoInChannel && parentId != null // M15c: only replies can also go to the channel
+        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId, attachmentIds = attachmentIds, alsoInChannel = shared))
+        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId, alsoInChannel = shared))
         flushOutbox()
     }
 
@@ -750,7 +755,7 @@ class SyncEngine(
             for (item in store.outbox.toList()) {
                 if (item.failed != null) continue
                 try {
-                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds)
+                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds, item.alsoInChannel)
                     store.upsertMessage(message)
                     store.removeOutbox(item.clientMsgId)
                 } catch (e: Exception) {
