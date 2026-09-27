@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Paperclip, Search, SearchX, User, X } from "lucide-react";
-import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from "react";
+import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FileItem, MessageOut, SearchHit } from "../api/types";
 import type { AppController } from "../state/app";
@@ -11,6 +11,7 @@ import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
+import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 
@@ -121,18 +122,23 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
   };
 
   const words = params.q.trim();
+  // On a phone the back arrow closes the results; the ✕ is for the desktop layout.
+  const back = useContext(BackToList);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-line px-4">
-        <span className="text-muted"><Search size={18} /></span>
+        <BackButton />
+        <span className="text-muted max-md:hidden"><Search size={18} /></span>
         <div className="min-w-0 flex-1 truncate">
           <strong className="text-[15px]">{words ? `「${words}」の検索結果` : "検索結果"}</strong>
           {tab === "messages" && loaded && <span className="ml-2 text-sm text-muted">{totalLabel(total, capped)}</span>}
         </div>
         {tab === "messages" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
-        <IconButton label="検索を閉じる (Esc)" onClick={onClose}>
-          <X size={18} />
-        </IconButton>
+        {!back && (
+          <IconButton label="検索を閉じる (Esc)" onClick={onClose}>
+            <X size={18} />
+          </IconButton>
+        )}
       </header>
       <div className="flex shrink-0 items-center gap-4 border-b border-line px-4">
         <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>メッセージ</TabButton>

@@ -20,6 +20,7 @@ import { DraftsView } from "./DraftsView";
 import { FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
+import { BackButton, BackToList, useCompact } from "./compact";
 import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
@@ -73,6 +74,24 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [paneWidth, setPaneWidth] = useState(readPaneWidth);
+  // Phones: one column at a time, the conversation list first; a conversation or a view covers it until 「戻る」.
+  const compact = useCompact();
+  const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
+  // The sidebar's views toggle back to the conversation on a desktop; on a phone a tap always opens them.
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+  // A desktop window narrowed past the breakpoint keeps showing what was open, not the list.
+  const wasCompact = useRef(compact);
+  useEffect(() => {
+    if (compact && !wasCompact.current) setPane("main");
+    wasCompact.current = compact;
+  }, [compact]);
+  const back = compact
+    ? () => {
+        controller.setEditing(null);
+        setPane("list");
+      }
+    : null;
 
   // Drag the strip between the sidebar and the conversation to resize; double-click resets.
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -143,6 +162,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   useEffect(() => {
     const focus = controller.messageFocus;
     if (!focus || (focus.channelId === currentId && view === "channel")) return;
+    setPane("main");
     setView("channel");
     setSearchOpen(false);
     setPinsOpen(false);
@@ -175,6 +195,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setView("channel");
     setSwitcher(false);
     setBackToSearch(false);
+    setPane("main");
   };
 
   const openSaved = () => {
@@ -185,7 +206,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setBackToSearch(false);
     setPinsOpen(false);
-    setView((v) => (v === "saved" ? "channel" : "saved"));
+    setPane("main");
+    setView((v) => (v === "saved" && !compactRef.current ? "channel" : "saved"));
   };
 
   /** A card in the pins pane / saved view: show the message in its conversation. */
@@ -214,6 +236,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPinsOpen(false);
     setBackToSearch(false);
     setView("search");
+    setPane("main");
   };
 
   /** A result: its conversation (or thread) around the message, with 「検索結果に戻る」. */
@@ -239,6 +262,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPinsOpen(false);
     setFilesChannelId(channelId);
     setView("files");
+    setPane("main");
   };
 
   const openView = (next: "mentions" | "drafts" | "reminders") => {
@@ -249,7 +273,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setBackToSearch(false);
     setPinsOpen(false);
-    setView((v) => (v === next ? "channel" : next));
+    setPane("main");
+    setView((v) => (v === next && !compactRef.current ? "channel" : next));
   };
 
   const openThreads = () => {
@@ -259,7 +284,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadChannelId(null);
     setSearchOpen(false);
     setBackToSearch(false);
-    setView((v) => (v === "threads" ? "channel" : "threads"));
+    setPane("main");
+    setView((v) => (v === "threads" && !compactRef.current ? "channel" : "threads"));
   };
 
   const openThreadEntry = (entry: ThreadEntry) => {
@@ -358,6 +384,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const channel = await controller.api.joinChannel(id);
       store.upsertChannel(channel, { isMember: true });
       setCurrentId(id);
+      setPane("main");
     } catch (error) {
       controller.setError(error);
     }
@@ -377,285 +404,273 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   const dmOther = current && isDmChannel(current) ? (current.dm_user_ids ?? []).filter((id) => id !== store.me?.id) : [];
 
-  return (
-    <div
-      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
-      style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
-    >
-      {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
-          row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
-      <div
-        data-tauri-drag-region
-        className="flex h-10 min-w-0 items-center bg-sidebar px-2"
-        style={overlayTitleBar() && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
-      >
-        <WorkspaceMenu controller={controller} />
-      </div>
-      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center bg-sidebar px-3">
-        <SearchBar
+  const searchBar = (
+    <SearchBar
+      controller={controller}
+      current={view === "search" || backToSearch ? search : null}
+      open={searchOpen}
+      onOpenChange={setSearchOpen}
+      onSearch={runSearch}
+      recent={recent}
+      onRecentChange={setRecent}
+      recentKey={recentStorageKey}
+      placeholder={`${controller.workspaceName} を検索`}
+    />
+  );
+  const sidebar = (
+    <Sidebar
+      controller={controller}
+      channels={channels}
+      currentId={currentId}
+      unreadOnly={unreadOnly}
+      onToggleUnreadOnly={toggleUnreadOnly}
+      onOpen={open}
+      onJoin={(id) => void join(id)}
+      onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
+      onNewChannel={() => setDialog("channel")}
+      onSettings={() => setDialog("settings")}
+      onThreads={openThreads}
+      threadsActive={view === "threads"}
+      onSaved={openSaved}
+      savedActive={view === "saved"}
+      onAdmin={() => setDialog("admin")}
+      onBrowse={() => setDialog("browse")}
+      onMentions={() => openView("mentions")}
+      mentionsActive={view === "mentions"}
+      onDrafts={() => openView("drafts")}
+      draftsActive={view === "drafts"}
+      onFiles={() => (view === "files" && !compact ? setView("channel") : openFiles(null))}
+      filesActive={view === "files"}
+      onReadAll={() => void controller.markAllRead()}
+      onReminders={() => openView("reminders")}
+      remindersActive={view === "reminders"}
+    />
+  );
+  // The channel's own ⋯ items (on a phone they follow the conversation items in the same menu).
+  const channelMenuItems = current ? (
+    <>
+      {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
+      {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
+      <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
+      {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
+      {canManage && !current.archived && (
+        <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
+          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : "投稿をオーナーと管理者に限る"}
+        </MenuItem>
+      )}
+      {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}
+      {controller.isAdmin && current.type === "private" && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
+      <MenuSeparator />
+      <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
+      {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
+      {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>アーカイブを解除</MenuItem>}
+    </>
+  ) : null;
+  const centre = (
+    <>
+      {status !== "online" && status !== "idle" && (
+        <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
+          {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
+        </div>
+      )}
+      {view === "search" && search ? (
+        <SearchView
           controller={controller}
-          current={view === "search" || backToSearch ? search : null}
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          onSearch={runSearch}
-          recent={recent}
-          onRecentChange={setRecent}
-          recentKey={recentStorageKey}
-          placeholder={`${controller.workspaceName} を検索`}
-        />
-      </div>
-      <Sidebar
-        controller={controller}
-        channels={channels}
-        currentId={currentId}
-        unreadOnly={unreadOnly}
-        onToggleUnreadOnly={toggleUnreadOnly}
-        onOpen={open}
-        onJoin={(id) => void join(id)}
-        onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
-        onNewChannel={() => setDialog("channel")}
-        onSettings={() => setDialog("settings")}
-        onThreads={openThreads}
-        threadsActive={view === "threads"}
-        onSaved={openSaved}
-        savedActive={view === "saved"}
-        onAdmin={() => setDialog("admin")}
-        onBrowse={() => setDialog("browse")}
-        onMentions={() => openView("mentions")}
-        mentionsActive={view === "mentions"}
-        onDrafts={() => openView("drafts")}
-        draftsActive={view === "drafts"}
-        onFiles={() => (view === "files" ? setView("channel") : openFiles(null))}
-        filesActive={view === "files"}
-        onReadAll={() => void controller.markAllRead()}
-        onReminders={() => openView("reminders")}
-        remindersActive={view === "reminders"}
-      />
-      {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
-      <main className="relative flex min-h-0 min-w-0 flex-col">
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="サイドバーの幅"
-          title="ドラッグで幅を変更、ダブルクリックで元に戻す"
-          onPointerDown={startResize}
-          onDoubleClick={() => {
-            setSidebarWidth(SIDEBAR_DEFAULT);
-            writeSidebarWidth(SIDEBAR_DEFAULT);
+          params={search}
+          tab={searchTab}
+          onTabChange={setSearchTab}
+          onChange={setSearch}
+          onOpen={openSearchResult}
+          onClose={() => {
+            setView("channel");
+            if (compact) setPane("list");
           }}
-          className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
+          snapshot={searchSnapshot}
         />
-        {status !== "online" && status !== "idle" && (
-          <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
-            {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
-          </div>
-        )}
-        {view === "search" && search ? (
-          <SearchView
-            controller={controller}
-            params={search}
-            tab={searchTab}
-            onTabChange={setSearchTab}
-            onChange={setSearch}
-            onOpen={openSearchResult}
-            onClose={() => setView("channel")}
-            snapshot={searchSnapshot}
-          />
-        ) : view === "threads" ? (
-          <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
-        ) : view === "saved" ? (
-          <SavedView controller={controller} onOpen={revealFromList} />
-        ) : view === "mentions" ? (
-          <MentionsView controller={controller} onOpen={revealFromList} />
-        ) : view === "reminders" ? (
-          <RemindersView controller={controller} onOpen={(row) => void controller.openPermalink(row.message_id)} />
-        ) : view === "files" ? (
-          <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
-        ) : view === "drafts" ? (
-          <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
-        ) : current ? (
-          <>
-            {backToSearch && search && (
-              <button
-                type="button"
-                onClick={() => {
-                  setBackToSearch(false);
-                  setView("search");
-                }}
-                className="flex shrink-0 items-center gap-1.5 border-b border-line bg-accent-soft/70 px-4 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent-soft"
-              >
-                <ArrowLeft size={13} />
-                <span className="shrink-0">検索結果に戻る</span>
-                <span className="min-w-0 truncate font-normal opacity-80">{describeSearch(controller, search)}</span>
-              </button>
-            )}
-            <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="text-muted">
-                  {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
+      ) : view === "threads" ? (
+        <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
+      ) : view === "saved" ? (
+        <SavedView controller={controller} onOpen={revealFromList} />
+      ) : view === "mentions" ? (
+        <MentionsView controller={controller} onOpen={revealFromList} />
+      ) : view === "reminders" ? (
+        <RemindersView controller={controller} onOpen={(row) => void controller.openPermalink(row.message_id)} />
+      ) : view === "files" ? (
+        <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
+      ) : view === "drafts" ? (
+        <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
+      ) : current ? (
+        <>
+          {backToSearch && search && (
+            <button
+              type="button"
+              onClick={() => {
+                setBackToSearch(false);
+                setView("search");
+              }}
+              className="flex shrink-0 items-center gap-1.5 border-b border-line bg-accent-soft/70 px-4 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent-soft"
+            >
+              <ArrowLeft size={13} />
+              <span className="shrink-0">検索結果に戻る</span>
+              <span className="min-w-0 truncate font-normal opacity-80">{describeSearch(controller, search)}</span>
+            </button>
+          )}
+          <header className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:gap-2 max-md:pr-2">
+            <BackButton />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="text-muted">
+                {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
+              </span>
+              <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+              {current.archived && <Badge>アーカイブ済み</Badge>}
+              {isChannel && current.posting_policy === "owners" && (
+                <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
+                  <Megaphone size={15} />
                 </span>
-                <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
-                {current.archived && <Badge>アーカイブ済み</Badge>}
-                {isChannel && current.posting_policy === "owners" && (
-                  <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
-                    <Megaphone size={15} />
-                  </span>
-                )}
-                {isChannel && current.isMember && !current.archived && (
-                  <button
-                    type="button"
-                    className={cn("min-w-0 truncate text-sm hover:underline", current.topic ? "text-muted" : "text-muted/70")}
-                    onClick={() => setDialog("topic")}
-                    title="トピックを編集"
+              )}
+              {isChannel && current.isMember && !current.archived && (
+                <button
+                  type="button"
+                  className={cn("min-w-0 truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
+                  onClick={() => setDialog("topic")}
+                  title="トピックを編集"
+                >
+                  {current.topic ? current.topic : "トピックを追加"}
+                </button>
+              )}
+              {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{dmOther.length + 1} 人</span>}
+              {!isChannel && dmOther.length === 1 && dmOther[0] && (
+                <span className="flex items-center gap-1.5 text-xs text-muted" title="プレゼンス">
+                  <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
+                  {presenceLabel(store.presenceOf(dmOther[0]))}
+                  {activeStatus(store.users.get(dmOther[0])) && (
+                    <span className="ml-1 truncate">
+                      {activeStatus(store.users.get(dmOther[0]))!.emoji} {activeStatus(store.users.get(dmOther[0]))!.text}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {/* A phone keeps the bell and the ⋯ menu; the rest of these move into that menu. */}
+              {current.isMember && !compact && (
+                <>
+                  <IconButton
+                    label={store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
+                    className={cn(store.isFavorite(current.id) && "text-warning")}
+                    onClick={() => void controller.toggleFavorite(current.id)}
                   >
-                    {current.topic ? current.topic : "トピックを追加"}
-                  </button>
-                )}
-                {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{dmOther.length + 1} 人</span>}
-                {!isChannel && dmOther.length === 1 && dmOther[0] && (
-                  <span className="flex items-center gap-1.5 text-xs text-muted" title="プレゼンス">
-                    <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
-                    {presenceLabel(store.presenceOf(dmOther[0]))}
-                    {activeStatus(store.users.get(dmOther[0])) && (
-                      <span className="ml-1 truncate">
-                        {activeStatus(store.users.get(dmOther[0]))!.emoji} {activeStatus(store.users.get(dmOther[0]))!.text}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-0.5">
-                {current.isMember && (
-                  <>
-                    <IconButton
-                      label={store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
-                      className={cn(store.isFavorite(current.id) && "text-warning")}
-                      onClick={() => void controller.toggleFavorite(current.id)}
-                    >
-                      <Star size={18} className={cn(store.isFavorite(current.id) && "fill-current")} />
-                    </IconButton>
-                    <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
-                      <Pin size={18} />
-                    </IconButton>
-                    <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
-                      <Files size={18} />
-                    </IconButton>
-                  </>
-                )}
-                {isChannel && (
-                  <IconButton label="メンバー" onClick={() => setDialog("members")}>
-                    <Users size={18} />
+                    <Star size={18} className={cn(store.isFavorite(current.id) && "fill-current")} />
                   </IconButton>
-                )}
-                {current.isMember && (
-                  <Menu>
-                    <MenuTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label="通知設定"
-                        title="通知設定"
-                        className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", (level === "none" || muteLabel) ? "text-muted" : "text-ink")}
-                      >
-                        {level === "none" || muteLabel ? <BellOff size={18} /> : <Bell size={18} />}
-                      </button>
-                    </MenuTrigger>
-                    <MenuContent>
-                      <MenuLabel>通知</MenuLabel>
-                      <MenuRadioGroup value={level} onValueChange={(value) => void controller.setNotification(current.id, value as NotificationLevel, null)}>
-                        <MenuRadioItem value="all">すべてのメッセージ</MenuRadioItem>
-                        <MenuRadioItem value="mentions">メンションのみ</MenuRadioItem>
-                        <MenuRadioItem value="none">通知しない</MenuRadioItem>
-                      </MenuRadioGroup>
-                      <MenuSeparator />
-                      {muteLabel ? (
-                        <MenuItem onSelect={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</MenuItem>
-                      ) : (
-                        <MenuItem onSelect={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
-                      )}
-                    </MenuContent>
-                  </Menu>
-                )}
-                {isChannel && current.isMember && (
-                  <Menu>
-                    <MenuTrigger asChild>
-                      <button type="button" aria-label="チャンネルの操作" title="チャンネルの操作" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
-                        <MoreHorizontal size={18} />
-                      </button>
-                    </MenuTrigger>
-                    <MenuContent>
-                      <MenuLabel>#{current.name}</MenuLabel>
-                      {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
-                      {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
-                      <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
-                      {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
-                      {canManage && !current.archived && (
-                        <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
-                          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : "投稿をオーナーと管理者に限る"}
+                  <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
+                    <Pin size={18} />
+                  </IconButton>
+                  <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
+                    <Files size={18} />
+                  </IconButton>
+                </>
+              )}
+              {isChannel && !compact && (
+                <IconButton label="メンバー" onClick={() => setDialog("members")}>
+                  <Users size={18} />
+                </IconButton>
+              )}
+              {current.isMember && (
+                <Menu>
+                  <MenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="通知設定"
+                      title="通知設定"
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", (level === "none" || muteLabel) ? "text-muted" : "text-ink")}
+                    >
+                      {level === "none" || muteLabel ? <BellOff size={18} /> : <Bell size={18} />}
+                    </button>
+                  </MenuTrigger>
+                  <MenuContent>
+                    <MenuLabel>通知</MenuLabel>
+                    <MenuRadioGroup value={level} onValueChange={(value) => void controller.setNotification(current.id, value as NotificationLevel, null)}>
+                      <MenuRadioItem value="all">すべてのメッセージ</MenuRadioItem>
+                      <MenuRadioItem value="mentions">メンションのみ</MenuRadioItem>
+                      <MenuRadioItem value="none">通知しない</MenuRadioItem>
+                    </MenuRadioGroup>
+                    <MenuSeparator />
+                    {muteLabel ? (
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</MenuItem>
+                    ) : (
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
+                    )}
+                  </MenuContent>
+                </Menu>
+              )}
+              {current.isMember && (isChannel || compact) && (
+                <Menu>
+                  <MenuTrigger asChild>
+                    <button type="button" aria-label={isChannel ? "チャンネルの操作" : "会話の操作"} title={isChannel ? "チャンネルの操作" : "会話の操作"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+                      <MoreHorizontal size={18} />
+                    </button>
+                  </MenuTrigger>
+                  <MenuContent align="end">
+                    <MenuLabel>{isChannel ? `#${current.name}` : channelTitle(current, controller)}</MenuLabel>
+                    {compact && (
+                      <>
+                        <MenuItem onSelect={() => void controller.toggleFavorite(current.id)}>
+                          {store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
                         </MenuItem>
-                      )}
-                      {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}
-                      {controller.isAdmin && current.type === "private" && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
-                      <MenuSeparator />
-                      <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
-                      {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
-                      {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>アーカイブを解除</MenuItem>}
-                    </MenuContent>
-                  </Menu>
-                )}
+                        <MenuItem onSelect={() => setPinsOpen(true)}>ピン留め</MenuItem>
+                        <MenuItem onSelect={() => openFiles(current.id)}>ファイル</MenuItem>
+                        {isChannel && <MenuSeparator />}
+                      </>
+                    )}
+                    {isChannel && channelMenuItems}
+                  </MenuContent>
+                </Menu>
+              )}
+              {!compact && (
                 <IconButton label={`キーボードショートカット (${modKey()}+/)`} onClick={() => setDialog("shortcuts")}>
                   <Keyboard size={18} />
                 </IconButton>
-                {!current.isMember && (
-                  <Button size="sm" className="ml-2" onClick={() => void join(current.id)}>
-                    参加する
-                  </Button>
-                )}
-              </div>
-            </header>
-            <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
-            <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
-            {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
-            {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
-              <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
-            )}
-            {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
-              <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
-                <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
-              </div>
-            )}
-            {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
-          </>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-              <MessagesSquare size={26} />
-            </span>
-            <strong className="text-base">チャンネルを選択してください</strong>
-            <span className="text-sm text-muted">左のリストから選ぶか、{modKey()}+K で移動できます。</span>
-          </div>
-        )}
-      </main>
-      {(pinsOpen && current && view === "channel") || (threadId && threadChannel) ? (
-        <div className="relative flex min-h-0" style={{ width: paneWidth }}>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="パネルの幅"
-            title="ドラッグで幅を変更、ダブルクリックで元に戻す"
-            onPointerDown={startPaneResize}
-            onDoubleClick={() => {
-              setPaneWidth(PANE_DEFAULT);
-              writePaneWidth(PANE_DEFAULT);
-            }}
-            className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
-          />
-          {pinsOpen && current && view === "channel" ? (
-            <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
-          ) : threadId && threadChannel ? (
-            <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
-          ) : null}
+              )}
+              {!current.isMember && (
+                <Button size="sm" className="ml-2" onClick={() => void join(current.id)}>
+                  参加する
+                </Button>
+              )}
+            </div>
+          </header>
+          <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
+          <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+          {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
+          {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
+            <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
+          )}
+          {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
+            <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
+              <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
+            </div>
+          )}
+          {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
+        </>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <MessagesSquare size={26} />
+          </span>
+          <strong className="text-base">チャンネルを選択してください</strong>
+          <span className="text-sm text-muted">左のリストから選ぶか、{modKey()}+K で移動できます。</span>
         </div>
-      ) : null}
+      )}
+    </>
+  );
+  // The thread or the pinned messages: a resizable column on the right, the whole screen on a phone.
+  const sidePane =
+    pinsOpen && current && view === "channel" ? (
+      <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
+    ) : threadId && threadChannel ? (
+      <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+    ) : null;
+  const overlays = (
+    <>
       <Toast controller={controller} />
       <NoticeToast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
@@ -692,13 +707,89 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <p className="mt-3 text-sm text-muted">{current.type === "private" ? "非公開チャンネルなので、戻るには誰かに追加してもらう必要があります。" : "公開チャンネルなので、いつでも再参加できます。"}</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDialog(null)}>キャンセル</Button>
-            <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) setCurrentId(null); }); }}>
+            <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) { setCurrentId(null); setPane("list"); } }); }}>
               退出する
             </Button>
           </div>
         </Modal>
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+    </>
+  );
+
+  if (compact) {
+    return (
+      <BackToList.Provider value={back}>
+        <div className="relative h-full overflow-hidden bg-canvas text-ink">
+          {/* The list stays mounted under a centre view, so its scroll position survives the round trip. */}
+          <div className={cn("absolute inset-0 flex flex-col bg-sidebar", pane === "main" && "invisible")}>
+            <div className="flex h-11 shrink-0 items-center px-2">
+              <WorkspaceMenu controller={controller} />
+            </div>
+            <div className="shrink-0 px-3 pb-2">{searchBar}</div>
+            <div className="min-h-0 flex-1">{sidebar}</div>
+          </div>
+          {/* Mounted only while on screen: a hidden timeline would mark messages read. */}
+          {pane === "main" && <main className="absolute inset-0 flex min-h-0 flex-col bg-canvas">{centre}</main>}
+          {pane === "main" && sidePane && <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">{sidePane}</div>}
+          {overlays}
+        </div>
+      </BackToList.Provider>
+    );
+  }
+
+  return (
+    <div
+      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
+      style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+    >
+      {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
+          row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
+      <div
+        data-tauri-drag-region
+        className="flex h-10 min-w-0 items-center bg-sidebar px-2"
+        style={overlayTitleBar() && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
+      >
+        <WorkspaceMenu controller={controller} />
+      </div>
+      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center bg-sidebar px-3">
+        {searchBar}
+      </div>
+      {sidebar}
+      {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}
+      <main className="relative flex min-h-0 min-w-0 flex-col">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="サイドバーの幅"
+          title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+          onPointerDown={startResize}
+          onDoubleClick={() => {
+            setSidebarWidth(SIDEBAR_DEFAULT);
+            writeSidebarWidth(SIDEBAR_DEFAULT);
+          }}
+          className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
+        />
+        {centre}
+      </main>
+      {sidePane ? (
+        <div className="relative flex min-h-0" style={{ width: paneWidth }}>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="パネルの幅"
+            title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+            onPointerDown={startPaneResize}
+            onDoubleClick={() => {
+              setPaneWidth(PANE_DEFAULT);
+              writePaneWidth(PANE_DEFAULT);
+            }}
+            className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
+          />
+          {sidePane}
+        </div>
+      ) : null}
+      {overlays}
     </div>
   );
 }

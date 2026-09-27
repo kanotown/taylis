@@ -3,6 +3,7 @@ import { AlarmClock, Check, X } from "lucide-react";
 import type { ReminderOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { channelTitle } from "./MainScreen";
+import { BackButton } from "./compact";
 import { Button } from "./primitives";
 import { scheduleLabel } from "./schedule";
 
@@ -40,9 +41,10 @@ export function RemindersView({ controller, onOpen }: { controller: AppControlle
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <span className="text-muted"><AlarmClock size={18} /></span>
-        <strong className="text-[15px]">リマインダー</strong>
-        <span className="text-xs text-muted">{rows.length} 件</span>
+        <BackButton />
+        <span className="text-muted max-md:hidden"><AlarmClock size={18} /></span>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">リマインダー</strong>
+        <span className="min-w-0 truncate text-xs text-muted">{rows.length} 件</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {rows.length === 0 ? (
