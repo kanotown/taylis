@@ -374,6 +374,11 @@ final class ApiClient: SyncApi {
         return (data, status)
     }
 
+    /// M14c: the bodies earlier edits replaced, oldest first (author only; 403 for others).
+    func messageRevisions(_ messageId: String) async throws -> [MessageRevisionOut] {
+        try await request("GET", "/api/v1/messages/\(messageId)/revisions")
+    }
+
     func messageContext(_ messageId: String) async throws -> [MessageOut] {
         try await request("GET", "/api/v1/messages/\(messageId)/context")
     }

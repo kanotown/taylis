@@ -139,6 +139,13 @@ struct PollOut: Codable, Equatable {
     var votes: [[String]] = []
 }
 
+/// A body an edit replaced (M14c); the current body is the message's own.
+struct MessageRevisionOut: Codable, Equatable {
+    let body: String
+    let writtenAt: String
+    let replacedAt: String
+}
+
 struct ReactionOut: Codable, Equatable {
     let emoji: String
     let count: Int

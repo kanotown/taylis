@@ -103,3 +103,17 @@ class PollVote(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
+
+
+class MessageRevision(Base):
+    """A body an edit replaced (M14c). Visible to the author only; purged with the message."""
+
+    __tablename__ = "message_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"))
+    body: Mapped[str] = mapped_column(Text)
+    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # when it was posted
+    replaced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # when the edit came
+
+    __table_args__ = (Index("message_revisions_message_idx", "message_id", "replaced_at"),)

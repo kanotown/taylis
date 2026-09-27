@@ -32,6 +32,7 @@ from app.modules.messages.schemas import (
     MessageCreate,
     MessageEdit,
     MessageOut,
+    MessageRevisionOut,
     thread_of,
     to_message_out,
 )
@@ -250,6 +251,11 @@ async def edit_message(
     if message.sender_id != actor.id:
         raise forbidden("not_message_owner", "Only the author can edit a message")
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    now = utcnow()
+    if data.body != message.body:  # M14c: keep the replaced body for the author's history
+        await repo.add_revision(
+            db, message.id, message.body, message.edited_at or message.created_at, now
+        )
     message.body = data.body
     message.mentioned_user_ids, message.mention_all = extract_mentions(data.body)
     message.mentioned_user_ids = await _with_group_members(
@@ -258,7 +264,7 @@ async def edit_message(
     message.mentioned_user_ids = await _with_keyword_hits(
         db, message.channel_id, message.sender_id, data.body, message.mentioned_user_ids
     )
-    message.edited_at = utcnow()
+    message.edited_at = now
     message.updated_seq = seq
     await db.flush()
     out = await message_out(db, message)
@@ -288,6 +294,7 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message.pinned_by = None
     message.updated_seq = seq
     await db.flush()
+    await repo.delete_revisions(db, message.id)  # M14c: a deleted message keeps no old text
     await attachments.mark_deleted_in_tx(db, message.id)
     parent_thread = None
     if message.parent_id is not None:
@@ -353,6 +360,20 @@ async def list_pins(
 ) -> list[MessageOut]:
     await channels.require_member(db, actor.id, channel_id)
     return await messages_out(db, await repo.list_pinned(db, channel_id, limit=limit))
+
+
+async def list_revisions(
+    db: AsyncSession, actor: User, message_id: uuid.UUID
+) -> list[MessageRevisionOut]:
+    """M14c: earlier bodies, oldest first. Only the author sees them (an edit may have removed
+    something that was never meant to stay, e.g. a pasted password)."""
+    message = await get_message(db, actor, message_id)
+    if message.sender_id != actor.id:
+        raise forbidden("not_message_owner", "Only the author can see the edit history")
+    return [
+        MessageRevisionOut(body=r.body, written_at=r.written_at, replaced_at=r.replaced_at)
+        for r in await repo.revisions_for(db, message.id)
+    ]
 
 
 async def _bump_and_announce(db: AsyncSession, message: Message, change: str) -> MessageOut:

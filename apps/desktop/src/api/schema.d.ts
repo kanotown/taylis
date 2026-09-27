@@ -1176,6 +1176,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Revisions
+         * @description M14c: the bodies earlier edits replaced, oldest first (author only).
+         */
+        get: operations["list_revisions_api_v1_messages__message_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/thread": {
         parameters: {
             query?: never;
@@ -2301,6 +2321,24 @@ export interface components {
             type: string;
             /** Updated Seq */
             updated_seq: number;
+        };
+        /**
+         * MessageRevisionOut
+         * @description An earlier body of a message (M14c), oldest first; the current body is the message's.
+         */
+        MessageRevisionOut: {
+            /** Body */
+            body: string;
+            /**
+             * Replaced At
+             * Format: date-time
+             */
+            replaced_at: string;
+            /**
+             * Written At
+             * Format: date-time
+             */
+            written_at: string;
         };
         /** NotificationPreferenceIn */
         NotificationPreferenceIn: {
@@ -5397,6 +5435,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_api_v1_messages__message_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageRevisionOut"][];
                 };
             };
             /** @description Validation Error */

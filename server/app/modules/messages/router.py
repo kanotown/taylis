@@ -14,6 +14,7 @@ from app.modules.messages.schemas import (
     MessageCreate,
     MessageEdit,
     MessageOut,
+    MessageRevisionOut,
 )
 
 router = APIRouter(tags=["messages"])
@@ -67,6 +68,12 @@ async def message_context(
     message_id: UUID, user: CurrentUser, db: Db, limit: int = Query(default=25, ge=1, le=100)
 ) -> list[MessageOut]:
     return await service.message_context(db, user, message_id, limit)
+
+
+@router.get("/messages/{message_id}/revisions", response_model=list[MessageRevisionOut])
+async def list_revisions(message_id: UUID, user: CurrentUser, db: Db) -> list[MessageRevisionOut]:
+    """M14c: the bodies earlier edits replaced, oldest first (author only)."""
+    return await service.list_revisions(db, user, message_id)
 
 
 @router.patch("/messages/{message_id}", response_model=MessageOut)

@@ -351,6 +351,7 @@ struct MessageRow: View {
     @State private var showingProfile = false
     @State private var pickingReaction = false
     @State private var sharing = false
+    @State private var showingRevisions = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -384,7 +385,14 @@ struct MessageRow: View {
                         }
                         StatusEmojiView(user: store.users[message.senderId])
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
-                        if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }
+                        if message.editedAt != nil {
+                            if isMine {
+                                Button { showingRevisions = true } label: { Text("(編集済み)").font(.caption).underline() }
+                                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                            } else {
+                                Text("(編集済み)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 } else if showTime || message.editedAt != nil {
                     Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
@@ -478,6 +486,7 @@ struct MessageRow: View {
             EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
         }
         .sheet(isPresented: $sharing) { ShareMessageSheet(controller: controller, message: message) }
+        .sheet(isPresented: $showingRevisions) { RevisionsView(controller: controller, message: message) }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet(controller: controller, userId: message.senderId) { id in
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])

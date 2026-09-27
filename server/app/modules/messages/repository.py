@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.channels.models import Channel, ChannelMember
-from app.modules.messages.models import Message, PollVote, Reaction
+from app.modules.messages.models import Message, MessageRevision, PollVote, Reaction
 
 
 async def allocate_seq(
@@ -235,3 +235,34 @@ async def user_votes(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID
         PollVote.message_id == message_id, PollVote.user_id == user_id
     )
     return set((await db.execute(stmt)).scalars().all())
+
+
+# --- edit history (M14c) ----------------------------------------------------------------------
+
+
+async def add_revision(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+    body: str,
+    written_at: datetime,
+    replaced_at: datetime,
+) -> None:
+    db.add(
+        MessageRevision(
+            message_id=message_id, body=body, written_at=written_at, replaced_at=replaced_at
+        )
+    )
+    await db.flush()
+
+
+async def revisions_for(db: AsyncSession, message_id: uuid.UUID) -> list[MessageRevision]:
+    stmt = (
+        select(MessageRevision)
+        .where(MessageRevision.message_id == message_id)
+        .order_by(MessageRevision.replaced_at.asc(), MessageRevision.id.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def delete_revisions(db: AsyncSession, message_id: uuid.UUID) -> None:
+    await db.execute(delete(MessageRevision).where(MessageRevision.message_id == message_id))

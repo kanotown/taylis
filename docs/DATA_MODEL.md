@@ -530,6 +530,24 @@ CREATE INDEX messages_pinned_idx               ON messages (channel_id, pinned_a
 | リアクション追加 / 削除 | 1 | `reactions` 行、`updated_seq = 新 seq` | `message.updated (change=reactions)` |
 | スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
 
+### message_revisions (編集履歴、M14c)
+
+```sql
+CREATE TABLE message_revisions (
+  id           uuid PRIMARY KEY,
+  message_id   uuid NOT NULL REFERENCES messages(id),
+  body         text NOT NULL,          -- 編集で置き換えられた本文
+  written_at   timestamptz NOT NULL,   -- その本文が書かれた時刻 (created_at か直前の edited_at)
+  replaced_at  timestamptz NOT NULL    -- 置き換えた編集の時刻
+);
+CREATE INDEX message_revisions_message_idx ON message_revisions (message_id, replaced_at);
+```
+
+- `PATCH /messages/{id}` で本文が変わったときだけ 1 行足す (同じ本文の編集は記録しない)。
+- `GET /messages/{id}/revisions` は古い順。**投稿者本人だけ** (他のメンバーは `403 not_message_owner`)。
+  うっかり貼ったパスワードなどを編集で消した場合に、他人から読めてはいけないため (Mattermost と同じ扱い)。
+- メッセージの削除で履歴も消す。検索・エクスポート・プッシュは現在の本文だけを扱う。
+
 ### 投票 (polls、M14b)
 
 `messages.poll jsonb` に `{ "question", "options": [..], "multiple", "closed_at" }` を持ち、票は別テーブルに置く。
