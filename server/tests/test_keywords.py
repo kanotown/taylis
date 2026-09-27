@@ -7,6 +7,7 @@ from typing import Any, cast
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.messages.models import Message
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -53,10 +54,13 @@ async def test_keywords_count_as_mentions_for_members_only(
         await client.patch("/api/v1/users/me", json={"notify_keywords": ["ボブ"]})
     ).status_code == 200
 
-    # Alice's message mentions bob by keyword (case-insensitive), not carol (not a member).
+    # Alice's message mentions bob by keyword (case-insensitive), not carol (not a member). The hit
+    # is private: every member receives the message, so it never shows who has which keyword.
     as_user(alice)
     hit = await _post(client, general["id"], "ボブさん、DEPLOY 手順を確認してください")
-    assert hit["mentioned_user_ids"] == [str(bob.id)]
+    assert hit["mentioned_user_ids"] == []
+    row = await db.get(Message, uuid.UUID(hit["id"]))
+    assert row is not None and row.keyword_user_ids == [bob.id]
     miss = await _post(client, general["id"], "関係ない話")
     assert miss["mentioned_user_ids"] == []
     as_user(bob)
@@ -73,10 +77,17 @@ async def test_keywords_count_as_mentions_for_members_only(
         f"/api/v1/messages/{hit['id']}", json={"body": "手順を確認してください"}
     )
     assert edited.status_code == 200 and edited.json()["mentioned_user_ids"] == []
+    await db.refresh(row)
+    assert row.keyword_user_ids == []
+    as_user(bob)
+    assert await _mention_count(client, general["id"]) == 0
+    as_user(alice)
     both = await client.patch(
         f"/api/v1/messages/{hit['id']}", json={"body": f"<@{bob.id}> deploy お願いします"}
     )
     assert both.json()["mentioned_user_ids"] == [str(bob.id)]
+    await db.refresh(row)
+    assert row.keyword_user_ids == []  # a mention by name is public anyway
     as_user(bob)
     cleared = await client.patch("/api/v1/users/me", json={"notify_keywords": []})
     assert cleared.json()["notify_keywords"] == []

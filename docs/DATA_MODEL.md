@@ -229,7 +229,7 @@ CREATE TABLE read_states (
 
 ```sql
 SELECT count(*)                                                              AS unread_count,
-       count(*) FILTER (WHERE $me = ANY (mentioned_user_ids) OR mention_all)  AS mention_count
+       count(*) FILTER (WHERE $me = ANY (mentioned_user_ids) OR $me = ANY (keyword_user_ids) OR mention_all)  AS mention_count
 FROM messages m
 WHERE m.channel_id = $channel AND m.seq > $last_read_seq
   AND m.sender_id <> $me
@@ -564,7 +564,8 @@ CREATE TABLE messages (
   client_msg_id       uuid,                                -- クライアント生成 idempotency key
   type                text NOT NULL DEFAULT 'user',        -- 'user' | 'system'
   body                text NOT NULL DEFAULT '',            -- 最大 20,000 文字。削除時は ''
-  mentioned_user_ids  uuid[] NOT NULL DEFAULT '{}',        -- 本文の <@uuid> から抽出
+  mentioned_user_ids  uuid[] NOT NULL DEFAULT '{}',        -- 本文の <@uuid> とグループ (<@group:…>) のメンバー
+  keyword_user_ids    uuid[] NOT NULL DEFAULT '{}',        -- 通知キーワード (M12g) が本文に含まれるメンバー。クライアントに送らない (0035)
   mention_all         boolean NOT NULL DEFAULT false,      -- <!channel> / <!here>
   reply_count         integer NOT NULL DEFAULT 0,          -- スレッド親のみ
   last_reply_at       timestamptz,

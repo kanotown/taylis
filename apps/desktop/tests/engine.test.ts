@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, NetworkError } from "../src/api/errors";
-import { type SyncApi, SyncEngine } from "../src/sync/engine";
+import { mentionsMe, type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
@@ -334,6 +334,20 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
     server.post(channel.id, alice.id, "<!here> all");
     await engine.idle();
     expect(notifications).toEqual([`hey <@${bob.id}>`, "<!here> all"]);
+  });
+
+  it("counts and notifies my notification keywords itself: the server keeps those hits private", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    server.keywords.set(bob.id, ["デプロイ"]);
+    await engine.start();
+    await engine.idle();
+    const before = store.getChannel(channel.id)!.mentionCount;
+    server.post(channel.id, alice.id, "今夜デプロイします");
+    await engine.idle();
+    expect(notifications).toEqual(["今夜デプロイします"]);
+    expect(store.getChannel(channel.id)!.mentionCount).toBe(before + 1);
+    expect(mentionsMe({ body: "DEPLOY now" }, { id: bob.id, notify_keywords: ["deploy"] })).toBe(true);
+    expect(mentionsMe({ body: "nothing" }, { id: bob.id, notify_keywords: ["deploy", ""] })).toBe(false);
   });
 
   it("follows the channel notification level: all notifies everything, none and a mute silence mentions", async () => {

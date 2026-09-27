@@ -66,18 +66,18 @@ async def _with_group_members(
     return list(mentioned) + extra
 
 
-async def _with_keyword_hits(
+async def _keyword_hits(
     db: AsyncSession,
     channel_id: uuid.UUID,
     sender_id: uuid.UUID,
     body: str,
     mentioned: list[uuid.UUID],
 ) -> list[uuid.UUID]:
-    """M12g: members whose notification keywords occur in the body count as mentioned."""
+    """M12g: members whose notification keywords occur in the body count as mentioned. Kept apart
+    from `mentioned_user_ids` so the other members never learn someone's keywords."""
     member_ids = (await channel_repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
     candidates = [uid for uid in member_ids if uid != sender_id and uid not in mentioned]
-    hits = await users.keyword_mentions(db, body, candidates)
-    return list(mentioned) + hits
+    return await users.keyword_mentions(db, body, candidates)
 
 
 async def create_message(
@@ -124,7 +124,7 @@ async def create_message(
         data.body = f"📊 {data.poll.question}"
     mentioned, mention_all = extract_mentions(data.body)
     mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
-    mentioned = await _with_keyword_hits(db, channel_id, actor.id, data.body, mentioned)
+    keyword_hits = await _keyword_hits(db, channel_id, actor.id, data.body, mentioned)
     try:
         async with db.begin_nested():
             seq = await repo.allocate_seq(db, channel_id)
@@ -138,6 +138,7 @@ async def create_message(
                 client_msg_id=data.client_msg_id,
                 body=data.body,
                 mentioned_user_ids=mentioned,
+                keyword_user_ids=keyword_hits,
                 mention_all=mention_all,
                 poll=(
                     {
@@ -244,6 +245,12 @@ async def list_delta(
     )
 
 
+async def keyword_user_ids(db: AsyncSession, message_id: uuid.UUID) -> set[uuid.UUID]:
+    """M12g keyword hits: private, so events leave them out and pushes read them here."""
+    message = await repo.get_message(db, message_id)
+    return set(message.keyword_user_ids) if message is not None else set()
+
+
 async def get_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
     message = await repo.get_message(db, message_id)
     if message is None or message.is_deleted:
@@ -301,7 +308,7 @@ async def edit_message(
     message.mentioned_user_ids = await _with_group_members(
         db, message.sender_id, data.body, message.mentioned_user_ids
     )
-    message.mentioned_user_ids = await _with_keyword_hits(
+    message.keyword_user_ids = await _keyword_hits(
         db, message.channel_id, message.sender_id, data.body, message.mentioned_user_ids
     )
     message.edited_at = now

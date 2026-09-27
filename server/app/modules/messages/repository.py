@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.modules.messages.models import (
     MessageRevision,
     PollVote,
     Reaction,
+    mentions_of,
     timeline_filter,
 )
 
@@ -78,7 +79,7 @@ async def list_mentions(
             and_(ChannelMember.channel_id == Message.channel_id, ChannelMember.user_id == user_id),
         )
         .where(
-            or_(Message.mentioned_user_ids.contains([user_id]), Message.mention_all.is_(True)),
+            mentions_of(Message, user_id),
             Message.deleted_at.is_(None),
             Message.sender_id != user_id,
         )

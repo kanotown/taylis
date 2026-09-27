@@ -316,6 +316,10 @@ else:
 - `synced_seq` が null のチャンネルでも、すでにローカルにある行 (開いているスレッドの返信・その親) に関わる
   イベントは upsert する (スレッド一覧から開いたスレッドに新しい返信が出るように)。
 - トップレベルの `message.created` で `channel.last_message_at` を進める (DM 一覧の並び順)。
+- 「自分宛て」(mention_count を足す、`level = mentions` でも通知する) は `mention_all`、`mentioned_user_ids` に
+  自分がいる、または本文に自分の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致) 場合。
+  サーバはキーワードの一致を他のメンバーに見せないため `messages.keyword_user_ids` に分けて持ち、イベントには
+  含めない (M16a)。クライアントは bootstrap の `me.notify_keywords` で同じ判定をする。
 
 ### 7.5 再接続
 

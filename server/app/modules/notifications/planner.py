@@ -15,6 +15,7 @@ from app.events.models import OutboxEvent
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.groups import service as groups
+from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.mentions import extract_group_mentions, notification_text
 from app.modules.notifications import repository as repo
@@ -167,6 +168,8 @@ class PushPlanner:
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
         default = default_level(channel)
         mentioned = {uuid.UUID(str(uid)) for uid in (message or {}).get("mentioned_user_ids", [])}
+        if message and message.get("id"):  # keyword hits are not in the event (they are private)
+            mentioned |= await messages.keyword_user_ids(db, uuid.UUID(str(message["id"])))
         mention_all = bool((message or {}).get("mention_all"))
         seq = (message or {}).get("seq")
         positions = await reads.last_read_seqs(db, recipients, channel.id)

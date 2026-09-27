@@ -1,14 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, exists, func, or_, select
+from sqlalchemy import ColumnElement, and_, exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.time import utcnow
 from app.modules.channels.models import ChannelMember  # read-only: follows need membership
-from app.modules.messages.models import Message  # read-only (ARCHITECTURE.md §5 exception)
+from app.modules.messages.models import (  # read-only (ARCHITECTURE.md §5 exception)
+    Message,
+    mentions_of,
+)
 from app.modules.threads.models import ThreadFollow
 
 
@@ -151,7 +154,7 @@ def _unread_filter(user_id: uuid.UUID, last_read_seq: int) -> ColumnElement[bool
 
 
 def _mentioned(user_id: uuid.UUID) -> ColumnElement[bool]:
-    return or_(Message.mentioned_user_ids.contains([user_id]), Message.mention_all.is_(True))
+    return mentions_of(Message, user_id)
 
 
 async def counts(
@@ -172,7 +175,7 @@ async def counts_for_user(
     if not parent_ids:
         return {}
     reply = aliased(Message)
-    mentioned = or_(reply.mentioned_user_ids.contains([user_id]), reply.mention_all.is_(True))
+    mentioned = mentions_of(reply, user_id)
     stmt = (
         select(ThreadFollow.parent_id, func.count(), func.count().filter(mentioned))
         .select_from(ThreadFollow)
@@ -202,9 +205,7 @@ def _unread_reply_exists(user_id: uuid.UUID, *, mentioned: bool) -> ColumnElemen
         reply.deleted_at.is_(None),
     ]
     if mentioned:
-        conditions.append(
-            or_(reply.mentioned_user_ids.contains([user_id]), reply.mention_all.is_(True))
-        )
+        conditions.append(mentions_of(reply, user_id))
     return exists(select(reply.id).where(*conditions))
 
 

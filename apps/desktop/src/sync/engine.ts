@@ -10,6 +10,20 @@ import type { Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
+/**
+ * The message mentions me: by name, group or @channel, or by one of my notification keywords (M12g).
+ * The server keeps keyword hits private (they would show my keywords to everyone), so they are found
+ * here with its rule: case-insensitive, anywhere in the body.
+ */
+export function mentionsMe(
+  message: { body?: string | null; mention_all?: boolean; mentioned_user_ids?: string[] },
+  me: { id: string; notify_keywords?: string[] | null },
+): boolean {
+  if (message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id)) return true;
+  const body = (message.body ?? "").toLowerCase();
+  return (me.notify_keywords ?? []).some((word) => word.length > 0 && body.includes(word.toLowerCase()));
+}
+
 export interface SyncApi {
   bootstrap(): Promise<BootstrapOut>;
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
@@ -696,7 +710,7 @@ export class SyncEngine {
       return;
     }
     if (message.seq <= channel.lastReadSeq) return;
-    const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
+    const mentioned = mentionsMe(message, me);
     store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
   }
 
@@ -724,8 +738,7 @@ export class SyncEngine {
     const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
     const mutedUntil = channel.mutedUntil ? new Date(channel.mutedUntil).getTime() : 0;
     if (level === "none" || mutedUntil > Date.now()) return;
-    const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
-    const involved = mentioned || (thread?.participant_ids ?? []).includes(me.id);
+    const involved = mentionsMe(message, me) || (thread?.participant_ids ?? []).includes(me.id);
     if (level === "mentions" && !involved) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
@@ -758,13 +771,13 @@ export class SyncEngine {
     const target = seq - 1;
     this.unreadHold.set(channelId, target);
     this.readCancels.get(channelId)?.();
-    const me = store.me?.id;
-    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && m.sender_id !== me);
+    const me = store.me;
+    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && m.sender_id !== me?.id);
     store.updateChannel(channelId, {
       pendingReadSeq: null, // an unsent advance must not undo this
       lastReadSeq: target,
       unreadCount: later.length,
-      mentionCount: later.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(me ?? "")).length,
+      mentionCount: me ? later.filter((m) => mentionsMe(m, me)).length : 0,
     });
     this.trackRead(channelId, (async () => {
       try {
