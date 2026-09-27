@@ -490,6 +490,24 @@ CREATE TABLE sidebar_section_channels (
 - お気に入りはセクションより優先して表示する。抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
 - 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
 
+### drafts (端末間で共有する下書き、M15d)
+
+```sql
+CREATE TABLE drafts (
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  parent_id   uuid REFERENCES messages(id) ON DELETE CASCADE,  -- スレッドの入力欄なら親。会話の入力欄は NULL
+  body        text NOT NULL,                                   -- 空にはしない (空になったら行を消す)
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX drafts_user_composer_uniq ON drafts (user_id, channel_id, parent_id) NULLS NOT DISTINCT;
+```
+
+- 個人データ (channel seq なし)。入力欄 1 つにつき 1 行、1 人 500 件まで。本文だけを共有し、添付は端末に残す。
+- 抜けた会話の行は残るが、一覧 (`GET /drafts` と bootstrap) には参加中の会話の分だけを出す。
+- 保存 / 削除は `draft.updated` (audience=user) で自分の全端末へ。競合の扱いはクライアント側 (SYNC_PROTOCOL.md §8)。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

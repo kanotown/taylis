@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.modules.channels.schemas import ChannelOut
+from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut
 from app.modules.groups.schemas import GroupOut
 from app.modules.sidebar.schemas import SidebarSectionOut
@@ -43,3 +44,5 @@ class BootstrapOut(BaseModel):
     groups: list[GroupOut] = []
     # My sidebar sections (M14f); changes arrive as sidebar.updated.
     sidebar_sections: list[SidebarSectionOut] = []
+    # My drafts shared by my devices (M15d); changes arrive as draft.updated.
+    drafts: list[DraftOut] = []

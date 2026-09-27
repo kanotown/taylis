@@ -804,6 +804,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Drafts
+         * @description M15d: my drafts in conversations I belong to, newest first (also in bootstrap).
+         */
+        get: operations["list_drafts_api_v1_drafts_get"];
+        /**
+         * Save Draft
+         * @description Save one composer's text (a conversation, or a thread with `parent_id`).
+         */
+        put: operations["save_draft_api_v1_drafts_put"];
+        post?: never;
+        /**
+         * Delete Draft
+         * @description The composer was emptied or its text sent; a missing draft is not an error.
+         */
+        delete: operations["delete_draft_api_v1_drafts_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/emoji": {
         parameters: {
             query?: never;
@@ -1788,6 +1816,11 @@ export interface components {
              */
             custom_emoji: components["schemas"]["CustomEmojiOut"][];
             /**
+             * Drafts
+             * @default []
+             */
+            drafts: components["schemas"]["DraftOut"][];
+            /**
              * Favorites
              * @default []
              */
@@ -2025,6 +2058,38 @@ export interface components {
         DmCreate: {
             /** User Ids */
             user_ids: string[];
+        };
+        /** DraftOut */
+        DraftOut: {
+            /** Body */
+            body: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DraftPut
+         * @description Save the text of one composer; send DELETE /drafts when it becomes empty.
+         */
+        DraftPut: {
+            /** Body */
+            body: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** FavoriteStateOut */
         FavoriteStateOut: {
@@ -4766,6 +4831,89 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drafts_api_v1_drafts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftOut"][];
+                };
+            };
+        };
+    };
+    save_draft_api_v1_drafts_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v1_drafts_delete: {
+        parameters: {
+            query: {
+                channel_id: string;
+                parent_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
