@@ -29,7 +29,7 @@ jobs:
   images:
     needs: checks
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
       packages: write
@@ -74,7 +74,7 @@ jobs:
     needs: images
     # Also after a skipped build (a redeploy of an existing tag), never after a failed one.
     if: ${{ !failure() && !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     # The SSH secrets live in this environment; restrict it to v* tags in the repository settings.
     environment: production
     permissions:
@@ -94,33 +94,39 @@ jobs:
         run: |
           [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_SSH_KEY" ] && [ -n "$DEPLOY_KNOWN_HOSTS" ] \
             || { echo "set DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS in the production environment" >&2; exit 1; }
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The runner is our own VPS: the key goes to this job's temporary folder, which the runner empties,
+          # never to ~/.ssh where it would outlive the job.
+          dir="$RUNNER_TEMP/deploy-ssh"
+          install -m 700 -d "$dir"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$dir/key"
+          chmod 600 "$dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$dir/known_hosts"
           {
             echo "Host production"
             echo "  HostName $DEPLOY_HOST"
             echo "  User ${DEPLOY_USER:-deploy}"
             echo "  Port ${DEPLOY_PORT:-22}"
-            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentityFile $dir/key"
             echo "  IdentitiesOnly yes"
             echo "  StrictHostKeyChecking yes"
-            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+            echo "  UserKnownHostsFile $dir/known_hosts"
             echo "  ServerAliveInterval 30"
-          } > ~/.ssh/config
+          } > "$dir/config"
       - name: Upload the release's infra files
         run: |
           # shellcheck disable=SC2029 # the tag is meant to expand here; the server checks it again
           tar -czf - -C infra docker-compose.yml docker-compose.prod.yml docker-compose.release.yml \
               docker-compose.behind-proxy.yml Caddyfile backup.sh restore.sh deploy.sh \
-            | ssh production upload "$TAG"
+            | ssh -F "$RUNNER_TEMP/deploy-ssh/config" production upload "$TAG"
       - name: Deploy (backup, pull, restart, /readyz, roll back on failure)
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # shellcheck disable=SC2029 # the tag is meant to expand here; the server checks it again
-          printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh production deploy "$TAG"
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -F "$RUNNER_TEMP/deploy-ssh/config" production deploy "$TAG"
+      - name: Forget the deploy key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/deploy-ssh"
       # Only after a good deploy: GHCR storage counts against the account's Packages allowance (budget $0:
       # pushes would stop). The server keeps the current and the previous release; three here leave room for a
       # rollback from the Actions tab.

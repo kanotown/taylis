@@ -338,6 +338,12 @@ root のパスワードログインは、鍵でログインできることを確
    iOS のテスト (`ios.yml`) とデスクトップのインストーラ (`desktop.yml`) は手動実行だけにしている
    (Actions → Run workflow。以前は iOS のテストだけで月の 7 割を使っていた)。iOS のテストはコミット前に Mac で
    実行する。Billing の Budgets で Actions / Packages を $0・Stop usage にしておくと、枠を超えても課金されず止まる。
+5. Linux のジョブ (ci の server / desktop / android、release の images / deploy) は自前の VPS の self-hosted
+   runner (`runs-on: [self-hosted, Linux, X64]`) で動き、Actions の分を使わない。runner は専用ユーザー
+   `gh-runner` (docker グループ) で `svc.sh` により常駐 (Settings → Actions → Runners → New self-hosted runner の
+   手順)。この非公開リポジトリ専用にする。デプロイ鍵はジョブの一時フォルダ (`RUNNER_TEMP`) にだけ置き、ジョブの
+   終わりに消す。テスト用 PostgreSQL はホストの空きポートを使う (runner の VPS 自身の 5432 とぶつからない)。
+   runner が止まっているとジョブは待ち続ける。戻すときは `runs-on: ubuntu-latest` に戻す。
 
 **5. 最初のリリース**
 
