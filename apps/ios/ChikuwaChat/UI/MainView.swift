@@ -8,7 +8,7 @@ struct MainView: View {
 
     enum Sheet: Identifiable {
         case newDm, newChannel, search, settings, browse, directory
-        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4 } }
+        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4; case .directory: 5 } }
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
