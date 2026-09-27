@@ -90,9 +90,10 @@ final class FakeServer {
             return try server.delta(userId: userId, channelId: channelId, sinceSeq: sinceSeq, limit: limit)
         }
 
-        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool) {
+        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], alsoInChannel: Bool) async throws -> (MessageOut, Bool) {
             try maybeFail()
-            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds)
+            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds,
+                                   alsoInChannel: alsoInChannel)
         }
 
         func replies(messageId: String) async throws -> [MessageOut] {
@@ -208,7 +209,7 @@ final class FakeServer {
     func readState(userId: String, channelId: String) -> ReadStateOut {
         let record = channels[channelId]!
         let position = readPositions["\(userId):\(channelId)"] ?? 0
-        let unread = record.messages.filter { $0.seq > position && !$0.deleted && $0.parentId == nil }
+        let unread = record.messages.filter { $0.seq > position && !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) }
         return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count)
     }
 
@@ -485,7 +486,8 @@ final class FakeServer {
     }
 
     @discardableResult
-    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = []) throws -> (MessageOut, Bool) {
+    func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
+              alsoInChannel: Bool = false) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
@@ -506,7 +508,7 @@ final class FakeServer {
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
         let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
                                  createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body),
-                                 parentId: parentId,
+                                 parentId: parentId, alsoInChannel: alsoInChannel && parentId != nil,
                                  attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) })
         record.messages.append(message)
         var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
@@ -706,7 +708,7 @@ final class FakeServer {
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {
         let record = try requireMember(channelId, userId)
         let channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
-        var rows = record.messages.filter { !$0.deleted && $0.parentId == nil }
+        var rows = record.messages.filter { !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) }
         if let beforeSeq { rows = rows.filter { $0.seq < beforeSeq } }
         rows.sort { $0.seq > $1.seq }
         return HistoryOut(channelLastSeq: channelLastSeq, messages: Array(rows.prefix(limit)), hasMore: rows.count > limit)

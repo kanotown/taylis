@@ -78,6 +78,8 @@ struct MessageState: Codable, Identifiable, Equatable {
     var mentionedUserIds: [String] = []
     var mentionAll: Bool = false
     var parentId: String? = nil
+    /// M15c: a reply shown in the channel timeline as well as in its thread.
+    var alsoInChannel: Bool = false
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
     var attachments: [AttachmentOut] = []
@@ -89,7 +91,7 @@ struct MessageState: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
-        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
+        case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -97,6 +99,8 @@ struct MessageState: Codable, Identifiable, Equatable {
     }
 
     var isReply: Bool { parentId != nil }
+    /// The channel timeline shows top-level messages and replies also sent to the channel (M15c).
+    var inTimeline: Bool { parentId == nil || alsoInChannel }
 
     init(_ message: MessageOut) {
         id = message.id
@@ -115,6 +119,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         mentionedUserIds = message.mentionedUserIds
         mentionAll = message.mentionAll
         parentId = message.parentId
+        alsoInChannel = message.alsoInChannel
         replyCount = message.replyCount
         lastReplyAt = message.lastReplyAt
         attachments = message.attachments
@@ -142,14 +147,17 @@ struct MessageState: Codable, Identifiable, Equatable {
         mentionedUserIds = try c.decodeIfPresent([String].self, forKey: .mentionedUserIds) ?? []
         mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
         parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        alsoInChannel = try c.decodeIfPresent(Bool.self, forKey: .alsoInChannel) ?? false
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
         attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
+        poll = try c.decodeIfPresent(PollOut.self, forKey: .poll)
     }
 
-    init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil) {
+    init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
+         alsoInChannel: Bool = false) {
         id = localPrefix + clientMsgId
         self.channelId = channelId
         self.senderId = senderId
@@ -163,6 +171,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         pending = true
         failed = false
         self.parentId = parentId
+        self.alsoInChannel = alsoInChannel
     }
 }
 
@@ -181,8 +190,8 @@ extension MessageOut {
         self.init(id: state.id, channelId: state.channelId, senderId: state.senderId, seq: seq, updatedSeq: state.updatedSeq,
                   clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
                   mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
-                  replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
-                  pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy)
+                  alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
+                  pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll)
     }
 }
 
@@ -194,6 +203,8 @@ struct OutboxItem: Codable, Identifiable, Equatable {
     var failed: String?
     var parentId: String? = nil
     var attachmentIds: [String] = []
+    /// M15c; optional so that rows queued by earlier versions still decode.
+    var alsoInChannel: Bool? = nil
 
     var id: String { clientMsgId }
 }
@@ -560,7 +571,7 @@ final class Store {
     /// Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
     /// Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
     func messages(_ channelId: String) -> [MessageState] {
-        ordered((messagesByChannel[channelId] ?? [:]).values.filter { !$0.isReply })
+        ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.inTimeline })
     }
 
     /// A thread: the replies of one parent, oldest first (pending ones last).

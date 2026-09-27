@@ -10,6 +10,8 @@ struct ThreadView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var positioned = false
+    /// M15c: "also send to the channel", unticked again after each send (Slack).
+    @State private var alsoInChannel = false
     @State private var atBottom = true
     @State private var visibleFrames: [String: CGRect] = [:]
     @State private var viewportHeight: CGFloat = 0
@@ -84,8 +86,15 @@ struct ThreadView: View {
                 }
                 if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                     TypingLine(controller: controller, channelId: channelId, parentId: parentId)
+                    let canShare = channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin")
+                    if canShare {
+                        Toggle(channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信", isOn: $alsoInChannel)
+                            .font(.footnote).padding(.horizontal, 16)
+                    }
                     ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
-                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds) }
+                        let shared = canShare && alsoInChannel
+                        alsoInChannel = false
+                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds, alsoInChannel: shared) }
                     }
                 }
             }

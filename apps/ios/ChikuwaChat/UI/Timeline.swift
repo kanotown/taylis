@@ -16,6 +16,16 @@ enum TimelineItem: Identifiable {
 }
 
 enum Timeline {
+    /// One line of plain text for a message (thread lists, "replied to a thread" lines).
+    static func excerpt(_ body: String, hasAttachments: Bool, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        if body.isEmpty { return hasAttachments ? "(添付ファイル)" : "" }
+        var text = Mentions.decode(body, users: users, groups: groups)
+        for pattern in ["```[a-zA-Z0-9_+-]*", "^#{1,3}\\s+", "^>\\s?", "^\\s*[-*]\\s+", "^\\s*\\d+\\.\\s+", "\\*\\*", "~~", "`"] {
+            text = text.replacingOccurrences(of: pattern, with: "", options: [.regularExpression], range: nil)
+        }
+        return text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
     static let groupWindow: TimeInterval = 5 * 60
     private static let weekdays = ["日", "月", "火", "水", "木", "金", "土"]
 
@@ -82,7 +92,8 @@ enum Timeline {
                 previous = nil
             }
             var compact = false
-            if let previous, previous.senderId == message.senderId, !previous.pending, !message.pending,
+            // A reply also sent to the channel (M15c) keeps its own header.
+            if let previous, previous.senderId == message.senderId, !previous.pending, !message.pending, !previous.isReply, !message.isReply,
                let previousAt = parseIsoDate(previous.createdAt) {
                 compact = abs(at.timeIntervalSince(previousAt)) < groupWindow
             }

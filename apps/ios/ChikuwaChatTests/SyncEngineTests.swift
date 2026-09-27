@@ -212,6 +212,41 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testReplyAlsoSentToTheChannelShowsInBothPlacesAndCountsUnread() async throws {  // M15c
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        let (parent, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "quiet", parentId: parent.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "loud", parentId: parent.id, alsoInChannel: true)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["topic", "loud"])
+        XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["quiet", "loud"])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2) // the topic and the shared reply
+
+        await w.engine.send(w.channel.id, body: "mine too", parentId: parent.id, alsoInChannel: true)
+        await settle(w.engine)
+        let mine = try XCTUnwrap(w.store.messages(w.channel.id).last)
+        XCTAssertEqual(mine.body, "mine too")
+        XCTAssertTrue(mine.alsoInChannel)
+        XCTAssertFalse(mine.pending)
+
+        // Another device finds both shared replies in the channel history.
+        let restored = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        options.pageSize = 3
+        let second = SyncEngine(api: w.server.api(for: w.bob.id), connect: w.server.connector(for: w.bob.id), wsUrl: URL(string: "ws://fake")!,
+                                store: restored, getAccessToken: { "t" }, options: options)
+        await second.start()
+        await second.openChannel(w.channel.id)
+        await settle(second)
+        XCTAssertEqual(restored.messages(w.channel.id).map(\.body), ["topic", "loud", "mine too"])
+        second.stop()
+        w.engine.stop()
+    }
+
     func testThreadsKeepRepliesOutOfTheTimelineAndUpdateTheParent() async throws {
         let w = makeWorld()
         await w.engine.start()

@@ -114,7 +114,7 @@ struct ChannelView: View {
                                     UnreadSeparator()
                                 case .message(let message, let compact):
                                     MessageRow(message: message, controller: controller, compact: compact,
-                                               onOpenThread: { thread = ThreadTarget(id: message.id) },
+                                               onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
                                                onMarkUnread: message.seq.map { seq in {
                                                    controller.engine?.markUnread(channelId, seq: seq)
                                                    unreadMark = seq - 1
@@ -361,6 +361,21 @@ struct MessageRow: View {
     private var isMine: Bool { store.me?.id == message.senderId }
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
 
+    /// M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared.
+    @ViewBuilder
+    private var replyLine: some View {
+        if let onOpenThread {
+            let parent = message.parentId.flatMap { store.message(message.channelId, id: $0) }
+            let excerpt = parent.map { Timeline.excerpt($0.body, hasAttachments: !$0.attachments.isEmpty, users: store.users, groups: store.groups) }
+            Button { onOpenThread() } label: {
+                Label("スレッドに返信: \(excerpt ?? "元のメッセージ")", systemImage: "bubble.left").lineLimit(1)
+            }
+            .buttonStyle(.plain).font(.caption2).foregroundStyle(.secondary)
+        } else if message.alsoInChannel {
+            Text("チャンネルにも送信済み").font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             if compact {
@@ -370,6 +385,7 @@ struct MessageRow: View {
                     .onTapGesture { if !message.pending { showingProfile = true } }
             }
             VStack(alignment: .leading, spacing: 2) {
+                if message.isReply { replyLine }  // M15c
                 let saved = store.isBookmarked(message.id)
                 let pinnedBy = message.pinnedAt.map { _ in store.users[message.pinnedBy ?? ""]?.displayName ?? "?" }
                 if pinnedBy != nil || saved {

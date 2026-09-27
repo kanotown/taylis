@@ -7,7 +7,7 @@ protocol SyncApi: AnyObject {
     func bootstrap() async throws -> BootstrapOut
     func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut
     func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut
-    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String]) async throws -> (MessageOut, Bool)
+    func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], alsoInChannel: Bool) async throws -> (MessageOut, Bool)
     func publicChannels() async throws -> [ChannelOut]
     func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut
     /// M12a: every channel read to its end; returns the new states.
@@ -454,8 +454,8 @@ final class SyncEngine {
         if message.senderId == me.id {
             unreadHold[message.channelId] = nil // sending reads the conversation (the server does the same)
             store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
-        } else if message.isReply {
-            return // replies are not unread items (DATA_MODEL.md read_states)
+        } else if message.isReply && !message.alsoInChannel {
+            return // replies are not unread items unless also sent to the channel (M15c)
         } else {
             store.updateChannel(message.channelId) { state in
                 guard message.seq > state.lastReadSeq else { return }
@@ -713,11 +713,15 @@ final class SyncEngine {
 
     // MARK: §9 optimistic send
 
-    func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = []) async {
+    func send(_ channelId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
+              alsoInChannel: Bool = false) async {
         let clientMsgId = clientMsgId ?? options.newId()
         let createdAt = options.now()
-        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId, attachmentIds: attachmentIds))
-        store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt, parentId: parentId))
+        let shared = alsoInChannel && parentId != nil // M15c: only replies can also go to the channel
+        store.addOutbox(OutboxItem(clientMsgId: clientMsgId, channelId: channelId, body: body, createdAt: createdAt, failed: nil, parentId: parentId,
+                                   attachmentIds: attachmentIds, alsoInChannel: shared ? true : nil))
+        store.putPlaceholder(MessageState(placeholderFor: clientMsgId, channelId: channelId, senderId: store.me?.id ?? "", body: body, createdAt: createdAt,
+                                          parentId: parentId, alsoInChannel: shared))
         await flushOutbox()
     }
 
@@ -743,7 +747,8 @@ final class SyncEngine {
         defer { flushing = false }
         for item in store.outbox where item.failed == nil {
             do {
-                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId, attachmentIds: item.attachmentIds)
+                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId,
+                                                             attachmentIds: item.attachmentIds, alsoInChannel: item.alsoInChannel ?? false)
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
             } catch {
