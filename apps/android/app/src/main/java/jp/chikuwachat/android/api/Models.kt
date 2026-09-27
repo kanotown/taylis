@@ -200,6 +200,10 @@ data class MessageOut(
     val pinnedBy: String? = null,
     /** M14b: the poll, when the message carries one. */
     val poll: PollOut? = null,
+    /** M15e: "important" / "urgent", and who acknowledged a message that asked for it (oldest first). */
+    val priority: String? = null,
+    val ackRequested: Boolean = false,
+    val acks: List<AckOut> = emptyList(),
 ) {
     fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
     val isReply: Boolean get() = parentId != null
@@ -407,3 +411,7 @@ data class LinkPreviewOut(
     val siteName: String? = null,
     val fetchedAt: String,
 )
+
+/** M15e: one member's 「確認しました」. */
+@Serializable
+data class AckOut(val userId: String, val ackedAt: String)

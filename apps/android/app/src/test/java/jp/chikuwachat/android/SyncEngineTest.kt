@@ -6,6 +6,7 @@ import jp.chikuwachat.android.sync.ClientFrame
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Snapshot
+import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
@@ -304,17 +305,32 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun priorityAndAckRequestSurviveTheOutboxOnTopLevelPostsOnly() = runBlocking { // M15e
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        w.api.pendingFailure = ApiException.Network(java.io.IOException("offline")) // the first attempt fails: the flags must survive the retry
+        w.engine.send(w.channelId, "本番を止めます", sendOptions = SendOptions(priority = "urgent", ackRequested = true))
+        assertEquals("urgent" to true, w.store.outbox.first().let { it.priority to it.ackRequested })
+        w.engine.flushOutbox(); settle(w.engine)
+        val sent = w.store.messages(w.channelId).last()
+        assertEquals(listOf("本番を止めます", "urgent", true, false), listOf(sent.body, sent.priority, sent.ackRequested, sent.pending))
+        w.engine.send(w.channelId, "返信", parentId = sent.id, sendOptions = SendOptions(priority = "important", ackRequested = true)); settle(w.engine)
+        val reply = w.store.replies(w.channelId, sent.id).last()
+        assertEquals(null to false, reply.priority to reply.ackRequested)
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun replyAlsoSentToTheChannelShowsInBothPlacesAndCountsUnread() = runBlocking { // M15c
         val w = world()
         w.engine.start(); w.engine.openChannel(w.channelId)
         val (parent, _) = w.server.post(w.channelId, w.alice, "topic"); settle(w.engine)
         w.server.post(w.channelId, w.alice, "quiet", parentId = parent.id)
-        w.server.post(w.channelId, w.alice, "loud", parentId = parent.id, alsoInChannel = true); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "loud", parentId = parent.id, options = SendOptions(alsoInChannel = true)); settle(w.engine)
         assertEquals(listOf("topic", "loud"), w.store.messages(w.channelId).map { it.body })
         assertEquals(listOf("quiet", "loud"), w.store.replies(w.channelId, parent.id).map { it.body })
         assertEquals(2, w.store.channel(w.channelId)?.unreadCount) // the topic and the shared reply
 
-        w.engine.send(w.channelId, "mine too", parentId = parent.id, alsoInChannel = true); settle(w.engine)
+        w.engine.send(w.channelId, "mine too", parentId = parent.id, sendOptions = SendOptions(alsoInChannel = true)); settle(w.engine)
         val mine = w.store.messages(w.channelId).last()
         assertEquals(Triple("mine too", true, false), Triple(mine.body, mine.alsoInChannel, mine.pending))
 

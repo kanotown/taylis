@@ -45,7 +45,7 @@ interface SyncApi {
     suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut
     suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut
     suspend fun postMessage(
-        channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList(), alsoInChannel: Boolean = false,
+        channelId: String, clientMsgId: String, body: String, parentId: String? = null, attachmentIds: List<String> = emptyList(), options: SendOptions = SendOptions(),
     ): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
@@ -75,6 +75,15 @@ interface WsTransport {
 typealias WsConnector = suspend (url: String, token: String) -> WsTransport
 
 enum class EngineStatus { IDLE, CONNECTING, ONLINE, OFFLINE, SIGNED_OUT }
+
+/** Extras for a send (they travel with the outbox so retries keep them). */
+data class SendOptions(
+    /** M15c: a thread reply also shown in the channel. */
+    val alsoInChannel: Boolean = false,
+    /** M15e: top-level posts only. */
+    val priority: String? = null,
+    val ackRequested: Boolean = false,
+)
 
 data class EngineOptions(
     val pageSize: Int = 50,
@@ -743,13 +752,18 @@ class SyncEngine(
     // --- §9 optimistic send -------------------------------------------------------------------
 
     suspend fun send(
-        channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(), alsoInChannel: Boolean = false,
+        channelId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(),
+        sendOptions: SendOptions = SendOptions(),
     ) {
         val key = clientMsgId ?: options.newId()
         val createdAt = options.now()
-        val shared = alsoInChannel && parentId != null // M15c: only replies can also go to the channel
-        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId, attachmentIds = attachmentIds, alsoInChannel = shared))
-        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId, alsoInChannel = shared))
+        val shared = sendOptions.alsoInChannel && parentId != null // M15c: only replies can also go to the channel
+        val priority = if (parentId == null) sendOptions.priority else null // M15e: top-level posts only
+        val ackRequested = parentId == null && sendOptions.ackRequested
+        store.addOutbox(OutboxItem(key, channelId, body, createdAt, parentId = parentId, attachmentIds = attachmentIds, alsoInChannel = shared,
+            priority = priority, ackRequested = ackRequested))
+        store.putPlaceholder(MessageState.placeholder(key, channelId, store.me?.id ?: "", body, createdAt, parentId, alsoInChannel = shared,
+            priority = priority, ackRequested = ackRequested))
         flushOutbox()
     }
 
@@ -772,7 +786,8 @@ class SyncEngine(
             for (item in store.outbox.toList()) {
                 if (item.failed != null) continue
                 try {
-                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds, item.alsoInChannel)
+                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds,
+                        SendOptions(item.alsoInChannel, item.priority, item.ackRequested))
                     store.upsertMessage(message)
                     store.removeOutbox(item.clientMsgId)
                 } catch (e: Exception) {
