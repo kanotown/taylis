@@ -834,6 +834,10 @@ LIMIT $limit OFFSET $offset;
 (`tz_offset_minutes`) の 0 時を境にし、Slack と同じく `before` / `after` はその日を含まない。
 名前は呼び出し側が見えるユーザー / チャンネルだけに解決し、解決できない修飾子は推測せず
 `filters.unresolved` に返して結果を空にする。修飾子だけの検索は新しい順の一覧 (score 0) になる。
+M15h で内容の条件を足した (Slack と同じ語): `has:file` (`has:attachment`)、`has:link` (本文に http(s):// を含む)、
+`has:pin`、`has:reaction`、`has:poll`、`is:thread` (スレッドの返信と、返信のある親)。複数書くと AND。
+理解した条件は `filters.has` / `filters.is_thread` に返し、知らない語 (`has:video` など) は `unresolved` に入れる。
+投票の無いメッセージの `poll` は JSON の null (SQL の NULL ではない) なので、`has:poll` は `jsonb_typeof(poll) = 'object'` で判定する。
 
 ## 5. サイズと保持
 

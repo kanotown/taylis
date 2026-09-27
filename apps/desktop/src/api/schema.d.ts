@@ -2905,8 +2905,15 @@ export interface components {
             before?: string | null;
             /** From Username */
             from_username?: string | null;
+            /** Has */
+            has?: string[];
             /** In Channel */
             in_channel?: string | null;
+            /**
+             * Is Thread
+             * @default false
+             */
+            is_thread: boolean;
             /** Text */
             text: string;
             /** Unresolved */

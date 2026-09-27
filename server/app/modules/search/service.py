@@ -32,6 +32,8 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
         text=parsed.text,
         after=max_dt(params.after, parsed.after),
         before=min_dt(params.before, parsed.before),
+        has=list(parsed.has),
+        is_thread=parsed.is_thread,
         unresolved=list(parsed.unresolved),
     )
     from_user_id = params.from_user_id
@@ -85,6 +87,8 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
                 from_user_id=from_user_id,
                 after=filters.after,
                 before=filters.before,
+                has=filters.has,
+                is_thread=filters.is_thread,
                 limit=params.limit + 1,
                 offset=params.offset,
             )
@@ -121,6 +125,8 @@ async def _run(
         from_user_id=from_user_id,
         after=filters.after,
         before=filters.before,
+        has=filters.has,
+        is_thread=filters.is_thread,
         limit=params.limit + 1,
         offset=params.offset,
         escaped=escaped,

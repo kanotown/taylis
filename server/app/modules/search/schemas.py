@@ -28,7 +28,10 @@ class SearchFilters(BaseModel):
     in_channel: str | None = None
     after: datetime | None = None
     before: datetime | None = None
-    # Modifiers that named nothing the caller can see (unknown user / channel, bad date).
+    # M15h: "has:" flags understood (file, link, pin, reaction, poll) and "is:thread".
+    has: list[str] = Field(default_factory=list)
+    is_thread: bool = False
+    # Modifiers that named nothing the caller can see (unknown user / channel, bad date or flag).
     unresolved: list[str] = Field(default_factory=list)
 
 
