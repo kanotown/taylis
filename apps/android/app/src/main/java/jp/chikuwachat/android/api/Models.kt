@@ -398,6 +398,9 @@ data class SearchFilters(
     val after: String? = null,
     val before: String? = null,
     val unresolved: List<String> = emptyList(),
+    /** M15h: the has: flags (file, link, pin, reaction, poll) and is:thread the server understood. */
+    val has: List<String> = emptyList(),
+    val isThread: Boolean = false,
 )
 
 /** Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable. */

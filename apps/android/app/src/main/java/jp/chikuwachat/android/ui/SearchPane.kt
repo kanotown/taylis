@@ -27,6 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
@@ -47,8 +51,7 @@ fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.Me
     var filters by remember { mutableStateOf<jp.chikuwachat.android.api.SearchFilters?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun run(offset: Int = 0) {
-        val q = query.trim()
+    fun run(offset: Int = 0, q: String = query.trim()) {
         if (q.isEmpty()) return
         scope.launch {
             controller.searchMessages(q, offset).onSuccess { result ->
@@ -70,23 +73,30 @@ fun SearchPane(controller: AppController, onOpen: (jp.chikuwachat.android.api.Me
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run() }),
         )
-        if (!searched) {
-            Text(
-                "絞り込み: from:@名前  in:#チャンネル  before:2026-09-01  after:  on:",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+        // M15h: a hint adds its modifier; a complete one (has:file, is:thread …) searches right away.
+        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(SearchHints.all, key = { it.insert }) { hint ->
+                AssistChip(
+                    onClick = {
+                        query = SearchHints.append(query, hint.insert)
+                        if (hint.complete) run(q = query.trim())
+                    },
+                    label = { Text(hint.label, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
         }
         filters?.takeIf { it.unresolved.isNotEmpty() }?.let {
             Text("見つからない条件があります: " + it.unresolved.joinToString(" "), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
-        filters?.takeIf { it.fromUsername != null || it.inChannel != null || it.after != null || it.before != null }?.let { applied ->
+        filters?.takeIf { it.fromUsername != null || it.inChannel != null || it.after != null || it.before != null || it.has.isNotEmpty() || it.isThread }?.let { applied ->
             Text(
                 listOfNotNull(
                     applied.fromUsername?.let { "from: @$it" },
                     applied.inChannel?.let { "in: #$it" },
                     applied.after?.let { Timeline.fullLabel(it).substringBefore(" ") + " 以降" },
                     applied.before?.let { Timeline.fullLabel(it).substringBefore(" ") + " より前" },
+                    *applied.has.map { SearchHints.flagLabels[it] ?: "has:$it" }.toTypedArray(),
+                    if (applied.isThread) "スレッド内" else null,
                 ).joinToString("  "),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -145,4 +155,31 @@ fun keywordRanges(text: String, keywords: List<String>): List<Pair<Int, Int>> {
         if (last != null && range.first <= last.second) { if (range.second > last.second) merged[merged.size - 1] = last.first to range.second } else merged.add(range)
     }
     return merged
+}
+
+/** M15h: the modifiers offered under the search box (same list as the desktop and iOS). */
+object SearchHints {
+    data class Hint(val label: String, val insert: String, val complete: Boolean)
+
+    val all = listOf(
+        Hint("from:@名前", "from:@", false),
+        Hint("in:#チャンネル", "in:#", false),
+        Hint("on:", "on:", false),
+        Hint("ファイルあり", "has:file", true),
+        Hint("リンクあり", "has:link", true),
+        Hint("ピン留め", "has:pin", true),
+        Hint("リアクションあり", "has:reaction", true),
+        Hint("投票", "has:poll", true),
+        Hint("スレッド", "is:thread", true),
+    )
+
+    val flagLabels = mapOf("file" to "ファイルあり", "link" to "リンクあり", "pin" to "ピン留め", "reaction" to "リアクションあり", "poll" to "投票")
+
+    /** Adds a modifier to the query (once); open ones such as "from:@" stay ready for typing. */
+    fun append(query: String, insert: String): String {
+        if (insert in query.split(Regex("\\s+"))) return query
+        val base = query.trimEnd()
+        val open = insert.endsWith(":") || insert.endsWith("@") || insert.endsWith("#")
+        return (if (base.isEmpty()) "" else "$base ") + insert + (if (open) "" else " ")
+    }
 }
