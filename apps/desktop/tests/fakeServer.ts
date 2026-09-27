@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame, SendOptions } from "../src/sync/types";
 
@@ -501,6 +501,16 @@ export class FakeServer {
 
   /** "user" → starred channel ids (M12a). */
   readonly favorites = new Map<string, string[]>();
+  /** M15f: each conversation's link bar; setLinks announces it like the server does. */
+  readonly links = new Map<string, ChannelLinkOut[]>();
+
+  setLinks(channelId: string, titles: string[]): void {
+    const record = this.record(channelId);
+    const links: ChannelLinkOut[] = titles.map((title, position) => ({ id: `link-${channelId}-${title}`, title, url: `https://example.com/${position}`, position, created_by: record.channel.created_by ?? "", created_at: now() }));
+    this.links.set(channelId, links);
+    this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.links_updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, links } });
+  }
+
   /** M15d: "user:channel:parent" → the saved draft. */
   readonly drafts = new Map<string, DraftOut>();
   draftSaves = 0;
@@ -640,6 +650,11 @@ export class FakeServer {
           sidebar_sections: [],
           drafts: this.draftsOf(userId),
         };
+      },
+      channelLinks: async (channelId) => {
+        maybeFail();
+        this.requireMember(channelId, userId);
+        return this.links.get(channelId) ?? [];
       },
       saveDraft: async (channelId, parentId, body) => {
         maybeFail();

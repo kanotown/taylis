@@ -2,7 +2,8 @@ import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, Messages
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { MessageOut } from "../api/types";
+import type { ChannelLinkOut, MessageOut } from "../api/types";
+import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { canPostTopLevel, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
@@ -31,7 +32,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -48,6 +49,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const store = controller.store;
   const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
   const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders">("channel");
@@ -464,6 +466,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                       {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
                       {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
                       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
+                      {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
                       {canManage && !current.archived && (
                         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
                           {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : "投稿をオーナーと管理者に限る"}
@@ -488,6 +491,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 )}
               </div>
             </header>
+            <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
             <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
             {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
             {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
@@ -543,6 +547,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "rename" && current && <RenameChannelDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "archive" && current && (
         <ArchiveConfirm channel={current} busy={busyAction} onClose={() => setDialog(null)} onConfirm={() => { setBusyAction(true); void controller.archiveChannel(current.id).then(() => { setBusyAction(false); setDialog(null); }); }} />
+      )}
+      {dialog === "link" && current && (
+        <ChannelLinkDialog controller={controller} channel={current} link={editingLink} onClose={() => { setDialog(null); setEditingLink(null); }} />
       )}
       {dialog === "convert" && current && (
         <ConvertConfirm

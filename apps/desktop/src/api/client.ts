@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -273,6 +273,24 @@ export class ApiClient {
 
   scheduleMessage(channelId: string, body: ScheduledCreate): Promise<ScheduledOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/scheduled`, body);
+  }
+
+  // --- channel links (M15f) ----------------------------------------------------------------
+
+  channelLinks(channelId: string): Promise<ChannelLinkOut[]> {
+    return this.request("GET", `/api/v1/channels/${channelId}/links`);
+  }
+
+  addChannelLink(channelId: string, title: string, url: string): Promise<ChannelLinkOut[]> {
+    return this.request("POST", `/api/v1/channels/${channelId}/links`, { title, url });
+  }
+
+  updateChannelLink(channelId: string, linkId: string, patch: { title?: string; url?: string; position?: number }): Promise<ChannelLinkOut[]> {
+    return this.request("PATCH", `/api/v1/channels/${channelId}/links/${linkId}`, patch);
+  }
+
+  deleteChannelLink(channelId: string, linkId: string): Promise<ChannelLinkOut[]> {
+    return this.request("DELETE", `/api/v1/channels/${channelId}/links/${linkId}`);
   }
 
   // --- drafts (M15d) ------------------------------------------------------------------------

@@ -125,6 +125,9 @@ export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];
 /** Custom sidebar sections (M14f). */
 export type SidebarSectionOut = components["schemas"]["SidebarSectionOut"];
 
+/** Links pinned to the top of a conversation (M15f). */
+export type ChannelLinkOut = components["schemas"]["ChannelLinkOut"];
+
 /** Message priority and acknowledgements (M15e). */
 export type Priority = NonNullable<MessageOut["priority"]>;
 export type AckOut = components["schemas"]["AckOut"];

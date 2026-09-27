@@ -1,6 +1,6 @@
-import type { AckOut, AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
+import type { AckOut, AttachmentOut, ChannelLinkOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
-export type { AckOut, AttachmentOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
+export type { AckOut, AttachmentOut, ChannelLinkOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
 
 /** One row of the threads view: the parent message and my relation to the thread (THREADS.md §5). */
 export interface ThreadEntry {
