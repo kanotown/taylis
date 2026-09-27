@@ -202,6 +202,40 @@ describe("channel browsing", () => {
   });
 });
 
+describe("channel settings (M15)", () => {
+  it("keeps my owner role across channel.updated and drops a channel made private for non-members", async () => {
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const bob = server.addUser("bob");
+    const general = server.createChannel("general", alice.id);
+    const owner = new Store();
+    const outsider = new Store();
+    const engines = [new SyncEngine({ api: server.apiFor(alice.id), connect: server.connectorFor(alice.id), store: owner, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 3 }), new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: outsider, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 3 })];
+    for (const engine of engines) {
+      await engine.start();
+      await engine.idle();
+    }
+    expect(owner.getChannel(general.id)?.membership?.role).toBe("owner");
+    expect(outsider.getChannel(general.id)?.isMember).toBe(false);
+
+    server.updateChannel(general.id, { posting_policy: "owners" });
+    for (const engine of engines) await engine.idle();
+    expect(owner.getChannel(general.id)?.posting_policy).toBe("owners");
+    expect(owner.getChannel(general.id)?.membership?.role).toBe("owner"); // the event carries no membership
+    expect(outsider.getChannel(general.id)?.posting_policy).toBe("everyone"); // members-only event
+
+    server.updateChannel(general.id, { type: "private" });
+    for (const engine of engines) await engine.idle();
+    expect(owner.getChannel(general.id)?.type).toBe("private");
+    expect(outsider.getChannel(general.id)).toBeUndefined();
+
+    server.updateChannel(general.id, { type: "public" });
+    for (const engine of engines) await engine.idle();
+    expect(outsider.getChannel(general.id)?.isMember).toBe(false); // browsable again
+    for (const engine of engines) engine.stop();
+  });
+});
+
 describe("edits, deletions, reactions and mentions (M8a)", () => {
   it("applies live edits, deletions and reactions in order", async () => {
     const { server, alice, bob, channel, store, engine } = await setup();

@@ -1,10 +1,10 @@
-import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
+import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { MessageOut } from "../api/types";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
+import { canPostTopLevel, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -31,7 +31,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -373,6 +373,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </span>
                 <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
                 {current.archived && <Badge>アーカイブ済み</Badge>}
+                {isChannel && current.posting_policy === "owners" && (
+                  <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
+                    <Megaphone size={15} />
+                  </span>
+                )}
                 {isChannel && current.isMember && !current.archived && (
                   <button
                     type="button"
@@ -459,6 +464,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
                       {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
                       {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
                       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
+                      {canManage && !current.archived && (
+                        <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
+                          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : "投稿をオーナーと管理者に限る"}
+                        </MenuItem>
+                      )}
+                      {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}
+                      {controller.isAdmin && current.type === "private" && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
                       <MenuSeparator />
                       <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
                       {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
@@ -478,7 +490,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
             </header>
             <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
             {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
-            {current.isMember && !current.archived && <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />}
+            {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
+              <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
+            )}
+            {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
+              <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
+                <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
+              </div>
+            )}
             {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
           </>
         ) : (
@@ -525,6 +544,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "archive" && current && (
         <ArchiveConfirm channel={current} busy={busyAction} onClose={() => setDialog(null)} onConfirm={() => { setBusyAction(true); void controller.archiveChannel(current.id).then(() => { setBusyAction(false); setDialog(null); }); }} />
       )}
+      {dialog === "convert" && current && (
+        <ConvertConfirm
+          channel={current}
+          isAdmin={controller.isAdmin}
+          busy={busyAction}
+          onClose={() => setDialog(null)}
+          onConfirm={(type) => { setBusyAction(true); void controller.convertChannel(current.id, type).then(() => { setBusyAction(false); setDialog(null); }); }}
+        />
+      )}
       {dialog === "leave" && current && (
         <Modal onClose={() => setDialog(null)} title={`#${current.name} を退出しますか？`} className="w-[440px]">
           <p className="mt-3 text-sm text-muted">{current.type === "private" ? "非公開チャンネルなので、戻るには誰かに追加してもらう必要があります。" : "公開チャンネルなので、いつでも再参加できます。"}</p>
@@ -538,6 +566,33 @@ export function MainScreen({ controller }: { controller: AppController }) {
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+/** M15b: public → private hides the channel from non-members; private → public shows its whole history. */
+function ConvertConfirm({ channel, isAdmin, busy, onClose, onConfirm }: {
+  channel: ChannelState;
+  isAdmin: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (type: "public" | "private") => void;
+}) {
+  const toPrivate = channel.type === "public";
+  return (
+    <Modal onClose={onClose} title={`#${channel.name} を${toPrivate ? "非公開" : "公開"}チャンネルに変換しますか？`} className="w-[460px]">
+      <p className="mt-3 text-sm text-muted">
+        {toPrivate
+          ? "メンバー以外はこのチャンネルを見つけられなくなり、参加には招待が必要になります。これまでのメッセージもメンバーだけが読めます。"
+          : "ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。"}
+      </p>
+      {toPrivate && !isAdmin && <p className="mt-2 text-sm text-muted">公開に戻せるのは管理者だけです。</p>}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+        <Button variant="danger" disabled={busy} onClick={() => onConfirm(toPrivate ? "private" : "public")}>
+          {toPrivate ? "非公開にする" : "公開にする"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

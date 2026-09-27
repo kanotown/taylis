@@ -11,7 +11,7 @@ import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, SidebarSectionOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setUnreadBadge } from "../platform/badge";
@@ -570,6 +570,30 @@ export class AppController {
     if (!this.api) return false;
     try {
       this.store.upsertChannel(await this.api.updateChannel(channelId, { name: name.trim() }));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M15a: "owners" makes an announcement channel (owners and admins start the posts). */
+  async setPostingPolicy(channelId: string, policy: PostingPolicy): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.updateChannel(channelId, { posting_policy: policy }));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M15b: public → private (owner / admin) or private → public (admin only). */
+  async convertChannel(channelId: string, type: "public" | "private"): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.updateChannel(channelId, { type }));
       return true;
     } catch (error) {
       this.setError(error);

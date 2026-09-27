@@ -395,6 +395,7 @@ export class SyncEngine {
         const data = frame.data as { channel: ChannelOut; member_ids: string[] };
         const isMember = store.me !== null && data.member_ids.includes(store.me.id);
         if (isMember || data.channel.type === "public") store.upsertChannel(data.channel, { isMember });
+        else if (store.getChannel(data.channel.id)) store.removeChannel(data.channel.id); // made private (M15b)
         return;
       }
       case "channel.archived": {

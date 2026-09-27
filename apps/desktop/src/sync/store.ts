@@ -158,6 +158,8 @@ export class Store {
     const existing = this.channels.get(channel.id);
     const merged: ChannelState = {
       ...channel,
+      // Events carry no membership (only responses do): keep the one we know (e.g. my owner role).
+      membership: channel.membership ?? existing?.membership ?? null,
       // Not every response counts members (M11h): keep the last known count.
       member_count: channel.member_count ?? existing?.member_count ?? null,
       isMember: existing?.isMember ?? channel.membership !== null,
