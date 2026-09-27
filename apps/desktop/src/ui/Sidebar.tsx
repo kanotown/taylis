@@ -266,14 +266,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 <CheckCheck size={14} />
               </IconButton>
             )}
-            {onBrowse && (
+            {onBrowse && !controller.isGuest && (
               <IconButton tone="sidebar" label={`チャンネルを探す (${modKey()}+Shift+E)`} className="h-6 w-6" onClick={onBrowse}>
                 <Compass size={14} />
               </IconButton>
             )}
-            <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
-              <Plus size={14} />
-            </IconButton>
+            {!controller.isGuest && (
+              <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
+                <Plus size={14} />
+              </IconButton>
+            )}
           </span>
         }
       >

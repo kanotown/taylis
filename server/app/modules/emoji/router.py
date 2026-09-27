@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, Form, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.db import Db
-from app.core.errors import rate_limited
+from app.core.errors import forbidden, rate_limited
 from app.modules.attachments import service as attachments
 from app.modules.auth.deps import CurrentUser
 from app.modules.emoji import service
@@ -28,6 +28,8 @@ async def add_emoji(
     file: UploadFile = File(...),
 ) -> CustomEmojiOut:
     """M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image."""
+    if user.is_guest:
+        raise forbidden("guest_restricted", "Guests cannot add emoji")
     limiter = request.app.state.limiters["upload"]
     key = str(user.id)
     if not limiter.try_acquire(key):

@@ -271,8 +271,10 @@ fun MainScreen(controller: AppController) {
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
-                        DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
-                        DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                        if (!controller.isGuest) {
+                            DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                            DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                        }
                         DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
                         if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
                             DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
@@ -350,6 +352,7 @@ fun MainScreen(controller: AppController) {
                         onFiles = { filesChannelId = null; showFiles = true },
                         onReminders = { showReminders = true },
                         onBrowse = { dialog = MainDialog.BROWSE },
+                        isGuest = controller.isGuest,
                     )
                 }
             }
@@ -403,6 +406,7 @@ private fun ChannelList(
     onMentions: () -> Unit,
     onDrafts: () -> Unit,
     onBrowse: () -> Unit,
+    isGuest: Boolean = false,
     onFiles: () -> Unit,
     onReminders: () -> Unit,
 ) {
@@ -433,7 +437,7 @@ private fun ChannelList(
         item { SectionHeader("チャンネル") }
         items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
-        if (!unreadOnly) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
+        if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
         item { SectionHeader("ダイレクトメッセージ") }
         items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
         if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }

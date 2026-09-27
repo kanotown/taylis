@@ -72,7 +72,8 @@ async def test_domain_changes_are_relayed_in_order_with_audience(
     assert [e.id for e in bus.published] == sorted(e.id for e in bus.published)
 
     created = bus.published[0]
-    assert created.audience.kind == "all"  # public channel
+    # A public channel goes to every non-guest user (M13e), resolved to explicit ids.
+    assert created.audience.kind == "users" and {alice.id, bob.id} <= set(created.audience.ids)
     assert created.data["member_ids"] == [str(alice.id)]
 
     joined = bus.published[1]

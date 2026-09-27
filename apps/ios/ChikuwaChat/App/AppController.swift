@@ -238,6 +238,8 @@ final class AppController {
     }
 
     var isAdmin: Bool { me?.role == "admin" }
+    /// M13e: confined to the channels they were added to; browsing and creation are hidden.
+    var isGuest: Bool { me?.role == "guest" }
 
     // MARK: attachments (M9a)
 

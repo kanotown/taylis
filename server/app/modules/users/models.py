@@ -48,3 +48,8 @@ class User(Base):
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def is_guest(self) -> bool:
+        """M13e: sees only the channels they were added to (SECURITY.md §3.1)."""
+        return self.role == "guest"

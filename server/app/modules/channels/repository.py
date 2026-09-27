@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.channels.models import Channel, ChannelMember
+from app.modules.users.models import User  # read-only (ARCHITECTURE.md §5)
 
 
 async def get_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
@@ -88,3 +89,9 @@ async def member_ids_for_channels(
     for ids in out.values():
         ids.sort()
     return out
+
+
+async def non_guest_user_ids(db: AsyncSession) -> list[uuid.UUID]:
+    """Read-only users access (ARCHITECTURE.md §5): the audience of a public channel's creation."""
+    stmt = select(User.id).where(User.role != "guest", User.deactivated_at.is_(None))
+    return list((await db.execute(stmt)).scalars().all())
