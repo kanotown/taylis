@@ -46,6 +46,16 @@ _INLINE = [
     (re.compile(r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)"), r"\1"),
 ]
 _WHITESPACE = re.compile(r"\s*\n+\s*")
+# M15g: a table's separator rows vanish and each row becomes its cells joined by spaces.
+_TABLE_SEPARATOR = re.compile(
+    r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$", re.MULTILINE
+)
+_TABLE_ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$", re.MULTILINE)
+
+
+def _table_cells(match: re.Match[str]) -> str:
+    cells = match.group(1).replace("\\|", "\x00").split("|")
+    return " ".join(cell.strip().replace("\x00", "|") for cell in cells)
 
 
 def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 200) -> str:
@@ -63,6 +73,8 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
     text = MENTION_USER.sub(user_name, body)
     text = MENTION_GROUP.sub(user_name, text)  # group ids share the names map (M12k)
     text = MENTION_ALL.sub(lambda m: "@" + m.group(1), text)
+    text = _TABLE_SEPARATOR.sub("", text)
+    text = _TABLE_ROW.sub(_table_cells, text)
     text = _FENCE_LINE.sub("", text)
     text = _HEADING.sub("", text)
     text = _QUOTE.sub("", text)
