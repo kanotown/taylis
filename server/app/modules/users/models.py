@@ -31,6 +31,8 @@ class User(Base):
     quiet_hours_end: Mapped[int | None] = mapped_column(SmallInteger)
     quiet_hours_days: Mapped[list[int] | None] = mapped_column(ARRAY(SmallInteger))  # 0 = Monday
     quiet_hours_tz: Mapped[str | None] = mapped_column(Text)
+    # Keyword notifications (M12g): a message containing one counts as a mention of me.
+    notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

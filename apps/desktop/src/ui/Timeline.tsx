@@ -327,7 +327,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         ) : (
           <>
             {message.body && (
-              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} />
+              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}

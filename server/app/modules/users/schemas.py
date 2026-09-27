@@ -78,6 +78,8 @@ class UserPublic(BaseModel):
 class UserMe(UserPublic):
     email: str | None
     must_change_password: bool
+    # M12g: words that make a message count as a mention of me (case-insensitive substring).
+    notify_keywords: list[str] = []
 
 
 class UserUpdate(BaseModel):
@@ -93,6 +95,27 @@ class UserUpdate(BaseModel):
     # M12c: null clears; a past dnd_until also clears.
     dnd_until: datetime | None = None
     quiet_hours: QuietHours | None = None
+    # M12g: at most 20 keywords of 1-40 characters; blanks and duplicates are dropped.
+    notify_keywords: list[str] | None = Field(default=None, max_length=20)
+
+    @field_validator("notify_keywords")
+    @classmethod
+    def keywords_are_short_and_unique(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            word = raw.strip()
+            if not word:
+                continue
+            if len(word) > 40:
+                raise ValueError("Keywords are at most 40 characters")
+            if word.lower() in seen:
+                continue
+            seen.add(word.lower())
+            cleaned.append(word)
+        return cleaned
 
     @field_validator("display_name")
     @classmethod
@@ -137,4 +160,5 @@ def to_user_me(user: User) -> UserMe:
         **to_user_public(user).model_dump(),
         email=user.email,
         must_change_password=user.must_change_password,
+        notify_keywords=list(user.notify_keywords or []),
     )

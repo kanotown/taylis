@@ -11,6 +11,7 @@ from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
+from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
@@ -35,6 +36,7 @@ from app.modules.messages.schemas import (
 )
 from app.modules.reads import service as reads
 from app.modules.threads import service as threads
+from app.modules.users import service as users
 from app.modules.users.models import User
 
 
@@ -45,6 +47,20 @@ def _same_channel(existing: Message, channel_id: uuid.UUID) -> Message:
             "client_msg_id was already used for a message in another channel",
         )
     return existing
+
+
+async def _with_keyword_hits(
+    db: AsyncSession,
+    channel_id: uuid.UUID,
+    sender_id: uuid.UUID,
+    body: str,
+    mentioned: list[uuid.UUID],
+) -> list[uuid.UUID]:
+    """M12g: members whose notification keywords occur in the body count as mentioned."""
+    member_ids = (await channel_repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
+    candidates = [uid for uid in member_ids if uid != sender_id and uid not in mentioned]
+    hits = await users.keyword_mentions(db, body, candidates)
+    return list(mentioned) + hits
 
 
 async def create_message(
@@ -67,6 +83,7 @@ async def create_message(
             raise bad_request("reply_depth", "Replies to replies are not allowed")
 
     mentioned, mention_all = extract_mentions(data.body)
+    mentioned = await _with_keyword_hits(db, channel_id, actor.id, data.body, mentioned)
     try:
         async with db.begin_nested():
             seq = await repo.allocate_seq(db, channel_id)
@@ -200,6 +217,9 @@ async def edit_message(
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.body = data.body
     message.mentioned_user_ids, message.mention_all = extract_mentions(data.body)
+    message.mentioned_user_ids = await _with_keyword_hits(
+        db, message.channel_id, message.sender_id, data.body, message.mentioned_user_ids
+    )
     message.edited_at = utcnow()
     message.updated_seq = seq
     await db.flush()

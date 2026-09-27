@@ -14,6 +14,20 @@ from app.modules.users.models import User
 from app.modules.users.schemas import UserUpdate
 
 
+async def keyword_mentions(
+    db: AsyncSession, body: str, candidate_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """M12g: candidates whose notification keywords occur in `body` (case-insensitive)."""
+    if not candidate_ids or not body:
+        return []
+    haystack = body.lower()
+    hits: list[uuid.UUID] = []
+    for user in await repo.with_keywords(db, candidate_ids):
+        if any(word.lower() in haystack for word in user.notify_keywords or []):
+            hits.append(user.id)
+    return hits
+
+
 async def get_users(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, User]:
     return {user.id: user for user in await repo.get_many(db, ids)}
 
@@ -72,6 +86,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.quiet_hours_end = hours.end_minutes if hours else None
         user.quiet_hours_days = hours.days if hours else None
         user.quiet_hours_tz = hours.tz if hours else None
+    if "notify_keywords" in data.model_fields_set:
+        user.notify_keywords = data.notify_keywords or None
     user.updated_at = utcnow()
     try:
         await db.flush()

@@ -2575,6 +2575,14 @@
             "title": "Must Change Password",
             "type": "boolean"
           },
+          "notify_keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Notify Keywords",
+            "type": "array"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -2819,6 +2827,21 @@
               }
             ],
             "title": "Email"
+          },
+          "notify_keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Keywords"
           },
           "quiet_hours": {
             "anyOf": [
