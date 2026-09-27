@@ -1,6 +1,15 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.ui.unit.sp
@@ -142,6 +151,7 @@ fun MessageBody(
                         }
                     }
                 }
+                is BodyBlock.Table -> MarkdownTable(block, { inline(it) }, inlineContent)
                 is BodyBlock.CodeBlock -> Column(
                     Modifier.fillMaxWidth().padding(vertical = 2.dp).background(codeBackground, RoundedCornerShape(6.dp)).padding(8.dp),
                     horizontalAlignment = Alignment.End,
@@ -154,3 +164,75 @@ fun MessageBody(
     }
 }
 
+
+/** Column widths and row heights of the last layout pass, for drawing the grid lines. */
+private class TableGeometry {
+    var widths = IntArray(0)
+    var heights = IntArray(0)
+}
+
+/**
+ * M15g: a GFM table. Columns are as wide as their widest cell (capped), rows as tall as their
+ * tallest cell; the grid and the header shading are drawn behind. Wide tables scroll sideways.
+ */
+@Composable
+private fun MarkdownTable(block: BodyBlock.Table, inline: (List<BodyToken>) -> AnnotatedString, inlineContent: Map<String, InlineTextContent>) {
+    val lineColor = MaterialTheme.colorScheme.outlineVariant
+    val headerColor = MaterialTheme.colorScheme.surfaceVariant
+    val geometry = remember { TableGeometry() }
+    val columns = block.header.size
+    Box(Modifier.padding(vertical = 2.dp).horizontalScroll(rememberScrollState())) {
+        Layout(
+            content = {
+                (listOf(block.header) + block.rows).forEachIndexed { row, cells ->
+                    cells.forEachIndexed { column, tokens ->
+                        Text(
+                            inline(tokens),
+                            inlineContent = inlineContent,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (row == 0) FontWeight.Bold else null,
+                            textAlign = when (block.align.getOrNull(column)) {
+                                TableAlign.CENTER -> TextAlign.Center
+                                TableAlign.RIGHT -> TextAlign.End
+                                else -> TextAlign.Start
+                            },
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            },
+            modifier = Modifier.drawBehind {
+                val heights = geometry.heights
+                if (heights.isEmpty()) return@drawBehind
+                drawRect(headerColor, size = Size(size.width, heights[0].toFloat()))
+                var y = 0f
+                drawLine(lineColor, Offset(0f, 0.5f), Offset(size.width, 0.5f))
+                heights.forEach { h -> y += h; drawLine(lineColor, Offset(0f, y - 0.5f), Offset(size.width, y - 0.5f)) }
+                var x = 0f
+                drawLine(lineColor, Offset(0.5f, 0f), Offset(0.5f, size.height))
+                geometry.widths.forEach { w -> x += w; drawLine(lineColor, Offset(x - 0.5f, 0f), Offset(x - 0.5f, size.height)) }
+            },
+        ) { measurables, _ ->
+            val rows = if (columns == 0) 0 else measurables.size / columns
+            val cap = 280.dp.roundToPx()
+            val widths = IntArray(columns) { column ->
+                (0 until rows).maxOf { row -> measurables[row * columns + column].maxIntrinsicWidth(Constraints.Infinity).coerceAtMost(cap) }
+            }
+            val placeables = measurables.mapIndexed { index, measurable -> measurable.measure(Constraints.fixedWidth(widths[index % columns])) }
+            val heights = IntArray(rows) { row -> (0 until columns).maxOf { column -> placeables[row * columns + column].height } }
+            geometry.widths = widths
+            geometry.heights = heights
+            layout(widths.sum(), heights.sum()) {
+                var y = 0
+                for (row in 0 until rows) {
+                    var x = 0
+                    for (column in 0 until columns) {
+                        placeables[row * columns + column].place(x, y)
+                        x += widths[column]
+                    }
+                    y += heights[row]
+                }
+            }
+        }
+    }
+}

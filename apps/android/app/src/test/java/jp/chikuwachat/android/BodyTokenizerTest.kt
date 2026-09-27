@@ -3,6 +3,8 @@ package jp.chikuwachat.android
 import jp.chikuwachat.android.ui.BodyBlock
 import jp.chikuwachat.android.ui.BodyListItem
 import jp.chikuwachat.android.ui.BodyToken
+import jp.chikuwachat.android.ui.TableAlign
+import jp.chikuwachat.android.ui.plainText
 import jp.chikuwachat.android.ui.parseBlocks
 import jp.chikuwachat.android.ui.tokenizeBody
 import jp.chikuwachat.android.ui.tokenizeInline
@@ -63,5 +65,23 @@ class BodyTokenizerTest {
             listOf(BodyToken.MentionGroup("00000000-0000-7000-8000-00000000000a"), BodyToken.Text(" and "), BodyToken.Mention("00000000-0000-7000-8000-000000000001")),
             tokenizeBody("<@group:00000000-0000-7000-8000-00000000000a> and <@00000000-0000-7000-8000-000000000001>"),
         )
+    }
+
+    @Test fun tablesWithAlignmentEscapesAndRaggedRows() { // M15g
+        val body = "予定:\n| 項目 | 担当 | 期限 |\n| :--- | :-: | ---: |\n| API | <@01234567-89ab-cdef-0123-456789abcdef> | 10/2 |\n| a \\| b | **UI** |\n| x | y | z | extra |\n後書き"
+        val blocks = parseBlocks(body)
+        assertEquals(listOf("Paragraph", "Table", "Paragraph"), blocks.map { it::class.simpleName })
+        val table = blocks[1] as BodyBlock.Table
+        assertEquals(listOf(TableAlign.LEFT, TableAlign.CENTER, TableAlign.RIGHT), table.align)
+        assertEquals(listOf(listOf(BodyToken.Text("項目")), listOf(BodyToken.Text("担当")), listOf(BodyToken.Text("期限"))), table.header)
+        assertEquals(3, table.rows.size)
+        assertEquals(listOf(BodyToken.Mention("01234567-89ab-cdef-0123-456789abcdef")), table.rows[0][1])
+        assertEquals(listOf(BodyToken.Text("a | b")), table.rows[1][0])
+        assertEquals(listOf(BodyToken.Bold("UI")), table.rows[1][1])
+        assertEquals(emptyList<BodyToken>(), table.rows[1][2])
+        assertEquals(3, table.rows[2].size)
+        assertEquals(listOf("Paragraph"), parseBlocks("a | b\nc | d").map { it::class.simpleName })
+        assertEquals(1, parseBlocks("| a | b |\n| --- |").size)
+        assertEquals("項目 担当 API 田中", plainText("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |"))
     }
 }
