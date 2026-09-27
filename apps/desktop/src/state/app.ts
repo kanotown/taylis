@@ -124,6 +124,14 @@ export class AppController {
     await this.openPermalink(id);
   }
 
+  /** "server|username" of the signed-in account: names this device's per-account data (recent searches). */
+  get accountKey(): string | null {
+    return this.api ? this.account(this.api.baseUrl, this.username) : null;
+  }
+
+  /** The workspace name for the search box and the switcher (GET /server, M16c). */
+  workspaceName = "ChikuwaChat";
+
   get username(): string {
     return localStorage.getItem(USERNAME_KEY) ?? "";
   }

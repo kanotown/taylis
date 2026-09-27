@@ -1461,6 +1461,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Server Info */
+        get: operations["server_info_api_v1_server_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sidebar/channels/{channel_id}": {
         parameters: {
             query?: never;
@@ -1555,6 +1572,26 @@ export interface paths {
         };
         /** Bootstrap */
         get: operations["bootstrap_api_v1_sync_bootstrap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sync/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread Summary
+         * @description Badges for a workspace the client has not opened (WORKSPACES.md §6).
+         */
+        get: operations["unread_summary_api_v1_sync_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2962,6 +2999,24 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** ServerInfoOut */
+        ServerInfoOut: {
+            /** Api Version */
+            api_version: string;
+            /** Name */
+            name: string;
+            /**
+             * Product
+             * @default chikuwachat
+             * @constant
+             */
+            product: "chikuwachat";
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
         /** SessionOut */
         SessionOut: {
             /**
@@ -3135,6 +3190,16 @@ export interface components {
             enabled_at: string | null;
             /** Recovery Codes Left */
             recovery_codes_left: number;
+        };
+        /**
+         * UnreadSummaryOut
+         * @description What the workspace switcher shows for a workspace that is not open (WORKSPACES.md §6).
+         */
+        UnreadSummaryOut: {
+            /** Badge */
+            badge: number;
+            /** Has Unread */
+            has_unread: boolean;
         };
         /** UserMe */
         UserMe: {
@@ -6383,6 +6448,26 @@ export interface operations {
             };
         };
     };
+    server_info_api_v1_server_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfoOut"];
+                };
+            };
+        };
+    };
     unplace_channel_api_v1_sidebar_channels__channel_id__delete: {
         parameters: {
             query?: never;
@@ -6581,6 +6666,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapOut"];
+                };
+            };
+        };
+    };
+    unread_summary_api_v1_sync_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadSummaryOut"];
                 };
             };
         };
