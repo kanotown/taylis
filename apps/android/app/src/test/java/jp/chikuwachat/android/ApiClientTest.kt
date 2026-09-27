@@ -15,6 +15,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -125,5 +126,24 @@ class ApiClientTest {
         assertEquals("refresh-3", client.refreshToken)
         assertEquals(listOf("/api/v1/invites/t_k" to null, "/api/v1/invites/t_k/accept" to null), seen)
         assertTrue(body, body.contains("\"display_name\":\"田中\""))
+    }
+
+    @Test fun loginSendsTheTotpCodeOnlyWhenGiven() = runBlocking {
+        val bodies = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            val buffer = okio.Buffer(); request.body?.writeTo(buffer); val body = buffer.readUtf8(); bodies.add(body)
+            when {
+                request.url.encodedPath == "/api/v1/auth/totp" -> 200 to """{"enabled":true,"enabled_at":"2026-09-27T00:00:00Z","recovery_codes_left":7}"""
+                body.contains("totp_code") -> 200 to tokens(5)
+                else -> 401 to """{"error":{"code":"totp_required","message":"Two-factor code required","details":{}}}"""
+            }
+        })
+        try { client.login("alice", "pw", "android", null, null); fail("expected totp_required") } catch (e: ApiException.Api) { assertEquals("totp_required", e.code) }
+        val tokens = client.login("alice", "pw", "android", null, null, totpCode = "123456")
+        assertEquals("refresh-5", tokens.refreshToken)
+        assertFalse(bodies[0].contains("totp_code"))
+        assertTrue(bodies[1], bodies[1].contains("\"totp_code\":\"123456\""))
+        val status = client.totpStatus()
+        assertTrue(status.enabled); assertEquals(7, status.recoveryCodesLeft)
     }
 }

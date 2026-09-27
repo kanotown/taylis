@@ -51,7 +51,8 @@ class ApiClient(
 
     // --- auth -------------------------------------------------------------------------------
 
-    suspend fun login(username: String, password: String, platform: String, deviceName: String?, appVersion: String?): TokenResponse {
+    /** `totpCode` (M12i) is the authenticator or recovery code once the server answered 401 totp_required. */
+    suspend fun login(username: String, password: String, platform: String, deviceName: String?, appVersion: String?, totpCode: String? = null): TokenResponse {
         val body = buildJsonObject {
             put("username", username)
             put("password", password)
@@ -60,6 +61,7 @@ class ApiClient(
                 put("device_name", deviceName?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("app_version", appVersion?.let { JsonPrimitive(it) } ?: JsonNull)
             })
+            if (!totpCode.isNullOrEmpty()) put("totp_code", totpCode)
         }
         val tokens: TokenResponse = request("POST", "/api/v1/auth/login", body, auth = false)
         apply(tokens)
@@ -335,6 +337,20 @@ class ApiClient(
 
     override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState =
         request("PUT", "/api/v1/messages/$messageId/thread/follow", buildJsonObject { put("following", following) })
+
+    // --- two-factor authentication (M12i) ----------------------------------------------------
+
+    suspend fun totpStatus(): TotpStatusOut = request("GET", "/api/v1/auth/totp")
+
+    /** Needs my password; the secret and QR come back once. A wrong password is 422 invalid_password. */
+    suspend fun totpSetup(password: String): TotpSetupOut = request("POST", "/api/v1/auth/totp/setup", buildJsonObject { put("password", password) })
+
+    /** Confirms the setup with an app code; returns the recovery codes once. */
+    suspend fun totpEnable(code: String): TotpEnabledOut = request("POST", "/api/v1/auth/totp/enable", buildJsonObject { put("code", code) })
+
+    suspend fun totpDisable(password: String) {
+        requestRaw("POST", "/api/v1/auth/totp/disable", buildJsonObject { put("password", password) }, auth = true, retry401 = true)
+    }
 
     // --- invite links (M12h) ------------------------------------------------------------------
 

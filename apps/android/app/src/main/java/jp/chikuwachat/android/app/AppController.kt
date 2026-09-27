@@ -25,6 +25,10 @@ import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
+import jp.chikuwachat.android.ui.Totp
+import jp.chikuwachat.android.api.TotpEnabledOut
+import jp.chikuwachat.android.api.TotpSetupOut
+import jp.chikuwachat.android.api.TotpStatusOut
 import jp.chikuwachat.android.api.LinkPreviewOut
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.serialization.json.put
@@ -70,6 +74,9 @@ class AppController(private val app: Application) {
     var error by mutableStateOf<String?>(null)
     /** A short confirmation (「リンクをコピーしました」); null when nothing to say. */
     var notice by mutableStateOf<String?>(null)
+    /** M12i: the last login was refused for lack of an authenticator code; the form asks for one. */
+    var totpRequired by mutableStateOf(false)
+        private set
     var busy by mutableStateOf(false)
         private set
     var me by mutableStateOf<UserMe?>(null)
@@ -155,7 +162,7 @@ class AppController(private val app: Application) {
         }
     }
 
-    suspend fun login(server: String, username: String, password: String) {
+    suspend fun login(server: String, username: String, password: String, totpCode: String? = null) {
         val trimmed = server.trim().trimEnd('/')
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
             error = "サーバ URL が正しくありません"
@@ -164,19 +171,40 @@ class AppController(private val app: Application) {
         val api = makeApi(trimmed, username)
         busy = true
         try {
-            val tokens = api.login(username, password, "android", Build.MODEL, BuildConfig.VERSION_NAME)
+            val tokens = api.login(username, password, "android", Build.MODEL, BuildConfig.VERSION_NAME, totpCode?.let(Totp::normalize))
             secrets.putSetting(SERVER_KEY, trimmed)
             secrets.putSetting(USERNAME_KEY, username)
             savedServer = trimmed
             savedUsername = username
             error = null
+            totpRequired = false
             enterSession(api, username, tokens.user)
+        } catch (e: ApiException.Api) {
+            when (e.code) {
+                "totp_required" -> { totpRequired = true; error = null }
+                "invalid_totp" -> { totpRequired = true; error = Totp.errorText(e.code) }
+                else -> { totpRequired = false; error = describe(e) }
+            }
         } catch (e: Exception) {
             error = describe(e)
         } finally {
             busy = false
         }
     }
+
+    // --- two-factor authentication (M12i): the settings dialog drives these -----------------
+
+    suspend fun totpStatus(): TotpStatusOut? = runCatching { api!!.totpStatus() }.getOrElse { error = describe(it); null }
+
+    /** The failure text is `Totp.errorText` when 2FA specific, else the general description. */
+    suspend fun beginTotpSetup(password: String): Result<TotpSetupOut> = runCatching { api!!.totpSetup(password) }
+
+    suspend fun enableTotp(code: String): Result<TotpEnabledOut> = runCatching { api!!.totpEnable(Totp.normalize(code)) }
+
+    suspend fun disableTotp(password: String): String? =
+        runCatching { api!!.totpDisable(password); null }.getOrElse { totpFailure(it) }
+
+    fun totpFailure(e: Throwable): String = (e as? ApiException.Api)?.let { Totp.errorText(it.code) } ?: describe(e)
 
     /** M12h: what an invite link offers, before any account exists (throws on a dead link). */
     suspend fun previewInvite(server: String, token: String): InvitePreviewOut = ApiClient(server, http).invitePreview(token)
