@@ -58,7 +58,7 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi {
+    final class Api: SyncApi, DraftApi {
         unowned let server: FakeServer
         let userId: String
         var pendingFailure: Error?
@@ -66,6 +66,16 @@ final class FakeServer {
         init(server: FakeServer, userId: String) {
             self.server = server
             self.userId = userId
+        }
+
+        func saveDraft(channelId: String, parentId: String?, body: String) async throws -> DraftOut {
+            try maybeFail()
+            return try server.saveDraft(userId, channelId: channelId, parentId: parentId, body: body)
+        }
+
+        func deleteDraft(channelId: String, parentId: String?) async throws {
+            try maybeFail()
+            server.deleteDraft(userId, channelId: channelId, parentId: parentId)
         }
 
         private func maybeFail() throws {
@@ -309,6 +319,31 @@ final class FakeServer {
 
     /// "user" → starred channel ids (M12a).
     var favorites: [String: [String]] = [:]
+    /// M15d: "user:channel:parent" → the saved draft.
+    var drafts: [String: DraftOut] = [:]
+
+    func saveDraft(_ userId: String, channelId: String, parentId: String?, body: String) throws -> DraftOut {
+        guard channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
+        let draft = DraftOut(channelId: channelId, parentId: parentId, body: body, updatedAt: now())
+        drafts["\(userId):\(channelId):\(parentId ?? "")"] = draft
+        emitDraft(userId, DraftUpdated(channelId: channelId, parentId: parentId, body: body, updatedAt: draft.updatedAt, deleted: false))
+        return draft
+    }
+
+    func deleteDraft(_ userId: String, channelId: String, parentId: String?) {
+        guard drafts.removeValue(forKey: "\(userId):\(channelId):\(parentId ?? "")") != nil else { return }
+        emitDraft(userId, DraftUpdated(channelId: channelId, parentId: parentId, body: "", updatedAt: now(), deleted: true))
+    }
+
+    func drafts(of userId: String) -> [DraftOut] {
+        drafts.filter { $0.key.hasPrefix("\(userId):") }.map(\.value).sorted { $0.body < $1.body }
+    }
+
+    private func emitDraft(_ userId: String, _ data: DraftUpdated) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("draft.updated"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null, "data": try! JSONValue.from(data)]))
+    }
 
     func setFavorite(_ userId: String, channelId: String, on: Bool) {
         var list = favorites[userId] ?? []
@@ -702,7 +737,7 @@ final class FakeServer {
                             presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
                             bookmarks: bookmarks[userId] ?? [],
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
-                            customEmoji: Array(customEmoji.values))
+                            customEmoji: Array(customEmoji.values), drafts: drafts(of: userId))
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

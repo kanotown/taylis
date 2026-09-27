@@ -23,7 +23,7 @@ enum ApiError: Error {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi {
+final class ApiClient: SyncApi, DraftApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -203,6 +203,20 @@ final class ApiClient: SyncApi {
         if alsoInChannel { fields["also_in_channel"] = .bool(true) } // M15c
         let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages", body: .object(fields), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
+    }
+
+    // MARK: drafts (M15d)
+
+    func saveDraft(channelId: String, parentId: String?, body: String) async throws -> DraftOut {
+        try await request("PUT", "/api/v1/drafts", body: .object(["channel_id": .string(channelId), "parent_id": parentId.map(JSONValue.string) ?? .null,
+                                                                  "body": .string(body)]))
+    }
+
+    func deleteDraft(channelId: String, parentId: String?) async throws {
+        var components = URLComponents()
+        components.path = "/api/v1/drafts"
+        components.queryItems = [URLQueryItem(name: "channel_id", value: channelId)] + (parentId.map { [URLQueryItem(name: "parent_id", value: $0)] } ?? [])
+        _ = try await requestRaw("DELETE", components.string ?? "/api/v1/drafts", body: nil, auth: true, retry401: true)
     }
 
     // MARK: link previews (M11g)

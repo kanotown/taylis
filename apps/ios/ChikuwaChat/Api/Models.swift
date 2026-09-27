@@ -301,6 +301,25 @@ struct BootstrapOut: Codable {
     var groups: [GroupOut]? = nil
     /// My sidebar sections (M14f); changes arrive as sidebar.updated.
     var sidebarSections: [SidebarSectionOut]? = nil
+    /// My drafts shared by my devices (M15d); changes arrive as draft.updated.
+    var drafts: [DraftOut]? = nil
+}
+
+/// A draft saved on the server (M15d): text only, one per composer.
+struct DraftOut: Codable, Equatable {
+    let channelId: String
+    var parentId: String? = nil
+    let body: String
+    let updatedAt: String
+}
+
+/// draft.updated (M15d): saved or deleted (then `body` is empty) on one of my devices.
+struct DraftUpdated: Codable, Equatable {
+    let channelId: String
+    var parentId: String? = nil
+    let body: String
+    let updatedAt: String
+    let deleted: Bool
 }
 
 /// One of my sidebar sections (M14f); `channelIds` are the conversations placed in it.
