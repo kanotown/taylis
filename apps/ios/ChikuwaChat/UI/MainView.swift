@@ -152,15 +152,33 @@ struct StatusBadge: View {
     }
 }
 
-/// Thin strip at the top while the socket is not live; nothing when online.
+/// Thin strip at the top while the socket stays down. A reconnect that finishes within `grace` (launch, return
+/// from the background) shows nothing: the strip would only flash and push the screen down and back. Once shown,
+/// it follows the status until the socket is live again (same 2 s on every client).
 struct ConnectionBanner: View {
     let status: EngineStatus
+    static let grace: Duration = .seconds(2)
+    @State private var shown: EngineStatus?
 
     var body: some View {
-        switch status {
-        case .connecting: strip("サーバに接続しています…", color: .blue)
-        case .offline: strip("オフラインです。再接続を待っています…", color: .orange)
-        default: EmptyView()
+        Group {
+            switch shown {
+            case .connecting: strip("サーバに接続しています…", color: .blue)
+            case .offline: strip("オフラインです。再接続を待っています…", color: .orange)
+            default: EmptyView()
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: shown)
+        .task(id: status) {
+            guard status == .connecting || status == .offline else {
+                shown = nil
+                return
+            }
+            if shown == nil {
+                try? await Task.sleep(for: Self.grace)
+                if Task.isCancelled { return }
+            }
+            shown = status
         }
     }
 
