@@ -53,6 +53,7 @@ jobs:
           platforms: ${{ vars.DEPLOY_PLATFORMS || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.registry }}/chikuwachat-server:${{ env.TAG }}
+          provenance: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
@@ -64,6 +65,7 @@ jobs:
           platforms: ${{ vars.DEPLOY_PLATFORMS || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.registry }}/chikuwachat-web:${{ env.TAG }}
+          provenance: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
@@ -77,7 +79,7 @@ jobs:
     environment: production
     permissions:
       contents: read
-      packages: read
+      packages: write # pull on the server; after a good deploy, drop images older than the newest three
     steps:
       - uses: actions/checkout@v7
         with:
@@ -119,39 +121,18 @@ jobs:
         run: |
           # shellcheck disable=SC2029 # the tag is meant to expand here; the server checks it again
           printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh production deploy "$TAG"
-
-  desktop:
-    # Desktop installers for the release (unsigned), kept as workflow artifacts. Only for tags: the macOS
-    # runner's minutes count ten times on a private repository.
-    needs: checks
-    if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: apps/desktop
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      # Only after a good deploy: GHCR storage counts against the account's Packages allowance (budget $0:
+      # pushes would stop). The server keeps the current and the previous release; three here leave room for a
+      # rollback from the Actions tab.
+      - name: Keep the newest three server images
+        uses: actions/delete-package-versions@v5
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+          package-name: chikuwachat-server
+          package-type: container
+          min-versions-to-keep: 3
+      - name: Keep the newest three web images
+        uses: actions/delete-package-versions@v5
         with:
-          workspaces: apps/desktop/src-tauri
-      - run: npm ci
-      - run: npx tauri build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: desktop-${{ env.TAG }}-${{ matrix.os }}
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/release/bundle/macos/*.app
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: ignore
+          package-name: chikuwachat-web
+          package-type: container
+          min-versions-to-keep: 3

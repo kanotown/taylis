@@ -1,13 +1,9 @@
 name: ios
 
-# The iOS tests run on macOS runners, billed at ten times the Linux minutes on a private repository:
-# only when something the app is built from changes (and on demand).
+# The iOS tests run on macOS runners, billed at ten times the Linux minutes on a private repository (they were
+# 70 % of the monthly allowance): on demand only (Actions → ios → Run workflow). Every change is tested on a
+# developer's Mac before it is committed.
 on:
-  push:
-    branches: [main]
-    paths: ["apps/ios/**", "apps/shared/**", "openapi/**", ".github/workflows/ios.yml"]
-  pull_request:
-    paths: ["apps/ios/**", "apps/shared/**", "openapi/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
 permissions:
