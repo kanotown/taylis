@@ -1,4 +1,4 @@
-import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, X } from "lucide-react";
+import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority } from "../api/types";
@@ -20,6 +20,8 @@ import { Button, cn, IconButton, Kbd, modKey, PopoverContent, PopoverRoot, Popov
 
 const MAX_LENGTH = 20_000;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
+/** Bold, italic, strikethrough, code: always on the toolbar. */
+const PRIMARY_TOOLS = 4;
 const IME_COMMIT_GRACE_MS = 100;
 
 export function Composer({
@@ -77,6 +79,7 @@ export function Composer({
   const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : commandHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   const send = () => {
     const command = parseSlashCommand(text);
@@ -200,6 +203,7 @@ export function Composer({
     else setTimeout(restore, 0);
     return true;
   };
+  // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow.
   const tools: Array<{ icon: ReactNode; label: string; run: () => void }> = [
     { icon: <Bold size={15} />, label: `太字 (${modKey()}+B)`, run: () => edit((s) => toggleWrap(s, "**")) },
     { icon: <Italic size={15} />, label: `斜体 (${modKey()}+I)`, run: () => edit((s) => toggleWrap(s, "_")) },
@@ -416,13 +420,47 @@ export function Composer({
           }}
           rows={2}
         />
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <div className="flex items-center gap-0.5">
-            {tools.map((tool) => (
-              <IconButton key={tool.label} label={tool.label} className="h-7 w-7 text-muted hover:text-ink" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={tool.run}>
+        {/* Sized by the composer, not the window: a thread pane or a narrow window folds the toolbar. */}
+        <div className="@container px-2 pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-0.5">
+            {tools.map((tool, index) => (
+              <IconButton
+                key={tool.label}
+                label={tool.label}
+                className={cn("h-7 w-7 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @2xl:inline-flex")}
+                disabled={preview}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={tool.run}
+              >
                 {tool.icon}
               </IconButton>
             ))}
+            <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" title="その他の書式" aria-label="その他の書式" disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @2xl:hidden">
+                  <Type size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-1.5" onOpenAutoFocus={(e) => e.preventDefault()}>
+                <div className="flex gap-0.5">
+                  {tools.slice(PRIMARY_TOOLS).map((tool) => (
+                    <IconButton
+                      key={tool.label}
+                      label={tool.label}
+                      className="h-8 w-8 text-muted hover:text-ink"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        tool.run();
+                        setMoreToolsOpen(false);
+                      }}
+                    >
+                      {tool.icon}
+                    </IconButton>
+                  ))}
+                </div>
+              </PopoverContent>
+            </PopoverRoot>
             <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger asChild>
                 <button type="button" title="絵文字" aria-label="絵文字" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
@@ -464,8 +502,8 @@ export function Composer({
               </PopoverRoot>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1 text-[11px] text-muted lg:flex">
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="hidden items-center gap-1 text-[11px] text-muted @3xl:flex">
               <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").newline}</Kbd> 改行
             </span>
             <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
@@ -496,6 +534,7 @@ export function Composer({
               <SendHorizontal size={14} /> 送信
             </Button>
           </div>
+        </div>
         </div>
       </div>
       {canShare && (

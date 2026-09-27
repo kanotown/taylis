@@ -10,7 +10,7 @@ import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
-import { readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writeSidebarWidth } from "./prefs";
+import { PANE_DEFAULT, PANE_MAX, PANE_MIN, readPaneWidth, readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writePaneWidth, writeSidebarWidth } from "./prefs";
 import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { PinsPane } from "./PinsPane";
@@ -24,6 +24,7 @@ import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
+import { overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
@@ -71,6 +72,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [paneWidth, setPaneWidth] = useState(readPaneWidth);
 
   // Drag the strip between the sidebar and the conversation to resize; double-click resets.
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -88,6 +90,30 @@ export function MainScreen({ controller }: { controller: AppController }) {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       writeSidebarWidth(width);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  // The thread / pins pane is dragged by its left edge (wider to the left); the conversation keeps 360 px.
+  const startPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = paneWidth;
+    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, window.innerWidth - sidebarWidth - 360));
+    let width = startWidth;
+    const move = (e: PointerEvent) => {
+      width = Math.min(max, Math.max(PANE_MIN, startWidth - (e.clientX - startX)));
+      setPaneWidth(width);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      writePaneWidth(width);
     };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -356,11 +382,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
       className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
       style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
-      {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. */}
-      <div className="flex h-10 min-w-0 items-center bg-sidebar px-2">
+      {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
+          row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
+      <div
+        data-tauri-drag-region
+        className="flex h-10 min-w-0 items-center bg-sidebar px-2"
+        style={overlayTitleBar() && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
+      >
         <WorkspaceMenu controller={controller} />
       </div>
-      <div className="col-span-2 flex h-10 items-center bg-sidebar px-3">
+      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center bg-sidebar px-3">
         <SearchBar
           controller={controller}
           current={view === "search" || backToSearch ? search : null}
@@ -604,10 +635,26 @@ export function MainScreen({ controller }: { controller: AppController }) {
           </div>
         )}
       </main>
-      {pinsOpen && current && view === "channel" ? (
-        <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
-      ) : threadId && threadChannel ? (
-        <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+      {(pinsOpen && current && view === "channel") || (threadId && threadChannel) ? (
+        <div className="relative flex min-h-0" style={{ width: paneWidth }}>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="パネルの幅"
+            title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+            onPointerDown={startPaneResize}
+            onDoubleClick={() => {
+              setPaneWidth(PANE_DEFAULT);
+              writePaneWidth(PANE_DEFAULT);
+            }}
+            className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
+          />
+          {pinsOpen && current && view === "channel" ? (
+            <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
+          ) : threadId && threadChannel ? (
+            <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+          ) : null}
+        </div>
       ) : null}
       <Toast controller={controller} />
       <NoticeToast controller={controller} />

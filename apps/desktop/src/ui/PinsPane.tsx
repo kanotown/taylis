@@ -23,7 +23,7 @@ export function PinsPane({ controller, channel, onOpen, onClose }: { controller:
   }, [controller.api, channel.id, pinnedSignature]);
 
   return (
-    <aside className="flex min-h-0 w-[400px] min-w-[340px] flex-col border-l border-line bg-canvas">
+    <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <Pin size={16} className="text-warning" />
         <div className="min-w-0 flex-1">

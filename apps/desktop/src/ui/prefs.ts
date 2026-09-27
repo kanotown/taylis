@@ -3,6 +3,11 @@ export type SendKey = "enter" | "shift-enter";
 
 const SEND_KEY = "chikuwa.prefs.sendKey";
 const SIDEBAR_WIDTH = "chikuwa.prefs.sidebarWidth";
+const PANE_WIDTH = "chikuwa.prefs.paneWidth";
+/** The right-hand pane (thread, pins): dragged by its left edge. */
+export const PANE_MIN = 320;
+export const PANE_MAX = 760;
+export const PANE_DEFAULT = 400;
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 440;
 export const SIDEBAR_DEFAULT = 260;
@@ -40,6 +45,15 @@ export function readSidebarWidth(): number {
 
 export function writeSidebarWidth(value: number): void {
   write(SIDEBAR_WIDTH, String(Math.round(value)));
+}
+
+export function readPaneWidth(): number {
+  const value = Number(read(PANE_WIDTH));
+  return Number.isFinite(value) && value >= PANE_MIN && value <= PANE_MAX ? value : PANE_DEFAULT;
+}
+
+export function writePaneWidth(value: number): void {
+  write(PANE_WIDTH, String(Math.round(value)));
 }
 
 /** True when this keyboard event should send, given the preference. */
