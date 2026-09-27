@@ -2939,6 +2939,16 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Total Capped
+             * @default false
+             */
+            total_capped: boolean;
         };
         /** SectionCreate */
         SectionCreate: {
@@ -6334,12 +6344,15 @@ export interface operations {
     };
     search_messages_api_v1_search_messages_get: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string;
                 channel_id?: string | null;
                 from_user_id?: string | null;
                 after?: string | null;
                 before?: string | null;
+                has?: ("file" | "link" | "pin" | "reaction" | "poll")[];
+                is_thread?: boolean;
+                sort?: "relevance" | "newest";
                 tz_offset_minutes?: number;
                 limit?: number;
                 offset?: number;

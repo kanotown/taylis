@@ -32,8 +32,8 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
         text=parsed.text,
         after=max_dt(params.after, parsed.after),
         before=min_dt(params.before, parsed.before),
-        has=list(parsed.has),
-        is_thread=parsed.is_thread,
+        has=list(dict.fromkeys([*parsed.has, *params.has])),
+        is_thread=parsed.is_thread or params.is_thread,
         unresolved=list(parsed.unresolved),
     )
     from_user_id = params.from_user_id
@@ -51,7 +51,15 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
         else:
             filters.in_channel = match.name
             channel_ids = [uuid.UUID(str(match.id))]
-    if not parsed.text and not parsed.has_modifiers and not filters.unresolved:
+    structured = bool(
+        params.channel_id
+        or params.from_user_id
+        or params.after
+        or params.before
+        or params.has
+        or params.is_thread
+    )
+    if not parsed.text and not parsed.has_modifiers and not structured and not filters.unresolved:
         raise bad_request("empty_query", "Enter words to search or a modifier such as from:@name")
 
     empty = SearchOut(
@@ -65,35 +73,32 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
     if filters.unresolved:
         return empty  # a modifier named nothing the caller can see: no guessing
 
+    scope = repo.Scope(
+        channel_ids=channel_ids,
+        from_user_id=from_user_id,
+        after=filters.after,
+        before=filters.before,
+        has=filters.has,
+        is_thread=filters.is_thread,
+    )
     if parsed.text:
         try:
-            rows, keywords = await _run(
-                db, parsed.text, channel_ids, params, from_user_id, filters, escaped=False
-            )
+            rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=False)
         except DBAPIError as exc:
             # Groonga rejected the syntax (unbalanced quotes / parentheses): search it literally.
             log.info("search query fell back to escaped form: %s", exc.orig)
             await db.rollback()
-            rows, keywords = await _run(
-                db, parsed.text, channel_ids, params, from_user_id, filters, escaped=True
-            )
+            rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=True)
     else:
         # Modifiers only (e.g. from:@alice on:2026-09-26): newest first, no ranking.
         rows = [
             (m, 0.0)
             for m in await repo.list_filtered(
-                db,
-                channel_ids=channel_ids,
-                from_user_id=from_user_id,
-                after=filters.after,
-                before=filters.before,
-                has=filters.has,
-                is_thread=filters.is_thread,
-                limit=params.limit + 1,
-                offset=params.offset,
+                db, scope=scope, limit=params.limit + 1, offset=params.offset
             )
         ]
         keywords = []
+        total = await repo.count(db, query=None, scope=scope, escaped=False)
     has_more = len(rows) > params.limit
     rows = rows[: params.limit]
     outs = await messages.messages_out(db, [m for m, _ in rows])
@@ -105,31 +110,23 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
         limit=params.limit,
         offset=params.offset,
         has_more=has_more,
+        total=min(total, repo.TOTAL_CAP),
+        total_capped=total > repo.TOTAL_CAP,
     )
 
 
 async def _run(
-    db: AsyncSession,
-    query: str,
-    channel_ids: list[uuid.UUID],
-    params: SearchQuery,
-    from_user_id: uuid.UUID | None,
-    filters: SearchFilters,
-    *,
-    escaped: bool,
-) -> tuple[list[tuple[Message, float]], list[str]]:
+    db: AsyncSession, query: str, scope: repo.Scope, params: SearchQuery, *, escaped: bool
+) -> tuple[list[tuple[Message, float]], list[str], int]:
     rows = await repo.search_messages(
         db,
         query=query,
-        channel_ids=channel_ids,
-        from_user_id=from_user_id,
-        after=filters.after,
-        before=filters.before,
-        has=filters.has,
-        is_thread=filters.is_thread,
+        scope=scope,
+        sort=params.sort,
         limit=params.limit + 1,
         offset=params.offset,
         escaped=escaped,
     )
     keywords = await repo.extract_keywords(db, query, escaped=escaped)
-    return [(m, s) for m, s in rows], keywords
+    total = await repo.count(db, query=query, scope=scope, escaped=escaped)
+    return [(m, s) for m, s in rows], keywords, total

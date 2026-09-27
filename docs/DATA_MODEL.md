@@ -845,6 +845,11 @@ M15h で内容の条件を足した (Slack と同じ語): `has:file` (`has:attac
 理解した条件は `filters.has` / `filters.is_thread` に返し、知らない語 (`has:video` など) は `unresolved` に入れる。
 投票の無いメッセージの `poll` は JSON の null (SQL の NULL ではない) なので、`has:poll` は `jsonb_typeof(poll) = 'object'` で判定する。
 
+検索画面の絞り込みメニュー (2026-09-27) は語を書き換えずに構造化パラメータで送る: `channel_id`、`from_user_id`、
+`after` / `before` (タイムゾーン付き)、`has` (繰り返し可: file / link / pin / reaction / poll)、`is_thread`、
+`sort` (`relevance` 既定 / `newest`)。語の修飾子と AND で合わさり、`q` は空でもよい (条件が 1 つも無ければ
+`400 empty_query`)。応答の `total` は一致件数 (1000 件で数えるのをやめ、超えたら `total_capped: true`)。
+
 ## 5. サイズと保持
 
 | データ | 見積り | 保持 |
