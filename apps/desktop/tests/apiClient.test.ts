@@ -308,3 +308,29 @@ describe("edit history (M14c)", () => {
     expect(paths).toEqual(["/api/v1/messages/m1/revisions"]);
   });
 });
+
+describe("sidebar sections (M14f)", () => {
+  it("calls the section endpoints and gets the whole list back", async () => {
+    const calls: string[] = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        calls.push(`${init?.method ?? "GET"} ${String(input).replace("http://server", "")}`);
+        return jsonResponse(200, [{ id: "s1", name: "x", position: 0, channel_ids: [] }]);
+      },
+    });
+    client.accessToken = "a";
+    await client.createSidebarSection("x");
+    await client.updateSidebarSection("s1", { position: 1 });
+    await client.placeInSidebarSection("s1", "c1");
+    await client.removeFromSidebarSection("c1");
+    const rows = await client.deleteSidebarSection("s1");
+    expect(rows[0]!.name).toBe("x");
+    expect(calls).toEqual([
+      "POST /api/v1/sidebar/sections",
+      "PATCH /api/v1/sidebar/sections/s1",
+      "PUT /api/v1/sidebar/sections/s1/channels/c1",
+      "DELETE /api/v1/sidebar/channels/c1",
+      "DELETE /api/v1/sidebar/sections/s1",
+    ]);
+  });
+});

@@ -11,7 +11,7 @@ import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, SidebarSectionOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setUnreadBadge } from "../platform/badge";
@@ -471,6 +471,45 @@ export class AppController {
       this.setError(error);
       return false;
     }
+  }
+
+  // --- sidebar sections (M14f) -------------------------------------------------------------
+
+  private async sidebarChange(work: (api: ApiClient) => Promise<SidebarSectionOut[]>): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.replaceSidebar(await work(this.api));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** A new section at the end; with `channelId`, that conversation moves into it. */
+  async createSection(name: string, channelId: string | null): Promise<boolean> {
+    const before = new Set(this.store.sidebarSections.map((s) => s.id));
+    if (!(await this.sidebarChange((api) => api.createSidebarSection(name)))) return false;
+    const created = this.store.sidebarSections.find((s) => !before.has(s.id));
+    if (channelId && created) return this.moveToSection(channelId, created.id);
+    return true;
+  }
+
+  renameSection(sectionId: string, name: string): Promise<boolean> {
+    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { name }));
+  }
+
+  moveSection(sectionId: string, position: number): Promise<boolean> {
+    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
+  }
+
+  deleteSection(sectionId: string): Promise<boolean> {
+    return this.sidebarChange((api) => api.deleteSidebarSection(sectionId));
+  }
+
+  /** `sectionId` null puts the conversation back in the default sections. */
+  moveToSection(channelId: string, sectionId: string | null): Promise<boolean> {
+    return this.sidebarChange((api) => (sectionId ? api.placeInSidebarSection(sectionId, channelId) : api.removeFromSidebarSection(channelId)));
   }
 
   /** M12a: a starred channel; the store flag moves at once, favorite.updated confirms on every device. */

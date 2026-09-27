@@ -6,7 +6,7 @@
 import { ApiError, isRetryable } from "../api/errors";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
@@ -333,6 +333,7 @@ export class SyncEngine {
     store.replaceFavorites(bootstrap.favorites ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceGroups(bootstrap.groups ?? []);
+    store.replaceSidebar(bootstrap.sidebar_sections ?? []);
     void this.loadScheduled();
     void this.loadReminders();
   }
@@ -438,6 +439,11 @@ export class SyncEngine {
       case "emoji.updated": {
         const data = frame.data as { emoji: CustomEmojiOut; deleted: boolean };
         store.applyCustomEmoji(data.emoji, data.deleted);
+        return;
+      }
+      case "sidebar.updated": {
+        const data = frame.data as { sections: SidebarSectionOut[] };
+        store.replaceSidebar(data.sections);
         return;
       }
       case "group.updated": {

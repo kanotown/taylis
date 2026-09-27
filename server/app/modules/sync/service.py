@@ -16,6 +16,7 @@ from app.modules.groups import service as groups
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import service as reads
+from app.modules.sidebar import service as sidebar
 from app.modules.sync.schemas import BootstrapOut, Limits, PresenceEntry
 from app.modules.threads import service as threads
 from app.modules.users import service as users
@@ -61,6 +62,7 @@ async def bootstrap(
         favorites=await favorites.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
         groups=await groups.list_all(db),
+        sidebar_sections=await sidebar.list_for(db, actor.id),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

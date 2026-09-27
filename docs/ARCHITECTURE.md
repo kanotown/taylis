@@ -163,6 +163,7 @@ server/
       invites/           # 招待リンク (発行 / 取消 / 公開の確認と受諾) (M12h)
       groups/            # ユーザーグループ (@group メンションの展開先、admin が管理) (M12k)
       webhooks/          # 受信 Webhook (トークン付き URL → bot ユーザーとして投稿) (M13a)
+      sidebar/           # サイドバーのセクション (個人の並べ替え、sidebar.updated) (M14f)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync

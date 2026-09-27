@@ -47,6 +47,7 @@ from app.modules.reminders.router import router as reminders_router
 from app.modules.scheduled import service as scheduled
 from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
+from app.modules.sidebar.router import router as sidebar_router
 from app.modules.sync.router import router as sync_router
 from app.modules.threads.router import router as threads_router
 from app.modules.totp.router import router as totp_router
@@ -195,6 +196,7 @@ def build_api_router() -> APIRouter:
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
     api.include_router(favorites_router)
+    api.include_router(sidebar_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)

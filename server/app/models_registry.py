@@ -8,6 +8,7 @@ from app.modules.groups import models as _group_models
 from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
+from app.modules.sidebar import models as _sidebar_models
 from app.modules.totp import models as _totp_models
 from app.modules.users import models as _user_models
 from app.modules.webhooks import models as _webhook_models
@@ -21,6 +22,7 @@ __all__ = [
     "_invite_models",
     "_message_models",
     "_notification_models",
+    "_sidebar_models",
     "_totp_models",
     "_user_models",
     "_webhook_models",

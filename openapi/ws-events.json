@@ -2370,6 +2370,62 @@
         "type": "object"
       }
     },
+    "sidebar.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "SidebarSectionOut": {
+            "properties": {
+              "channel_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Channel Ids",
+                "type": "array"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "position": {
+                "title": "Position",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "position",
+              "channel_ids"
+            ],
+            "title": "SidebarSectionOut",
+            "type": "object"
+          }
+        },
+        "description": "The whole list after any change: small, and clients simply replace theirs.",
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/$defs/SidebarSectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sections"
+        ],
+        "title": "SidebarUpdatedData",
+        "type": "object"
+      }
+    },
     "thread.updated": {
       "audience": "user",
       "consumes_seq": false,

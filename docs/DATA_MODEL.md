@@ -458,6 +458,31 @@ CREATE TABLE webhooks (
   管理画面のロール変更の対象にもならない。Webhook を削除すると bot は無効化され、投稿は bot 名義のまま残る。
 - 無効化 (`enabled = false`) と未知のトークンはどちらも 404 (存在を漏らさない)。
 
+### sidebar_sections / sidebar_section_channels (サイドバーのセクション、M14f)
+
+```sql
+CREATE TABLE sidebar_sections (
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id),
+  name        varchar(40) NOT NULL,
+  position    integer NOT NULL,              -- 0 から。並べ替えで詰め直す
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX sidebar_sections_user_idx ON sidebar_sections (user_id, position);
+
+CREATE TABLE sidebar_section_channels (
+  user_id     uuid NOT NULL REFERENCES users(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  section_id  uuid NOT NULL REFERENCES sidebar_sections(id) ON DELETE CASCADE,
+  added_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, channel_id)          -- 1 つの会話は自分のセクションのどれか 1 つにだけ入る
+);
+```
+
+- 個人データ (channel seq なし)。1 人 20 セクションまで。参加中の会話 (チャンネルと DM) だけを入れられる。
+- お気に入りはセクションより優先して表示する。抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
+- 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

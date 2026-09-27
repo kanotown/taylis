@@ -118,3 +118,6 @@ export type PollCreate = components["schemas"]["PollCreate"];
 
 /** Edit history (M14c). */
 export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];
+
+/** Custom sidebar sections (M14f). */
+export type SidebarSectionOut = components["schemas"]["SidebarSectionOut"];

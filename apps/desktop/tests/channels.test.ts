@@ -83,3 +83,20 @@ describe("unread badge total (M13f)", () => {
     expect(unreadBadgeTotal(rows)).toBe(5);
   });
 });
+
+describe("custom sidebar sections (M14f)", () => {
+  it("moves placed conversations out of the default sections, favorites first", () => {
+    const base = { topic: null, purpose: null, created_by: null, created_at: "", updated_at: "", last_seq: 0, membership: { role: "member", joined_at: "" }, isMember: true, archived: false, lastReadSeq: 0, syncedSeq: 0, unreadCount: 0, mentionCount: 0, dm_user_ids: null, notificationLevel: null, mutedUntil: null, member_count: 2 };
+    const make = (id: string, type: string, extra: Record<string, unknown> = {}) => ({ ...base, id, name: id, type, last_message_at: null, ...extra }) as unknown as ChannelState;
+    const all = [make("alpha", "public"), make("beta", "public"), make("gamma", "private"), make("d1", "dm", { last_message_at: "2026-09-27T01:00:00Z" }), make("d2", "dm", { last_message_at: "2026-09-27T02:00:00Z" })];
+    const sections = [
+      { id: "s1", name: "プロジェクト", position: 0, channel_ids: ["gamma", "d1", "beta"] },
+      { id: "s2", name: "空", position: 1, channel_ids: [] },
+    ];
+    const result = sectionChannels(all, (c) => c.name ?? "", { sections, favorites: new Set(["beta"]) });
+    expect(result.favorites.map((c) => c.id)).toEqual(["beta"]);
+    expect(result.custom.map((g) => [g.section.name, g.channels.map((c) => c.id)])).toEqual([["プロジェクト", ["gamma", "d1"]], ["空", []]]);
+    expect(result.channels.map((c) => c.id)).toEqual(["alpha"]);
+    expect(result.dms.map((c) => c.id)).toEqual(["d2"]);
+  });
+});

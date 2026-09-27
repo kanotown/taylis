@@ -37,6 +37,7 @@ import type {
   NotificationPreferenceOut,
   ReadStateOut,
   SearchOut,
+  SidebarSectionOut,
   TemporaryPasswordOut,
   ThreadFilter,
   ThreadListOut,
@@ -493,6 +494,28 @@ export class ApiClient {
   /** A message that carries a poll; posted directly (not through the offline queue). */
   postPoll(channelId: string, parentId: string | null, poll: PollCreate): Promise<MessageOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/messages`, { client_msg_id: crypto.randomUUID(), body: "", parent_id: parentId, poll });
+  }
+
+  // --- sidebar sections (M14f): every call returns my whole list ---------------------------
+
+  createSidebarSection(name: string): Promise<SidebarSectionOut[]> {
+    return this.request("POST", "/api/v1/sidebar/sections", { name });
+  }
+
+  updateSidebarSection(sectionId: string, patch: { name?: string; position?: number }): Promise<SidebarSectionOut[]> {
+    return this.request("PATCH", `/api/v1/sidebar/sections/${sectionId}`, patch);
+  }
+
+  deleteSidebarSection(sectionId: string): Promise<SidebarSectionOut[]> {
+    return this.request("DELETE", `/api/v1/sidebar/sections/${sectionId}`);
+  }
+
+  placeInSidebarSection(sectionId: string, channelId: string): Promise<SidebarSectionOut[]> {
+    return this.request("PUT", `/api/v1/sidebar/sections/${sectionId}/channels/${channelId}`);
+  }
+
+  removeFromSidebarSection(channelId: string): Promise<SidebarSectionOut[]> {
+    return this.request("DELETE", `/api/v1/sidebar/channels/${channelId}`);
   }
 
   // --- invite links (M12h) ------------------------------------------------------------------
