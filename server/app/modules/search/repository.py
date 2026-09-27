@@ -1,13 +1,41 @@
 """PGroonga queries. Read-only access to messages / attachments (ARCHITECTURE.md §5 exception)."""
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import exists, func, literal_column, or_, select
+from sqlalchemy import Select, exists, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.attachments.models import Attachment
-from app.modules.messages.models import Message
+from app.modules.messages.models import Message, Reaction
+
+_LINK = r"https?://"
+
+
+def _apply_flags(stmt: Select[Any], has: Sequence[str], is_thread: bool) -> Select[Any]:
+    """M15h: has:file / link / pin / reaction / poll; is:thread = replies and their parents."""
+    if "file" in has:
+        stmt = stmt.where(
+            exists(
+                select(Attachment.id).where(
+                    Attachment.message_id == Message.id, Attachment.status == "attached"
+                )
+            )
+        )
+    if "link" in has:
+        stmt = stmt.where(Message.body.op("~*")(_LINK))
+    if "pin" in has:
+        stmt = stmt.where(Message.pinned_at.is_not(None))
+    if "reaction" in has:
+        stmt = stmt.where(exists(select(Reaction.user_id).where(Reaction.message_id == Message.id)))
+    if "poll" in has:
+        # A message without a poll stores JSON null (not SQL NULL): ask for an object.
+        stmt = stmt.where(func.jsonb_typeof(Message.poll) == "object")
+    if is_thread:
+        stmt = stmt.where(or_(Message.parent_id.is_not(None), Message.reply_count > 0))
+    return stmt
 
 
 async def search_messages(
@@ -18,6 +46,8 @@ async def search_messages(
     from_user_id: uuid.UUID | None,
     after: datetime | None,
     before: datetime | None,
+    has: Sequence[str] = (),
+    is_thread: bool = False,
     limit: int,
     offset: int,
     escaped: bool,
@@ -54,6 +84,7 @@ async def search_messages(
         stmt = stmt.where(Message.created_at >= after)
     if before is not None:
         stmt = stmt.where(Message.created_at < before)
+    stmt = _apply_flags(stmt, has, is_thread)
     rows = (await db.execute(stmt)).all()
     return [(row[0], float(row[1] or 0.0)) for row in rows]
 
@@ -65,6 +96,8 @@ async def list_filtered(
     from_user_id: uuid.UUID | None,
     after: datetime | None,
     before: datetime | None,
+    has: Sequence[str] = (),
+    is_thread: bool = False,
     limit: int,
     offset: int,
 ) -> list[Message]:
@@ -88,6 +121,7 @@ async def list_filtered(
         stmt = stmt.where(Message.created_at >= after)
     if before is not None:
         stmt = stmt.where(Message.created_at < before)
+    stmt = _apply_flags(stmt, has, is_thread)
     return list((await db.execute(stmt)).scalars().all())
 
 

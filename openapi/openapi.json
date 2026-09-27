@@ -3047,6 +3047,13 @@
             ],
             "title": "From Username"
           },
+          "has": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Has",
+            "type": "array"
+          },
           "in_channel": {
             "anyOf": [
               {
@@ -3057,6 +3064,11 @@
               }
             ],
             "title": "In Channel"
+          },
+          "is_thread": {
+            "default": false,
+            "title": "Is Thread",
+            "type": "boolean"
           },
           "text": {
             "title": "Text",

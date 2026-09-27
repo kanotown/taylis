@@ -176,3 +176,54 @@ async def test_search_modifiers_filter_by_author_channel_and_date(
     assert listed["keywords"] == []
     assert all(hit["score"] == 0 for hit in listed["hits"])
     assert (await client.get("/api/v1/search/messages", params={"q": "   "})).status_code == 400
+
+
+async def test_search_has_and_is_modifiers(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """M15h: has:file / link / pin / reaction / poll and is:thread, with or without words."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    general = await client.post("/api/v1/channels", json={"name": "general"})
+    cid = general.json()["id"]
+    upload = await client.post(
+        "/api/v1/attachments", files={"file": ("仕様.txt", b"spec", "text/plain")}
+    )
+    await _post(client, cid, "仕様 を添付", [upload.json()["id"]])
+    await _post(client, cid, "仕様 は https://example.com/spec")
+    pinned = await _post(client, cid, "仕様 の決定事項")
+    await client.put(f"/api/v1/messages/{pinned['id']}/pin")
+    liked = await _post(client, cid, "仕様 よさそう")
+    await client.put(f"/api/v1/messages/{liked['id']}/reactions/👍")
+    poll = await client.post(
+        f"/api/v1/channels/{cid}/messages",
+        json={
+            "client_msg_id": str(uuid.uuid4()),
+            "body": "",
+            "poll": {"question": "仕様 どっち?", "options": ["A", "B"]},
+        },
+    )
+    assert poll.status_code == 201
+    parent = await _post(client, cid, "仕様 の相談")
+    reply = await client.post(
+        f"/api/v1/channels/{cid}/messages",
+        json={"client_msg_id": str(uuid.uuid4()), "body": "返信", "parent_id": parent["id"]},
+    )
+    assert reply.status_code == 201
+
+    assert bodies(await _search(client, "仕様 has:file")) == ["仕様 を添付"]
+    assert bodies(await _search(client, "仕様 has:link")) == ["仕様 は https://example.com/spec"]
+    assert bodies(await _search(client, "仕様 has:pin")) == ["仕様 の決定事項"]
+    assert bodies(await _search(client, "仕様 has:reaction")) == ["仕様 よさそう"]
+    assert bodies(await _search(client, "仕様 has:poll")) == ["📊 仕様 どっち?"]
+    # Aliases, several flags at once, and modifier-only searches (newest first).
+    assert bodies(await _search(client, "has:attachment")) == ["仕様 を添付"]
+    assert bodies(await _search(client, "has:pinned has:reactions")) == []
+    assert bodies(await _search(client, "is:thread")) == ["返信", "仕様 の相談"]
+    result = await _search(client, "仕様 has:links is:threads")
+    assert result["hits"] == []
+    assert (result["filters"]["has"], result["filters"]["is_thread"]) == (["link"], True)
+    # Unknown flags are reported, not guessed.
+    unknown = await _search(client, "仕様 has:video")
+    assert unknown["hits"] == [] and unknown["filters"]["unresolved"] == ["has:video"]
+    assert (await _search(client, "is:saved"))["filters"]["unresolved"] == ["is:saved"]
