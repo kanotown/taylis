@@ -658,6 +658,38 @@ final class SyncEngineTests: XCTestCase {
         engine.stop()
     }
 
+    func testChannelSettingsKeepMyRoleAndHideChannelsMadePrivate() async throws {  // M15
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let general = server.createChannel("general", ownerId: alice.id)
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let owner = Store()
+        let outsider = Store()
+        let engines = [(alice.id, owner), (bob.id, outsider)].map { id, store in
+            SyncEngine(api: server.api(for: id), connect: server.connector(for: id), wsUrl: URL(string: "ws://fake")!, store: store,
+                       getAccessToken: { "t" }, options: options)
+        }
+        for engine in engines {
+            await engine.start()
+            await settle(engine)
+        }
+        XCTAssertEqual(owner.channel(general.id)?.channel.membership?.role, "owner")
+        XCTAssertEqual(outsider.channel(general.id)?.isMember, false)
+
+        server.updateChannel(general.id, postingPolicy: "owners")
+        for engine in engines { await settle(engine) }
+        XCTAssertEqual(owner.channel(general.id)?.channel.isAnnouncement, true)
+        XCTAssertEqual(owner.channel(general.id)?.canPostTopLevel(isAdmin: false), true) // the event carries no membership
+
+        server.updateChannel(general.id, type: "private")
+        for engine in engines { await settle(engine) }
+        XCTAssertEqual(owner.channel(general.id)?.channel.type, "private")
+        XCTAssertNil(outsider.channel(general.id))
+        for engine in engines { engine.stop() }
+    }
+
     func testBrowsablePublicChannelsAndJoining() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

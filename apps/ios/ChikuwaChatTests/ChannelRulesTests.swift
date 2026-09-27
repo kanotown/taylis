@@ -25,4 +25,15 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertTrue(expired.showsUnread)
         XCTAssertEqual(channel("d", type: "dm", unread: 3).badgeContribution, 3)
     }
+
+    func testAnnouncementChannelsLetOwnersAndAdminsPost() {  // M15a
+        var announce = channel("a")
+        XCTAssertTrue(announce.canPostTopLevel(isAdmin: false))
+        announce.channel.postingPolicy = "owners"
+        announce.channel.membership = MembershipOut(role: "member", joinedAt: "")
+        XCTAssertFalse(announce.canPostTopLevel(isAdmin: false))
+        XCTAssertTrue(announce.canPostTopLevel(isAdmin: true))
+        announce.channel.membership = MembershipOut(role: "owner", joinedAt: "")
+        XCTAssertTrue(announce.canPostTopLevel(isAdmin: false))
+    }
 }
