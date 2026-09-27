@@ -5,25 +5,25 @@ import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
-import { unreadBadgeTotal } from "../ui/channels";
+import { conversationTitle, unreadBadgeTotal } from "../ui/channels";
 import { configureAvatars, noteVersions } from "../ui/avatars";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
-import { ApiError } from "../api/errors";
+import { ApiError, describeError } from "../api/errors";
 import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setUnreadBadge } from "../platform/badge";
 import { isTauri, isWeb } from "../platform/env";
-import { notify } from "../platform/notify";
+import { clearNotifications, notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
 import { plainText } from "../ui/markdown";
-import { mentionsToNames } from "../ui/mentions";
+import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
@@ -88,14 +88,14 @@ export class AppController {
     this.emit();
   }
 
-  /** Human-readable text for an error (dialogs show it inline). */
+  /** Human-readable (Japanese) text for an error (dialogs show it inline). */
   describe(error: unknown): string {
     return describe(error);
   }
 
-  /** Surface a problem to the UI (toast on the main screen); null clears it. */
+  /** Surface a problem to the UI (toast on the main screen); a string is shown as is, null clears it. */
   setError(error: unknown): void {
-    this.error = error === null ? null : error instanceof Error ? error.message : String(error);
+    this.error = error === null ? null : describe(error);
     this.emit();
   }
 
@@ -144,27 +144,33 @@ export class AppController {
 
   /** Startup: restore the previous session from the credential store (SYNC_PROTOCOL.md §7.2). */
   async boot(): Promise<void> {
-    if (isWeb()) this.takeEntryPath();
-    const server = this.serverUrl;
-    const username = this.username;
-    if (!username) {
-      this.setScreen("login");
-      return;
-    }
-    const refreshToken = await this.secrets.get(this.account(server, username));
-    if (!refreshToken) {
-      this.setScreen("login");
-      return;
-    }
-    const api = this.createApi(server, username);
-    api.refreshToken = refreshToken;
-    this.api = api;
-    if (await this.startEngine(true)) return;
     try {
-      const tokens = await api.refresh();
-      await this.enterSession(api, username, tokens.user);
+      if (isWeb()) this.takeEntryPath();
+      const server = this.serverUrl;
+      const username = this.username;
+      if (!username) {
+        this.setScreen("login");
+        return;
+      }
+      const refreshToken = await this.secrets.get(this.account(server, username));
+      if (!refreshToken) {
+        this.setScreen("login");
+        return;
+      }
+      const api = this.createApi(server, username);
+      api.refreshToken = refreshToken;
+      this.api = api;
+      if (await this.startEngine(true)) return;
+      try {
+        const tokens = await api.refresh();
+        await this.enterSession(api, username, tokens.user);
+      } catch (err) {
+        this.setScreen("login", err instanceof ApiError && err.isAuth ? null : describe(err));
+      }
     } catch (err) {
-      this.setScreen("login", err instanceof ApiError && err.isAuth ? null : describe(err));
+      // Never stay on 起動中…: an unreadable credential store (or anything else) still leads to the login form.
+      console.error("startup failed", err);
+      this.setScreen("login", describe(err));
     }
   }
 
@@ -273,13 +279,14 @@ export class AppController {
     }
   }
 
+  /** The role as of the last bootstrap (store.me), which also follows changes made while signed in. */
   get isAdmin(): boolean {
-    return this.me?.role === "admin";
+    return (this.store.me ?? this.me)?.role === "admin";
   }
 
   /** M13e: confined to the channels they were added to; the sidebar hides browsing and creation. */
   get isGuest(): boolean {
-    return this.me?.role === "guest";
+    return (this.store.me ?? this.me)?.role === "guest";
   }
 
   /** Fetch the bytes with the bearer token and hand them to the platform save dialog. */
@@ -424,13 +431,22 @@ export class AppController {
     }
   }
 
-  /** Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost. */
+  /**
+   * Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost: as the
+   * composer writes it (`@name`, not `<@id>`), after what is already typed there.
+   */
   async cancelScheduled(row: ScheduledOut, restoreDraft = true): Promise<void> {
     if (!this.api) return;
     try {
       await this.api.cancelScheduled(row.id);
       this.store.applyScheduled({ ...row, status: "cancelled" });
-      if (restoreDraft && row.body) this.store.setDraft(row.channel_id, row.parent_id ?? null, { text: row.body });
+      if (restoreDraft && row.body) {
+        const parentId = row.parent_id ?? null;
+        const text = decodeMentions(row.body, this.store.users, this.store.groups);
+        const current = this.store.draft(row.channel_id, parentId).text;
+        const joined = current.trim() === "" ? text : `${current}${current.endsWith("\n") ? "" : "\n"}${text}`;
+        this.store.setDraft(row.channel_id, parentId, { text: joined });
+      }
     } catch (error) {
       this.setError(error);
     }
@@ -458,7 +474,8 @@ export class AppController {
       await copyText(url);
       this.setNotice("リンクをコピーしました");
     } catch (error) {
-      this.setError(error);
+      console.warn("copy failed", error);
+      this.setError("クリップボードに書き込めませんでした");
     }
   }
 
@@ -746,7 +763,7 @@ export class AppController {
       await this.api.changePassword(current, next);
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return describe(error);
     }
   }
 
@@ -766,9 +783,8 @@ export class AppController {
     this.engine?.stop();
     this.messageFocus = null;
     this.editing = null;
-    const profile = safeProfile(this.account(api.baseUrl, this.username));
-    this.store = new Store(isTauri() ? await SqlitePersistence.open(profile) : null);
-    await this.store.load();
+    const opened = await openStore(this.account(api.baseUrl, this.username));
+    this.store = opened.store;
     const badgeStore = this.store;
     badgeStore.subscribe(() => {
       if (this.store !== badgeStore) return;
@@ -783,7 +799,10 @@ export class AppController {
       connect: browserConnector(api.wsUrl),
       store: this.store,
       getAccessToken: () => api.accessToken,
-      prepareConnection: async () => {
+      prepareConnection: async ({ refresh }) => {
+        // §7.2: a token that is still good is used as is (every refresh rotates the refresh token);
+        // refresh when it is missing, expires within 60 s, or the server refused it (close 4001).
+        if (!refresh && !api.accessTokenExpiresWithin(60_000)) return;
         const tokens = await api.refresh();
         if (this.api !== api || this.engine !== engine) return;
         this.me = tokens.user;
@@ -801,15 +820,19 @@ export class AppController {
       },
       onNotify: (message, channel) => {
         if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return; // M12c: paused / quiet hours
-        const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";
-        const title = channel.type === "dm" ? sender : `${sender} (group DM)`;
-        void notify(title, plainText(mentionsToNames(message.body, this.store.users, this.store.groups)) || "新しいメッセージ");
+        const store = this.store;
+        const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";
+        const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || "新しいメッセージ";
+        // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
+        if (channel.type === "dm") void notify(sender, text);
+        else void notify(conversationTitle(channel, store.users, store.me?.id ?? null), `${sender}: ${text}`);
       },
       isActive: () => document.hasFocus(),
     });
     this.engine = engine;
     engine.subscribe(() => this.emit());
     this.setScreen("main");
+    if (opened.failure) this.setError("端末に保存したデータを開けませんでした。今回はオフラインでの表示ができません");
     void engine.start();
     if (this.entryMessage) {
       // M12j: the browser has no local store; reveal once the first sync has brought the channels.
@@ -1072,26 +1095,61 @@ export class AppController {
     await this.api?.logout();
   }
 
+  /**
+   * Signed out or the session ended (§11): the account's local store (messages, drafts, send queue) is
+   * erased, the badge and the notifications on screen are cleared, the credential is forgotten.
+   */
   private async handleSignedOut(account: string): Promise<void> {
     this.engine?.stop();
     void setUnreadBadge(0);
+    clearNotifications();
     configureAvatars(null);
     this.engine = null;
     this.api = null;
     this.me = null;
-    await this.secrets.delete(account);
+    this.messageFocus = null;
+    this.editing = null;
+    const store = this.store;
+    this.store = new Store();
+    try {
+      await store.wipe();
+    } catch (err) {
+      console.error("could not erase the local store", err);
+    }
+    try {
+      await this.secrets.delete(account);
+    } catch (err) {
+      console.error("could not remove the saved credential", err);
+    }
     this.setScreen("login");
   }
 }
 
 function describe(err: unknown): string {
-  if (err instanceof ApiError) return `${err.message} (${err.code})`;
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return describeError(err);
 }
 
-function safeProfile(account: string): string {
-  return account.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 80);
+/**
+ * The local database of one account (§11): named by a hash of server URL + user name, so accounts with
+ * similar names (t.kano / t_kano) or long server URLs never share one. Memory only in a browser (M12j),
+ * and when the database cannot be opened (the app still works online; the caller says so).
+ */
+async function openStore(account: string): Promise<{ store: Store; failure: unknown }> {
+  if (!isTauri()) return { store: new Store(), failure: null };
+  try {
+    const store = new Store(await SqlitePersistence.open(await profileKey(account)));
+    await store.load();
+    return { store, failure: null };
+  } catch (failure) {
+    console.error("could not open the local store", failure);
+    return { store: new Store(), failure };
+  }
+}
+
+/** 128 bits of SHA-256 over "server|username", as hex (the database file name). */
+export async function profileKey(account: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(account)));
+  return [...digest.subarray(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** The async clipboard first; a hidden textarea + execCommand when a webview refuses it (no permission API). */

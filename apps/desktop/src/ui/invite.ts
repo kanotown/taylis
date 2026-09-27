@@ -1,6 +1,6 @@
 /** Invite links (M12h): `<server>/invite/<token>`; the token is 20-128 URL-safe characters. */
 
-import { ApiError } from "../api/errors";
+import { ApiError, describeError } from "../api/errors";
 import type { InviteOut } from "../api/types";
 
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
@@ -39,8 +39,7 @@ const ERROR_TEXT: Record<string, string> = {
   rate_limited: "しばらく待ってからやり直してください",
 };
 
-/** Invite failures in words; anything else falls back to the error's own message. */
+/** Invite failures in words; anything else gets the shared Japanese error text (ARCHITECTURE.md §9). */
 export function inviteErrorText(error: unknown): string {
-  if (error instanceof ApiError) return ERROR_TEXT[error.code] ?? `${error.message} (${error.code})`;
-  return error instanceof Error ? error.message : String(error);
+  return (error instanceof ApiError ? ERROR_TEXT[error.code] : undefined) ?? describeError(error);
 }

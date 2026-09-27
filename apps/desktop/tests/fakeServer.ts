@@ -6,7 +6,8 @@
 import { ApiError } from "../src/api/errors";
 import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
-import type { EventFrame, SendOptions } from "../src/sync/types";
+import type { Persistence, Snapshot } from "../src/sync/store";
+import type { ChannelState, EventFrame, MessageState, OutboxItem, SendOptions } from "../src/sync/types";
 
 let counter = 0;
 const nextId = (): string => `00000000-0000-7000-8000-${String(++counter).padStart(12, "0")}`;
@@ -27,6 +28,10 @@ class FakeSocket implements WsLike {
   private messageHandler: ((data: string) => void) | null = null;
   private closeHandler: ((code: number) => void) | null = null;
   dropNext = 0;
+  /** Half-open: nothing reaches the client any more (no pongs, no events) and no close event comes. */
+  silent = false;
+  /** How long a pong takes to come back (0 = at once, inside send). */
+  pongDelayMs = 0;
   closed = false;
   readonly sent: string[] = [];
 
@@ -44,7 +49,9 @@ class FakeSocket implements WsLike {
       this.server.announcePresence(this.userId);
     } else if (frame.type === "ping") {
       if (frame.active) this.server.markActive(this.userId);
-      this.deliver({ type: "pong", server_time: now() });
+      const pong = { type: "pong", server_time: now() };
+      if (this.pongDelayMs > 0) setTimeout(() => this.deliver(pong), this.pongDelayMs);
+      else this.deliver(pong);
     } else if (frame.type === "typing" && frame.channel_id) {
       this.server.relayTyping(this.userId, frame.channel_id, frame.parent_id ?? null);
     }
@@ -73,7 +80,7 @@ class FakeSocket implements WsLike {
   }
 
   deliver(frame: unknown): void {
-    if (this.closed) return;
+    if (this.closed || this.silent) return;
     if ((frame as { type?: string }).type === "event" && this.dropNext > 0) {
       this.dropNext -= 1; // simulated loss: the event never reaches the client
       return;
@@ -152,15 +159,19 @@ export class FakeServer {
   readState(userId: string, channelId: string): ReadStateOut {
     const record = this.record(channelId);
     const position = this.readPositions.get(`${userId}:${channelId}`) ?? 0;
-    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && (!m.parent_id || m.also_in_channel));
+    // My own posts are never unread (the server's read_states counts skip sender = me).
+    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && m.sender_id !== userId && (!m.parent_id || m.also_in_channel));
     const mentions = unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length;
     return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
   }
 
   // --- threads (THREADS.md §2) ---------------------------------------------------------------
 
-  /** "parent:user" → follow row; insertion order doubles as created_at. */
-  readonly threadFollows = new Map<string, { parentId: string; userId: string; following: boolean; lastReadSeq: number }>();
+  /**
+   * "parent:user" → follow row; insertion order doubles as created_at. `unfollowed` marks a follow
+   * turned off by hand (auto-follow keeps it off); a row created by reading alone is not following.
+   */
+  readonly threadFollows = new Map<string, { parentId: string; userId: string; following: boolean; unfollowed: boolean; lastReadSeq: number }>();
 
   private followers(parentId: string): string[] {
     return [...this.threadFollows.values()].filter((f) => f.parentId === parentId && f.following).map((f) => f.userId);
@@ -169,7 +180,9 @@ export class FakeServer {
   private autoFollow(parentId: string, userIds: string[]): void {
     for (const userId of userIds) {
       const key = `${parentId}:${userId}`;
-      if (!this.threadFollows.has(key)) this.threadFollows.set(key, { parentId, userId, following: true, lastReadSeq: 0 });
+      const row = this.threadFollows.get(key);
+      if (!row) this.threadFollows.set(key, { parentId, userId, following: true, unfollowed: false, lastReadSeq: 0 });
+      else if (!row.following && !row.unfollowed) row.following = true; // only read before
     }
   }
 
@@ -232,7 +245,8 @@ export class FakeServer {
     const newest = Math.max(0, ...record.messages.filter((m) => m.parent_id === parent.id && !m.deleted).map((m) => m.seq));
     const target = Math.min(seq, newest);
     const key = `${parent.id}:${userId}`;
-    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following: true, lastReadSeq: 0 };
+    // Reading is not following: a missing row is created with following = false.
+    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following: false, unfollowed: false, lastReadSeq: 0 };
     if (!this.threadFollows.has(key)) this.threadFollows.set(key, row);
     if (target > row.lastReadSeq) {
       row.lastReadSeq = target;
@@ -245,9 +259,10 @@ export class FakeServer {
     const { record, parent } = this.threadParent(messageId);
     this.requireMember(record.channel.id, userId);
     const key = `${parent.id}:${userId}`;
-    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following, lastReadSeq: 0 };
+    const row = this.threadFollows.get(key) ?? { parentId: parent.id, userId, following, unfollowed: false, lastReadSeq: 0 };
     const changed = !this.threadFollows.has(key) || row.following !== following;
     row.following = following;
+    row.unfollowed = !following;
     this.threadFollows.set(key, row);
     if (changed) this.emitThread(parent.id, [userId], "follow");
     return this.threadState(userId, parent.id);
@@ -344,7 +359,7 @@ export class FakeServer {
       seq,
       data: parentThread ? { message, parent_thread: parentThread } : { message },
     });
-    this.markRead(senderId, channelId, seq); // the sender has read their own message (§10)
+    if (!parentId) this.markRead(senderId, channelId, seq); // a top-level post reads the channel; a reply does not (§10)
     if (parentThread) this.emitThread(parentThread.id, this.followers(parentThread.id), "reply");
     return { message, created: true };
   }
@@ -738,5 +753,69 @@ export class FakeServer {
       this.sockets.add(socket);
       return socket;
     };
+  }
+}
+
+/** The SQLite store's stand-in (src/platform/sqlite.ts): rows kept as JSON text, like its tables. */
+export class MemoryPersistence implements Persistence {
+  readonly meta = new Map<string, string>();
+  readonly users = new Map<string, string>();
+  readonly channels = new Map<string, string>();
+  readonly messages = new Map<string, { channelId: string; seq: number | null; json: string }>();
+  readonly outbox = new Map<string, string>();
+
+  async loadAll(): Promise<Snapshot> {
+    return {
+      meta: Object.fromEntries(this.meta),
+      users: [...this.users.values()].map((json) => JSON.parse(json) as UserPublic),
+      channels: [...this.channels.values()].map((json) => JSON.parse(json) as ChannelState),
+      messages: [...this.messages.values()].map((row) => JSON.parse(row.json) as MessageState),
+      outbox: [...this.outbox.values()].map((json) => JSON.parse(json) as OutboxItem),
+    };
+  }
+
+  async saveMeta(key: string, value: string | null): Promise<void> {
+    if (value === null) this.meta.delete(key);
+    else this.meta.set(key, value);
+  }
+
+  async saveUser(user: UserPublic): Promise<void> {
+    this.users.set(user.id, JSON.stringify(user));
+  }
+
+  async saveChannel(channel: ChannelState): Promise<void> {
+    this.channels.set(channel.id, JSON.stringify(channel));
+  }
+
+  async deleteChannel(channelId: string): Promise<void> {
+    this.channels.delete(channelId);
+  }
+
+  async saveMessage(message: MessageState): Promise<void> {
+    this.messages.set(message.id, { channelId: message.channel_id, seq: message.seq, json: JSON.stringify(message) });
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    this.messages.delete(id);
+  }
+
+  async clearMessages(channelId: string): Promise<void> {
+    for (const [id, row] of this.messages) if (row.channelId === channelId) this.messages.delete(id);
+  }
+
+  async deleteOlderMessages(channelId: string, beforeSeq: number): Promise<void> {
+    for (const [id, row] of this.messages) if (row.channelId === channelId && row.seq !== null && row.seq < beforeSeq) this.messages.delete(id);
+  }
+
+  async saveOutbox(item: OutboxItem): Promise<void> {
+    this.outbox.set(item.client_msg_id, JSON.stringify(item));
+  }
+
+  async deleteOutbox(clientMsgId: string): Promise<void> {
+    this.outbox.delete(clientMsgId);
+  }
+
+  async clearAll(): Promise<void> {
+    for (const table of [this.meta, this.users, this.channels, this.messages, this.outbox]) table.clear();
   }
 }

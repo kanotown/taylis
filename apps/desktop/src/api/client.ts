@@ -28,6 +28,8 @@ type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<str
 export class ApiClient {
   private sessionVersion = 0;
   accessToken: string | null = null;
+  /** When the access token expires (ms since the epoch, from `expires_in`); null when unknown. */
+  accessTokenExpiresAt: number | null = null;
   refreshToken: string | null = null;
   private refreshing: Promise<TokenResponse> | null = null;
   private readonly fetchImpl: typeof fetch;
@@ -83,11 +85,15 @@ export class ApiClient {
     return this.refreshing;
   }
 
+  /**
+   * Ends the session on the server (§11), then locally. An expired access token is refreshed and the
+   * request sent again: otherwise the session (and the browser's HttpOnly refresh cookie) stays valid.
+   */
   async logout(): Promise<void> {
     try {
-      await this.request<void>("POST", "/api/v1/auth/logout", undefined, { retry401: false });
-    } catch {
-      // The session may already be gone; local sign-out still happens.
+      await this.request<void>("POST", "/api/v1/auth/logout");
+    } catch (err) {
+      console.warn("logout request failed; signing out locally", err); // offline, or the session is already gone
     }
     this.signOut();
   }
@@ -95,12 +101,19 @@ export class ApiClient {
   signOut(): void {
     this.sessionVersion += 1;
     this.accessToken = null;
+    this.accessTokenExpiresAt = null;
     this.refreshToken = null;
     this.options.onSignedOut?.();
   }
 
+  /** True when there is no access token or it expires within `ms` (SYNC_PROTOCOL.md §7.2). */
+  accessTokenExpiresWithin(ms: number): boolean {
+    return !this.accessToken || this.accessTokenExpiresAt === null || this.accessTokenExpiresAt - Date.now() < ms;
+  }
+
   private applyTokens(tokens: TokenResponse): void {
     this.accessToken = tokens.access_token;
+    this.accessTokenExpiresAt = Date.now() + tokens.expires_in * 1000;
     this.refreshToken = tokens.refresh_token || COOKIE_SESSION; // empty = the server set the cookie
     this.options.onTokens?.(tokens);
   }
@@ -212,7 +225,7 @@ export class ApiClient {
     const form = new FormData();
     form.append("file", file, filename);
     const send = async (): Promise<Response> =>
-      this.fetchImpl(`${this.baseUrl}/api/v1/users/me/avatar`, {
+      this.rawFetch(`${this.baseUrl}/api/v1/users/me/avatar`, {
         method: "POST",
         headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
         body: form,
@@ -223,7 +236,7 @@ export class ApiClient {
       response = await send();
     }
     if (!response.ok) throw await this.errorFromResponse(response);
-    return (await response.json()) as UserMe;
+    return readJson<UserMe>(response);
   }
 
   deleteAvatar(): Promise<UserMe> {
@@ -236,7 +249,7 @@ export class ApiClient {
     form.append("name", name);
     form.append("file", file, filename);
     const send = async (): Promise<Response> =>
-      this.fetchImpl(`${this.baseUrl}/api/v1/emoji`, {
+      this.rawFetch(`${this.baseUrl}/api/v1/emoji`, {
         method: "POST",
         headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
         body: form,
@@ -247,7 +260,7 @@ export class ApiClient {
       response = await send();
     }
     if (!response.ok) throw await this.errorFromResponse(response);
-    return (await response.json()) as CustomEmojiOut;
+    return readJson<CustomEmojiOut>(response);
   }
 
   deleteEmoji(emojiId: string): Promise<void> {
@@ -601,7 +614,7 @@ export class ApiClient {
     const form = new FormData();
     form.append("file", file, filename);
     const send = async (): Promise<Response> =>
-      this.fetchImpl(`${this.baseUrl}/api/v1/attachments`, {
+      this.rawFetch(`${this.baseUrl}/api/v1/attachments`, {
         method: "POST",
         headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
         body: form,
@@ -612,21 +625,34 @@ export class ApiClient {
       response = await send();
     }
     if (!response.ok) throw await this.errorFromResponse(response);
-    return (await response.json()) as AttachmentOut;
+    return readJson<AttachmentOut>(response);
   }
 
   /** Authenticated GET returning the raw body (thumbnails, downloads). */
   async fetchBlob(path: string): Promise<Blob> {
     if (!this.accessToken && this.refreshToken) await this.refresh();
     const send = async (): Promise<Response> =>
-      this.fetchImpl(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
+      this.rawFetch(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
     let response = await send();
     if (response.status === 401) {
       await this.refresh();
       response = await send();
     }
     if (!response.ok) throw await this.errorFromResponse(response);
-    return response.blob();
+    try {
+      return await response.blob();
+    } catch (err) {
+      throw new NetworkError(err);
+    }
+  }
+
+  /** fetch, with "no response" reported as a NetworkError (retryable, shown as the network text). */
+  private async rawFetch(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.fetchImpl(url, init);
+    } catch (err) {
+      throw new NetworkError(err);
+    }
   }
 
   private async errorFromResponse(response: Response): Promise<ApiError> {
@@ -703,23 +729,28 @@ export class ApiClient {
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth && this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(this.baseUrl + path, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (err) {
-      throw new NetworkError(err);
-    }
+    const response = await this.rawFetch(this.baseUrl + path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
 
     if (response.status === 204) return { data: undefined as T, status: 204 };
-    const text = await response.text();
-    const payload: unknown = text ? JSON.parse(text) : null;
-    if (response.ok) return { data: payload as T, status: response.status };
+    let text: string;
+    try {
+      text = await response.text();
+    } catch (err) {
+      throw new NetworkError(err); // the connection dropped while the body was arriving
+    }
+    const payload = parseJson(text);
+    if (response.ok) {
+      // A 2xx that is not JSON (a captive portal, a misrouted proxy): not the API; retry later.
+      if (payload === NOT_JSON) throw new NetworkError(new Error(`${method} ${path}: the response was not JSON`));
+      return { data: payload as T, status: response.status };
+    }
 
-    const error = toApiError(response.status, payload);
+    // A non-JSON error body (a proxy's HTML 502 page) is classified by its status alone (ARCHITECTURE.md §9).
+    const error = toApiError(response.status, payload === NOT_JSON ? null : payload);
     if (auth && error.status === 401 && error.code === "token_expired" && options.retry401 !== false) {
       await this.refresh();
       return this.requestWithStatus<T>(method, path, body, { ...options, retry401: false });
@@ -727,6 +758,29 @@ export class ApiClient {
     if (auth && error.status === 401 && error.code !== "token_expired") this.signOut();
     throw error;
   }
+}
+
+const NOT_JSON = Symbol("not JSON");
+
+function parseJson(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return NOT_JSON;
+  }
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (err) {
+    throw new NetworkError(err);
+  }
+  const payload = parseJson(text);
+  if (payload === NOT_JSON) throw new NetworkError(new Error("the response was not JSON"));
+  return payload as T;
 }
 
 function toApiError(status: number, payload: unknown): ApiError {

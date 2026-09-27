@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, canPostTopLevel, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
+import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -25,7 +25,9 @@ const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState =>
   lastReadSeq: 0,
   unreadCount: 0,
   mentionCount: 0,
+  pendingReadSeq: null,
   hasOlder: true,
+  oldestLoadedSeq: null,
   notificationLevel: null,
   mutedUntil: null,
   ...patch,
@@ -111,5 +113,14 @@ describe("announcement channels (M15a)", () => {
     expect(canPostTopLevel(announce, false)).toBe(false);
     expect(canPostTopLevel(announce, true)).toBe(true);
     expect(canPostTopLevel(owned, false)).toBe(true);
+  });
+});
+
+describe("conversation titles (sidebar and notifications)", () => {
+  it("names channels by #name and DMs by the other members", () => {
+    const users = new Map([["me", { display_name: "Me" }], ["a", { display_name: "Alice" }], ["b", { display_name: "Bob" }]]) as unknown as Parameters<typeof conversationTitle>[1];
+    expect(conversationTitle(channel("c", { name: "general" }), users, "me")).toBe("#general");
+    expect(conversationTitle(channel("g", { type: "group_dm", name: null, dm_user_ids: ["me", "a", "b"] }), users, "me")).toBe("Alice, Bob");
+    expect(conversationTitle(channel("s", { type: "dm", name: null, dm_user_ids: ["me"] }), users, "me")).toBe("自分へのメモ");
   });
 });

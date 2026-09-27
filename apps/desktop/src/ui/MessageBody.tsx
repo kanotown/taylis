@@ -7,6 +7,7 @@ import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
 import { parsePermalink } from "./permalink";
+import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
@@ -161,7 +162,7 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
           );
         }
         return (
-          <a key={i} href={token.url} target="_blank" rel="noreferrer noopener" title={token.label ? token.url : undefined}>
+          <a key={i} href={token.url} target="_blank" rel="noreferrer noopener" title={token.label ? token.url : undefined} onClick={(event) => openExternalLink(event, token.url)}>
             {token.label ?? token.url}
           </a>
         );

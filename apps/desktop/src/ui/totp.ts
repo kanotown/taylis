@@ -1,6 +1,6 @@
 /** Two-factor authentication helpers (M12i). */
 
-import { ApiError } from "../api/errors";
+import { ApiError, describeError } from "../api/errors";
 
 /** Spaces dropped; a 6-digit app code or a recovery code (letters, digits, one dash). */
 export function normalizeTotpInput(text: string): string {
@@ -21,8 +21,7 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 export function totpErrorText(error: unknown): string {
-  if (error instanceof ApiError) return ERROR_TEXT[error.code] ?? `${error.message} (${error.code})`;
-  return error instanceof Error ? error.message : String(error);
+  return (error instanceof ApiError ? ERROR_TEXT[error.code] : undefined) ?? describeError(error);
 }
 
 /** The recovery codes as one text block for the clipboard or a file. */

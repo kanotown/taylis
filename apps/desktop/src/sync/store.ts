@@ -13,6 +13,10 @@ export interface Persistence {
   clearMessages(channelId: string): Promise<void>;
   saveOutbox(item: OutboxItem): Promise<void>;
   deleteOutbox(clientMsgId: string): Promise<void>;
+  /** Confirmed rows of the channel with seq < beforeSeq (pending ones stay). */
+  deleteOlderMessages(channelId: string, beforeSeq: number): Promise<void>;
+  /** Sign-out (§11): every table emptied. */
+  clearAll(): Promise<void>;
 }
 
 export interface Snapshot {
@@ -26,6 +30,12 @@ export interface Snapshot {
 export function emptySnapshot(): Snapshot {
   return { meta: {}, users: [], channels: [], messages: [], outbox: [] };
 }
+
+/**
+ * At most this many messages per channel survive a restart: the newest ones (pending sends always
+ * stay). Older history is paged in again when the reader scrolls up.
+ */
+export const CACHED_MESSAGES_PER_CHANNEL = 500;
 
 export interface Draft {
   text: string;
@@ -160,21 +170,66 @@ export class Store {
   }
   flushPersistence(): Promise<void> { return this.writeQueue; }
   private readonly messagesByChannel = new Map<string, Map<string, MessageState>>();
+  /** The sorted timeline of each channel, rebuilt only after its rows or its range change. */
+  private readonly timelines = new Map<string, MessageState[]>();
   private readonly listeners = new Set<() => void>();
+  /** Set by wipe(): nothing is written any more. */
+  private closed = false;
 
   constructor(private readonly persistence: Persistence | null = null) {}
 
   async load(): Promise<void> {
     if (!this.persistence) return;
-    const snapshot = await this.persistence.loadAll();
-    this.loadDrafts(snapshot.meta);
-    const me = snapshot.meta["me"];
-    this.me = me ? (JSON.parse(me) as UserMe) : null;
-    for (const user of snapshot.users) this.users.set(user.id, user);
-    for (const channel of snapshot.channels) this.channels.set(channel.id, channel);
-    for (const message of snapshot.messages) this.bucket(message.channel_id).set(message.id, message);
-    this.outbox.push(...snapshot.outbox);
+    this.restore(await this.persistence.loadAll());
     this.emit();
+  }
+
+  /** Rows as persisted: older rows are normalised, the cache is trimmed (a corrupt `me` is dropped). */
+  private restore(snapshot: Snapshot): void {
+    this.loadDrafts(snapshot.meta);
+    try {
+      const me = snapshot.meta["me"];
+      this.me = me ? (JSON.parse(me) as UserMe) : null;
+    } catch {
+      this.me = null; // corrupt: the next sign-in writes it again
+    }
+    for (const user of snapshot.users) this.users.set(user.id, user);
+    for (const channel of snapshot.channels) this.channels.set(channel.id, restoredChannel(channel));
+    for (const message of snapshot.messages) this.bucket(message.channel_id).set(message.id, { ...message });
+    this.outbox.push(...snapshot.outbox.map((i) => ({ ...i })));
+    for (const item of this.outbox) {
+      // Written before the placeholder kept its flag: a failed send shows its retry / discard buttons.
+      const placeholder = item.failed ? this.bucket(item.channel_id).get(LOCAL_PREFIX + item.client_msg_id) : undefined;
+      if (placeholder && !placeholder.failed) this.bucket(item.channel_id).set(placeholder.id, { ...placeholder, failed: true });
+    }
+    for (const channelId of [...this.messagesByChannel.keys()]) this.trimCache(channelId);
+  }
+
+  /** Keeps the newest CACHED_MESSAGES_PER_CHANNEL rows; the loaded range then starts after the dropped ones. */
+  private trimCache(channelId: string): void {
+    const bucket = this.bucket(channelId);
+    const confirmed = [...bucket.values()].filter((m) => m.seq !== null).sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0));
+    const dropped = confirmed.slice(CACHED_MESSAGES_PER_CHANNEL);
+    if (dropped.length === 0) return;
+    const newestDropped = dropped[0]!.seq ?? 0;
+    for (const message of dropped) bucket.delete(message.id);
+    this.persist((p) => p.deleteOlderMessages(channelId, newestDropped + 1));
+    const channel = this.channels.get(channelId);
+    if (channel && channel.oldestLoadedSeq !== null && channel.oldestLoadedSeq <= newestDropped) {
+      const trimmed: ChannelState = { ...channel, oldestLoadedSeq: newestDropped + 1, hasOlder: true };
+      this.channels.set(channelId, trimmed);
+      this.persist((p) => p.saveChannel(trimmed));
+    }
+  }
+
+  /** Sign-out (§11): the account's local data (messages, drafts, send queue …) is erased. */
+  async wipe(): Promise<void> {
+    this.closed = true;
+    const persistence = this.persistence;
+    if (!persistence) return;
+    const cleared = this.writeQueue.then(() => persistence.clearAll());
+    this.writeQueue = cleared.catch((err: unknown) => console.error("could not erase the local store", err));
+    await cleared;
   }
 
   subscribe(listener: () => void): () => void {
@@ -189,7 +244,7 @@ export class Store {
 
   private persist(work: (p: Persistence) => Promise<void>): void {
     const persistence = this.persistence;
-    if (persistence) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => console.error("persist failed", err));
+    if (persistence && !this.closed) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => console.error("persist failed", err));
   }
 
   // --- me / users -------------------------------------------------------------------------
@@ -227,12 +282,15 @@ export class Store {
       lastReadSeq: Math.max(existing?.lastReadSeq ?? 0, channel.read_state?.last_read_seq ?? 0),
       unreadCount: channel.read_state?.unread_count ?? existing?.unreadCount ?? 0,
       mentionCount: channel.read_state?.mention_count ?? existing?.mentionCount ?? 0,
+      pendingReadSeq: existing?.pendingReadSeq ?? null,
       hasOlder: existing?.hasOlder ?? true,
+      oldestLoadedSeq: existing?.oldestLoadedSeq ?? null,
       notificationLevel: channel.notification?.level ?? existing?.notificationLevel ?? null,
       mutedUntil: channel.notification ? (channel.notification.muted_until ?? null) : (existing?.mutedUntil ?? null),
       ...patch,
     };
     this.channels.set(channel.id, merged);
+    if (merged.oldestLoadedSeq !== (existing?.oldestLoadedSeq ?? null)) this.timelines.delete(channel.id);
     this.persist((p) => p.saveChannel(merged));
     this.emit();
     return merged;
@@ -247,6 +305,7 @@ export class Store {
     if (!existing) return undefined;
     const merged = { ...existing, ...patch };
     this.channels.set(id, merged);
+    if (merged.oldestLoadedSeq !== existing.oldestLoadedSeq) this.timelines.delete(id);
     this.persist((p) => p.saveChannel(merged));
     this.emit();
     return merged;
@@ -255,6 +314,7 @@ export class Store {
   removeChannel(id: string): void {
     this.channels.delete(id);
     this.messagesByChannel.delete(id);
+    this.timelines.delete(id);
     this.persist(async (p) => {
       await p.clearMessages(id);
       await p.deleteChannel(id);
@@ -273,11 +333,27 @@ export class Store {
     return bucket;
   }
 
-  /** Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
-  /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
+  /**
+   * The channel timeline: top-level messages and replies also sent to the channel (M15c), confirmed
+   * by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). Only the loaded range is shown
+   * (§7.3): older rows that arrived on their own (a reaction, a thread parent, a search hit) stay
+   * stored but would leave a gap that paging never fills. The list is cached until the channel changes;
+   * callers must not modify it.
+   */
   messages(channelId: string): MessageState[] {
-    // The channel timeline: top-level messages and replies also sent to the channel (M15c).
-    return this.ordered([...this.bucket(channelId).values()].filter((m) => !m.parent_id || m.also_in_channel));
+    let timeline = this.timelines.get(channelId);
+    if (!timeline) {
+      const oldest = this.channels.get(channelId)?.oldestLoadedSeq ?? null;
+      const shown = (m: MessageState) => (!m.parent_id || m.also_in_channel === true) && (m.seq === null || (oldest !== null && m.seq >= oldest));
+      timeline = this.ordered([...this.bucket(channelId).values()].filter(shown));
+      this.timelines.set(channelId, timeline);
+    }
+    return timeline;
+  }
+
+  /** Every stored row of the channel that is pinned (M11c), loaded range or not. */
+  pinned(channelId: string): MessageState[] {
+    return [...this.bucket(channelId).values()].filter((m) => !!m.pinned_at);
   }
 
   message(channelId: string, id: string): MessageState | undefined {
@@ -302,6 +378,7 @@ export class Store {
     if (!parent || thread.updated_seq <= parent.updated_seq) return;
     const updated: MessageState = { ...parent, reply_count: thread.reply_count, last_reply_at: thread.last_reply_at, updated_seq: thread.updated_seq };
     bucket.set(parent.id, updated);
+    this.timelines.delete(channelId);
     this.persist((p) => p.saveMessage(updated));
     this.emit();
   }
@@ -549,10 +626,14 @@ export class Store {
     const bucket = this.bucket(message.channel_id);
     if (message.client_msg_id) {
       const placeholder = LOCAL_PREFIX + message.client_msg_id;
-      if (bucket.delete(placeholder)) this.persist((p) => p.deleteMessage(placeholder));
+      if (bucket.delete(placeholder)) {
+        this.timelines.delete(message.channel_id);
+        this.persist((p) => p.deleteMessage(placeholder));
+      }
     }
     const local = bucket.get(message.id);
     if (local && message.updated_seq <= local.updated_seq) return false;
+    this.timelines.delete(message.channel_id);
     if (message.deleted) {
       bucket.delete(message.id);
       this.persist((p) => p.deleteMessage(message.id));
@@ -566,13 +647,21 @@ export class Store {
 
   putPlaceholder(message: MessageState): void {
     this.bucket(message.channel_id).set(message.id, message);
+    this.timelines.delete(message.channel_id);
     this.persist((p) => p.saveMessage(message));
     this.emit();
   }
 
+  /** Drops the channel's messages (a reload from the latest page); pending sends stay with their outbox items. */
   clearMessages(channelId: string): void {
+    const pending = [...this.bucket(channelId).values()].filter((m) => m.seq === null);
     this.messagesByChannel.delete(channelId);
-    this.persist((p) => p.clearMessages(channelId));
+    this.timelines.delete(channelId);
+    for (const message of pending) this.bucket(channelId).set(message.id, message);
+    this.persist(async (p) => {
+      await p.clearMessages(channelId);
+      for (const message of pending) await p.saveMessage(message);
+    });
     this.emit();
   }
 
@@ -591,13 +680,30 @@ export class Store {
     this.emit();
   }
 
+  /** A send refused for good: the item is skipped and its placeholder offers retry / discard, also after a restart. */
   markOutboxFailed(clientMsgId: string, reason: string): void {
+    this.setOutboxFailure(clientMsgId, reason);
+  }
+
+  /** 「再送」: the item goes back into the queue. */
+  clearOutboxFailed(clientMsgId: string): void {
+    this.setOutboxFailure(clientMsgId, null);
+  }
+
+  private setOutboxFailure(clientMsgId: string, reason: string | null): void {
     const item = this.outbox.find((i) => i.client_msg_id === clientMsgId);
     if (!item) return;
-    item.failed = reason;
-    const placeholder = this.bucket(item.channel_id).get(LOCAL_PREFIX + clientMsgId);
-    if (placeholder) placeholder.failed = true;
+    if (reason === null) delete item.failed;
+    else item.failed = reason;
     this.persist((p) => p.saveOutbox(item));
+    const bucket = this.bucket(item.channel_id);
+    const placeholder = bucket.get(LOCAL_PREFIX + clientMsgId);
+    if (placeholder) {
+      const updated: MessageState = { ...placeholder, failed: reason !== null };
+      bucket.set(updated.id, updated);
+      this.timelines.delete(item.channel_id);
+      this.persist((p) => p.saveMessage(updated));
+    }
     this.emit();
   }
 
@@ -614,13 +720,18 @@ export class Store {
 
   static fromSnapshot(snapshot: Snapshot, persistence: Persistence | null = null): Store {
     const store = new Store(persistence);
-    store.loadDrafts(snapshot.meta);
-    const me = snapshot.meta["me"];
-    store.me = me ? (JSON.parse(me) as UserMe) : null;
-    for (const user of snapshot.users) store.users.set(user.id, user);
-    for (const channel of snapshot.channels) store.channels.set(channel.id, { ...channel });
-    for (const message of snapshot.messages) store.bucket(message.channel_id).set(message.id, { ...message });
-    store.outbox.push(...snapshot.outbox.map((i) => ({ ...i })));
+    store.restore(snapshot);
     return store;
   }
+}
+
+/** A channel row as persisted; rows from older versions lack the §7.3 range and the §10 unsent mark. */
+function restoredChannel(row: ChannelState): ChannelState {
+  const channel: ChannelState = { ...row, pendingReadSeq: row.pendingReadSeq ?? null };
+  if ((row as Partial<ChannelState>).oldestLoadedSeq === undefined) {
+    // Fully paged back: the range starts at 0. Otherwise the range is unknown: reload the latest page.
+    channel.oldestLoadedSeq = row.syncedSeq !== null && !row.hasOlder ? 0 : null;
+    if (channel.oldestLoadedSeq === null) channel.syncedSeq = null;
+  }
+  return channel;
 }
