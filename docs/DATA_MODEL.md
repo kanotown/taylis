@@ -85,6 +85,7 @@ CREATE TABLE users (
   quiet_hours_end       smallint,
   quiet_hours_days      smallint[],             -- 0 = 月 … 6 = 日 (NULL = 毎日)
   quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
+  notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)

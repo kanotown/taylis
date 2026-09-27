@@ -2135,6 +2135,11 @@ export interface components {
             id: string;
             /** Must Change Password */
             must_change_password: boolean;
+            /**
+             * Notify Keywords
+             * @default []
+             */
+            notify_keywords: string[];
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Role */
             role: string;
@@ -2199,6 +2204,8 @@ export interface components {
             dnd_until?: string | null;
             /** Email */
             email?: string | null;
+            /** Notify Keywords */
+            notify_keywords?: string[] | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Status Emoji */
             status_emoji?: string | null;

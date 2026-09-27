@@ -133,7 +133,7 @@ describe("conversation UX", () => {
     const setEditing = vi.fn();
     (w.controller as unknown as { setEditing: unknown }).setEditing = setEditing;
     const onReplyLast = vi.fn();
-    w.store.setMe({ ...w.me, email: null, must_change_password: false });
+    w.store.setMe({ ...w.me, email: null, must_change_password: false, notify_keywords: [] });
     const bob = w.server.addUser("bob");
     w.server.join(w.channel.id, bob.id);
     w.store.upsertUser(bob);

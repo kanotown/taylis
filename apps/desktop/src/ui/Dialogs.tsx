@@ -306,6 +306,10 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   const me = controller.store.me ?? controller.me;
   const [displayName, setDisplayName] = useState(me?.display_name ?? "");
   const [title, setTitle] = useState(me?.title ?? "");
+  // M12g: notification keywords, edited as a comma-separated line.
+  const [keywords, setKeywords] = useState((me?.notify_keywords ?? []).join(", "));
+  const parsedKeywords = keywords.split(/[,、\n]/).map((k) => k.trim()).filter(Boolean).slice(0, 20);
+  const keywordsChanged = JSON.stringify(parsedKeywords) !== JSON.stringify(me?.notify_keywords ?? []);
   const [savedName, setSavedName] = useState(false);
   const status = activeStatus(me ? controller.store.users.get(me.id) ?? me : null);
   const [current, setCurrent] = useState("");
@@ -318,7 +322,8 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
     event.preventDefault();
     setBusy(true);
     const ok = (displayName.trim() !== me?.display_name ? await controller.updateDisplayName(displayName) : true)
-      && ((title.trim() || null) !== (me?.title ?? null) ? await controller.updateProfile({ title: title.trim() || null }) : true);
+      && ((title.trim() || null) !== (me?.title ?? null) ? await controller.updateProfile({ title: title.trim() || null }) : true)
+      && (keywordsChanged ? await controller.updateProfile({ notify_keywords: parsedKeywords }) : true);
     setBusy(false);
     setSavedName(ok);
   };
@@ -376,8 +381,12 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
           <Field label="肩書 (任意)">
             <Input value={title} maxLength={80} placeholder="例: 開発 / 営業" onChange={(e) => { setTitle(e.target.value); setSavedName(false); }} />
           </Field>
+          <Field label="通知キーワード (任意、コンマ区切り・20 個まで)">
+            <Input value={keywords} placeholder="例: 加納, kano, リリース" onChange={(e) => { setKeywords(e.target.value); setSavedName(false); }} />
+            <div className="mt-1 text-xs text-muted">本文に含まれると @メンションと同じように知らせます (大文字小文字は区別しません)</div>
+          </Field>
           <div className="flex items-center gap-3">
-            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (displayName.trim() === me?.display_name && (title.trim() || null) === (me?.title ?? null))}>
+            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (displayName.trim() === me?.display_name && (title.trim() || null) === (me?.title ?? null) && !keywordsChanged)}>
               プロフィールを保存
             </Button>
             {savedName && <span className="text-xs text-muted">保存しました</span>}

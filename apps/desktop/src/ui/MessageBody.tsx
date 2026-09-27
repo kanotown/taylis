@@ -5,11 +5,12 @@ import type { AppController } from "../state/app";
 import { type Block, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
+import { splitKeywords } from "./keywords";
 import { parsePermalink } from "./permalink";
 import { cn } from "./primitives";
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
-export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller }: {
+export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller, keywords }: {
   body: string;
   users: Map<string, UserPublic>;
   className?: string;
@@ -19,8 +20,9 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
   /** M12f: known custom emoji (by name) and the controller that fetches their images. */
   customEmoji?: ReadonlyMap<string, CustomEmojiOut>;
   controller?: AppController;
+  keywords?: readonly string[];
 }) {
-  const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller };
+  const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller, keywords };
   return (
     <div className={cn("body text-[14.5px] leading-6", className)}>
       {parseBlocks(body).map((block, i) => (
@@ -70,6 +72,8 @@ export interface InlineOptions {
   onOpenMessage?: (messageId: string) => void;
   customEmoji?: ReadonlyMap<string, CustomEmojiOut>;
   controller?: AppController;
+  /** M12g: my notification keywords, highlighted where they occur. */
+  keywords?: readonly string[];
 }
 
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {
@@ -82,15 +86,22 @@ function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineO
 }
 
 export function inline(tokens: Token[], users: Map<string, UserPublic>, options: InlineOptions = {}) {
-  const { internalBase, onOpenMessage, customEmoji, controller } = options;
+  const { internalBase, onOpenMessage, customEmoji, controller, keywords } = options;
+  /** Keyword hits (M12g) get a soft highlight, like a mention would. */
+  const keywordNodes = (text: string, keyPrefix: string): ReactNode => {
+    if (!keywords || keywords.length === 0 || !text) return text;
+    const pieces = splitKeywords(text, keywords);
+    if (pieces.length === 1 && typeof pieces[0] === "string") return text;
+    return pieces.map((piece, index) => (typeof piece === "string" ? piece : <mark key={`${keyPrefix}${index}`} className="rounded bg-warning/25 px-0.5 text-inherit">{piece.hit}</mark>));
+  };
   /** Shortcodes become glyphs; known custom names become images (M12f). */
   const emojiNodes = (text: string): ReactNode => {
     const replaced = replaceShortcodes(text);
-    if (!customEmoji || !controller || customEmoji.size === 0) return replaced;
+    if (!customEmoji || !controller || customEmoji.size === 0) return keywordNodes(replaced, "k");
     const pieces = splitCustomEmoji(replaced, customEmoji);
-    if (pieces.length === 1 && typeof pieces[0] === "string") return replaced;
+    if (pieces.length === 1 && typeof pieces[0] === "string") return keywordNodes(replaced, "k");
     return pieces.map((piece, index) =>
-      typeof piece === "string" ? piece : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} />,
+      typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} />,
     );
   };
   return tokens.map((token, i) => {

@@ -30,6 +30,14 @@ async def get_many(db: AsyncSession, ids: list[uuid.UUID]) -> list[User]:
     return list((await db.execute(select(User).where(User.id.in_(ids)))).scalars().all())
 
 
+async def with_keywords(db: AsyncSession, ids: list[uuid.UUID]) -> list[User]:
+    """The given users that have notification keywords (M12g); most have none."""
+    if not ids:
+        return []
+    stmt = select(User).where(User.id.in_(ids), User.notify_keywords.is_not(None))
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def list_users(db: AsyncSession) -> list[User]:
     return list((await db.scalars(select(User).order_by(User.username))).all())
 
