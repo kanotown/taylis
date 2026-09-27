@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.api
 
+import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
@@ -40,7 +41,7 @@ fun Throwable.isRetryable(): Boolean = this is ApiException.Network || (this is 
 class ApiClient(
     val baseUrl: String,
     private val http: OkHttpClient = OkHttpClient(),
-) : SyncApi, DraftApi {
+) : SyncApi, DraftApi, ChannelLinksApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -414,6 +415,22 @@ class ApiClient(
         request("PUT", "/api/v1/sidebar/sections/$sectionId/channels/$channelId", buildJsonObject {})
 
     suspend fun removeFromSidebarSection(channelId: String): List<SidebarSectionOut> = request("DELETE", "/api/v1/sidebar/channels/$channelId")
+
+    // --- channel links (M15f) ----------------------------------------------------------------
+
+    override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> = request("GET", "/api/v1/channels/$channelId/links")
+
+    suspend fun addChannelLink(channelId: String, title: String, url: String): List<ChannelLinkOut> =
+        request("POST", "/api/v1/channels/$channelId/links", buildJsonObject { put("title", title); put("url", url) })
+
+    suspend fun updateChannelLink(channelId: String, linkId: String, title: String? = null, url: String? = null, position: Int? = null): List<ChannelLinkOut> =
+        request("PATCH", "/api/v1/channels/$channelId/links/$linkId", buildJsonObject {
+            title?.let { put("title", it) }
+            url?.let { put("url", it) }
+            position?.let { put("position", it) }
+        })
+
+    suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 

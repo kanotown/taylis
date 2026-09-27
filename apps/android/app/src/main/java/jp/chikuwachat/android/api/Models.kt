@@ -415,3 +415,7 @@ data class LinkPreviewOut(
 /** M15e: one member's 「確認しました」. */
 @Serializable
 data class AckOut(val userId: String, val ackedAt: String)
+
+/** A link pinned to the top of a conversation (M15f). */
+@Serializable
+data class ChannelLinkOut(val id: String, val title: String, val url: String, val position: Int, val createdBy: String, val createdAt: String)

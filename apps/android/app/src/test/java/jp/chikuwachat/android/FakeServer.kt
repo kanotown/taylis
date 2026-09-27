@@ -11,6 +11,8 @@ import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DraftOut
 import jp.chikuwachat.android.api.DraftUpdated
+import jp.chikuwachat.android.api.ChannelLinkOut
+import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
@@ -89,7 +91,8 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi {
+        override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> { maybeFail(); requireMember(channelId, userId); return links[channelId] ?: emptyList() }
         override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
         override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
 
@@ -263,6 +266,19 @@ class FakeServer {
 
     /** "user" → starred channel ids (M12a). */
     val favorites = HashMap<String, MutableList<String>>()
+    /** M15f: each conversation's link bar; setLinks announces it like the server does. */
+    val links = HashMap<String, List<ChannelLinkOut>>()
+
+    fun setLinks(channelId: String, titles: List<String>) {
+        val record = channels[channelId] ?: return
+        val rows = titles.mapIndexed { index, title -> ChannelLinkOut("link-$channelId-$title", title, "https://example.com/$index", index, record.channel.createdBy ?: "", now()) }
+        links[channelId] = rows
+        emit(record.members, event("channel.links_updated", channelId, null, buildJsonObject {
+            put("channel_id", channelId)
+            put("links", Codec.snake.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ChannelLinkOut.serializer()), rows))
+        }))
+    }
+
     /** M15d: "user:channel:parent" → the saved draft. */
     val drafts = LinkedHashMap<String, DraftOut>()
 

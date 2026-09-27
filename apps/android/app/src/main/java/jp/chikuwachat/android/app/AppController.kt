@@ -730,6 +730,20 @@ class AppController(private val app: Application) {
     suspend fun messageRevisions(messageId: String): List<jp.chikuwachat.android.api.MessageRevisionOut>? =
         runCatching { api!!.messageRevisions(messageId) }.getOrElse { error = describe(it); null }
 
+    // --- channel links (M15f) ----------------------------------------------------------------
+
+    suspend fun addChannelLink(channelId: String, title: String, url: String): Boolean = runCatching {
+        store.setChannelLinks(channelId, api!!.addChannelLink(channelId, title, url)); true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun updateChannelLink(channelId: String, linkId: String, title: String? = null, url: String? = null, position: Int? = null): Boolean = runCatching {
+        store.setChannelLinks(channelId, api!!.updateChannelLink(channelId, linkId, title, url, position)); true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun deleteChannelLink(channelId: String, linkId: String): Boolean = runCatching {
+        store.setChannelLinks(channelId, api!!.deleteChannelLink(channelId, linkId)); true
+    }.getOrElse { error = describe(it); false }
+
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
     suspend fun toggleAck(message: MessageState) {

@@ -120,7 +120,11 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         }
     }
 
+    // M15f: the link bar and its editor (null link = add).
+    var editingLink by remember(channelId) { mutableStateOf<Pair<Boolean, jp.chikuwachat.android.api.ChannelLinkOut?>>(false to null) }
+    if (editingLink.first) ChannelLinkDialog(controller, channelId, editingLink.second, onDismiss = { editingLink = false to null })
     Column(Modifier.fillMaxSize().imePadding()) {
+        ChannelLinksRow(controller, channel, onAdd = { editingLink = true to null }, onEdit = { editingLink = true to it })
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
