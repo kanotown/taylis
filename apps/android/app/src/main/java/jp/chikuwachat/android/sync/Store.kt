@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AttachmentOut
@@ -185,6 +186,9 @@ class Store(private val persistence: Persistence? = null) {
     val emojiImages = HashMap<String, ImageBitmap>()
     /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
     val groups = LinkedHashMap<String, GroupOut>()
+    /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
+    var sidebarSections: List<SidebarSectionOut> = emptyList()
+        private set
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -389,6 +393,16 @@ class Store(private val persistence: Persistence? = null) {
         }
         emit()
     }
+
+    // --- sidebar sections (M14f) -------------------------------------------------------------
+
+    fun replaceSidebar(rows: List<SidebarSectionOut>) {
+        sidebarSections = rows.sortedBy { it.position }
+        emit()
+    }
+
+    /** The id of my section the conversation sits in, if any. */
+    fun sectionOf(channelId: String): String? = sidebarSections.firstOrNull { channelId in it.channelIds }?.id
 
     // --- user groups (M12k) ------------------------------------------------------------------
 

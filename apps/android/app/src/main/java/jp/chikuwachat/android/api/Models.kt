@@ -238,7 +238,13 @@ data class BootstrapOut(
     val customEmoji: List<CustomEmojiOut> = emptyList(),
     /** User groups (M12k): every group with its members; changes arrive as group.updated. */
     val groups: List<GroupOut> = emptyList(),
+    /** My sidebar sections (M14f); changes arrive as sidebar.updated. */
+    val sidebarSections: List<SidebarSectionOut> = emptyList(),
 )
+
+/** One of my sidebar sections (M14f); `channelIds` are the conversations placed in it. */
+@Serializable
+data class SidebarSectionOut(val id: String, val name: String, val position: Int, val channelIds: List<String> = emptyList())
 
 /** A named set of members that `@name` notifies (M12k). */
 @Serializable

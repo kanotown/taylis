@@ -691,6 +691,28 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** Password change from the settings sheet; returns the error text or null. */
+    // --- sidebar sections (M14f) -------------------------------------------------------------
+
+    private suspend fun sidebarChange(work: suspend (ApiClient) -> List<jp.chikuwachat.android.api.SidebarSectionOut>): Boolean = runCatching {
+        store.replaceSidebar(work(api!!)); true
+    }.getOrElse { error = describe(it); false }
+
+    /** A new section at the end; with `channelId`, that conversation moves into it. */
+    suspend fun createSection(name: String, channelId: String?): Boolean {
+        val before = store.sidebarSections.map { it.id }.toSet()
+        if (!sidebarChange { it.createSidebarSection(name) }) return false
+        val created = store.sidebarSections.firstOrNull { it.id !in before }
+        return if (channelId != null && created != null) moveToSection(channelId, created.id) else true
+    }
+
+    suspend fun renameSection(id: String, name: String): Boolean = sidebarChange { it.updateSidebarSection(id, name = name) }
+    suspend fun moveSection(id: String, position: Int): Boolean = sidebarChange { it.updateSidebarSection(id, position = position) }
+    suspend fun deleteSection(id: String): Boolean = sidebarChange { it.deleteSidebarSection(id) }
+
+    /** `sectionId` null puts the conversation back in the default sections. */
+    suspend fun moveToSection(channelId: String, sectionId: String?): Boolean =
+        sidebarChange { api -> if (sectionId != null) api.placeInSidebarSection(sectionId, channelId) else api.removeFromSidebarSection(channelId) }
+
     // --- edit history (M14c) -------------------------------------------------------------------
 
     suspend fun messageRevisions(messageId: String): List<jp.chikuwachat.android.api.MessageRevisionOut>? =

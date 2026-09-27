@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.api.SidebarSectionOut
+
 import jp.chikuwachat.android.sync.ChannelState
 import java.time.Instant
 
@@ -28,8 +30,10 @@ object Channels {
         val channels: List<ChannelState>,
         val dms: List<ChannelState>,
         val browse: List<ChannelState>,
-        /** Starred conversations (M12a); left out of `channels` / `dms`. */
+        /** Starred conversations (M12a); left out of every other section. */
         val favorites: List<ChannelState> = emptyList(),
+        /** My own sections (M14f), in order; their conversations are left out of `channels` / `dms`. */
+        val custom: List<Pair<SidebarSectionOut, List<ChannelState>>> = emptyList(),
     )
 
     /** List order: favorites, channels by name, DMs by recency, joinable channels by name. The open one always stays. */
@@ -39,13 +43,21 @@ object Channels {
         currentId: String? = null,
         now: Instant = Instant.now(),
         favorites: Set<String> = emptySet(),
+        sidebar: List<SidebarSectionOut> = emptyList(),
     ): Sections {
         fun keep(channel: ChannelState) = !unreadOnly || channel.id == currentId || hasUnread(channel, now)
         fun starred(channel: ChannelState) = channel.id in favorites
+        val placed = HashMap<String, String>()
+        sidebar.forEach { section -> section.channelIds.forEach { placed[it] = section.id } }
+        fun loose(channel: ChannelState) = !starred(channel) && channel.id !in placed
         return Sections(
             favorites = all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }.sortedBy { it.channel.name ?: it.channel.lastMessageAt ?: "" },
-            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.archived && !starred(it) && keep(it) }.sortedBy { it.channel.name ?: "" },
-            dms = all.filter { it.isMember && it.channel.isDm && !starred(it) && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
+            custom = sidebar.map { section ->
+                val members = all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id }
+                section to (members.filter { !it.channel.isDm }.sortedBy { it.channel.name ?: "" } + members.filter { it.channel.isDm }.sortedByDescending { it.channel.lastMessageAt ?: "" })
+            },
+            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.archived && loose(it) && keep(it) }.sortedBy { it.channel.name ?: "" },
+            dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
             browse = if (unreadOnly) emptyList() else all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
         )
     }

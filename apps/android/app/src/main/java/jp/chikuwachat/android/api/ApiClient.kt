@@ -372,6 +372,21 @@ class ApiClient(
         requestRaw("POST", "/api/v1/auth/totp/disable", buildJsonObject { put("password", password) }, auth = true, retry401 = true)
     }
 
+    // --- sidebar sections (M14f): every call returns my whole list ------------------------------
+
+    suspend fun createSidebarSection(name: String): List<SidebarSectionOut> =
+        request("POST", "/api/v1/sidebar/sections", buildJsonObject { put("name", name) })
+
+    suspend fun updateSidebarSection(id: String, name: String? = null, position: Int? = null): List<SidebarSectionOut> =
+        request("PATCH", "/api/v1/sidebar/sections/$id", buildJsonObject { name?.let { put("name", it) }; position?.let { put("position", it) } })
+
+    suspend fun deleteSidebarSection(id: String): List<SidebarSectionOut> = request("DELETE", "/api/v1/sidebar/sections/$id")
+
+    suspend fun placeInSidebarSection(sectionId: String, channelId: String): List<SidebarSectionOut> =
+        request("PUT", "/api/v1/sidebar/sections/$sectionId/channels/$channelId", buildJsonObject {})
+
+    suspend fun removeFromSidebarSection(channelId: String): List<SidebarSectionOut> = request("DELETE", "/api/v1/sidebar/channels/$channelId")
+
     // --- polls (M14b) ------------------------------------------------------------------------
 
     suspend fun vote(messageId: String, option: Int, present: Boolean): MessageOut =
