@@ -23,7 +23,7 @@ vi.mock("../src/platform/sqlite", async () => {
     },
   };
 });
-vi.mock("../src/platform/badge", () => ({ setUnreadBadge: async () => {} }));
+vi.mock("../src/platform/badge", () => ({ setUnreadBadge: async () => {}, setTitleBase: () => {} }));
 vi.mock("../src/platform/notify", () => ({
   notify: async (title: string, body: string) => {
     notes.push(`${title}: ${body}`);

@@ -15,7 +15,7 @@ import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer
 import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
-import { setUnreadBadge } from "../platform/badge";
+import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { isTauri, isWeb } from "../platform/env";
 import { clearNotifications, notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
@@ -1015,6 +1015,7 @@ export class AppController {
     configureAvatars((path) => session.api.fetchBlob(path)); // M14a
     noteVersions(session.store.users.values());
     this.saveWorkspaces();
+    setTitleBase(this.workspaceName);
     this.setScreen(session.me?.must_change_password ? "change_password" : session.engine ? "main" : "boot");
     void this.refreshServerInfo(session);
   }
@@ -1027,6 +1028,7 @@ export class AppController {
       const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
       if (!entry || (entry.name === answer.name && entry.workspaceId === answer.workspace_id)) return;
       this.patchEntry(session.serverUrl, { name: answer.name, workspaceId: answer.workspace_id });
+      if (this.active === session) setTitleBase(answer.name);
       this.emit();
     } catch {
       // offline or an older server: keep what we have
