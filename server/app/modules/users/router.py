@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from app.core.db import Db
+from app.core.errors import not_found
 from app.modules.auth.deps import CurrentUser
 from app.modules.channels import service as channels  # M13e guest visibility (ARCHITECTURE.md §5)
 from app.modules.users import service
@@ -31,5 +32,8 @@ async def update_me(user: CurrentUser, body: UserUpdate, db: Db) -> UserMe:
 
 
 @router.get("/{user_id}", response_model=UserPublic)
-async def get_user(user_id: UUID, _: CurrentUser, db: Db) -> UserPublic:
+async def get_user(user_id: UUID, user: CurrentUser, db: Db) -> UserPublic:
+    visible = await channels.visible_user_ids(db, user)
+    if visible is not None and user_id not in visible:  # M13e: as if the user did not exist
+        raise not_found("user_not_found", "User not found")
     return to_user_public(await service.require_user(db, user_id))

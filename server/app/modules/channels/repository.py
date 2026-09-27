@@ -91,6 +91,11 @@ async def member_ids_for_channels(
     return out
 
 
+async def guest_user_ids(db: AsyncSession) -> list[uuid.UUID]:
+    stmt = select(User.id).where(User.role == "guest", User.deactivated_at.is_(None))
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def non_guest_user_ids(db: AsyncSession) -> list[uuid.UUID]:
     """Read-only users access (ARCHITECTURE.md §5): the audience of a public channel's creation."""
     stmt = select(User.id).where(User.role != "guest", User.deactivated_at.is_(None))

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sys
 import time
 import uuid
@@ -66,6 +67,14 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 access_log = logging.getLogger("app.access")
 
 
+# Paths whose last segment is a secret (SECURITY.md §7): webhook URLs and invite links.
+_SECRET_PATH = re.compile(r"^(/api/v1/hooks/|/invite/|/api/v1/invites/)[^/]+")
+
+
+def redact_path(path: str) -> str:
+    return _SECRET_PATH.sub(lambda m: m.group(1) + "***", path)
+
+
 class RequestContextMiddleware:
     """Pure ASGI middleware: assigns a request id, echoes it back, writes one access log line."""
 
@@ -96,14 +105,15 @@ class RequestContextMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 1)
+            path = redact_path(str(scope.get("path") or ""))
             access_log.info(
                 "%s %s -> %s",
                 scope.get("method"),
-                scope.get("path"),
+                path,
                 status_code,
                 extra={
                     "method": scope.get("method"),
-                    "path": scope.get("path"),
+                    "path": path,
                     "status": status_code,
                     "duration_ms": duration_ms,
                     "user_id": scope.get("state", {}).get("user_id"),

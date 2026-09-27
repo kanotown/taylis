@@ -15,8 +15,10 @@ class ThreadFollow(Base):
 
     parent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    # false: the user unfollowed by hand; auto-follow never flips it back.
+    # false with unfollowed_at: the user unfollowed by hand and auto-follow never flips it back;
+    # false without it: the user only read the thread (auto-follow may still turn it on).
     following: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    unfollowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Channel seq of the last reply the user has read in this thread (0: none).
     last_read_seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(

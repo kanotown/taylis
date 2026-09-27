@@ -189,16 +189,20 @@ async def _anonymize_user(username: str) -> int:
     from app.core.db import Database
     from app.core.settings import get_settings
     from app.modules.admin import service as admin
+    from app.modules.attachments.blobstore import build_blobstore
     from app.modules.users import service as users
 
-    db = Database(get_settings().database_url)
+    settings = get_settings()
+    db = Database(settings.database_url)
     try:
         async with db.session_factory() as session:
             user = await users.get_by_username(session, username)
             if user is None:
                 print(f"no such user: {username}", file=sys.stderr)
                 return 1
-            anonymized = await admin.anonymize_user(session, None, user.id)
+            anonymized = await admin.anonymize_user(
+                session, None, user.id, build_blobstore(settings)
+            )
             print(f"anonymized {username} -> {anonymized.username}")
             return 0
     finally:

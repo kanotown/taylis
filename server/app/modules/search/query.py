@@ -66,6 +66,12 @@ def parse_query(q: str, *, tz_offset_minutes: int = 0) -> ParsedQuery:
             return None
         return datetime(parsed_day.year, parsed_day.month, parsed_day.day, tzinfo=zone)
 
+    def shifted(value: datetime, days: int) -> datetime | None:
+        try:
+            return value + timedelta(days=days)
+        except OverflowError:  # after:9999-12-31
+            return None
+
     def replace(match: re.Match[str]) -> str:
         key, value = match.group(1), match.group(2)
         if key == "from":
@@ -85,15 +91,16 @@ def parse_query(q: str, *, tz_offset_minutes: int = 0) -> ParsedQuery:
                 parsed.is_thread = True
         else:
             start = day(value)
-            if start is None:
+            next_day = shifted(start, 1) if start is not None else None
+            if start is None or (key != "before" and next_day is None):
                 parsed.unresolved.append(match.group(0))
             elif key == "before":
                 parsed.before = min_dt(parsed.before, start)
             elif key == "after":
-                parsed.after = max_dt(parsed.after, start + timedelta(days=1))
+                parsed.after = max_dt(parsed.after, next_day)
             else:  # on
                 parsed.after = max_dt(parsed.after, start)
-                parsed.before = min_dt(parsed.before, start + timedelta(days=1))
+                parsed.before = min_dt(parsed.before, next_day)
         return " "
 
     parsed.text = " ".join(MODIFIER.sub(replace, q).split())

@@ -16,6 +16,7 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.auth import service as auth
 from app.modules.channels import repository as channel_repo
+from app.modules.channels import service as channels
 from app.realtime.hub import CLOSE_KEY, Connection, RealtimeHub
 from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
@@ -108,6 +109,12 @@ def _origin_allowed(origin: str, websocket: WebSocket, settings: Settings) -> bo
 async def websocket_endpoint(websocket: WebSocket) -> None:
     settings: Settings = websocket.app.state.settings
     hub: RealtimeHub = websocket.app.state.hub
+    ip = websocket.client.host[:45] if websocket.client else "unknown"
+    limiter = websocket.app.state.limiters["ws_connect"]  # SECURITY.md §5: attempts per IP
+    if not limiter.try_acquire(ip):
+        log.warning("websocket attempts throttled", extra={"ip": ip})
+        await websocket.close(code=1008)  # before accept: the handshake answers 403
+        return
     origin = websocket.headers.get("origin")
     if origin is not None and not _origin_allowed(origin, websocket, settings):
         log.warning("websocket origin rejected", extra={"origin": origin})
@@ -119,7 +126,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     if context is None:
         return
 
-    conn = hub.new_connection(context.user.id, context.session.id)
+    visible: frozenset[uuid.UUID] | None = None
+    if context.user.is_guest:  # M13e: presence only of the people the guest shares a channel with
+        async with websocket.app.state.db.session_factory() as db:
+            visible = frozenset(await channels.shared_member_ids(db, context.user.id))
+    # At most ws_max_connections_per_user sockets per user (SECURITY.md §5): the oldest yields.
+    existing = hub.connections_of(context.user.id)
+    for old in existing[: max(0, len(existing) - settings.ws_max_connections_per_user + 1)]:
+        old.request_close(CLOSE_RECONNECT)
+    conn = hub.new_connection(context.user.id, context.session.id, visible=visible)
     await _send(
         websocket,
         HelloFrame(

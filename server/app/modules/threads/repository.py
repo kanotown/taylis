@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.time import utcnow
+from app.modules.channels.models import ChannelMember  # read-only: follows need membership
 from app.modules.messages.models import Message  # read-only (ARCHITECTURE.md §5 exception)
 from app.modules.threads.models import ThreadFollow
 
@@ -15,22 +16,60 @@ async def get(db: AsyncSession, parent_id: uuid.UUID, user_id: uuid.UUID) -> Thr
     return await db.get(ThreadFollow, (parent_id, user_id))
 
 
+def _member_of_thread_channel() -> ColumnElement[bool]:
+    """The follow row's user is (still) a member of the thread's channel. Follows of people who
+    were never members (a mention of an outsider) or who left must not see the thread."""
+    parent = aliased(Message)
+    return exists(
+        select(ChannelMember.user_id)
+        .join(parent, parent.channel_id == ChannelMember.channel_id)
+        .where(parent.id == ThreadFollow.parent_id, ChannelMember.user_id == ThreadFollow.user_id)
+    )
+
+
+async def member_ids(
+    db: AsyncSession, channel_id: uuid.UUID, candidates: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    if not candidates:
+        return []
+    stmt = select(ChannelMember.user_id).where(
+        ChannelMember.channel_id == channel_id, ChannelMember.user_id.in_(candidates)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def auto_follow(db: AsyncSession, parent_id: uuid.UUID, user_ids: list[uuid.UUID]) -> None:
-    """Follow for users without a row yet; an explicit unfollow (following=false) is kept."""
+    """Follow for users without a row yet, or who only read the thread; an explicit unfollow
+    (unfollowed_at) is kept."""
     if not user_ids:
         return
-    stmt = (
-        pg_insert(ThreadFollow)
-        .values([{"parent_id": parent_id, "user_id": uid} for uid in dict.fromkeys(user_ids)])
-        .on_conflict_do_nothing(index_elements=["parent_id", "user_id"])
+    insert = pg_insert(ThreadFollow).values(
+        [{"parent_id": parent_id, "user_id": uid} for uid in dict.fromkeys(user_ids)]
+    )
+    stmt = insert.on_conflict_do_update(
+        index_elements=["parent_id", "user_id"],
+        set_={"following": True, "updated_at": utcnow()},
+        where=and_(ThreadFollow.following.is_(False), ThreadFollow.unfollowed_at.is_(None)),
     )
     await db.execute(stmt)
+
+
+async def unfollowed(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
+    """Users who unfollowed the thread by hand (no pushes for its replies, THREADS.md §4)."""
+    stmt = select(ThreadFollow.user_id).where(
+        ThreadFollow.parent_id == parent_id, ThreadFollow.unfollowed_at.is_not(None)
+    )
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
     stmt = (
         select(ThreadFollow.user_id)
-        .where(ThreadFollow.parent_id == parent_id, ThreadFollow.following.is_(True))
+        .where(
+            ThreadFollow.parent_id == parent_id,
+            ThreadFollow.following.is_(True),
+            _member_of_thread_channel(),
+        )
         .order_by(ThreadFollow.created_at)
     )
     return list((await db.execute(stmt)).scalars().all())
@@ -43,7 +82,11 @@ async def followers_of(
         return {}
     stmt = (
         select(ThreadFollow.parent_id, ThreadFollow.user_id)
-        .where(ThreadFollow.parent_id.in_(parent_ids), ThreadFollow.following.is_(True))
+        .where(
+            ThreadFollow.parent_id.in_(parent_ids),
+            ThreadFollow.following.is_(True),
+            _member_of_thread_channel(),
+        )
         .order_by(ThreadFollow.created_at)
     )
     out: dict[uuid.UUID, list[uuid.UUID]] = {}
@@ -62,10 +105,12 @@ async def newest_reply_seq(db: AsyncSession, parent_id: uuid.UUID) -> int:
 async def advance_read(
     db: AsyncSession, parent_id: uuid.UUID, user_id: uuid.UUID, seq: int
 ) -> tuple[int, bool]:
-    """Monotonic; creates the row (following) when missing."""
+    """Monotonic; a missing row is created without following (reading is not following)."""
     row = await db.get(ThreadFollow, (parent_id, user_id), with_for_update=True)
     if row is None:
-        db.add(ThreadFollow(parent_id=parent_id, user_id=user_id, last_read_seq=seq))
+        db.add(
+            ThreadFollow(parent_id=parent_id, user_id=user_id, following=False, last_read_seq=seq)
+        )
         await db.flush()
         return seq, True
     if seq <= row.last_read_seq:
@@ -80,14 +125,18 @@ async def set_following(
     db: AsyncSession, parent_id: uuid.UUID, user_id: uuid.UUID, following: bool
 ) -> tuple[ThreadFollow, bool]:
     row = await db.get(ThreadFollow, (parent_id, user_id), with_for_update=True)
+    unfollowed_at = None if following else utcnow()
     if row is None:
-        row = ThreadFollow(parent_id=parent_id, user_id=user_id, following=following)
+        row = ThreadFollow(
+            parent_id=parent_id, user_id=user_id, following=following, unfollowed_at=unfollowed_at
+        )
         db.add(row)
         await db.flush()
         return row, True
-    if row.following == following:
+    if row.following == following and (following or row.unfollowed_at is not None):
         return row, False
     row.following = following
+    row.unfollowed_at = unfollowed_at  # an explicit choice either way
     row.updated_at = utcnow()
     await db.flush()
     return row, True
@@ -176,6 +225,7 @@ async def list_followed(
             ThreadFollow.following.is_(True),
             Message.deleted_at.is_(None),
             Message.reply_count > 0,
+            _member_of_thread_channel(),
         )
         .order_by(Message.last_reply_at.desc().nulls_last(), Message.seq.desc())
         .limit(limit)
@@ -197,6 +247,7 @@ async def summary(db: AsyncSession, user_id: uuid.UUID) -> tuple[int, int]:
             ThreadFollow.user_id == user_id,
             ThreadFollow.following.is_(True),
             Message.deleted_at.is_(None),
+            _member_of_thread_channel(),
         )
     )
     unread = base.where(_unread_reply_exists(user_id, mentioned=False))

@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = logging.getLogger("app.errors")
@@ -91,6 +92,15 @@ _HTTP_STATUS_CODES = {
 }
 
 
+def _sqlstate(exc: DBAPIError) -> str | None:
+    """The PostgreSQL error code behind SQLAlchemy's wrapper (asyncpg keeps it on the cause)."""
+    for candidate in (exc.orig, getattr(exc.orig, "__cause__", None)):
+        state = getattr(candidate, "sqlstate", None)
+        if isinstance(state, str):
+            return state
+    return None
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
@@ -112,6 +122,19 @@ def install_error_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             content=error_body(code, str(exc.detail)),
             headers=dict(exc.headers or {}),
+        )
+
+    @app.exception_handler(DBAPIError)
+    async def _database_error(_: Request, exc: DBAPIError) -> JSONResponse:
+        # Text PostgreSQL cannot store (a NUL character, an unpaired surrogate) is bad input.
+        if _sqlstate(exc) in ("22021", "22P05"):
+            return JSONResponse(
+                status_code=422,
+                content=error_body("validation_error", "Text contains unsupported characters"),
+            )
+        log.exception("database error", exc_info=exc)
+        return JSONResponse(
+            status_code=500, content=error_body("server_error", "Internal server error")
         )
 
     @app.exception_handler(Exception)

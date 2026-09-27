@@ -2,11 +2,11 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 class ReminderCreate(BaseModel):
-    remind_at: datetime
+    remind_at: AwareDatetime
     note: str | None = Field(default=None, max_length=200)
 
 

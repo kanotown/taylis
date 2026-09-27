@@ -49,9 +49,11 @@ async def get_preview(
 ) -> LinkPreviewOut:
     if len(url) > MAX_URL_LENGTH:
         raise bad_request("url_not_allowed", "Link is too long")
-    normalized = normalize_url(url)
     try:
+        normalized = normalize_url(url)
         await validate_public_url(normalized)
+    except ValueError as exc:  # a malformed host or port ("http://[::1/", ":99999")
+        raise bad_request("url_not_allowed", "This link cannot be previewed") from exc
     except UrlNotAllowed as exc:
         raise bad_request(exc.code, str(exc)) from exc
     except PreviewError:

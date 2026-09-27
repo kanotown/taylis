@@ -91,12 +91,33 @@ def dm_key_for(user_ids: list[uuid.UUID]) -> str:
 # --- events -----------------------------------------------------------------------------------
 
 
+# user.* events carry profiles: guests get only those of people they share a channel with (M13e).
+USER_EVENTS = ("user.created", "user.updated", "user.deactivated")
+GROUP_UPDATED = "group.updated"  # member lists: not for guests
+
+
+async def _user_event_audience(db: AsyncSession, subject: uuid.UUID) -> list[uuid.UUID]:
+    audience = await repo.non_guest_user_ids(db)
+    for guest_id in await repo.guest_user_ids(db):
+        if guest_id == subject or subject in await shared_member_ids(db, guest_id):
+            audience.append(guest_id)
+    return audience
+
+
+async def visible_user_ids(db: AsyncSession, actor: User) -> set[uuid.UUID] | None:
+    """Whom the actor may see: everyone (None), or for a guest the people sharing a channel."""
+    return await shared_member_ids(db, actor.id) if actor.is_guest else None
+
+
 async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audience:
     """Injected into the OutboxRelay: turns an outbox row's audience into user / session ids."""
     if event.audience_type == "all":
         # A public channel appearing or changing visibility (M15b): not for guests (M13e).
-        if event.event_type in (events.CHANNEL_CREATED, events.CHANNEL_UPDATED):
+        if event.event_type in (events.CHANNEL_CREATED, events.CHANNEL_UPDATED, GROUP_UPDATED):
             return Audience(kind="users", ids=tuple(await repo.non_guest_user_ids(db)))
+        if event.event_type in USER_EVENTS:
+            subject = uuid.UUID(str(event.payload["user"]["id"]))
+            return Audience(kind="users", ids=tuple(await _user_event_audience(db, subject)))
         return Audience(kind="all")
     if event.audience_type == "user" and event.audience_id is not None:
         return Audience(kind="users", ids=(event.audience_id,))
@@ -377,6 +398,7 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
     require_writable(channel)
     membership = await repo.get_membership(db, channel_id, actor.id)
     if membership is None:
+        actor_id = actor.id  # instances expire on rollback (a lazy load would fail in async code)
         membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="member")
         await reads.initialize_in_tx(db, actor.id, channel.id, channel.last_seq)
         db.add(membership)
@@ -391,10 +413,11 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
             )
             await db.commit()
         except IntegrityError:
-            await db.rollback()
-            membership = await repo.get_membership(db, channel_id, actor.id)
+            await db.rollback()  # a concurrent join won: answer with that membership
+            membership = await repo.get_membership(db, channel_id, actor_id)
             if membership is None:
                 raise
+            channel = await require_channel(db, channel_id)
     return await _out_with_count(db, channel, membership)
 
 
@@ -433,6 +456,7 @@ async def add_member(
     existing = await repo.get_membership(db, channel_id, target.id)
     if existing is not None:
         return to_member_out(existing)
+    target_id = target.id  # instances expire on rollback
     membership = ChannelMember(channel_id=channel_id, user_id=target.id, role="member")
     await reads.initialize_in_tx(db, target.id, channel_id, channel.last_seq)
     db.add(membership)
@@ -447,7 +471,7 @@ async def add_member(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        existing = await repo.get_membership(db, channel_id, target.id)
+        existing = await repo.get_membership(db, channel_id, target_id)
         if existing is None:
             raise
         return to_member_out(existing)

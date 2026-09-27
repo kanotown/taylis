@@ -7,8 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.scheduled.models import ScheduledMessage
 
 
-async def get(db: AsyncSession, scheduled_id: uuid.UUID) -> ScheduledMessage | None:
-    return await db.get(ScheduledMessage, scheduled_id)
+async def get(
+    db: AsyncSession, scheduled_id: uuid.UUID, *, for_update: bool = False
+) -> ScheduledMessage | None:
+    return await db.get(ScheduledMessage, scheduled_id, with_for_update=for_update)
+
+
+async def get_by_client_msg_id(
+    db: AsyncSession, client_msg_id: uuid.UUID
+) -> ScheduledMessage | None:
+    stmt = select(ScheduledMessage).where(ScheduledMessage.client_msg_id == client_msg_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def list_pending_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ScheduledMessage]:

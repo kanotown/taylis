@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import bad_request, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.channels import service as channels
 from app.modules.messages import service as messages
 from app.modules.messages.mentions import notification_text
 from app.modules.reminders import repository as repo
@@ -26,13 +27,20 @@ MAX_LEAD = timedelta(days=366)
 PREVIEW_LENGTH = 200
 
 
-def to_out(row: Reminder) -> ReminderOut:
+def _preview(body: str | None) -> str:
+    """From the live message: an edit shows up, and a deleted message leaves no text behind."""
+    if body is None:
+        return "(削除されたメッセージ)"
+    return notification_text(body, {})[:PREVIEW_LENGTH] or "(添付ファイル)"
+
+
+def to_out(row: Reminder, body: str | None) -> ReminderOut:
     return ReminderOut(
         id=row.id,
         message_id=row.message_id,
         channel_id=row.channel_id,
         note=row.note,
-        preview=row.preview or "",
+        preview=_preview(body),
         remind_at=row.remind_at,
         status=row.status,  # type: ignore[arg-type]
         fired_at=row.fired_at,
@@ -40,15 +48,26 @@ def to_out(row: Reminder) -> ReminderOut:
     )
 
 
-async def _emit(db: AsyncSession, row: Reminder) -> None:
+async def _emit(db: AsyncSession, row: Reminder, body: str | None) -> None:
     await write_outbox(
         db,
         event_type=REMINDER_UPDATED,
         audience_type="user",
         audience_id=row.user_id,
         channel_id=row.channel_id,
-        payload=ReminderUpdatedData(reminder=to_out(row)).model_dump(mode="json"),
+        payload=ReminderUpdatedData(reminder=to_out(row, body)).model_dump(mode="json"),
     )
+
+
+async def _visible_bodies(db: AsyncSession, rows: list[Reminder]) -> dict[uuid.UUID, str]:
+    """Bodies of the reminded messages the owners can still see (live, and still members)."""
+    bodies = await messages.live_bodies(db, [row.message_id for row in rows])
+    visible: dict[uuid.UUID, str] = {}
+    for row in rows:
+        body = bodies.get(row.message_id)
+        if body is not None and await channels.membership_of(db, row.user_id, row.channel_id):
+            visible[row.message_id] = body
+    return visible
 
 
 async def create(
@@ -60,24 +79,27 @@ async def create(
         raise bad_request("remind_at_too_soon", "Pick a time at least a minute ahead")
     if data.remind_at > now + MAX_LEAD:
         raise bad_request("remind_at_too_far", "Pick a time within a year")
-    preview = notification_text(message.body or "", {})[:PREVIEW_LENGTH]
     row = Reminder(
         user_id=actor.id,
         message_id=message.id,
         channel_id=message.channel_id,
         note=(data.note or "").strip() or None,
-        preview=preview or "(添付ファイル)",
+        preview="",  # never a copy of the body: it is read from the message when shown
         remind_at=data.remind_at,
     )
     db.add(row)
     await db.flush()
-    await _emit(db, row)
+    await _emit(db, row, message.body or "")
     await db.commit()
-    return to_out(row)
+    return to_out(row, message.body or "")
 
 
 async def list_mine(db: AsyncSession, actor: User) -> list[ReminderOut]:
-    return [to_out(row) for row in await repo.list_open_for_user(db, actor.id)]
+    """Reminders whose message is gone (or whose channel I left) are left out; the worker
+    cancels them when they come due."""
+    rows = await repo.list_open_for_user(db, actor.id)
+    bodies = await _visible_bodies(db, rows)
+    return [to_out(row, bodies[row.message_id]) for row in rows if row.message_id in bodies]
 
 
 async def close(db: AsyncSession, actor: User, reminder_id: uuid.UUID) -> None:
@@ -88,7 +110,8 @@ async def close(db: AsyncSession, actor: User, reminder_id: uuid.UUID) -> None:
         raise not_found("reminder_not_found", "No such reminder")
     row.status = "cancelled" if row.status == "pending" else "done"
     row.updated_at = utcnow()
-    await _emit(db, row)
+    bodies = await _visible_bodies(db, [row])
+    await _emit(db, row, bodies.get(row.message_id))
     await db.commit()
 
 
@@ -96,11 +119,18 @@ async def fire_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
     """Marks due reminders fired; the outbox event carries the nudge to the push planner."""
     moment = now or utcnow()
     fired = 0
-    for row in await repo.due(db, moment, limit):
+    rows = await repo.due(db, moment, limit)
+    bodies = await _visible_bodies(db, rows)
+    for row in rows:
+        row.updated_at = moment
+        if row.message_id not in bodies:
+            # Deleted, or the owner left the channel: nothing to remind of, nothing to leak.
+            row.status = "cancelled"
+            await _emit(db, row, None)
+            continue
         row.status = "fired"
         row.fired_at = moment
-        row.updated_at = moment
-        await _emit(db, row)
+        await _emit(db, row, bodies[row.message_id])
         fired += 1
     await db.commit()
     return fired

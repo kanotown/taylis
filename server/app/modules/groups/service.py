@@ -23,6 +23,18 @@ from app.modules.users import service as users
 from app.modules.users.models import User
 
 
+async def list_visible(db: AsyncSession, visible: set[uuid.UUID] | None) -> list[GroupOut]:
+    """For a guest (`visible` = the people it shares a channel with) member lists are trimmed
+    to those people; the names stay so that `<@group:id>` in messages still reads."""
+    groups = await list_all(db)
+    if visible is None:
+        return groups
+    return [
+        g.model_copy(update={"member_ids": [m for m in g.member_ids if m in visible]})
+        for g in groups
+    ]
+
+
 async def list_all(db: AsyncSession) -> list[GroupOut]:
     rows = await repo.list_all(db)
     members = await repo.member_ids_for(db, [g.id for g in rows])

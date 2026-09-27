@@ -7438,7 +7438,7 @@
     },
     "/api/v1/groups": {
       "get": {
-        "description": "Every group with its members (M12k); also part of the bootstrap.",
+        "description": "Every group with its members (M12k); also part of the bootstrap. Guests see only the\nmembers they share a channel with (M13e).",
         "operationId": "list_groups_api_v1_groups_get",
         "responses": {
           "200": {

@@ -40,6 +40,7 @@ async def bootstrap(
     presence: Sequence[tuple[uuid.UUID, str]] = (),
 ) -> BootstrapOut:
     listed = await channels.list_channels(db, actor, include_public=False)
+    visible = await channels.visible_user_ids(db, actor)  # M13e: None = everyone
     prefs = await notifications.preferences_for(db, actor.id)
     read_states = await reads.states_for_user(db, actor.id, [c.id for c in listed])
     with_prefs = [
@@ -62,12 +63,13 @@ async def bootstrap(
         bookmarks=await bookmarks.ids_for(db, actor.id),
         favorites=await favorites.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
-        groups=await groups.list_all(db),
+        groups=await groups.list_visible(db, visible),
         sidebar_sections=await sidebar.list_for(db, actor.id),
         drafts=await drafts.list_for(db, actor.id),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence
+            if visible is None or user_id in visible
         ],
         limits=Limits(
             max_message_length=MAX_BODY_LENGTH,

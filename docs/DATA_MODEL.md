@@ -232,11 +232,13 @@ SELECT count(*)                                                              AS 
        count(*) FILTER (WHERE $me = ANY (mentioned_user_ids) OR mention_all)  AS mention_count
 FROM messages m
 WHERE m.channel_id = $channel AND m.seq > $last_read_seq
+  AND m.sender_id <> $me
   AND (m.parent_id IS NULL OR m.also_in_channel) AND m.deleted_at IS NULL AND m.type = 'user';
 ```
 
 スレッドの返信は数えない。ただし「チャンネルにも送信」した返信 (`also_in_channel`、M15c) はチャンネルの
 タイムラインに並ぶので数える。
+自分の投稿は数えない (スレッドの返信を送ってもチャンネルの既読位置は進まないため、位置より後に自分の投稿が残りうる)。
 
 自分の送信は同一トランザクションで `last_read_seq` を進めるので、自分のメッセージは未読にならない。
 
@@ -246,7 +248,8 @@ WHERE m.channel_id = $channel AND m.seq > $last_read_seq
 CREATE TABLE thread_follows (
   parent_id      uuid NOT NULL REFERENCES messages(id),   -- parent_id IS NULL の行
   user_id        uuid NOT NULL REFERENCES users(id),
-  following      boolean NOT NULL DEFAULT true,           -- false = 手動で外した
+  following      boolean NOT NULL DEFAULT true,           -- false = フォローしていない (読んだだけ、または手動で外した)
+  unfollowed_at  timestamptz,                             -- 手動で外した時刻。これがある行は自動フォローで戻さない
   last_read_seq  bigint NOT NULL DEFAULT 0,               -- このスレッドで読んだ最後の返信の seq
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
@@ -255,8 +258,11 @@ CREATE TABLE thread_follows (
 CREATE INDEX thread_follows_user_idx ON thread_follows (user_id, following);
 ```
 
-- 親メッセージ × ユーザーで 1 行。返信の作成時に親の投稿者・返信者・スレッド内でメンションされた人を自動で
-  フォローする (`INSERT … ON CONFLICT DO NOTHING`: 手動で外した `following=false` は戻さない)。
+- 親メッセージ × ユーザーで 1 行。返信の作成時に親の投稿者・返信者・スレッド内でメンションされた人のうち
+  **チャンネルのメンバー**を自動でフォローする (`ON CONFLICT DO UPDATE … WHERE unfollowed_at IS NULL`: 読んだだけの行は
+  フォローに変わり、手動で外した行は戻さない)。スレッドを既読にしただけではフォローしない (`following=false` の行を作る)。
+- フォロワー・一覧・件数は、そのチャンネルのメンバーである行だけを数える (メンションされた部外者や、抜けた人には
+  スレッドの本文や状態を見せない)。
 - 返信もチャンネルの `seq` を消費するので、スレッド内の位置も `seq` で表せる。未読数は `read_states` と同じく
   導出する (THREADS.md §2 のクエリ)。チャンネルの未読 (`read_states`) とは独立で、返信はそちらに数えない。
 - `message.created` の `parent_thread.participant_ids` と `thread.updated` の宛先はこの表の `following=true`。
@@ -338,7 +344,7 @@ CREATE TABLE reminders (
   message_id  uuid NOT NULL REFERENCES messages(id),
   channel_id  uuid NOT NULL REFERENCES channels(id),
   note        varchar(200),
-  preview     text,                                   -- 設定時点の本文 (後で変わっても通知文はこれ)
+  preview     text,                                   -- 使わない (空)。表示・通知の文面は元のメッセージから毎回作る
   remind_at   timestamptz NOT NULL,
   status      varchar(16) NOT NULL DEFAULT 'pending', -- pending | fired | done | cancelled
   fired_at    timestamptz,

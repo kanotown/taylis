@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.webhooks.models import Webhook
@@ -49,6 +49,13 @@ class WebhookPost(BaseModel):
 
     text: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
     id: UUID | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
 
 
 class WebhookPosted(BaseModel):

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.core.db import Db
 from app.modules.admin import service
@@ -49,6 +49,8 @@ async def revoke_sessions(user_id: UUID, actor: CurrentAdmin, db: Db) -> None:
 
 
 @router.post("/users/{user_id}/anonymize", response_model=AdminUserOut)
-async def anonymize_user(user_id: UUID, actor: CurrentAdmin, db: Db) -> AdminUserOut:
+async def anonymize_user(
+    user_id: UUID, actor: CurrentAdmin, db: Db, request: Request
+) -> AdminUserOut:
     """Erase the identity and end all sessions; messages stay under a generic name (M10)."""
-    return to_admin_out(await service.anonymize_user(db, actor, user_id))
+    return to_admin_out(await service.anonymize_user(db, actor, user_id, request.app.state.blobs))
