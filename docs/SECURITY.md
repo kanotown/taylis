@@ -247,6 +247,12 @@ guest に見えるのは同じチャンネルの人だけで、次の経路も�
 
 - TLS は Caddy が終端し、自動で証明書を取得する。HSTS を有効化。
 - app はプレーン HTTP で Caddy からのみ受ける。`X-Forwarded-For` は Caddy からの値のみ信用する。
+  Caddy は既定で転送ヘッダを信用しない (利用者が送った `X-Forwarded-For` / `-Proto` は捨てて接続元で置き換える)。
+- 既存の nginx の後ろで動かす構成 (ARCHITECTURE.md D22、`docker-compose.behind-proxy.yml`) では nginx が TLS を
+  終端し、Caddy は `127.0.0.1` の HTTP だけを受ける。nginx は `X-Forwarded-For` を接続元のアドレスで**置き換え**
+  (追記しない)、`X-Forwarded-Proto` に `$scheme` を入れる。Caddy はこの構成でだけプライベートアドレス
+  (Docker のブリッジ経由の nginx) からの転送ヘッダを信用する。これでアプリの記録・レート制限に使うアドレスと、
+  cookie の `Secure` の判定が利用者側の値になる。
 - PostgreSQL / versitygw はホストにポートを公開しない。versitygw の WebUI と admin API は有効にしない
   (`--webui` / `--admin-port` を指定しない)。
 - CORS は Desktop アプリの WebView オリジン (`tauri://localhost`、`http://tauri.localhost`) と Vite 開発サーバ

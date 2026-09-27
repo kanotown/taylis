@@ -1,0 +1,14 @@
+# 既存のリバースプロキシ (nginx など) が 80 / 443 と証明書を持つサーバー用 (infra/README.md「既存の nginx の後ろで動かす」)。
+# Caddy は 127.0.0.1:${BEHIND_PROXY_PORT:-18080} で HTTP だけを受け、TLS はホストのプロキシが終端する
+# (nginx の設定例: nginx-site.conf.example)。自動デプロイでは infra/deploy.conf の
+# EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml で使う。
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:${BEHIND_PROXY_PORT:-18080}:80"
+    environment:
+      # このホスト名を HTTP で配信する (Caddy は証明書を取りに行かない)
+      CHAT_DOMAIN: http://${CHAT_DOMAIN:?set CHAT_DOMAIN in infra/.env}
+      # ホストのプロキシは Docker のブリッジ (プライベートアドレス) から来る。その X-Forwarded-For /
+      # X-Forwarded-Proto を信じて、アプリに利用者のアドレスと https を渡す (Caddyfile の trusted_proxies)
+      TRUSTED_PROXIES: private_ranges

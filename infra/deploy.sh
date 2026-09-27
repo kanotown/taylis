@@ -22,7 +22,13 @@ die() { log "$*" >&2; exit 1; }
 : "${REGISTRY:?set REGISTRY in infra/deploy.conf, e.g. ghcr.io/<owner>}"
 BACKUP_ROOT="${BACKUP_ROOT:-$HERE/backups}"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml --profile proxy)
+COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)
+# Files for this server only, e.g. docker-compose.behind-proxy.yml when nginx already owns ports 80 and 443.
+for extra in ${EXTRA_COMPOSE_FILES:-}; do
+  [ -f "$extra" ] || die "EXTRA_COMPOSE_FILES in deploy.conf names $extra, which is not in infra/"
+  COMPOSE+=(-f "$extra")
+done
+COMPOSE+=(--profile proxy)
 use_release() {
   export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$1"
   export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$1"

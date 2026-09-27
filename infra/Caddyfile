@@ -1,3 +1,12 @@
+{
+	servers {
+		# Whose X-Forwarded-For / X-Forwarded-Proto are passed on to the app (the client address it records and
+		# rate-limits, https for the Secure cookie). Only this container by default: a client cannot set them.
+		# docker-compose.behind-proxy.yml sets private_ranges for the host's nginx in front.
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
 {$CHAT_DOMAIN} {
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"

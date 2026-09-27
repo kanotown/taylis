@@ -349,6 +349,35 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
   exec app python -m app.cli create-admin --username admin
 ```
 
+### 既存の nginx の後ろで動かす (共用サーバー)
+
+他のサイトの nginx がすでに 80 / 443 と証明書 (certbot) を持っているサーバーでは、Caddy に 80 / 443 を
+渡さず、nginx の後ろで動かす (ARCHITECTURE.md D22)。
+
+```
+利用者 ──https──▶ nginx (TLS、certbot の証明書) ──http──▶ 127.0.0.1:18080 Caddy ──▶ app
+                                                              (Web クライアント、本文サイズ、CSP)
+```
+
+- 初期設定に `--behind-proxy` を付ける。`deploy.conf` に `EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml`
+  が入り、Caddy は `127.0.0.1:18080` (`.env` の `BEHIND_PROXY_PORT` で変更可) の HTTP だけを受ける。Docker が
+  すでにあれば入れ直さず、パッケージは足りないものだけを入れる。上の 1. のパケットフィルターは既存のサイトの
+  設定のままでよい。
+- nginx のサイトは `infra/nginx-site.conf.example` から作る (ドメインを置き換える)。証明書は certbot で取る:
+
+  ```sh
+  cp nginx-site.conf.example /etc/nginx/sites-available/chikuwachat   # chat.example.com を置き換える
+  ln -s /etc/nginx/sites-available/chikuwachat /etc/nginx/sites-enabled/
+  nginx -t && systemctl reload nginx
+  certbot --nginx -d chat.example.com --redirect
+  ```
+
+  nginx は `X-Forwarded-For` を接続元のアドレスで置き換え、`X-Forwarded-Proto` を渡す。Caddy はこの構成でだけ
+  プライベートアドレス (nginx) からの転送ヘッダを信用する (SECURITY.md §6)。WebSocket のため `Upgrade` を通し、
+  読み取りのタイムアウトを 1 時間にしている。
+- 手で compose を動かすときも `-f docker-compose.behind-proxy.yml` を付ける (付けずに Caddy を起動すると
+  80 / 443 を取りに行き、nginx とぶつかって起動しない)。
+
 ### リリースと戻し方
 
 - **出す**: `git tag v1.2.3 && git push origin v1.2.3`。Actions の release で経過が見える。

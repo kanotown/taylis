@@ -6,16 +6,18 @@
 #       chikuwa-deploy.pub root@<VPS>:/tmp/
 #   ssh root@<VPS>
 #   bash /tmp/vps-bootstrap.sh --domain chat.example.com --workspace-name "チーム名" \
-#       --registry ghcr.io/<owner> --deploy-key-file /tmp/chikuwa-deploy.pub
+#       --registry ghcr.io/<owner> --deploy-key-file /tmp/chikuwa-deploy.pub [--behind-proxy]
 #
-# What it does: Docker Engine + compose plugin, a swap file on small machines, the `deploy` user (docker
-# group), /srv/chikuwachat/infra and /srv/backups, the forced command /usr/local/bin/chikuwa-deploy with the
-# deploy key, infra/.env with fresh random secrets, infra/deploy.conf and the daily backup. The firewall is
-# left to the provider's packet filter (Xserver VPS: SSH 22, Web 80 / 443, UDP 443), so a typo here cannot
-# lock you out of SSH.
+# What it does: Docker Engine + compose plugin (unless already there), a swap file on small machines, the
+# `deploy` user (docker group), /srv/chikuwachat/infra and /srv/backups, the forced command
+# /usr/local/bin/chikuwa-deploy with the deploy key, infra/.env with fresh random secrets, infra/deploy.conf and
+# the daily backup. The firewall is left to the provider's packet filter (Xserver VPS: SSH 22, Web 80 / 443,
+# UDP 443), so a typo here cannot lock you out of SSH.
+# --behind-proxy: the server already runs nginx on 80 / 443 (other sites); Caddy then listens on 127.0.0.1:18080
+# only (docker-compose.behind-proxy.yml) and nginx is set up by hand (nginx-site.conf.example).
 set -euo pipefail
 
-DOMAIN="" WORKSPACE_NAME="" REGISTRY="" DEPLOY_KEY=""
+DOMAIN="" WORKSPACE_NAME="" REGISTRY="" DEPLOY_KEY="" BEHIND_PROXY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="$2"; shift 2 ;;
@@ -23,11 +25,12 @@ while [ $# -gt 0 ]; do
     --registry) REGISTRY="$2"; shift 2 ;;
     --deploy-key) DEPLOY_KEY="$2"; shift 2 ;;
     --deploy-key-file) DEPLOY_KEY="$(head -n 1 "$2")"; shift 2 ;;
+    --behind-proxy) BEHIND_PROXY=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$DOMAIN" ] && [ -n "$REGISTRY" ] && [ -n "$DEPLOY_KEY" ] \
-  || { echo "usage: vps-bootstrap.sh --domain <host> --registry ghcr.io/<owner> --deploy-key-file <file.pub> [--workspace-name <name>]" >&2; exit 2; }
+  || { echo "usage: vps-bootstrap.sh --domain <host> --registry ghcr.io/<owner> --deploy-key-file <file.pub> [--workspace-name <name>] [--behind-proxy]" >&2; exit 2; }
 [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "not a host name: $DOMAIN" >&2; exit 2; }
 # The name goes into .env in double quotes (backup.sh and restore.sh source that file with bash).
 [[ "$WORKSPACE_NAME" != *[\"\\\$\`]* ]] || { echo "the workspace name cannot contain \" \\ \$ or a backquote" >&2; exit 2; }
@@ -46,9 +49,17 @@ BACKUPS=/srv/backups
 step() { echo; echo "== $*"; }
 
 step "packages (a minimal Debian image may lack cron or openssl)"
+# Only what is missing: a server that already runs other services keeps its package versions.
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
-apt-get install -y -q ca-certificates curl openssl cron
+missing=()
+for cmd in curl openssl cron; do command -v "$cmd" >/dev/null || missing+=("$cmd"); done
+[ -f /etc/ssl/certs/ca-certificates.crt ] || missing+=(ca-certificates)
+if [ ${#missing[@]} -gt 0 ]; then
+  apt-get update -q
+  apt-get install -y -q "${missing[@]}"
+else
+  echo "all present"
+fi
 systemctl enable --now cron >/dev/null
 
 step "Docker Engine + compose plugin"
@@ -116,7 +127,11 @@ if [ -f "$INFRA/deploy.conf" ]; then
 else
   install -o deploy -g deploy -m 644 "$HERE/deploy.conf.example" "$INFRA/deploy.conf"
   sed -i -e "s|^REGISTRY=.*|REGISTRY=$REGISTRY|" -e "s|^BACKUP_ROOT=.*|BACKUP_ROOT=$BACKUPS|" "$INFRA/deploy.conf"
+  if [ "$BEHIND_PROXY" = 1 ]; then
+    sed -i "s|^# *EXTRA_COMPOSE_FILES=.*|EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml|" "$INFRA/deploy.conf"
+  fi
 fi
+grep -q '^EXTRA_COMPOSE_FILES=.*behind-proxy' "$INFRA/deploy.conf" && BEHIND_PROXY=1
 
 step "daily backup at 03:30 (starts working after the first release put backup.sh in place)"
 touch /var/log/chikuwachat-backup.log && chown deploy:deploy /var/log/chikuwachat-backup.log
@@ -127,11 +142,17 @@ chmod 644 /etc/cron.d/chikuwachat-backup
 
 address="$(hostname -I | awk '{print $1}')"
 hostkey="$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+if [ "$BEHIND_PROXY" = 1 ]; then
+  web="nginx: the site from infra/nginx-site.conf.example for $DOMAIN (→ 127.0.0.1:18080), nginx -t, reload,
+   then certbot --nginx -d $DOMAIN --redirect  (infra/README.md 「既存の nginx の後ろで動かす」)"
+else
+  web="Packet filter: allow TCP 22 (SSH), TCP 80 / 443 (Web), UDP 443 (HTTP/3)"
+fi
 cat <<DONE
 
 == done. Next (infra/README.md 「自動デプロイ」):
 1. DNS: an A record  $DOMAIN  →  $address
-2. Packet filter: allow TCP 22 (SSH), TCP 80 / 443 (Web), UDP 443 (HTTP/3)
+2. $web
 3. GitHub → Settings → Environments → production → Secrets:
      DEPLOY_HOST         $DOMAIN   (or $address)
      DEPLOY_USER         deploy

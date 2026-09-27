@@ -3,3 +3,6 @@
 REGISTRY=ghcr.io/your-github-name
 # Where deploy.sh keeps the backup it takes before every release (default: infra/backups).
 BACKUP_ROOT=/srv/backups
+# Extra compose files for this server (space separated, in infra/). A server whose nginx already owns ports 80
+# and 443 runs Caddy behind it (infra/README.md 「既存の nginx の後ろで動かす」):
+# EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml
