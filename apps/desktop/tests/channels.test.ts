@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, hasUnread, isMutedChannel, sectionChannels, stepChannel } from "../src/ui/channels";
+import { badgeCount, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -68,5 +68,18 @@ describe("sidebar unread rules", () => {
     expect(stepChannel(order, "d", 1, { unreadOnly: true, now })?.id).toBe("b");
     expect(stepChannel(order, null, 1, { unreadOnly: true, now })?.id).toBe("b");
     expect(stepChannel([channel("only")], "only", 1)).toBeUndefined();
+  });
+});
+
+describe("unread badge total (M13f)", () => {
+  it("adds up mentions for channels and every unread for DMs, skipping non-members and archives", () => {
+    const base = { name: "x", topic: null, purpose: null, created_by: null, created_at: "", updated_at: "", last_seq: 0, membership: { role: "member", joined_at: "" }, isMember: true, archived: false, lastReadSeq: 0, syncedSeq: 0, lastMessageAt: null, dm_user_ids: null, notificationLevel: null, mutedUntil: null, member_count: 2 } as unknown as Parameters<typeof unreadBadgeTotal>[0] extends Iterable<infer T> ? Omit<T, "id" | "type" | "unreadCount" | "mentionCount"> : never;
+    const rows = [
+      { ...base, id: "a", type: "public", unreadCount: 5, mentionCount: 2 },
+      { ...base, id: "b", type: "dm", unreadCount: 3, mentionCount: 0 },
+      { ...base, id: "c", type: "public", unreadCount: 9, mentionCount: 4, isMember: false },
+      { ...base, id: "d", type: "public", unreadCount: 9, mentionCount: 4, archived: true },
+    ] as unknown as Parameters<typeof unreadBadgeTotal>[0];
+    expect(unreadBadgeTotal(rows)).toBe(5);
   });
 });

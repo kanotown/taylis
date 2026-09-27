@@ -5,6 +5,7 @@ import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
+import { unreadBadgeTotal } from "../ui/channels";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
@@ -12,6 +13,7 @@ import { ApiError } from "../api/errors";
 import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
+import { setUnreadBadge } from "../platform/badge";
 import { isTauri, isWeb } from "../platform/env";
 import { notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
@@ -674,6 +676,8 @@ export class AppController {
     const profile = safeProfile(this.account(api.baseUrl, this.username));
     this.store = new Store(isTauri() ? await SqlitePersistence.open(profile) : null);
     await this.store.load();
+    const badgeStore = this.store;
+    badgeStore.subscribe(() => { if (this.store === badgeStore) void setUnreadBadge(unreadBadgeTotal(badgeStore.channels.values())); });
     if (restoring && (!this.store.me || this.store.me.must_change_password)) return false;
     if (restoring) this.me = this.store.me;
     else if (this.me) this.store.setMe(this.me);
@@ -875,12 +879,14 @@ export class AppController {
 
   async logout(): Promise<void> {
     this.engine?.stop();
+    void setUnreadBadge(0);
     this.engine = null;
     await this.api?.logout();
   }
 
   private async handleSignedOut(account: string): Promise<void> {
     this.engine?.stop();
+    void setUnreadBadge(0);
     this.engine = null;
     this.api = null;
     this.me = null;

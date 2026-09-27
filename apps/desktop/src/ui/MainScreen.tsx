@@ -14,6 +14,7 @@ import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, 
 import { QuickSwitcher } from "./QuickSwitcher";
 import { PinsPane } from "./PinsPane";
 import { MentionsView } from "./MentionsView";
+import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
 import { FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
@@ -30,7 +31,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -311,7 +312,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onToggleUnreadOnly={toggleUnreadOnly}
         onOpen={open}
         onJoin={(id) => void join(id)}
-        onNewDm={() => setDialog("dm")}
+        onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
         onNewChannel={() => setDialog("channel")}
         onSearch={() => setSearching(true)}
         onSettings={() => setDialog("settings")}
@@ -508,6 +509,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <NoticeToast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
+      {dialog === "directory" && <DirectoryDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "members" && current && (
         <MembersDialog controller={controller} channel={current} onClose={() => setDialog(null)} onAdd={() => setDialog("add-member")} />

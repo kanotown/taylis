@@ -25,6 +25,13 @@ export function badgeCount(channel: ChannelState, now?: Date): number {
   return isDmChannel(channel) ? channel.unreadCount : channel.mentionCount;
 }
 
+/** What the app icon shows (M13f): the badge numbers of every conversation I am in, added up. */
+export function unreadBadgeTotal(channels: Iterable<ChannelState>, now?: Date): number {
+  let total = 0;
+  for (const channel of channels) if (channel.isMember && !channel.archived) total += badgeCount(channel, now);
+  return total;
+}
+
 export interface ChannelSections {
   /** Starred conversations (M12a); left out of `channels` / `dms`. */
   favorites: ChannelState[];

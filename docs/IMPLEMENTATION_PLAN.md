@@ -350,8 +350,8 @@ CI / 監視の通知がチームチャットの主用途のひとつなので最
 | M13c | メッセージの共有 | クライアントのみ。メッセージ操作の「別のチャンネルに共有」: 共有先 (参加中の会話) とコメントを選び、`コメント\n> 引用 (300 文字まで)\nパーマリンク` を投稿する (パーマリンクは「メッセージを表示」チップになる)。3 端末の `Share` ヘルパは同じ本文を作る | **実装済み (2026-09-27)**: Desktop vitest 119 (実サーバで目視)、iOS XCTest 79、Android JUnit 80 + ビルド |
 | M13d | アーカイブの解除 | `POST /channels/{id}/unarchive` (owner / admin、`channel.updated` で全員に届く、監査 `channel.unarchived`)。Desktop はチャンネルメニューと管理画面の「アーカイブを解除」、iOS / Android はチャンネル情報から | **実装済み (2026-09-27)**: サーバ pytest 176、3 端末ビルド |
 | M13e | ゲスト | system role `guest` (`Role` に追加、`User.is_guest`)。サーバで強制: チャンネル作成 / 公開一覧 / 参加 / メンバー追加 / カスタム絵文字追加は `403 guest_restricted`、ユーザー一覧 (bootstrap と `GET /users`) と DM の相手は同じチャンネルの人だけ (`channels.shared_member_ids`)、公開チャンネル作成の `channel.created` は guest 以外に配る。admin がロールを付け (管理画面のロール選択に「ゲスト」)、招待リンクにも指定できる。3 端末はゲストに「チャンネルを作成 / 探す」を出さず、プロフィールにゲスト表示 | **実装済み (2026-09-27)**: サーバ pytest 178、Desktop vitest 119、iOS XCTest 79、Android ビルド |
-| M13f | Desktop の未読バッジ | Dock / タスクバーのバッジとウィンドウタイトルの未読数、通知音 | 未着手 |
-| M13g | メンバーディレクトリ | 全メンバーの一覧 (肩書・ステータス・在席) から DM を始める。3 端末 | 未着手 |
+| M13f | Desktop の未読バッジ | 参加中の会話のバッジ数 (チャンネルはメンション、DM は未読、ミュート中はメンション) の合計を Tauri では Dock / タスクバーの `setBadgeCount` (capability `core:window:allow-set-badge-count`)、ブラウザではタブのタイトル `(N) ChikuwaChat` に出す。ストアの更新ごとに追従、ログアウトで消す。通知音は見送り (OS 通知の音に任せる) | **実装済み (2026-09-27)**: Desktop vitest 120 |
+| M13g | メンバーディレクトリ | 「メンバー」: 全員 (無効化を除く) を在席順に、肩書・カスタムステータス・在席・ロール (管理者 / ゲスト / BOT)・🔕 と共に一覧し、名前・ユーザー名・肩書で絞り込み、その場で DM を開く。Desktop は DM 節のアイコン、iOS / Android は + メニューの「メンバー」 | **実装済み (2026-09-27)**: Desktop (実サーバで目視)、iOS XCTest、Android ビルド |
 
 ### バックログ (未スケジュール)
 
