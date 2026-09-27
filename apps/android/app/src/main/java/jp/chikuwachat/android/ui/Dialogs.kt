@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import android.graphics.Bitmap
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -361,10 +362,26 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                             Text("@" + me.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    // M14a: profile picture
-                    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) scope.launch { controller.uploadAvatar(uri) } }
-                    Row {
-                        TextButton(onClick = { avatarPicker.launch("image/*") }, contentPadding = PaddingValues(0.dp)) { Text("写真を選ぶ") }
+                    // M14a / M16g: profile picture — any photo, loaded small, then its square chosen in AvatarCropDialog
+                    var cropping by remember { mutableStateOf<Bitmap?>(null) }
+                    var loadingPhoto by remember { mutableStateOf(false) }
+                    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+                        if (uri != null) scope.launch {
+                            loadingPhoto = true
+                            cropping = controller.loadAvatarPhoto(uri)
+                            loadingPhoto = false
+                        }
+                    }
+                    cropping?.let { bitmap ->
+                        AvatarCropDialog(bitmap, onCancel = { cropping = null }) { jpeg ->
+                            cropping = null
+                            scope.launch { controller.uploadAvatar(jpeg) }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        TextButton(onClick = { avatarPicker.launch("image/*") }, enabled = !loadingPhoto, contentPadding = PaddingValues(0.dp)) {
+                            Text(if (loadingPhoto) "写真を読み込んでいます…" else "写真を選ぶ")
+                        }
                         if (me.avatarUpdatedAt != null) TextButton(onClick = { scope.launch { controller.deleteAvatar() } }, contentPadding = PaddingValues(0.dp)) { Text("写真を削除", color = MaterialTheme.colorScheme.error) }
                     }
                 }

@@ -1,8 +1,10 @@
 package jp.chikuwachat.android.app
 
+import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.platform.AvatarPhoto
 import jp.chikuwachat.android.ui.Dnd
 import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
@@ -82,6 +84,7 @@ import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
 import java.io.IOException
@@ -1223,12 +1226,15 @@ class AppController(private val app: Application) {
         return createDm(listOf(userId)).getOrElse { error = describe(it); null }
     }
 
-    /** M14a: choose (or drop) my profile picture (streamed like attachments); the store learns the new version at once. */
-    suspend fun uploadAvatar(uri: Uri): Boolean = attempt {
+    /** M16g: a picked photo, decoded small and upright for the crop dialog; null (the error shown) when unreadable. */
+    suspend fun loadAvatarPhoto(uri: Uri): Bitmap? =
+        withContext(Dispatchers.Default) { AvatarPhoto.decode(app.contentResolver, uri) }
+            ?: run { error = ErrorMessages.byCode["avatar_not_image"]; null }
+
+    /** M14a / M16g: the cropped square (a 512 px JPEG) becomes my profile picture; the store learns it at once. */
+    suspend fun uploadAvatar(jpeg: ByteArray): Boolean = attempt {
         val api = api ?: throw Refusal("ログインが必要です")
-        val resolver = app.contentResolver
-        val (_, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
-        val updated = api.uploadAvatar(ContentUriBody(resolver, uri, size, fallbackType = "image/jpeg"))
+        val updated = api.uploadAvatar(jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()))
         me = updated
         store.setMe(updated)
         true

@@ -382,6 +382,9 @@ struct SettingsView: View {
     @State private var nameSaved = false
     @State private var editingStatus = false
     @State private var avatarItem: PhotosPickerItem?
+    // M16g: a picked photo loads (large ones take a moment), then its square is chosen in the crop screen.
+    @State private var loadingPhoto = false
+    @State private var cropping: PickedPhoto?
     @State private var current = ""
     @State private var next = ""
     @State private var repeated = ""
@@ -425,7 +428,14 @@ struct SettingsView: View {
                             }
                         }
                         // M14a: profile picture
-                        PhotosPicker(selection: $avatarItem, matching: .images) { Label("写真を選ぶ", systemImage: "photo") }
+                        PhotosPicker(selection: $avatarItem, matching: .images) {
+                            if loadingPhoto {
+                                HStack(spacing: 8) { ProgressView(); Text("写真を読み込んでいます…") }
+                            } else {
+                                Label("写真を選ぶ", systemImage: "photo")
+                            }
+                        }
+                        .disabled(loadingPhoto)
                         if me.avatarUpdatedAt != nil {
                             Button("写真を削除", role: .destructive) { Task { _ = await controller.deleteAvatar() } }
                         }
@@ -532,16 +542,25 @@ struct SettingsView: View {
             .task { totp = await controller.totpStatus() }
             .onChange(of: avatarItem) { _, item in
                 guard let item else { return }
+                loadingPhoto = true
                 Task {
-                    // HEIC library photos become JPEG: the server takes PNG / JPEG / GIF / WebP only.
-                    if let data = try? await item.loadTransferable(type: Data.self) {
-                        if let photo = ImageUpload.prepare(data) {
-                            _ = await controller.uploadAvatar(data: photo.data, contentType: photo.mime)
-                        } else {
-                            controller.error = ErrorMessages.byCode["avatar_not_image"] ?? ErrorMessages.unknown
-                        }
+                    // Any photo the library holds (HEIC included), decoded small and upright for the crop screen;
+                    // what gets uploaded is the chosen square as a 512 px JPEG.
+                    let data = try? await item.loadTransferable(type: Data.self)
+                    let image = await Task.detached(priority: .userInitiated) { data.flatMap { ImageUpload.downsampled($0) } }.value
+                    if let image {
+                        cropping = PickedPhoto(image: image)
+                    } else {
+                        controller.error = ErrorMessages.byCode["avatar_not_image"] ?? ErrorMessages.unknown
                     }
+                    loadingPhoto = false
                     avatarItem = nil
+                }
+            }
+            .fullScreenCover(item: $cropping) { photo in
+                AvatarCropView(image: photo.image, onCancel: { cropping = nil }) { jpeg in
+                    cropping = nil
+                    Task { _ = await controller.uploadAvatar(data: jpeg, contentType: "image/jpeg") }
                 }
             }
             .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ") }

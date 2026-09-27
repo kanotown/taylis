@@ -20,6 +20,16 @@
 		reverse_proxy app:8000
 	}
 
+	# Profile pictures: the app takes up to 5 MB (AVATAR_MAX_BYTES). The clients crop and shrink them first, but an
+	# older client may still send a whole photo, which the 1 MB below would refuse before the app could explain.
+	@avatar path /api/v1/users/me/avatar
+	handle @avatar {
+		request_body {
+			max_size 6MB
+		}
+		reverse_proxy app:8000
+	}
+
 	handle /api/* {
 		request_body {
 			max_size 1MB
