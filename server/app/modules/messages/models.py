@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -8,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -15,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -51,6 +53,8 @@ class Message(Base):
     # Pinned in its channel (M11c): any member pins / unpins; the change consumes a seq.
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    # Poll (M14b): {question, options, multiple, closed_at}; the votes live in poll_votes.
+    poll: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),
@@ -83,6 +87,19 @@ class Reaction(Base):
     message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
     emoji: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
+class PollVote(Base):
+    """One user's vote for one option of a message's poll (M14b)."""
+
+    __tablename__ = "poll_votes"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    option_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

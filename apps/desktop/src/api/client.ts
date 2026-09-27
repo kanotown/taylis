@@ -32,6 +32,7 @@ import type {
   MemberOut,
   MessageOut,
   NotificationLevel,
+  PollCreate,
   NotificationPreferenceOut,
   ReadStateOut,
   SearchOut,
@@ -474,6 +475,23 @@ export class ApiClient {
 
   adminDeleteWebhook(webhookId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/webhooks/${webhookId}`);
+  }
+
+  // --- polls (M14b) ------------------------------------------------------------------------
+
+  vote(messageId: string, option: number, present: boolean): Promise<MessageOut> {
+    return present
+      ? this.request("PUT", `/api/v1/messages/${messageId}/poll/votes/${option}`, {})
+      : this.request("DELETE", `/api/v1/messages/${messageId}/poll/votes/${option}`);
+  }
+
+  closePoll(messageId: string): Promise<MessageOut> {
+    return this.request("POST", `/api/v1/messages/${messageId}/poll/close`, {});
+  }
+
+  /** A message that carries a poll; posted directly (not through the offline queue). */
+  postPoll(channelId: string, parentId: string | null, poll: PollCreate): Promise<MessageOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/messages`, { client_msg_id: crypto.randomUUID(), body: "", parent_id: parentId, poll });
   }
 
   // --- invite links (M12h) ------------------------------------------------------------------

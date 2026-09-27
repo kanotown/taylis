@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.channels.models import Channel, ChannelMember
-from app.modules.messages.models import Message, Reaction
+from app.modules.messages.models import Message, PollVote, Reaction
 
 
 async def allocate_seq(
@@ -188,3 +188,50 @@ async def list_all(db: AsyncSession, channel_id: uuid.UUID) -> list[Message]:
         .order_by(Message.seq.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+# --- polls (M14b) ---------------------------------------------------------------------------
+
+
+async def poll_votes_for(
+    db: AsyncSession, message_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[PollVote]]:
+    if not message_ids:
+        return {}
+    stmt = (
+        select(PollVote)
+        .where(PollVote.message_id.in_(message_ids))
+        .order_by(PollVote.created_at.asc(), PollVote.option_index.asc())
+    )
+    grouped: dict[uuid.UUID, list[PollVote]] = {}
+    for vote in (await db.execute(stmt)).scalars().all():
+        grouped.setdefault(vote.message_id, []).append(vote)
+    return grouped
+
+
+async def add_vote(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID, index: int) -> bool:
+    stmt = (
+        pg_insert(PollVote)
+        .values(message_id=message_id, user_id=user_id, option_index=index)
+        .on_conflict_do_nothing(index_elements=["message_id", "user_id", "option_index"])
+        .returning(PollVote.message_id)
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def remove_votes(
+    db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID, index: int | None = None
+) -> int:
+    """Drop one option's vote, or every vote of the user on the poll (index None)."""
+    stmt = delete(PollVote).where(PollVote.message_id == message_id, PollVote.user_id == user_id)
+    if index is not None:
+        stmt = stmt.where(PollVote.option_index == index)
+    result = await db.execute(stmt.returning(PollVote.option_index))
+    return len(result.all())
+
+
+async def user_votes(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> set[int]:
+    stmt = select(PollVote.option_index).where(
+        PollVote.message_id == message_id, PollVote.user_id == user_id
+    )
+    return set((await db.execute(stmt)).scalars().all())

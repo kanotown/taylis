@@ -116,6 +116,28 @@ async def unpin_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageO
     return message
 
 
+@router.put("/messages/{message_id}/poll/votes/{index}", response_model=MessageOut)
+async def vote(
+    message_id: UUID, index: int, user: CurrentUser, db: Db, response: Response
+) -> MessageOut:
+    """M14b: vote for an option (a single-choice poll moves the vote); 201 when it changed."""
+    message, changed = await service.set_vote(db, user, message_id, index, present=True)
+    response.status_code = 201 if changed else 200
+    return message
+
+
+@router.delete("/messages/{message_id}/poll/votes/{index}", response_model=MessageOut)
+async def unvote(message_id: UUID, index: int, user: CurrentUser, db: Db) -> MessageOut:
+    message, _ = await service.set_vote(db, user, message_id, index, present=False)
+    return message
+
+
+@router.post("/messages/{message_id}/poll/close", response_model=MessageOut)
+async def close_poll(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    """M14b: the author or an administrator ends the voting."""
+    return await service.close_poll(db, user, message_id)
+
+
 @router.put("/messages/{message_id}/reactions/{emoji}", response_model=MessageOut)
 async def add_reaction(
     message_id: UUID, user: CurrentUser, db: Db, response: Response, emoji: str = Emoji

@@ -80,10 +80,12 @@ struct MessageState: Codable, Identifiable, Equatable {
     /// M11c: pinned in the channel; rows persisted earlier lack the fields.
     var pinnedAt: String? = nil
     var pinnedBy: String? = nil
+    /// M14b: the poll, when the message carries one.
+    var poll: PollOut? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
-        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy
+        case reactions, mentionedUserIds, mentionAll, parentId, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -114,6 +116,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         attachments = message.attachments
         pinnedAt = message.pinnedAt
         pinnedBy = message.pinnedBy
+        poll = message.poll
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.

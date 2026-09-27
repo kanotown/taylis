@@ -33,7 +33,9 @@ def _square_png(data: bytes) -> bytes:
     side = min(rgba.size)
     left = (rgba.width - side) // 2
     top = (rgba.height - side) // 2
-    square = rgba.crop((left, top, left + side, top + side)).resize((SIDE, SIDE), Image.Resampling.LANCZOS)
+    square = rgba.crop((left, top, left + side, top + side)).resize(
+        (SIDE, SIDE), Image.Resampling.LANCZOS
+    )
     out = io.BytesIO()
     square.save(out, format="PNG", optimize=True)
     return out.getvalue()

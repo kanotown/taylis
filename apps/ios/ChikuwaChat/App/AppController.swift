@@ -589,6 +589,32 @@ final class AppController {
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
+    // MARK: polls (M14b)
+
+    func vote(_ message: MessageState, option: Int, present: Bool) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertMessage(try await api.vote(messageId: message.id, option: option, present: present))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func closePoll(_ message: MessageState) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertMessage(try await api.closePoll(messageId: message.id))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func createPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertMessage(try await api.postPoll(channelId: channelId, parentId: parentId, question: question, options: options, multiple: multiple))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
     // MARK: slash commands (M13b)
 
     /// Runs a command typed in the composer; false when it could not (the reason is in `error`).
@@ -678,6 +704,10 @@ final class AppController {
         case "shrug":
             await engine?.send(channelId, body: (command.args.isEmpty ? "" : command.args + " ") + SlashCommands.shrug, parentId: parentId)
             return true
+        case "poll":
+            let parts = command.args.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            guard parts.count >= 3 else { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
+            return await createPoll(channelId: channelId, parentId: parentId, question: parts[0], options: Array(parts.dropFirst()), multiple: false)
         default:
             return false
         }

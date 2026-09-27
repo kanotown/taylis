@@ -19,6 +19,7 @@ object SlashCommands {
         Command("unmute", "/unmute", "この会話の通知を再開"),
         Command("me", "/me 文", "動作を斜体で投稿"),
         Command("shrug", "/shrug [文]", "¯\\_(ツ)_/¯ を添えて投稿"),
+        Command("poll", "/poll 質問 | 選択肢 | 選択肢 …", "投票を作る"),
         Command("help", "/help", "コマンド一覧"),
     )
 

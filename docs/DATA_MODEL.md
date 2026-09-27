@@ -530,6 +530,27 @@ CREATE INDEX messages_pinned_idx               ON messages (channel_id, pinned_a
 | リアクション追加 / 削除 | 1 | `reactions` 行、`updated_seq = 新 seq` | `message.updated (change=reactions)` |
 | スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
 
+### 投票 (polls、M14b)
+
+`messages.poll jsonb` に `{ "question", "options": [..], "multiple", "closed_at" }` を持ち、票は別テーブルに置く。
+
+```sql
+CREATE TABLE poll_votes (
+  message_id    uuid NOT NULL REFERENCES messages(id),
+  user_id       uuid NOT NULL REFERENCES users(id),
+  option_index  smallint NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, user_id, option_index)
+);
+```
+
+- 作成は `POST /channels/{id}/messages` の `poll` (質問 200 文字、選択肢 2〜10 個・各 80 文字・重複不可、`multiple`)。
+  本文が空なら `📊 質問` を本文にするので、プレビュー・プッシュ・検索は本文だけで済む。
+- `PUT/DELETE /messages/{id}/poll/votes/{index}` は reactions と同じ扱い: 変化があれば seq を 1 つ消費して
+  `updated_seq` を進め、`message.updated` (`change = poll`) で全員に届く。単一選択は前の票を動かす。
+- `POST /messages/{id}/poll/close` (投稿者か admin) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
+- `MessageOut.poll.votes` は選択肢ごとの投票者 id の配列 (投票順)。件数と「自分の票」はクライアントが導く。
+
 ### reactions
 
 ```sql

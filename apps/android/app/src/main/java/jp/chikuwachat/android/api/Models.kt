@@ -162,6 +162,10 @@ data class AttachmentOut(
     val isImage: Boolean get() = hasThumbnail
 }
 
+/** A poll on a message (M14b): who voted for each option; counts and "mine" are derived here. */
+@Serializable
+data class PollOut(val question: String, val options: List<String>, val multiple: Boolean = false, val closedAt: String? = null, val votes: List<List<String>> = emptyList())
+
 @Serializable
 data class MessageOut(
     val id: String,
@@ -185,6 +189,8 @@ data class MessageOut(
     /** Pinned in the channel (M11c); both null when not pinned. */
     val pinnedAt: String? = null,
     val pinnedBy: String? = null,
+    /** M14b: the poll, when the message carries one. */
+    val poll: PollOut? = null,
 ) {
     fun mentions(userId: String): Boolean = mentionAll || userId in mentionedUserIds
     val isReply: Boolean get() = parentId != null

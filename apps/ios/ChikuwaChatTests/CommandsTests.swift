@@ -12,7 +12,7 @@ final class CommandsTests: XCTestCase {
     }
 
     func testSuggestsCommandsWhileTheNameIsTyped() {
-        XCTAssertEqual(SlashCommands.candidates("/").count, 12)
+        XCTAssertEqual(SlashCommands.candidates("/").count, 13)
         XCTAssertEqual(SlashCommands.candidates("/s").map(\.name), ["status", "shrug"])
         XCTAssertEqual(SlashCommands.candidates("/status "), [])
         XCTAssertEqual(SlashCommands.candidates("text /s"), [])

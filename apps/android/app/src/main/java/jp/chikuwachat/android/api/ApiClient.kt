@@ -370,6 +370,27 @@ class ApiClient(
         requestRaw("POST", "/api/v1/auth/totp/disable", buildJsonObject { put("password", password) }, auth = true, retry401 = true)
     }
 
+    // --- polls (M14b) ------------------------------------------------------------------------
+
+    suspend fun vote(messageId: String, option: Int, present: Boolean): MessageOut =
+        if (present) request("PUT", "/api/v1/messages/$messageId/poll/votes/$option", buildJsonObject {})
+        else request("DELETE", "/api/v1/messages/$messageId/poll/votes/$option")
+
+    suspend fun closePoll(messageId: String): MessageOut = request("POST", "/api/v1/messages/$messageId/poll/close", buildJsonObject {})
+
+    /** A message that carries a poll; posted directly (not through the offline queue). */
+    suspend fun postPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): MessageOut =
+        request("POST", "/api/v1/channels/$channelId/messages", buildJsonObject {
+            put("client_msg_id", java.util.UUID.randomUUID().toString())
+            put("body", "")
+            put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("poll", buildJsonObject {
+                put("question", question)
+                put("options", buildJsonArray { options.forEach { add(JsonPrimitive(it)) } })
+                put("multiple", multiple)
+            })
+        })
+
     // --- invite links (M12h) ------------------------------------------------------------------
 
     /** No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked. */

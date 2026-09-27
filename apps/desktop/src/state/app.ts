@@ -773,6 +773,41 @@ export class AppController {
     }
   }
 
+  // --- polls (M14b) ------------------------------------------------------------------------
+
+  async vote(message: MessageState, option: number, present: boolean): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertMessage(await this.api.vote(message.id, option, present));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async closePoll(message: MessageState): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertMessage(await this.api.closePoll(message.id));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async createPoll(channelId: string, parentId: string | null, question: string, options: string[], multiple: boolean): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertMessage(await this.api.postPoll(channelId, parentId, { question, options, multiple }));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   // --- slash commands (M13b) ---------------------------------------------------------------
 
   /** A conversation a command asked for (/join, /dm); the main screen opens it and clears this. */
@@ -907,6 +942,14 @@ export class AppController {
       case "shrug":
         await this.engine?.send(channel.id, `${command.args ? command.args + " " : ""}${SHRUG}`, undefined, parentId, []);
         return true;
+      case "poll": {
+        const parts = command.args.split("|").map((p) => p.trim()).filter(Boolean);
+        if (parts.length < 3) {
+          this.setError("/poll 質問 | 選択肢 | 選択肢 …");
+          return false;
+        }
+        return this.createPoll(channel.id, parentId, parts[0]!, parts.slice(1), false);
+      }
     }
     return false;
   }

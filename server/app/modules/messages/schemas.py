@@ -1,12 +1,13 @@
 import re
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
-from app.modules.messages.models import Message, Reaction
+from app.modules.messages.models import Message, PollVote, Reaction
 
 MAX_BODY_LENGTH = 20_000
 # Control characters other than newline and tab are stripped (SECURITY.md §5).
@@ -22,11 +23,41 @@ def clean_body(value: str) -> str:
     return cleaned
 
 
+class PollCreate(BaseModel):
+    """A poll attached to a message (M14b): 2-10 options, one or several votes per person."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=200)
+    options: list[str] = Field(min_length=2, max_length=10)
+    multiple: bool = False
+
+    @field_validator("options")
+    @classmethod
+    def _options_clean(cls, value: list[str]) -> list[str]:
+        cleaned = [_CONTROL_CHARS.sub("", o).strip() for o in value]
+        if any(not o or len(o) > 80 for o in cleaned):
+            raise ValueError("Each option is 1-80 characters")
+        if len({o.lower() for o in cleaned}) != len(cleaned):
+            raise ValueError("Options must be distinct")
+        return cleaned
+
+
+class PollOut(BaseModel):
+    question: str
+    options: list[str]
+    multiple: bool
+    closed_at: datetime | None = None
+    # Who voted for each option, in order of voting; counts and "mine" are derived on the client.
+    votes: list[list[UUID]]
+
+
 class MessageCreate(BaseModel):
     client_msg_id: UUID
     body: str = Field(default="", max_length=MAX_BODY_LENGTH)
     parent_id: UUID | None = None
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    poll: PollCreate | None = None
 
     @field_validator("body")
     @classmethod
@@ -35,7 +66,7 @@ class MessageCreate(BaseModel):
 
     @model_validator(mode="after")
     def _body_or_attachments(self) -> "MessageCreate":
-        if not self.body.strip() and not self.attachment_ids:
+        if not self.body.strip() and not self.attachment_ids and self.poll is None:
             raise ValueError("body must not be empty")
         return self
 
@@ -88,6 +119,8 @@ class MessageOut(BaseModel):
     # Pinned in the channel (M11c); both null when not pinned.
     pinned_at: datetime | None = None
     pinned_by: UUID | None = None
+    # M14b: the poll, when the message carries one.
+    poll: PollOut | None = None
 
 
 class MentionListOut(BaseModel):
@@ -117,10 +150,29 @@ def reactions_out(reactions: Sequence[Reaction]) -> list[ReactionOut]:
     return [ReactionOut(emoji=emoji, count=len(ids), user_ids=ids) for emoji, ids in groups.items()]
 
 
+def poll_out(data: dict[str, Any] | None, votes: Sequence[PollVote] = ()) -> PollOut | None:
+    if not data:
+        return None
+    options = list(data.get("options", []))
+    per_option: list[list[UUID]] = [[] for _ in options]
+    for vote in votes:
+        if 0 <= vote.option_index < len(options):
+            per_option[vote.option_index].append(vote.user_id)
+    closed = data.get("closed_at")
+    return PollOut(
+        question=str(data.get("question", "")),
+        options=options,
+        multiple=bool(data.get("multiple", False)),
+        closed_at=datetime.fromisoformat(closed) if closed else None,
+        votes=per_option,
+    )
+
+
 def to_message_out(
     message: Message,
     reactions: Sequence[Reaction] = (),
     attachments: Sequence[AttachmentOut] = (),
+    votes: Sequence[PollVote] = (),
 ) -> MessageOut:
     deleted = message.is_deleted
     return MessageOut(
@@ -144,6 +196,7 @@ def to_message_out(
         deleted=deleted,
         pinned_at=None if deleted else message.pinned_at,
         pinned_by=None if deleted else message.pinned_by,
+        poll=None if deleted else poll_out(message.poll, votes),
     )
 
 

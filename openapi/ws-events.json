@@ -1024,6 +1024,17 @@
                 "default": null,
                 "title": "Pinned By"
               },
+              "poll": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -1116,6 +1127,57 @@
               "updated_seq"
             ],
             "title": "ParentThread",
+            "type": "object"
+          },
+          "PollOut": {
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Closed At"
+              },
+              "multiple": {
+                "title": "Multiple",
+                "type": "boolean"
+              },
+              "options": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Options",
+                "type": "array"
+              },
+              "question": {
+                "title": "Question",
+                "type": "string"
+              },
+              "votes": {
+                "items": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": "Votes",
+                "type": "array"
+              }
+            },
+            "required": [
+              "question",
+              "options",
+              "multiple",
+              "votes"
+            ],
+            "title": "PollOut",
             "type": "object"
           },
           "ReactionOut": {
@@ -1366,6 +1428,17 @@
                 "default": null,
                 "title": "Pinned By"
               },
+              "poll": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -1458,6 +1531,57 @@
               "updated_seq"
             ],
             "title": "ParentThread",
+            "type": "object"
+          },
+          "PollOut": {
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Closed At"
+              },
+              "multiple": {
+                "title": "Multiple",
+                "type": "boolean"
+              },
+              "options": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Options",
+                "type": "array"
+              },
+              "question": {
+                "title": "Question",
+                "type": "string"
+              },
+              "votes": {
+                "items": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": "Votes",
+                "type": "array"
+              }
+            },
+            "required": [
+              "question",
+              "options",
+              "multiple",
+              "votes"
+            ],
+            "title": "PollOut",
             "type": "object"
           },
           "ReactionOut": {
@@ -1709,6 +1833,17 @@
                 "default": null,
                 "title": "Pinned By"
               },
+              "poll": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -1756,6 +1891,57 @@
             "title": "MessageOut",
             "type": "object"
           },
+          "PollOut": {
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Closed At"
+              },
+              "multiple": {
+                "title": "Multiple",
+                "type": "boolean"
+              },
+              "options": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Options",
+                "type": "array"
+              },
+              "question": {
+                "title": "Question",
+                "type": "string"
+              },
+              "votes": {
+                "items": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": "Votes",
+                "type": "array"
+              }
+            },
+            "required": [
+              "question",
+              "options",
+              "multiple",
+              "votes"
+            ],
+            "title": "PollOut",
+            "type": "object"
+          },
           "ReactionOut": {
             "properties": {
               "count": {
@@ -1789,7 +1975,8 @@
             "enum": [
               "body",
               "reactions",
-              "pin"
+              "pin",
+              "poll"
             ],
             "title": "Change",
             "type": "string"

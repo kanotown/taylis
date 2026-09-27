@@ -428,6 +428,27 @@ final class ApiClient: SyncApi {
         _ = try await requestRaw("POST", "/api/v1/auth/totp/disable", body: .object(["password": .string(password)]), auth: true, retry401: true)
     }
 
+    // MARK: polls (M14b)
+
+    func vote(messageId: String, option: Int, present: Bool) async throws -> MessageOut {
+        try await request(present ? "PUT" : "DELETE", "/api/v1/messages/\(messageId)/poll/votes/\(option)", body: present ? .object([:]) : nil)
+    }
+
+    func closePoll(messageId: String) async throws -> MessageOut {
+        try await request("POST", "/api/v1/messages/\(messageId)/poll/close", body: .object([:]))
+    }
+
+    /// A message that carries a poll; posted directly (not through the offline queue).
+    func postPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool) async throws -> MessageOut {
+        let body: JSONValue = .object([
+            "client_msg_id": .string(UUID().uuidString.lowercased()),
+            "body": .string(""),
+            "parent_id": parentId.map(JSONValue.string) ?? .null,
+            "poll": .object(["question": .string(question), "options": .array(options.map(JSONValue.string)), "multiple": .bool(multiple)]),
+        ])
+        return try await request("POST", "/api/v1/channels/\(channelId)/messages", body: body)
+    }
+
     // MARK: invite links (M12h)
 
     /// No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked.

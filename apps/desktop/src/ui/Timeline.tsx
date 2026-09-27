@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { buildTimeline, fullTimestamp, timeLabel } from "./format";
 import { decodeMentions, encodeMentions } from "./mentions";
 import { MessageBody } from "./MessageBody";
+import { PollCard } from "./PollCard";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
@@ -343,6 +344,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             <Button variant="link" size="sm" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>破棄</Button>
           </div>
         )}
+        {message.poll && <PollCard poll={message.poll} message={message} controller={controller} />}
         {(message.reply_count ?? 0) > 0 && onOpenThread && (
           <button type="button" className="mt-1 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:underline" onClick={() => onOpenThread(message.id)}>
             <MessageSquare size={13} /> {message.reply_count} 件の返信

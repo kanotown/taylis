@@ -403,6 +403,7 @@ struct MessageRow: View {
                 if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil {
                     LinkPreviewCard(controller: controller, url: link)
                 }
+                if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller) }  // M14b
                 if !message.reactions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in

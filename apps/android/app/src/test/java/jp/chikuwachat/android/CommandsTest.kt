@@ -18,7 +18,7 @@ class CommandsTest {
     }
 
     @Test fun suggestsCommandsWhileTheNameIsTyped() {
-        assertEquals(12, SlashCommands.candidates("/").size)
+        assertEquals(13, SlashCommands.candidates("/").size)
         assertEquals(listOf("status", "shrug"), SlashCommands.candidates("/s").map { it.name })
         assertEquals(emptyList<SlashCommands.Command>(), SlashCommands.candidates("/status "))
         assertEquals(emptyList<SlashCommands.Command>(), SlashCommands.candidates("text /s"))
