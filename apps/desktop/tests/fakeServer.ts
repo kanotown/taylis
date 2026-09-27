@@ -152,7 +152,7 @@ export class FakeServer {
   readState(userId: string, channelId: string): ReadStateOut {
     const record = this.record(channelId);
     const position = this.readPositions.get(`${userId}:${channelId}`) ?? 0;
-    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && !m.parent_id);
+    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && (!m.parent_id || m.also_in_channel));
     const mentions = unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length;
     return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
   }
@@ -281,7 +281,7 @@ export class FakeServer {
   }
 
   /** Server-side post (used by fixtures for "other users" and by the api for the client). */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = []): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], alsoInChannel = false): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -300,6 +300,7 @@ export class FakeServer {
       channel_id: channelId,
       sender_id: senderId,
       parent_id: parentId,
+      also_in_channel: alsoInChannel && parentId !== null,
       seq,
       updated_seq: seq,
       client_msg_id: clientMsgId,
@@ -619,7 +620,7 @@ export class FakeServer {
         maybeFail();
         const record = this.requireMember(channelId, userId);
         const channelLastSeq = record.channel.last_seq; // read BEFORE the rows (§4.3)
-        let rows = record.messages.filter((m) => !m.deleted && !m.parent_id);
+        let rows = record.messages.filter((m) => !m.deleted && (!m.parent_id || m.also_in_channel));
         if (beforeSeq !== null) rows = rows.filter((m) => m.seq < beforeSeq);
         rows = rows.sort((a, b) => b.seq - a.seq);
         return { channel_last_seq: channelLastSeq, messages: rows.slice(0, limit), has_more: rows.length > limit };
@@ -633,9 +634,9 @@ export class FakeServer {
         const hasMore = rows.length > limit;
         return { messages: page, next_since_seq: hasMore ? page[page.length - 1]!.updated_seq : Math.max(channelLastSeq, sinceSeq), has_more: hasMore };
       },
-      postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = []) => {
+      postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = [], alsoInChannel = false) => {
         maybeFail();
-        return this.post(channelId, userId, body, clientMsgId, parentId, attachmentIds);
+        return this.post(channelId, userId, body, clientMsgId, parentId, attachmentIds, alsoInChannel);
       },
       replies: async (messageId): Promise<MessageOut[]> => {
         maybeFail();

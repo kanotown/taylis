@@ -6,7 +6,8 @@ import type { ChannelState, MessageState } from "../sync/types";
 import { AttachmentList } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { buildTimeline, fullTimestamp, timeLabel } from "./format";
-import { decodeMentions, encodeMentions } from "./mentions";
+import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
+import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
 import { PollCard } from "./PollCard";
 import { RevisionsDialog } from "./RevisionsDialog";
@@ -273,6 +274,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const rawLink = message.body ? firstLink(message.body) : null;
   const link = rawLink && controller.api && parsePermalink(controller.api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
+  // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
+  const threadParent = !thread && message.parent_id ? store.getMessage(message.channel_id, message.parent_id) : undefined;
+  const threadId = message.parent_id ?? message.id;
   return (
     <article
       key={message.id}
@@ -303,6 +307,16 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         )}
       </div>
       <div className="min-w-0">
+        {!thread && message.parent_id && (
+          <button type="button" className="mb-0.5 flex max-w-full items-center gap-1 text-left text-[11px] text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
+            <MessageSquare size={11} className="shrink-0" />
+            <span className="shrink-0">スレッドに返信:</span>
+            <span className="truncate">{threadParent ? plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || "(添付ファイル)" : "元のメッセージ"}</span>
+          </button>
+        )}
+        {thread && message.parent_id && message.also_in_channel && (
+          <div className="mb-0.5 text-[11px] text-muted">チャンネルにも送信済み</div>
+        )}
         {(pinnedBy || saved) && (
           <div className="mb-0.5 flex items-center gap-3 text-[11px] text-muted">
             {pinnedBy && (
@@ -410,7 +424,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             </PopoverContent>
           </PopoverRoot>
           {onOpenThread && (
-            <IconButton label="スレッドで返信" className="h-7 w-7 text-muted hover:text-ink" onClick={() => onOpenThread(message.id)}>
+            <IconButton label="スレッドで返信" className="h-7 w-7 text-muted hover:text-ink" onClick={() => onOpenThread(threadId)}>
               <MessageSquare size={15} />
             </IconButton>
           )}

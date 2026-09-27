@@ -217,7 +217,8 @@ export class Store {
   /** Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
   /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
   messages(channelId: string): MessageState[] {
-    return this.ordered([...this.bucket(channelId).values()].filter((m) => !m.parent_id));
+    // The channel timeline: top-level messages and replies also sent to the channel (M15c).
+    return this.ordered([...this.bucket(channelId).values()].filter((m) => !m.parent_id || m.also_in_channel));
   }
 
   message(channelId: string, id: string): MessageState | undefined {

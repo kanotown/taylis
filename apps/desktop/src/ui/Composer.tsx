@@ -9,6 +9,7 @@ import { continueStructure, type EditState, indentListLine, insertLink, insideFe
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
+import { canPostTopLevel } from "./channels";
 import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
@@ -42,6 +43,9 @@ export function Composer({
     const items = store.draft(channel.id, parentId).attachments;
     store.setDraft(channel.id, parentId, { attachments: typeof update === "function" ? update(items) : update });
   };
+  // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack).
+  const [alsoInChannel, setAlsoInChannel] = useState(false);
+  const canShare = parentId !== null && canPostTopLevel(channel, controller.isAdmin);
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
   const [preview, setPreview] = useState(false);
@@ -86,7 +90,8 @@ export function Composer({
     const ids = pending.map((a) => a.id);
     setText("");
     setPending([]);
-    void controller.engine.send(channel.id, body, undefined, parentId, ids);
+    setAlsoInChannel(false);
+    void controller.engine.send(channel.id, body, undefined, parentId, ids, canShare && alsoInChannel);
   };
 
   // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
@@ -451,6 +456,12 @@ export function Composer({
           </div>
         </div>
       </div>
+      {canShare && (
+        <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" className="accent-[var(--accent)]" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
+          {channel.type === "dm" || channel.type === "group_dm" ? "会話にも送信" : `#${channel.name ?? ""} にも送信`}
+        </label>
+      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by" | "poll"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by" | "poll"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -34,6 +34,8 @@ export interface MessageState
   mention_all?: boolean;
   reactions?: ReactionOut[];
   parent_id?: string | null;
+  /** M15c: a reply shown in the channel timeline as well as in its thread. */
+  also_in_channel?: boolean;
   reply_count?: number;
   last_reply_at?: string | null;
   attachments?: AttachmentOut[];
@@ -54,6 +56,7 @@ export interface OutboxItem {
   failed?: string;
   parent_id?: string | null;
   attachment_ids?: string[];
+  also_in_channel?: boolean;
 }
 
 export interface EventFrame {

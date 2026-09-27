@@ -97,6 +97,8 @@ export function buildTimeline(
     const compact =
       previous !== null &&
       previous.sender_id === message.sender_id &&
+      !previous.parent_id && // a reply also sent to the channel (M15c) keeps its own header
+      !message.parent_id &&
       !previous.pending &&
       !message.pending &&
       Math.abs(new Date(message.created_at).getTime() - new Date(previous.created_at).getTime()) < GROUP_WINDOW_MS;

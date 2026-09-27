@@ -363,6 +363,35 @@ describe("threads (M8c)", () => {
     second.stop();
     engine.stop();
   });
+
+  it("shows a reply also sent to the channel in both places and counts it unread (M15c)", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const { message: parent } = server.post(channel.id, alice.id, "topic");
+    await engine.idle();
+    server.post(channel.id, alice.id, "quiet", undefined, parent.id);
+    server.post(channel.id, alice.id, "loud", undefined, parent.id, [], true);
+    await engine.idle();
+    expect(store.messages(channel.id).map((m) => m.body)).toEqual(["topic", "loud"]);
+    expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["quiet", "loud"]);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(2); // the topic and the shared reply
+
+    await engine.send(channel.id, "mine too", undefined, parent.id, [], true);
+    await engine.idle();
+    const mine = store.messages(channel.id).at(-1)!;
+    expect([mine.body, mine.also_in_channel, mine.pending ?? false]).toEqual(["mine too", true, false]);
+
+    // Another device finds both shared replies in the channel history.
+    const restored = new Store();
+    const second = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: restored, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 3 });
+    await second.start();
+    await second.openChannel(channel.id);
+    await second.idle();
+    expect(restored.messages(channel.id).map((m) => m.body)).toEqual(["topic", "loud", "mine too"]);
+    second.stop();
+    engine.stop();
+  });
 });
 
 describe("attachments (M9a)", () => {
