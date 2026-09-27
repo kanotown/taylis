@@ -1369,6 +1369,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sidebar/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unplace Channel
+         * @description Back to the default sections.
+         */
+        delete: operations["unplace_channel_api_v1_sidebar_channels__channel_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sidebar/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sections */
+        get: operations["list_sections_api_v1_sidebar_sections_get"];
+        put?: never;
+        /**
+         * Create Section
+         * @description M14f: a new section at the end (at most 20).
+         */
+        post: operations["create_section_api_v1_sidebar_sections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sidebar/sections/{section_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Section
+         * @description Its conversations return to the default sections.
+         */
+        delete: operations["delete_section_api_v1_sidebar_sections__section_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Section
+         * @description Rename, or move to another position (the others shift).
+         */
+        patch: operations["update_section_api_v1_sidebar_sections__section_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/sidebar/sections/{section_id}/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Place Channel
+         * @description Put a conversation I belong to in the section (moving it out of any other).
+         */
+        put: operations["place_channel_api_v1_sidebar_sections__section_id__channels__channel_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sync/bootstrap": {
         parameters: {
             query?: never;
@@ -1724,6 +1809,11 @@ export interface components {
              * Format: date-time
              */
             server_time: string;
+            /**
+             * Sidebar Sections
+             * @default []
+             */
+            sidebar_sections: components["schemas"]["SidebarSectionOut"][];
             /**
              * @default {
              *       "mention_count": 0,
@@ -2622,6 +2712,18 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** SectionCreate */
+        SectionCreate: {
+            /** Name */
+            name: string;
+        };
+        /** SectionUpdate */
+        SectionUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
         /** SessionOut */
         SessionOut: {
             /**
@@ -2649,6 +2751,20 @@ export interface components {
              * Format: date-time
              */
             last_used_at: string;
+        };
+        /** SidebarSectionOut */
+        SidebarSectionOut: {
+            /** Channel Ids */
+            channel_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
         };
         /** TemporaryPasswordOut */
         TemporaryPasswordOut: {
@@ -5734,6 +5850,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unplace_channel_api_v1_sidebar_channels__channel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sections_api_v1_sidebar_sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+        };
+    };
+    create_section_api_v1_sidebar_sections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_section_api_v1_sidebar_sections__section_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_section_api_v1_sidebar_sections__section_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_channel_api_v1_sidebar_sections__section_id__channels__channel_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section_id: string;
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarSectionOut"][];
                 };
             };
             /** @description Validation Error */

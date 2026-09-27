@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -58,6 +58,8 @@ export class Store {
   readonly customEmoji = new Map<string, CustomEmojiOut>();
   /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
   readonly groups = new Map<string, GroupOut>();
+  /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
+  sidebarSections: SidebarSectionOut[] = [];
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -312,6 +314,18 @@ export class Store {
     if (deleted) this.customEmoji.delete(row.name);
     else this.customEmoji.set(row.name, row);
     this.emit();
+  }
+
+  // --- sidebar sections (M14f) -------------------------------------------------------------
+
+  replaceSidebar(rows: SidebarSectionOut[]): void {
+    this.sidebarSections = [...rows].sort((a, b) => a.position - b.position);
+    this.emit();
+  }
+
+  /** The id of my section the conversation sits in, if any. */
+  sectionOf(channelId: string): string | null {
+    return this.sidebarSections.find((section) => section.channel_ids.includes(channelId))?.id ?? null;
   }
 
   // --- user groups (M12k) ------------------------------------------------------------------

@@ -415,6 +415,14 @@
             "title": "Server Time",
             "type": "string"
           },
+          "sidebar_sections": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SidebarSectionOut"
+            },
+            "title": "Sidebar Sections",
+            "type": "array"
+          },
           "threads": {
             "$ref": "#/components/schemas/ThreadSummary",
             "default": {
@@ -2821,6 +2829,55 @@
         "title": "SearchOut",
         "type": "object"
       },
+      "SectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SectionCreate",
+        "type": "object"
+      },
+      "SectionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "title": "SectionUpdate",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "created_at": {
@@ -2872,6 +2929,39 @@
           "expires_at"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SidebarSectionOut": {
+        "properties": {
+          "channel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Channel Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "channel_ids"
+        ],
+        "title": "SidebarSectionOut",
         "type": "object"
       },
       "TemporaryPasswordOut": {
@@ -8293,6 +8383,315 @@
         "summary": "Search Messages",
         "tags": [
           "search"
+        ]
+      }
+    },
+    "/api/v1/sidebar/channels/{channel_id}": {
+      "delete": {
+        "description": "Back to the default sections.",
+        "operationId": "unplace_channel_api_v1_sidebar_channels__channel_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response Unplace Channel Api V1 Sidebar Channels  Channel Id  Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unplace Channel",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/api/v1/sidebar/sections": {
+      "get": {
+        "operationId": "list_sections_api_v1_sidebar_sections_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response List Sections Api V1 Sidebar Sections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sections",
+        "tags": [
+          "sidebar"
+        ]
+      },
+      "post": {
+        "description": "M14f: a new section at the end (at most 20).",
+        "operationId": "create_section_api_v1_sidebar_sections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response Create Section Api V1 Sidebar Sections Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Section",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/api/v1/sidebar/sections/{section_id}": {
+      "delete": {
+        "description": "Its conversations return to the default sections.",
+        "operationId": "delete_section_api_v1_sidebar_sections__section_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response Delete Section Api V1 Sidebar Sections  Section Id  Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Section",
+        "tags": [
+          "sidebar"
+        ]
+      },
+      "patch": {
+        "description": "Rename, or move to another position (the others shift).",
+        "operationId": "update_section_api_v1_sidebar_sections__section_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response Update Section Api V1 Sidebar Sections  Section Id  Patch",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Section",
+        "tags": [
+          "sidebar"
+        ]
+      }
+    },
+    "/api/v1/sidebar/sections/{section_id}/channels/{channel_id}": {
+      "put": {
+        "description": "Put a conversation I belong to in the section (moving it out of any other).",
+        "operationId": "place_channel_api_v1_sidebar_sections__section_id__channels__channel_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Section Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SidebarSectionOut"
+                  },
+                  "title": "Response Place Channel Api V1 Sidebar Sections  Section Id  Channels  Channel Id  Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Place Channel",
+        "tags": [
+          "sidebar"
         ]
       }
     },

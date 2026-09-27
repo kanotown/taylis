@@ -6,6 +6,7 @@ import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
+import { ChannelContextMenu, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
 
 interface Props {
@@ -53,7 +54,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const firedCount = store.firedReminderCount();
   const draftCount = store.listDrafts().length + store.scheduled.size;
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites });
+  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections });
   const status = controller.engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
@@ -64,6 +65,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     const other = isDmChannel(channel) ? (channel.dm_user_ids ?? []).find((id) => id !== me?.id) : undefined;
     return (
       <li key={channel.id}>
+        <ChannelContextMenu controller={controller} channel={channel}>
         <button
           type="button"
           onClick={() => onOpen(channel.id)}
@@ -87,6 +89,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
           {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : null}
         </button>
+        </ChannelContextMenu>
       </li>
     );
   };
@@ -260,6 +263,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           <ul className="space-y-px">{sections.favorites.map(item)}</ul>
         </Section>
       )}
+      {sections.custom.map(({ section, channels: members }, index) => (
+        <Section key={section.id} title={section.name} action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}>
+          <ul className="space-y-px">{members.map(item)}</ul>
+          {members.length === 0 && !unreadOnly && <Hint>会話を右クリック →「セクションに移動」</Hint>}
+        </Section>
+      ))}
       <Section
         title="チャンネル"
         action={

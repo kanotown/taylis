@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.modules.channels.schemas import ChannelOut
 from app.modules.emoji.schemas import CustomEmojiOut
 from app.modules.groups.schemas import GroupOut
+from app.modules.sidebar.schemas import SidebarSectionOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
 
@@ -40,3 +41,5 @@ class BootstrapOut(BaseModel):
     custom_emoji: list[CustomEmojiOut] = []
     # User groups (M12k): every group with its members; changes arrive as group.updated.
     groups: list[GroupOut] = []
+    # My sidebar sections (M14f); changes arrive as sidebar.updated.
+    sidebar_sections: list[SidebarSectionOut] = []

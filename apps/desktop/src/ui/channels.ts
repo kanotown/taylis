@@ -1,5 +1,5 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
-import type { ChannelState } from "../sync/types";
+import type { ChannelState, SidebarSectionOut } from "../sync/types";
 
 export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
@@ -33,8 +33,10 @@ export function unreadBadgeTotal(channels: Iterable<ChannelState>, now?: Date): 
 }
 
 export interface ChannelSections {
-  /** Starred conversations (M12a); left out of `channels` / `dms`. */
+  /** Starred conversations (M12a); left out of every other section. */
   favorites: ChannelState[];
+  /** My own sections (M14f), in order; their conversations are left out of `channels` / `dms`. */
+  custom: Array<{ section: SidebarSectionOut; channels: ChannelState[] }>;
   channels: ChannelState[];
   dms: ChannelState[];
   browse: ChannelState[];
@@ -44,21 +46,24 @@ export interface ChannelSections {
 export function sectionChannels(
   all: ChannelState[],
   title: (channel: ChannelState) => string,
-  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string> } = {},
+  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[] } = {},
 ): ChannelSections {
   const byTitle = (a: ChannelState, b: ChannelState) => title(a).localeCompare(title(b), "ja");
+  const byRecency = (a: ChannelState, b: ChannelState) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "");
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, options.now);
   const starred = (channel: ChannelState) => options.favorites?.has(channel.id) ?? false;
+  const placed = new Map<string, string>();
+  for (const section of options.sections ?? []) for (const id of section.channel_ids) placed.set(id, section.id);
+  const loose = (channel: ChannelState) => !starred(channel) && !placed.has(channel.id);
+  const visible = (channel: ChannelState) => channel.isMember && !channel.archived && keep(channel);
   return {
-    favorites: all
-      .filter((c) => c.isMember && !c.archived && starred(c) && keep(c))
-      .sort(byTitle),
-    channels: all
-      .filter((c) => c.isMember && !isDmChannel(c) && !c.archived && !starred(c) && keep(c))
-      .sort(byTitle),
-    dms: all
-      .filter((c) => c.isMember && isDmChannel(c) && !starred(c) && keep(c))
-      .sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")),
+    favorites: all.filter((c) => visible(c) && starred(c)).sort(byTitle),
+    custom: (options.sections ?? []).map((section) => {
+      const members = all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id);
+      return { section, channels: [...members.filter((c) => !isDmChannel(c)).sort(byTitle), ...members.filter(isDmChannel).sort(byRecency)] };
+    }),
+    channels: all.filter((c) => visible(c) && !isDmChannel(c) && loose(c)).sort(byTitle),
+    dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(byRecency),
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byTitle),
   };
 }

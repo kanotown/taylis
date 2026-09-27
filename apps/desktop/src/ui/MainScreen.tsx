@@ -211,8 +211,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   useEffect(() => {
     const navigationOrder = () => {
       const all = [...controller.store.channels.values()];
-      const sections = sectionChannels(all, (c) => channelTitle(c, controller));
-      return [...sections.favorites, ...sections.channels, ...sections.dms];
+      const store = controller.store;
+      const sections = sectionChannels(all, (c) => channelTitle(c, controller), { favorites: store.favorites, sections: store.sidebarSections });
+      return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
