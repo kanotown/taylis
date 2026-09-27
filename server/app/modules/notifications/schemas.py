@@ -22,6 +22,8 @@ class PushPayload(BaseModel):
     """Provider-independent notification content stored in push_deliveries.payload (§5)."""
 
     kind: Literal["message", "reminder", "test"] = "message"
+    # Which deployment sent it (WORKSPACES.md §5): the app opens that workspace on a tap.
+    workspace_id: UUID | None = None
     channel_id: UUID | None = None
     message_id: UUID | None = None
     seq: int | None = None

@@ -46,3 +46,12 @@ class BootstrapOut(BaseModel):
     sidebar_sections: list[SidebarSectionOut] = []
     # My drafts shared by my devices (M15d); changes arrive as draft.updated.
     drafts: list[DraftOut] = []
+
+
+class UnreadSummaryOut(BaseModel):
+    """What the workspace switcher shows for a workspace that is not open (WORKSPACES.md §6)."""
+
+    # The app-icon number (M13f): every unread DM message, mentions elsewhere, muted = mentions.
+    badge: int
+    # Anything unread at all (a muted conversation only with a mention; followed threads count).
+    has_unread: bool

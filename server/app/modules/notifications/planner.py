@@ -27,6 +27,7 @@ from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
+from app.modules.workspace import service as workspace
 
 log = logging.getLogger("app.push")
 
@@ -74,13 +75,20 @@ class PushPlanner:
                 names[mentioned_user.id] = mentioned_user.display_name
         names.update(await groups.names_for(db, extract_group_mentions(message.get("body") or "")))
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        workspace_id = await workspace.workspace_id(db)
         planned = 0
         payloads: dict[uuid.UUID, dict[str, Any]] = {}
         for device in devices:
             if device.user_id not in payloads:
                 badge = await self.badge_for(db, device.user_id)
                 payload = self.build_payload(
-                    channel, sender, message, event.seq, badge=badge, names=names
+                    channel,
+                    sender,
+                    message,
+                    event.seq,
+                    badge=badge,
+                    names=names,
+                    workspace_id=workspace_id,
                 )
                 payloads[device.user_id] = payload.model_dump(mode="json") | {
                     "expires_at": expires_at.isoformat()
@@ -120,6 +128,7 @@ class PushPlanner:
         message_id = uuid.UUID(str(reminder["message_id"]))
         payload = PushPayload(
             kind="reminder",
+            workspace_id=await workspace.workspace_id(db),
             channel_id=channel_id,
             message_id=message_id,
             seq=None,
@@ -207,6 +216,7 @@ class PushPlanner:
         *,
         badge: int = 1,
         names: dict[uuid.UUID, str] | None = None,
+        workspace_id: uuid.UUID | None = None,
     ) -> PushPayload:
         sender_name = sender.display_name if sender else "Someone"
         if channel.type == "dm":
@@ -224,6 +234,7 @@ class PushPlanner:
         body = label + (body or "新しいメッセージ")  # M15e
         return PushPayload(
             kind="message",
+            workspace_id=workspace_id,
             channel_id=channel.id,
             message_id=uuid.UUID(str(message["id"])),
             seq=seq,

@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "ChikuwaChat"
+    # Shown in the clients' workspace switcher (WORKSPACES.md); empty means app_name.
+    workspace_name: str = ""
     environment: Literal["development", "test", "production"] = "development"
     debug: bool = False
     log_level: str = "INFO"
@@ -47,6 +49,10 @@ class Settings(BaseSettings):
     cors_allow_origins: str = (
         "tauri://localhost,http://tauri.localhost,http://localhost:1420,http://localhost:1421"
     )
+
+    @property
+    def workspace_display_name(self) -> str:
+        return self.workspace_name.strip() or self.app_name
 
     @property
     def cors_origins(self) -> list[str]:

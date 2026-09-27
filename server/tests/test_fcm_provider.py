@@ -57,6 +57,7 @@ def provider(keypair: tuple[str, str], handler: object) -> FCMPushProvider:
 def payload(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "kind": "message",
+        "workspace_id": "5b0c1c7e-0000-4000-8000-000000000001",
         "channel_id": str(uuid.uuid4()),
         "message_id": str(uuid.uuid4()),
         "seq": 7,
@@ -115,6 +116,7 @@ async def test_token_grant_and_data_only_message(keypair: tuple[str, str]) -> No
     assert "notification" not in message  # data-only (§5): the app renders it
     assert all(isinstance(value, str) for value in message["data"].values())
     assert message["data"]["title"] == "alice" and message["data"]["seq"] == "7"
+    assert message["data"]["workspace_id"] == "5b0c1c7e-0000-4000-8000-000000000001"
     assert "subtitle" not in message["data"]
     assert message["android"]["priority"] == "HIGH"
     assert message["android"]["collapse_key"] == "c1"

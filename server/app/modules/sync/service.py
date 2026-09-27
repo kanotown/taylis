@@ -18,7 +18,7 @@ from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import service as reads
 from app.modules.sidebar import service as sidebar
-from app.modules.sync.schemas import BootstrapOut, Limits, PresenceEntry
+from app.modules.sync.schemas import BootstrapOut, Limits, PresenceEntry, UnreadSummaryOut
 from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.models import User
@@ -77,3 +77,31 @@ async def bootstrap(
             max_attachments_per_message=MAX_ATTACHMENTS_PER_MESSAGE,
         ),
     )
+
+
+async def unread_summary(db: AsyncSession, actor: User) -> UnreadSummaryOut:
+    """The client's badge rules (channels.ts badgeCount / hasUnread) without the bootstrap."""
+    listed = [
+        c for c in await channels.list_channels(db, actor, include_public=False) if not c.archived
+    ]
+    prefs = await notifications.preferences_for(db, actor.id)
+    states = await reads.states_for_user(db, actor.id, [c.id for c in listed])
+    now = utcnow()
+    badge, has_unread = 0, False
+    for c in listed:
+        state = states.get(c.id)
+        if state is None:
+            continue
+        pref = prefs.get(c.id)
+        muted = pref is not None and (
+            pref.level == "none" or (pref.muted_until is not None and pref.muted_until > now)
+        )
+        if muted:
+            badge += state.mention_count
+            has_unread = has_unread or state.mention_count > 0
+            continue
+        badge += state.unread_count if c.type in ("dm", "group_dm") else state.mention_count
+        has_unread = has_unread or state.unread_count > 0
+    if not has_unread:
+        has_unread = (await threads.summary_for(db, actor.id)).unread_count > 0
+    return UnreadSummaryOut(badge=badge, has_unread=has_unread)

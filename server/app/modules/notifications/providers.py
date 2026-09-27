@@ -138,6 +138,7 @@ class APNsPushProvider:
         body = {
             "aps": aps,
             "kind": payload.get("kind"),
+            "workspace_id": payload.get("workspace_id"),
             "channel_id": payload.get("channel_id"),
             "message_id": payload.get("message_id"),
             "seq": payload.get("seq"),
@@ -256,6 +257,7 @@ class FCMPushProvider:
             key: str(payload[key])
             for key in (
                 "kind",
+                "workspace_id",
                 "channel_id",
                 "message_id",
                 "seq",
