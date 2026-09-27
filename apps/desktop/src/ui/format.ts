@@ -114,3 +114,12 @@ export function formatMuted(mutedUntil: string | null): string | null {
   if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) return null;
   return `${timeLabel(mutedUntil)} までミュート`;
 }
+
+/**
+ * A message row's React key: the client_msg_id, which my pending message keeps when the server confirms it (its id
+ * changes from "local:…" to the server's). Keyed by id, the row was unmounted and mounted again on every send: the
+ * jolt when sending. Every client keys its rows this way.
+ */
+export function rowKey(message: { id: string; client_msg_id?: string | null }): string {
+  return message.client_msg_id || message.id;
+}

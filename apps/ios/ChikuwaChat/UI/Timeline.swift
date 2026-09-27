@@ -10,9 +10,16 @@ enum TimelineItem: Identifiable {
         switch self {
         case .date(_, let key): return key
         case .unread: return "unread"
-        case .message(let message, _): return message.id
+        case .message(let message, _): return message.rowKey
         }
     }
+}
+
+extension MessageState {
+    /// A row's identity in lists: the client_msg_id, which my pending message keeps when the server confirms it
+    /// (its id changes from "local:…" to the server's). Keyed by id, SwiftUI dropped and re-inserted my row on every
+    /// send and scrolled to it twice: the jolt when sending. Every client keys its rows this way.
+    var rowKey: String { clientMsgId ?? id }
 }
 
 enum Timeline {

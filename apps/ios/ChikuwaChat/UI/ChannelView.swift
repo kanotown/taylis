@@ -62,8 +62,10 @@ struct ChannelView: View {
 
     private func position(_ proxy: ScrollViewProxy) {
         guard !positioned, !messages.isEmpty else { return }
-        let target = focus.map { $0.parentId ?? $0.messageId }
+        let targetId = focus.map { $0.parentId ?? $0.messageId }
             ?? messages.first(where: { message in unreadMark.map { (message.seq ?? 0) > $0 } ?? false })?.id
+        // Rows are keyed by rowKey; a target is named by its message id.
+        let target = targetId.map { id in messages.first(where: { $0.id == id })?.rowKey ?? id }
         if let target { proxy.scrollTo(target, anchor: focus == nil ? .top : .center) }
         else { proxy.scrollTo("bottom", anchor: .bottom) }
         positioned = true
@@ -121,7 +123,7 @@ struct ChannelView: View {
                                                    controller.engine?.markUnread(channelId, seq: seq)
                                                    unreadMark = seq - 1
                                                } })
-                                        .id(message.id)
+                                        .id(message.rowKey)
                                         .background(GeometryReader { geometry in
                                             Color.clear.preference(key: VisibleMessageFrames.self,
                                                 value: [message.id: geometry.frame(in: .named("conversation"))])
@@ -166,7 +168,7 @@ struct ChannelView: View {
                         }
                     }
                     .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
-                    .onChange(of: messages.last?.id) { _, _ in
+                    .onChange(of: messages.last?.rowKey) { _, _ in
                         // Arrivals while at the bottom, and my own sends from anywhere, show the newest message.
                         let last = messages.last
                         let mine = last.map { $0.senderId == controller.store.me?.id && ($0.pending || $0.seq == channel?.lastSeq) } ?? false

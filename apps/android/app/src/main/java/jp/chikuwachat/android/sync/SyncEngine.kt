@@ -344,7 +344,9 @@ class SyncEngine(
         if (_status.value != EngineStatus.ONLINE) return
         scope.launch { flushOutbox() }
         scope.launch { drafts.flush() } // edited while offline (M15d)
-        currentChannelId?.let { current -> scope.launch { loadLinks(current) } } // changed while away (M15f)
+        // Open the conversation again: its links may have changed while away (M15f), and one opened while this
+        // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
+        currentChannelId?.let { current -> scope.launch { openChannel(current) } }
         resendReads() // §10: marks that never reached the server
         if (store.threadsLoaded) scheduleThreadRefresh() // the open list may have moved while we were away
     }

@@ -302,7 +302,9 @@ export class SyncEngine {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
       this.resendReads(); // §10: marks that did not reach the server
-      if (this.currentChannelId) void this.loadLinks(this.currentChannelId); // changed while away (M15f)
+      // Open the conversation again: its links may have changed while away (M15f), and one opened while this
+      // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
+      if (this.currentChannelId) void this.openChannel(this.currentChannelId);
     }
   }
 

@@ -14,7 +14,9 @@ sealed class TimelineItem {
     data class DateSeparator(val label: String, override val key: String) : TimelineItem()
     data class UnreadSeparator(override val key: String = "unread") : TimelineItem()
     data class Message(val message: MessageState, val compact: Boolean) : TimelineItem() {
-        override val key: String get() = message.id
+        // The client_msg_id, which my pending message keeps when the server confirms it (its id changes from
+        // "local:…" to the server's): keyed by id, the row was dropped and re-inserted on every send.
+        override val key: String get() = message.rowKey
     }
 }
 

@@ -5,6 +5,7 @@ import type { MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { Composer } from "./Composer";
+import { rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Button, IconButton } from "./primitives";
 import { MessageRow } from "./Timeline";
@@ -114,7 +115,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
             </div>
             <div data-replies="">
               {replies.map((reply) => (
-                <div key={reply.id}>
+                <div key={rowKey(reply)}>
                   {reply.id === firstUnread && (
                     <div className="my-1 flex items-center gap-2 text-[11px] font-semibold text-rose-500">
                       <span className="h-px flex-1 bg-rose-400/70" />
