@@ -319,6 +319,16 @@ struct BootstrapOut: Codable {
     var drafts: [DraftOut]? = nil
 }
 
+/// A link pinned to the top of a conversation (M15f).
+struct ChannelLinkOut: Codable, Equatable, Identifiable {
+    let id: String
+    let title: String
+    let url: String
+    let position: Int
+    let createdBy: String
+    let createdAt: String
+}
+
 /// A draft saved on the server (M15d): text only, one per composer.
 struct DraftOut: Codable, Equatable {
     let channelId: String

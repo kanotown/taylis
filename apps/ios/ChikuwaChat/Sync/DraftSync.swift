@@ -1,5 +1,11 @@
 import Foundation
 
+/// M15f: a conversation's link bar (ApiClient and the test fake).
+@MainActor
+protocol ChannelLinksApi: AnyObject {
+    func channelLinks(channelId: String) async throws -> [ChannelLinkOut]
+}
+
 /// M15d: the draft endpoints (ApiClient and the test fake).
 @MainActor
 protocol DraftApi: AnyObject {

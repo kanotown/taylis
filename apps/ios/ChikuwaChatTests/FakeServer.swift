@@ -58,7 +58,13 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi, DraftApi {
+    final class Api: SyncApi, DraftApi, ChannelLinksApi {
+        func channelLinks(channelId: String) async throws -> [ChannelLinkOut] {
+            try maybeFail()
+            guard server.channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
+            return server.links[channelId] ?? []
+        }
+
         unowned let server: FakeServer
         let userId: String
         var pendingFailure: Error?
@@ -319,6 +325,22 @@ final class FakeServer {
 
     /// "user" → starred channel ids (M12a).
     var favorites: [String: [String]] = [:]
+    /// M15f: each conversation's link bar; setLinks announces it like the server does.
+    var links: [String: [ChannelLinkOut]] = [:]
+
+    func setLinks(_ channelId: String, titles: [String]) {
+        guard let record = channels[channelId] else { return }
+        let rows = titles.enumerated().map { index, title in
+            ChannelLinkOut(id: "link-\(channelId)-\(title)", title: title, url: "https://example.com/\(index)", position: index,
+                           createdBy: record.channel.createdBy ?? "", createdAt: now())
+        }
+        links[channelId] = rows
+        eventId += 1
+        emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.links_updated"), "ts": .string(now()),
+                                      "channel_id": .string(channelId), "seq": .null,
+                                      "data": .object(["channel_id": .string(channelId), "links": try! JSONValue.from(rows)])]))
+    }
+
     /// M15d: "user:channel:parent" → the saved draft.
     var drafts: [String: DraftOut] = [:]
 

@@ -23,7 +23,7 @@ enum ApiError: Error {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -205,6 +205,26 @@ final class ApiClient: SyncApi, DraftApi {
         if options.ackRequested { fields["ack_requested"] = .bool(true) }
         let (data, status) = try await requestRaw("POST", "/api/v1/channels/\(channelId)/messages", body: .object(fields), auth: true, retry401: true)
         return (try JSON.snakeDecoder.decode(MessageOut.self, from: data), status == 201)
+    }
+
+    // MARK: channel links (M15f)
+
+    func channelLinks(channelId: String) async throws -> [ChannelLinkOut] { try await request("GET", "/api/v1/channels/\(channelId)/links") }
+
+    func addChannelLink(channelId: String, title: String, url: String) async throws -> [ChannelLinkOut] {
+        try await request("POST", "/api/v1/channels/\(channelId)/links", body: .object(["title": .string(title), "url": .string(url)]))
+    }
+
+    func updateChannelLink(channelId: String, linkId: String, title: String? = nil, url: String? = nil, position: Int? = nil) async throws -> [ChannelLinkOut] {
+        var body: [String: JSONValue] = [:]
+        if let title { body["title"] = .string(title) }
+        if let url { body["url"] = .string(url) }
+        if let position { body["position"] = .number(Double(position)) }
+        return try await request("PATCH", "/api/v1/channels/\(channelId)/links/\(linkId)", body: .object(body))
+    }
+
+    func deleteChannelLink(channelId: String, linkId: String) async throws -> [ChannelLinkOut] {
+        try await request("DELETE", "/api/v1/channels/\(channelId)/links/\(linkId)")
     }
 
     // MARK: acknowledgements (M15e)
