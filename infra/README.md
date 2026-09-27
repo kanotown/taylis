@@ -257,73 +257,97 @@ git tag v1.2.3 → git push origin v1.2.3
 
 ### 初回だけの準備
 
-**GitHub**
+上から順に行う。例ではホスト名を `chat.example.com`、GitHub のアカウントを `kanotown` とする。
 
-1. 非公開リポジトリを作って push する (`git remote add origin git@github.com:<owner>/chikuwachat.git`
-   → `git push -u origin main`)。
-2. Settings → Environments → `production` を作り、Deployment branches and tags で **タグ `v*` だけ**を許可する。
-   この environment に Secrets を入れる:
+**1. Xserver VPS**
+
+- OS は **Debian** (12 または 13)。メモリは 2 GB 以上 (4 GB あると余裕がある。2 GB なら初期設定で
+  スワップを足す)。申し込み時に SSH キーを登録しておくと root に鍵でログインできる。
+- VPS パネルの **パケットフィルター** を ON にして、次を許可する:
+
+  | 用途 | プロトコル / ポート |
+  | --- | --- |
+  | SSH (手元と GitHub Actions から) | TCP 22 |
+  | Web (Caddy。証明書の取得にも使う) | TCP 80、TCP 443 |
+  | HTTP/3 (無くても動く) | UDP 443 |
+
+  GitHub Actions の接続元 IP は固定できないので、SSH は送信元を絞らない (鍵と強制コマンドで守る)。
+- サーバーの IPv4 アドレスを VPS パネルで確認しておく。
+
+**2. ドメイン (DNS)**
+
+- ドメインの DNS を管理しているところ (Xserver ドメインや Xserver レンタルサーバーのネームサーバーなら
+  その管理画面の「DNS レコード設定」、他社ならそちら) で **A レコード**を足す:
+  ホスト名 `chat`、種別 A、内容 = VPS の IPv4 アドレス。IPv6 でも使うなら AAAA も。
+- Cloudflare で管理している場合はプロキシをオフ (DNS only、灰色の雲) にする。Caddy が自分で証明書を取り、
+  WebSocket と 100 MB のアップロードをそのまま通すため。
+- 反映の確認: `dig +short chat.example.com` が VPS の IP を返す。TLS 証明書は最初のデプロイで Caddy が
+  自動で取る (80 / 443 が開いていること)。
+
+**3. VPS の初期設定 (`infra/vps-bootstrap.sh`)**
+
+手元 (リポジトリ) でデプロイ用の鍵を作り、ファイルを送る:
+
+```sh
+ssh-keygen -t ed25519 -N "" -C chikuwa-deploy -f chikuwa-deploy
+scp infra/vps-bootstrap.sh infra/deploy-ssh.sh infra/.env.example infra/deploy.conf.example \
+    chikuwa-deploy.pub root@<VPS の IP>:/tmp/
+```
+
+VPS に root でログインして実行する (何度実行しても既存の `.env` と `deploy.conf` は上書きしない):
+
+```sh
+ssh root@<VPS の IP>
+bash /tmp/vps-bootstrap.sh --domain chat.example.com --workspace-name "チーム名" \
+    --registry ghcr.io/kanotown --deploy-key-file /tmp/chikuwa-deploy.pub
+rm /tmp/vps-bootstrap.sh /tmp/deploy-ssh.sh /tmp/.env.example /tmp/deploy.conf.example /tmp/chikuwa-deploy.pub
+```
+
+スクリプトが行うこと:
+
+- Docker Engine と compose plugin (Docker 公式の Debian リポジトリ)、cron、メモリが少なければ 2 GB のスワップ
+- `deploy` ユーザー (パスワードなし、docker グループ)、`/srv/chikuwachat/infra` と `/srv/backups`
+- 強制コマンド `/usr/local/bin/chikuwa-deploy` (root の持ち物) と、デプロイ鍵の `authorized_keys` への登録
+  (`command="/usr/local/bin/chikuwa-deploy",restrict`: その 2 コマンド以外とポート転送などをすべて禁止)
+- `infra/.env` を作り、`SECRET_KEY`・`POSTGRES_PASSWORD`・`S3_SECRET_KEY` を新しいランダム値で埋める
+  (この値はサーバーにしかない。`.env` はバックアップとは別に控えておく)、`CHAT_DOMAIN` と `WORKSPACE_NAME`
+- `infra/deploy.conf` (`REGISTRY`、`BACKUP_ROOT=/srv/backups`)、毎日 3:30 のバックアップ (`/etc/cron.d/chikuwachat-backup`)
+
+最後に GitHub に入れる値 (ホスト鍵の行と指紋) を表示する。APNs / FCM を使うなら、鍵を
+`/srv/chikuwachat/infra/secrets/` に置いて `.env` の `PUSH_*` を埋める (上の「APNs の準備」「FCM の準備」)。
+root のパスワードログインは、鍵でログインできることを確かめてから止めるとよい。
+
+**4. GitHub**
+
+1. Settings → Environments → `production` を作り、Deployment branches and tags で **タグ `v*` だけ**を許可する。
+2. この environment の Secrets (初期設定スクリプトの最後の表示を使う):
 
    | 名前 | 値 |
    | --- | --- |
-   | `DEPLOY_HOST` | VPS のホスト名か IP |
-   | `DEPLOY_USER` | `deploy` (省略時も deploy) |
-   | `DEPLOY_PORT` | SSH のポート (省略時 22) |
-   | `DEPLOY_SSH_KEY` | 下で作る鍵の**秘密鍵** (全文) |
-   | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan -t ed25519 <host>` の出力 (指紋を VPS 上の `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` と照合してから入れる) |
+   | `DEPLOY_HOST` | `chat.example.com` (DNS が反映する前なら IP) |
+   | `DEPLOY_USER` | `deploy` |
+   | `DEPLOY_PORT` | SSH のポートを変えた場合だけ (既定 22) |
+   | `DEPLOY_KNOWN_HOSTS` | 表示された `chat.example.com ssh-ed25519 AAAA…` の行 (DEPLOY_HOST を IP にしたなら IP の行) |
+   | `DEPLOY_SSH_KEY` | 手元の `chikuwa-deploy` (秘密鍵) の全文 |
 
+   秘密鍵は `gh secret set DEPLOY_SSH_KEY --env production --repo kanotown/chikuwachat < chikuwa-deploy` でも入る。
+   入れたら手元の `chikuwa-deploy` は消してよい (再発行は鍵を作り直して `authorized_keys` を差し替える)。
 3. VPS が ARM の場合だけ、Variables に `DEPLOY_PLATFORMS=linux/arm64` を入れる (既定は linux/amd64)。
 4. Actions の無料枠 (非公開リポジトリは月 2,000 分、macOS は 10 倍で数える) を節約するため、iOS の
    テスト (`ios.yml`) は iOS 関係のファイルが変わったときだけ、デスクトップのインストーラはタグのときだけ走る。
 
-**VPS** (Ubuntu / Debian の例)。VPS にリポジトリは置かない。手元から 3 つのファイルを送る:
+**5. 最初のリリース**
+
+`git tag v0.1.0 && git push origin v0.1.0`。DB・オブジェクトストア・アプリ・Caddy がすべて起動し、Caddy が
+TLS 証明書を取る。`https://chat.example.com/` が開いたら、VPS で最初の管理者を作る:
 
 ```sh
-scp infra/deploy-ssh.sh infra/.env.example infra/deploy.conf.example root@<VPS>:/tmp/
-```
-
-VPS で (root か sudo):
-
-```sh
-# Docker Engine と compose plugin (https://docs.docker.com/engine/install/ の手順)
-adduser --disabled-password --gecos "" deploy && usermod -aG docker deploy
-mkdir -p /srv/chikuwachat/infra/secrets /srv/backups && chown -R deploy:deploy /srv/chikuwachat /srv/backups
-chmod 700 /srv/chikuwachat/infra/secrets
-
-# 強制コマンド: CI の鍵で実行できるのはこれだけ。infra/ の外、root の持ち物なのでリリースでは変わらない
-install -m 755 /tmp/deploy-ssh.sh /usr/local/bin/chikuwa-deploy
-
-# 設定 (中身を埋める)
-install -o deploy -g deploy -m 600 /tmp/.env.example /srv/chikuwachat/infra/.env
-#   ENVIRONMENT=production、SECRET_KEY、POSTGRES_PASSWORD、S3_SECRET_KEY、CHAT_DOMAIN、WORKSPACE_NAME、PUSH_*
-install -o deploy -g deploy -m 644 /tmp/deploy.conf.example /srv/chikuwachat/infra/deploy.conf
-#   REGISTRY=ghcr.io/<GitHub のアカウント名を小文字で>、BACKUP_ROOT=/srv/backups
-rm /tmp/deploy-ssh.sh /tmp/.env.example /tmp/deploy.conf.example
-# APNs の .p8 / FCM のサービスアカウントは /srv/chikuwachat/infra/secrets/ へ (上の「APNs の準備」「FCM の準備」)
-
-# ファイアウォール: 22 (SSH)、80 / 443 (Caddy)、443/udp (HTTP/3)
-ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443 && ufw enable
-```
-
-デプロイ用の鍵 (手元で作り、秘密鍵は GitHub の `DEPLOY_SSH_KEY` へ。手元にも残さなくてよい):
-
-```sh
-ssh-keygen -t ed25519 -N "" -C chikuwa-deploy -f chikuwa-deploy
-# VPS の /home/deploy/.ssh/authorized_keys に 1 行 (restrict = ポート転送などをすべて禁止):
-command="/usr/local/bin/chikuwa-deploy",restrict ssh-ed25519 AAAA…(chikuwa-deploy.pub の中身) chikuwa-deploy
-```
-
-DNS で `CHAT_DOMAIN` を VPS に向ける。最初のタグを push すると DB・オブジェクトストア・アプリ・Caddy が
-すべて起動し、Caddy が TLS 証明書を取る。最初の管理者を作る:
-
-```sh
+sudo -iu deploy   # root から deploy ユーザーへ (Debian で sudo が無ければ su - deploy)
 cd /srv/chikuwachat/infra && set -a && . ./deploy.conf && set +a
 CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IMAGE=$REGISTRY/chikuwachat-web:$(cat .release) \
   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml --profile proxy \
   exec app python -m app.cli create-admin --username admin
 ```
-
-毎日のバックアップ (上の「デプロイ手順」4) も cron に入れておく。
 
 ### リリースと戻し方
 
