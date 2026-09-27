@@ -541,6 +541,29 @@ final class SyncEngineTests: XCTestCase {
         second.stop()
     }
 
+    func testCustomEmojiLoadFromBootstrapAndFollowEvents() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        _ = server.createChannel("general", ownerId: alice.id)
+        _ = server.addEmoji("party_parrot", userId: alice.id)
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(Array(store.customEmoji.keys), ["party_parrot"])
+        let ok = server.addEmoji("ok", userId: alice.id)
+        server.emitEmoji(ok, deleted: false)
+        await settle(engine)
+        XCTAssertEqual(store.customEmoji.keys.sorted(), ["ok", "party_parrot"])
+        server.emitEmoji(ok, deleted: true)
+        await settle(engine)
+        XCTAssertEqual(Array(store.customEmoji.keys), ["party_parrot"])
+        engine.stop()
+    }
+
     func testRemindersLoadListFiredFirstAndNudgeOnce() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

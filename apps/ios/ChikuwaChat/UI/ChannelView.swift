@@ -386,7 +386,8 @@ struct MessageRow: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 if !message.body.isEmpty {
-                    MessageBodyView(text: message.body, users: store.users, internalBase: controller.api?.baseUrl)
+                    MessageBodyView(text: message.body, users: store.users, internalBase: controller.api?.baseUrl,
+                                    customEmoji: store.customEmoji, emojiImages: store.emojiImages, onNeedEmojiImage: { controller.loadEmojiImage($0) })
                         .environment(\.openURL, OpenURLAction { url in
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
                             Task { await controller.openPermalink(id) }
@@ -402,7 +403,18 @@ struct MessageRow: View {
                         ForEach(message.reactions, id: \.emoji) { reaction in
                             let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
                             Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
-                                Text("\(reaction.emoji) \(reaction.count)").font(.caption)
+                                if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
+                                    HStack(spacing: 3) {
+                                        if let image = store.emojiImages[custom.id] {
+                                            Image(uiImage: image).resizable().scaledToFit().frame(height: 16)
+                                        } else {
+                                            Text(reaction.emoji).font(.caption2).onAppear { controller.loadEmojiImage(custom) }
+                                        }
+                                        Text("\(reaction.count)").font(.caption)
+                                    }
+                                } else {
+                                    Text("\(reaction.emoji) \(reaction.count)").font(.caption)
+                                }
                             }
                             .buttonStyle(.bordered)
                             .tint(mine ? Color.accentColor : Color.secondary)
@@ -456,7 +468,7 @@ struct MessageRow: View {
             }
         }
         .sheet(isPresented: $pickingReaction) {
-            EmojiPickerView { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
+            EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
         }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet(controller: controller, userId: message.senderId) { id in
@@ -544,7 +556,9 @@ struct ComposerView: View {
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {
         guard candidates.isEmpty, let query = Emoji.query(text) else { return [] }
-        return Emoji.candidates(query)
+        let names = (controller?.store.customEmoji.keys.sorted() ?? []).filter { $0.hasPrefix(query) || $0.contains(query) }
+        let custom = names.prefix(4).map { EmojiEntry(shortcode: $0, glyph: ":\($0):", category: "custom", keywords: $0) }
+        return Array((custom + Emoji.candidates(query)).prefix(8))
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -690,7 +704,10 @@ struct ComposerView: View {
         }
         .background(Color(.systemBackground))
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
-        .sheet(isPresented: $showEmojiPicker) { EmojiPickerView { glyph in textBinding.wrappedValue = text + glyph } }
+        .sheet(isPresented: $showEmojiPicker) {
+            EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
+                            onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in textBinding.wrappedValue = text + glyph }
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }

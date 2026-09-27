@@ -30,6 +30,7 @@
 		4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD73867C215B4C74259890CB /* AppController.swift */; };
 		4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B03D2E682612B378434AF45 /* Store.swift */; };
 		4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7662F23ED981268EBFB0F8 /* ChannelView.swift */; };
+		56C48C77F91642F79A806183 /* CustomEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7D2AF429061631950C7906 /* CustomEmoji.swift */; };
 		581692ADE9D9F2BF23170BDE /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5396B11E764B50A589735215 /* ImageViewer.swift */; };
 		5C1990D579D1995D99A86ADD /* NoticeToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC72EC7EE82888C41D902D52 /* NoticeToast.swift */; };
 		5FECA8B2E9AF819525A1CAA1 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */; };
@@ -42,6 +43,7 @@
 		73929A42759EC180C603E753 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A676948BB8E2458464753586 /* Models.swift */; };
 		870A22BBBA909116002B711D /* FakeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048A41BC92EAD6644AFA7294 /* FakeServer.swift */; };
 		8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */; };
+		8921EC124C7C0861FC70408B /* CustomEmojiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */; };
 		8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8952935F7E755BB8B341C5 /* SearchView.swift */; };
 		90F6A6D17DBE28C9A8F6B9A9 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8EAE5A6ED788AD8AC1252 /* ThreadView.swift */; };
 		94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */; };
@@ -98,6 +100,7 @@
 		0B404F9D56E0D4FC24A30F35 /* Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Schedule.swift; sourceTree = "<group>"; };
 		13B6130C50876B86E11534F6 /* LiveBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBackendTests.swift; sourceTree = "<group>"; };
 		1427088F8204B7D1A390857F /* TimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineTests.swift; sourceTree = "<group>"; };
+		1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomEmojiTests.swift; sourceTree = "<group>"; };
 		1FCAE33D55025EFA146CADC2 /* MentionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentionsView.swift; sourceTree = "<group>"; };
 		20149D2520CFB689B293AEB2 /* ApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClient.swift; sourceTree = "<group>"; };
 		234BE2448E1022BD0D1D55EB /* TypingLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLine.swift; sourceTree = "<group>"; };
@@ -136,6 +139,7 @@
 		97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTests.swift; sourceTree = "<group>"; };
 		9B4C8A95833707C7581F036D /* SavedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedView.swift; sourceTree = "<group>"; };
 		9B7251E3E02E155A12489239 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
+		9E7D2AF429061631950C7906 /* CustomEmoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomEmoji.swift; sourceTree = "<group>"; };
 		9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRulesTests.swift; sourceTree = "<group>"; };
 		A676948BB8E2458464753586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		AD73867C215B4C74259890CB /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
@@ -251,6 +255,7 @@
 				9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */,
 				7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */,
 				91851A02B144D3F57EB66170 /* ContractTests.swift */,
+				1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */,
 				BC121C06BFAA7AB89AC54106 /* DNDTests.swift */,
 				AD8985AFAA19CE7A4EEF8F77 /* DraftsTests.swift */,
 				AEEE327A40F68B8450858B9E /* EmojiTests.swift */,
@@ -280,6 +285,7 @@
 				040510582EF3182E66D21640 /* ChannelIntroView.swift */,
 				9B7251E3E02E155A12489239 /* ChannelListView.swift */,
 				3F7662F23ED981268EBFB0F8 /* ChannelView.swift */,
+				9E7D2AF429061631950C7906 /* CustomEmoji.swift */,
 				0979C692C57AD564B5051EAC /* DND.swift */,
 				25EC40A71175595521F5E564 /* DraftsView.swift */,
 				342A0B1BCD9379AB86C4B521 /* Emoji.swift */,
@@ -446,6 +452,7 @@
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
 				1573E0EAFD2600EF5EE55CDE /* ComposerSnapshotTests.swift in Sources */,
 				F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */,
+				8921EC124C7C0861FC70408B /* CustomEmojiTests.swift in Sources */,
 				33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */,
 				D0B2472E5BD47A5F644307EF /* DraftsTests.swift in Sources */,
 				C3D7A8E5ED5B565412D4A51A /* EmojiTests.swift in Sources */,
@@ -479,6 +486,7 @@
 				BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */,
 				4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */,
 				2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */,
+				56C48C77F91642F79A806183 /* CustomEmoji.swift in Sources */,
 				A03EA59917F14D6087656DE5 /* DND.swift in Sources */,
 				96F9C758ED3FAB648F703260 /* DraftsView.swift in Sources */,
 				F2230137BE87493D9D0FDC74 /* Emoji.swift in Sources */,

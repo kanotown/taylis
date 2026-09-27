@@ -264,6 +264,19 @@ struct BootstrapOut: Codable {
     var bookmarks: [String]? = nil
     /// My starred channels (M12a) among `channels`.
     var favorites: [String]? = nil
+    /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
+    var customEmoji: [CustomEmojiOut]? = nil
+}
+
+/// A workspace emoji (M12f) used as `:name:` in text and reactions.
+struct CustomEmojiOut: Codable, Identifiable, Equatable, Hashable {
+    let id: String
+    let name: String
+    let contentType: String
+    let width: Int
+    let height: Int
+    let createdBy: String
+    let createdAt: String
 }
 
 /// PUT / DELETE /channels/{id}/favorite (M12a).

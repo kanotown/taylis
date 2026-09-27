@@ -2,6 +2,10 @@ import SwiftUI
 
 /// Emoji picker sheet (M11f): search by shortcode / keyword (en + ja) or browse by category.
 struct EmojiPickerView: View {
+    /// M12f: custom emoji shown under 「カスタム」 and found by name; a pick hands back `:name:`.
+    var custom: [CustomEmojiOut] = []
+    var images: [String: UIImage] = [:]
+    var onNeedImage: ((CustomEmojiOut) -> Void)? = nil
     let onPick: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -10,8 +14,18 @@ struct EmojiPickerView: View {
 
     private var recent: [String] { recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty } }
     private var shown: [EmojiEntry] {
+        if category == "custom" && query.trimmingCharacters(in: .whitespaces).isEmpty { return [] }
         let hits = Emoji.search(query)
         return query.trimmingCharacters(in: .whitespaces).isEmpty ? hits.filter { $0.category == category } : hits
+    }
+    private var customShown: [CustomEmojiOut] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        if q.isEmpty { return category == "custom" ? custom : [] }
+        return custom.filter { $0.name.contains(q) }
+    }
+    private var categories: [(key: String, label: String)] {
+        let base = EmojiData.categories.map { (key: $0.key, label: $0.label) }
+        return custom.isEmpty ? base : base + [(key: "custom", label: "カスタム")]
     }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
 
@@ -27,7 +41,7 @@ struct EmojiPickerView: View {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(EmojiData.categories, id: \.key) { item in
+                            ForEach(categories, id: \.key) { item in
                                 Button(item.label) { category = item.key }
                                     .buttonStyle(.bordered).controlSize(.small)
                                     .tint(category == item.key ? Color.accentColor : Color.secondary)
@@ -38,6 +52,33 @@ struct EmojiPickerView: View {
                     if !recent.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("最近").font(.caption2).foregroundStyle(.secondary)
+                            if !customShown.isEmpty {
+
+                                LazyVGrid(columns: columns, spacing: 4) {
+
+                                    ForEach(customShown) { emoji in
+
+                                        Button { onPick(":\(emoji.name):") } label: {
+
+                                            Group {
+
+                                                if let image = images[emoji.id] { Image(uiImage: image).resizable().scaledToFit() } else { Text(":\(emoji.name):").font(.caption2).lineLimit(1).minimumScaleFactor(0.5) }
+
+                                            }
+
+                                            .frame(width: 32, height: 32)
+
+                                        }
+
+                                        .buttonStyle(.plain)
+
+                                        .onAppear { onNeedImage?(emoji) }
+
+                                    }
+
+                                }
+
+                            }
                             LazyVGrid(columns: columns, spacing: 4) {
                                 ForEach(recent, id: \.self) { glyph in
                                     Button(glyph) { pick(glyph) }.font(.title2)

@@ -242,6 +242,21 @@ final class AppController {
         } catch { self.error = describe(error) }
     }
 
+    // MARK: custom emoji (M12f)
+
+    private var emojiLoads: Set<String> = []
+
+    /// Fetches an emoji image once (scaled for inline text) into the store's cache.
+    func loadEmojiImage(_ emoji: CustomEmojiOut) {
+        guard let api, store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
+        emojiLoads.insert(emoji.id)
+        Task {
+            defer { emojiLoads.remove(emoji.id) }
+            guard let data = try? await api.fetchData("/api/v1/emoji/\(emoji.id)/image"), let image = UIImage(data: data) else { return }
+            store.emojiImages[emoji.id] = CustomEmoji.inlineImage(image)
+        }
+    }
+
     // MARK: reminders (M12e)
 
     func setReminder(messageId: String, at: Date, note: String? = nil) async -> Bool {
