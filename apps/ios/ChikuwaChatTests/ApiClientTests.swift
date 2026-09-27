@@ -152,4 +152,36 @@ final class ApiClientTests: XCTestCase {
         XCTAssertEqual(seen.map(\.auth), [nil, nil])
         XCTAssertTrue(seen[1].body.contains(#""display_name":"田中""#), seen[1].body)
     }
+
+    func testLoginSendsTheTotpCodeOnlyWhenGiven() async throws {
+        var bodies: [String] = []
+        StubProtocol.handler = { [self] request in
+            let body = request.httpBodyStream.map { stream -> String in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; data.append(buffer, count: n) }
+                return String(decoding: data, as: UTF8.self)
+            } ?? ""
+            bodies.append(body)
+            if request.url!.path == "/api/v1/auth/totp" {
+                return (200, Data(#"{"enabled":true,"enabled_at":"2026-09-27T00:00:00Z","recovery_codes_left":7}"#.utf8))
+            }
+            if body.contains("totp_code") { return (200, tokens(5)) }
+            return (401, Data(#"{"error":{"code":"totp_required","message":"Two-factor code required","details":{}}}"#.utf8))
+        }
+        let client = makeClient()
+        let device = DeviceInfo(platform: "ios", deviceName: nil, appVersion: nil)
+        do {
+            _ = try await client.login(username: "alice", password: "pw", device: device)
+            XCTFail("expected totp_required")
+        } catch {
+            XCTAssertEqual((error as? ApiError)?.code, "totp_required")
+        }
+        let tokens = try await client.login(username: "alice", password: "pw", device: device, totpCode: "123456")
+        XCTAssertEqual(tokens.refreshToken, "refresh-5")
+        XCTAssertFalse(bodies[0].contains("totp_code"))
+        XCTAssertTrue(bodies[1].contains(#""totp_code":"123456""#), bodies[1])
+        let status = try await client.totpStatus()
+        XCTAssertEqual(status, TotpStatusOut(enabled: true, enabledAt: "2026-09-27T00:00:00Z", recoveryCodesLeft: 7))
+    }
 }

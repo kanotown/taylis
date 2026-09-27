@@ -12,6 +12,8 @@ final class AppController {
     var error: String?
     /// A short confirmation (「リンクをコピーしました」); nil when nothing to say.
     var notice: String?
+    /// M12i: the last login was refused for lack of an authenticator code; the form asks for one.
+    var totpRequired = false
     var me: UserMe?
     struct MessageFocus {
         var channelId: String
@@ -82,7 +84,7 @@ final class AppController {
         }
     }
 
-    func login(server: String, username: String, password: String) async {
+    func login(server: String, username: String, password: String, totpCode: String? = nil) async {
         let trimmed = server.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
         guard let url = URL(string: trimmed), url.scheme != nil else {
             error = "サーバ URL が正しくありません"
@@ -91,14 +93,49 @@ final class AppController {
         let api = makeApi(server: url, username: username)
         do {
             let tokens = try await api.login(username: username, password: password,
-                                             device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion))
+                                             device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion),
+                                             totpCode: totpCode.map(Totp.normalize))
             defaults.set(trimmed, forKey: Self.serverKey)
             defaults.set(username, forKey: Self.usernameKey)
             error = nil
+            totpRequired = false
             await enterSession(api: api, username: username, me: tokens.user)
         } catch {
+            if case ApiError.api(_, let code, _) = error, code == "totp_required" {
+                totpRequired = true
+                self.error = nil
+                return
+            }
+            if case ApiError.api(_, let code, _) = error, code == "invalid_totp" {
+                totpRequired = true
+                self.error = Totp.errorText(error)
+                return
+            }
+            totpRequired = false
             self.error = describe(error)
         }
+    }
+
+    // MARK: two-factor authentication (M12i): the settings sheet drives these
+
+    func totpStatus() async -> TotpStatusOut? {
+        guard let api else { return nil }
+        do { return try await api.totpStatus() } catch { self.error = describe(error); return nil }
+    }
+
+    func beginTotpSetup(password: String) async throws -> TotpSetupOut {
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        return try await api.totpSetup(password: password)
+    }
+
+    func enableTotp(code: String) async throws -> TotpEnabledOut {
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        return try await api.totpEnable(code: Totp.normalize(code))
+    }
+
+    func disableTotp(password: String) async throws {
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        try await api.totpDisable(password: password)
     }
 
     /// M12h: what an invite link offers, before any account exists (throws on a dead link).
