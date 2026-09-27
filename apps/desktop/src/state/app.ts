@@ -5,13 +5,14 @@ import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
-import { conversationTitle, unreadBadgeTotal } from "../ui/channels";
+import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
 import { configureAvatars, noteVersions } from "../ui/avatars";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
-import { ApiError, describeError } from "../api/errors";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
+import { ApiError, describeError, NetworkError } from "../api/errors";
+import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setUnreadBadge } from "../platform/badge";
@@ -28,7 +29,7 @@ import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
-const SERVER_KEY = "chikuwa.server";
+/** The browser build before workspaces (M16c) remembered only the user name. */
 const USERNAME_KEY = "chikuwa.username";
 const APP_VERSION = "0.1.0";
 
@@ -39,10 +40,39 @@ export class AppController {
   notice: string | null = null;
   /** M12i: the last login was refused for lack of an authenticator code; the form asks for one. */
   totpRequired = false;
-  api: ApiClient | null = null;
-  store: Store = new Store();
-  engine: SyncEngine | null = null;
-  me: UserMe | null = null;
+  /**
+   * M16c: each signed-in workspace (server) has a session; the screen shows the active one. In Tauri the
+   * others stay connected for their notifications and badges (WORKSPACES.md §6).
+   */
+  private active: Session | null = null;
+  private readonly sessions = new Map<string, Session>();
+  private readonly idleStore = new Store();
+  /** The registered workspaces in the order added, and the key (server URL) of the one on screen. */
+  workspaces: WorkspaceEntry[] = [];
+  activeServer: string | null = null;
+  /** The login form is adding another workspace; cancelling returns to `returnTo`. */
+  addingWorkspace = false;
+  private returnTo: string | null = null;
+
+  get api(): ApiClient | null {
+    return this.active?.api ?? null;
+  }
+  /** A client without a workspace behind it (tests; the screen works on it as on the active session). */
+  set api(api: ApiClient | null) {
+    this.active = api ? { serverUrl: api.baseUrl, username: this.username, api, store: this.store, engine: null, me: null, leaving: false } : null;
+  }
+  get store(): Store {
+    return this.active?.store ?? this.idleStore;
+  }
+  get engine(): SyncEngine | null {
+    return this.active?.engine ?? null;
+  }
+  get me(): UserMe | null {
+    return this.active?.me ?? null;
+  }
+  set me(me: UserMe | null) {
+    if (this.active) this.active.me = me;
+  }
   messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[] } | null = null;
 
   /** Which key sends a message; the other inserts a newline. Stored per device. */
@@ -99,10 +129,11 @@ export class AppController {
     this.emit();
   }
 
-  /** In a browser (M12j) the app is served next to the API, so the server is the page's own origin. */
+  /** The login form's server: the page's own origin in a browser (M12j), else the active workspace. */
   get serverUrl(): string {
     if (isWeb()) return location.origin;
-    return localStorage.getItem(SERVER_KEY) ?? "http://127.0.0.1:8000";
+    if (this.addingWorkspace) return "";
+    return this.activeEntry?.serverUrl ?? (this.workspaces.length === 0 ? "http://127.0.0.1:8000" : "");
   }
 
   /** M12j: what the browser URL asked for, consumed once (an invite link, or a message to reveal). */
@@ -126,14 +157,12 @@ export class AppController {
 
   /** "server|username" of the signed-in account: names this device's per-account data (recent searches). */
   get accountKey(): string | null {
-    return this.api ? this.account(this.api.baseUrl, this.username) : null;
+    return this.active ? this.account(this.active.serverUrl, this.active.username) : null;
   }
 
-  /** The workspace name for the search box and the switcher (GET /server, M16c). */
-  workspaceName = "ChikuwaChat";
-
   get username(): string {
-    return localStorage.getItem(USERNAME_KEY) ?? "";
+    if (this.addingWorkspace) return "";
+    return this.active?.username ?? this.activeEntry?.username ?? "";
   }
 
   private account(server: string, username: string): string {
@@ -142,38 +171,41 @@ export class AppController {
 
   private createApi(server: string, username: string): ApiClient {
     const account = this.account(server, username);
-    const api = new ApiClient(server, {
+    const api: ApiClient = new ApiClient(server, {
       onTokens: (tokens: TokenResponse) => void this.secrets.set(account, tokens.refresh_token),
-      onSignedOut: () => { if (this.api === api) void this.handleSignedOut(account); },
+      onSignedOut: () => {
+        const session = [...this.sessions.values()].find((s) => s.api === api) ?? (this.active?.api === api ? this.active : null);
+        if (session) void this.handleSignedOut(session);
+      },
     });
-    configureAvatars((path) => api.fetchBlob(path)); // M14a
     return api;
   }
 
-  /** Startup: restore the previous session from the credential store (SYNC_PROTOCOL.md §7.2). */
+  /**
+   * Startup: the saved workspaces (M16c), then the active one's session from the credential store
+   * (SYNC_PROTOCOL.md §7.2). In Tauri the other workspaces sign in behind it (WORKSPACES.md §6).
+   */
   async boot(): Promise<void> {
     try {
       if (isWeb()) this.takeEntryPath();
-      const server = this.serverUrl;
-      const username = this.username;
-      if (!username) {
+      const saved = loadWorkspaces();
+      // A browser serves one workspace: the page's own origin (§9).
+      this.workspaces = isWeb() ? saved.entries.filter((e) => sameServer(e.serverUrl, location.origin)) : saved.entries;
+      if (isWeb() && this.workspaces.length === 0) {
+        const username = localStorage.getItem(USERNAME_KEY); // a browser session from before M16c
+        if (username) this.workspaces = [{ serverUrl: location.origin, workspaceId: null, name: location.host, username, userId: null }];
+      }
+      this.activeServer = this.workspaces.find((e) => e.serverUrl === saved.active)?.serverUrl ?? this.workspaces[0]?.serverUrl ?? null;
+      const entry = this.activeEntry;
+      if (!entry) {
         this.setScreen("login");
         return;
       }
-      const refreshToken = await this.secrets.get(this.account(server, username));
-      if (!refreshToken) {
-        this.setScreen("login");
-        return;
-      }
-      const api = this.createApi(server, username);
-      api.refreshToken = refreshToken;
-      this.api = api;
-      if (await this.startEngine(true)) return;
-      try {
-        const tokens = await api.refresh();
-        await this.enterSession(api, username, tokens.user);
-      } catch (err) {
-        this.setScreen("login", err instanceof ApiError && err.isAuth ? null : describe(err));
+      await this.restoreWorkspace(entry, true);
+      if (this.multiWorkspace) {
+        for (const other of this.workspaces) {
+          if (other.serverUrl !== entry.serverUrl && !other.signedOut) void this.restoreWorkspace(other, false).catch((err) => console.error("could not restore a workspace", err));
+        }
       }
     } catch (err) {
       // Never stay on 起動中…: an unreadable credential store (or anything else) still leads to the login form.
@@ -191,14 +223,13 @@ export class AppController {
   }
 
   async login(server: string, username: string, password: string, totpCode?: string): Promise<void> {
-    server = server.replace(/\/+$/, "");
-    const api = this.createApi(server, username);
+    const target = await this.resolveServer(server);
+    if (target === null) return;
+    const api = this.createApi(target.server, username);
     try {
       const tokens = await api.login(username, password, this.deviceInfo(), totpCode);
-      localStorage.setItem(SERVER_KEY, server);
-      localStorage.setItem(USERNAME_KEY, username);
       this.totpRequired = false;
-      await this.enterSession(api, username, tokens.user);
+      await this.enterNewSession(api, username, tokens.user, target.info);
     } catch (err) {
       if (err instanceof ApiError && err.code === "totp_required") {
         this.totpRequired = true;
@@ -213,6 +244,44 @@ export class AppController {
       this.totpRequired = false;
       this.setScreen("login", describe(err));
     }
+  }
+
+  /**
+   * The server a login form names (WORKSPACES.md §5.1): normalized, checked with GET /server when adding a
+   * workspace, and an already registered workspace is switched to instead. null = handled (error shown).
+   */
+  private async resolveServer(input: string): Promise<{ server: string; info: ServerInfoOut | null } | null> {
+    const normalized = isWeb() ? location.origin : normalizeServerUrl(input);
+    if (!normalized) {
+      this.setScreen("login", "サーバ URL が正しくありません");
+      return null;
+    }
+    // A registered address keeps its spelling: it names the saved credential and the local database.
+    let server = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
+    let info: ServerInfoOut | null = null;
+    try {
+      const answer: unknown = await new ApiClient(server).serverInfo();
+      info = isServerInfo(answer) ? answer : null;
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        this.setScreen("login", describe(err));
+        return null;
+      }
+    }
+    if (this.addingWorkspace) {
+      if (!info) {
+        this.setScreen("login", "ChikuwaChat のサーバーではありません");
+        return null;
+      }
+      const known = this.workspaces.find((e) => (e.workspaceId !== null && e.workspaceId === info!.workspace_id) || sameServer(e.serverUrl, server));
+      if (known && this.sessions.has(known.serverUrl)) {
+        await this.switchWorkspace(known.serverUrl);
+        this.setNotice(`${known.name} は登録済みです`);
+        return null;
+      }
+      if (known) server = known.serverUrl; // registered but signed out: sign in to it again
+    }
+    return { server, info };
   }
 
   // --- two-factor authentication (M12i): the settings dialog drives these -----------------
@@ -263,13 +332,20 @@ export class AppController {
 
   /** M12h: create the account the link allows and enter the session; returns the failure text, if any. */
   async acceptInvite(server: string, token: string, form: { username: string; display_name: string; password: string }): Promise<string | null> {
-    server = server.replace(/\/+$/, "");
-    const api = this.createApi(server, form.username);
+    const normalized = isWeb() ? location.origin : normalizeServerUrl(server);
+    if (!normalized) return "サーバ URL が正しくありません";
+    const target = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
+    const api = this.createApi(target, form.username);
     try {
       const tokens = await api.acceptInvite(token, form, this.deviceInfo());
-      localStorage.setItem(SERVER_KEY, server);
-      localStorage.setItem(USERNAME_KEY, form.username);
-      await this.enterSession(api, form.username, tokens.user);
+      let info: ServerInfoOut | null = null;
+      try {
+        const answer: unknown = await api.serverInfo();
+        info = isServerInfo(answer) ? answer : null;
+      } catch {
+        // the name follows when the workspace opens
+      }
+      await this.enterNewSession(api, form.username, tokens.user, info);
       return null;
     } catch (err) {
       return inviteErrorText(err);
@@ -277,11 +353,12 @@ export class AppController {
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    if (!this.api) return;
+    const session = this.active;
+    if (!session) return;
     try {
-      await this.api.changePassword(currentPassword, newPassword);
-      this.me = await this.api.me();
-      await this.startEngine();
+      await session.api.changePassword(currentPassword, newPassword);
+      session.me = await session.api.me();
+      await this.startEngine(session);
     } catch (err) {
       this.setScreen("change_password", describe(err));
     }
@@ -775,82 +852,306 @@ export class AppController {
     }
   }
 
-  private async enterSession(api: ApiClient, username: string, me: UserMe): Promise<void> {
-    this.api = api;
-    this.me = me;
-    if (me.must_change_password) {
-      this.setScreen("change_password");
-      return;
-    }
-    await this.startEngine();
+  // --- sessions and workspaces (M16c, WORKSPACES.md) ------------------------------------------
+
+  /** Several servers can be registered in the desktop app; a browser serves its own origin only (§9). */
+  get multiWorkspace(): boolean {
+    return isTauri();
   }
 
-  private async startEngine(restoring = false): Promise<boolean> {
-    const api = this.api;
-    if (!api) return false;
-    this.engine?.stop();
+  get activeEntry(): WorkspaceEntry | null {
+    return this.workspaces.find((e) => e.serverUrl === this.activeServer) ?? null;
+  }
+
+  /** The workspace name for the search box and the switcher (GET /server). */
+  get workspaceName(): string {
+    return this.activeEntry?.name ?? "ChikuwaChat";
+  }
+
+  /** Whether a workspace has a running session (signed in on this device). */
+  isSignedIn(serverUrl: string): boolean {
+    return this.sessions.has(serverUrl);
+  }
+
+  /** The rail's number and dot for a workspace: the app-icon rules (M13f) over its store. */
+  workspaceUnread(serverUrl: string): { badge: number; unread: boolean } {
+    const session = this.sessions.get(serverUrl);
+    if (!session) return { badge: 0, unread: false };
+    const channels = [...session.store.channels.values()];
+    return { badge: unreadBadgeTotal(channels), unread: channels.some((c) => c.isMember && !c.archived && hasUnread(c)) };
+  }
+
+  /** ⌘1 … ⌘9: the n-th workspace of the rail. */
+  switchToIndex(index: number): void {
+    const entry = this.workspaces[index];
+    if (entry && entry.serverUrl !== this.activeServer) void this.switchWorkspace(entry.serverUrl);
+  }
+
+  async switchWorkspace(serverUrl: string): Promise<void> {
+    const entry = this.workspaces.find((e) => e.serverUrl === serverUrl);
+    if (!entry) return;
+    this.addingWorkspace = false;
+    this.returnTo = null;
+    const running = this.sessions.get(serverUrl);
+    if (running) {
+      this.activate(running);
+      return;
+    }
+    this.active = null;
+    this.activeServer = serverUrl;
+    this.saveWorkspaces();
+    this.setScreen("boot");
+    await this.restoreWorkspace(entry, true);
+  }
+
+  /** 「ワークスペースを追加」: the login form for another server; cancelling returns here (§5.1). */
+  beginAddWorkspace(): void {
+    this.returnTo = this.activeServer;
+    this.addingWorkspace = true;
+    this.totpRequired = false;
+    this.active = null;
+    this.activeServer = null;
+    this.setScreen("login");
+  }
+
+  cancelAddWorkspace(): void {
+    const back = this.returnTo;
+    this.addingWorkspace = false;
+    this.returnTo = null;
+    if (back) void this.switchWorkspace(back);
+    else this.setScreen("login");
+  }
+
+  private saveWorkspaces(): void {
+    persistWorkspaces(this.workspaces, this.activeServer);
+  }
+
+  private patchEntry(serverUrl: string, patch: Partial<WorkspaceEntry>): void {
+    this.workspaces = this.workspaces.map((e) => (e.serverUrl === serverUrl ? { ...e, ...patch } : e));
+    this.saveWorkspaces();
+  }
+
+  /** A new sign-in (login form or invite): the workspace joins the list, or its entry is renewed. */
+  private async enterNewSession(api: ApiClient, username: string, me: UserMe, info: ServerInfoOut | null): Promise<void> {
+    const serverUrl = api.baseUrl;
+    const previous = this.sessions.get(serverUrl);
+    if (previous) this.dropSession(previous);
+    const known = this.workspaces.find((e) => e.serverUrl === serverUrl);
+    const entry: WorkspaceEntry = {
+      serverUrl,
+      workspaceId: info?.workspace_id ?? known?.workspaceId ?? null,
+      name: info?.name ?? known?.name ?? hostLabel(serverUrl),
+      username,
+      userId: me.id,
+    };
+    this.workspaces = known ? this.workspaces.map((e) => (e.serverUrl === serverUrl ? entry : e)) : [...this.workspaces, entry];
+    const session = this.newSession(entry, api);
+    session.me = me;
+    this.activate(session);
+    await this.enterSession(session);
+  }
+
+  /** §7.2 for one workspace: its saved refresh token and local store, then a refresh when needed. */
+  private async restoreWorkspace(entry: WorkspaceEntry, show: boolean): Promise<void> {
+    const refreshToken = await this.secrets.get(this.account(entry.serverUrl, entry.username));
+    if (!refreshToken) {
+      if (entry.signedOut !== true) this.patchEntry(entry.serverUrl, { signedOut: true });
+      if (show) this.showLogin(entry.serverUrl);
+      return;
+    }
+    const api = this.createApi(entry.serverUrl, entry.username);
+    api.refreshToken = refreshToken;
+    const session = this.newSession(entry, api);
+    if (show) this.activate(session);
+    if (await this.startEngine(session, true)) return;
+    try {
+      const tokens = await api.refresh();
+      if (this.sessions.get(entry.serverUrl) !== session) return;
+      session.me = tokens.user;
+      await this.enterSession(session);
+    } catch (err) {
+      if (this.sessions.get(entry.serverUrl) !== session) return;
+      this.dropSession(session);
+      if (err instanceof ApiError && err.isAuth) this.patchEntry(entry.serverUrl, { signedOut: true });
+      if (this.activeServer === entry.serverUrl) this.showLogin(entry.serverUrl, err instanceof ApiError && err.isAuth ? null : describe(err));
+      else this.emit();
+    }
+  }
+
+  private newSession(entry: WorkspaceEntry, api: ApiClient): Session {
+    const session: Session = { serverUrl: entry.serverUrl, username: entry.username, api, store: new Store(), engine: null, me: null, leaving: false };
+    this.sessions.set(entry.serverUrl, session);
+    return session;
+  }
+
+  /** Stop a session that another one replaces or that could not be restored (no data is erased). */
+  private dropSession(session: Session): void {
+    session.engine?.stop();
+    session.engine = null;
+    if (this.sessions.get(session.serverUrl) === session) this.sessions.delete(session.serverUrl);
+    if (this.active === session) this.active = null;
+    this.updateBadge();
+  }
+
+  /** The login form for a workspace (prefilled), or for a first server when none is left. */
+  private showLogin(serverUrl: string | null, error: string | null = null): void {
+    this.active = null;
+    this.activeServer = serverUrl;
+    this.addingWorkspace = false;
+    this.saveWorkspaces();
+    this.setScreen("login", error);
+  }
+
+  /** Put a session on screen: its store, avatars and the screen it is at. */
+  private activate(session: Session): void {
+    this.active = session;
+    this.activeServer = session.serverUrl;
+    this.addingWorkspace = false;
+    this.returnTo = null;
     this.messageFocus = null;
     this.editing = null;
-    const opened = await openStore(this.account(api.baseUrl, this.username));
-    this.store = opened.store;
-    const badgeStore = this.store;
-    badgeStore.subscribe(() => {
-      if (this.store !== badgeStore) return;
-      void setUnreadBadge(unreadBadgeTotal(badgeStore.channels.values()));
-      noteVersions(badgeStore.users.values()); // M14a: pictures follow user.updated
+    this.openChannelRequest = null;
+    this.totpRequired = false;
+    configureAvatars((path) => session.api.fetchBlob(path)); // M14a
+    noteVersions(session.store.users.values());
+    this.saveWorkspaces();
+    this.setScreen(session.me?.must_change_password ? "change_password" : session.engine ? "main" : "boot");
+    void this.refreshServerInfo(session);
+  }
+
+  /** The workspace's name and id as the server says now (§4: read again whenever it opens). */
+  private async refreshServerInfo(session: Session): Promise<void> {
+    try {
+      const answer: unknown = await session.api.serverInfo();
+      if (!isServerInfo(answer)) return;
+      const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
+      if (!entry || (entry.name === answer.name && entry.workspaceId === answer.workspace_id)) return;
+      this.patchEntry(session.serverUrl, { name: answer.name, workspaceId: answer.workspace_id });
+      this.emit();
+    } catch {
+      // offline or an older server: keep what we have
+    }
+  }
+
+  private async enterSession(session: Session): Promise<void> {
+    if (session.me) this.patchEntry(session.serverUrl, { userId: session.me.id, signedOut: false });
+    if (session.me?.must_change_password) {
+      if (this.active === session) this.setScreen("change_password");
+      return;
+    }
+    await this.startEngine(session);
+  }
+
+  /** Open the account's local store and start syncing; `restoring` needs a stored user to go offline-first. */
+  private async startEngine(session: Session, restoring = false): Promise<boolean> {
+    session.engine?.stop();
+    session.engine = null;
+    const opened = await openStore(this.account(session.serverUrl, session.username));
+    if (this.sessions.get(session.serverUrl) !== session && this.active !== session) return true; // replaced meanwhile
+    const store = opened.store;
+    if (restoring && (!store.me || store.me.must_change_password)) return false;
+    session.store = store;
+    if (restoring) session.me = store.me;
+    else if (session.me) store.setMe(session.me);
+    store.subscribe(() => {
+      if (session.store !== store) return;
+      this.updateBadge();
+      if (this.active === session) noteVersions(store.users.values()); // M14a: pictures follow user.updated
+      else this.noteRail(session);
     });
-    if (restoring && (!this.store.me || this.store.me.must_change_password)) return false;
-    if (restoring) this.me = this.store.me;
-    else if (this.me) this.store.setMe(this.me);
-    const engine = new SyncEngine({
+    const engine = this.makeEngine(session);
+    session.engine = engine;
+    if (this.active === session) {
+      this.messageFocus = null;
+      this.editing = null;
+      noteVersions(store.users.values());
+      this.setScreen("main");
+      if (opened.failure) this.setError("端末に保存したデータを開けませんでした。今回はオフラインでの表示ができません");
+    }
+    void engine.start();
+    if (this.active === session && this.entryMessage) {
+      // M12j: the browser has no local store; reveal once the first sync has brought the channels.
+      const unsubscribe = engine.subscribe(() => {
+        if (engine.status !== "online" || store.channels.size === 0) return;
+        unsubscribe();
+        void this.revealEntry();
+      });
+    }
+    this.updateBadge();
+    return true;
+  }
+
+  private makeEngine(session: Session): SyncEngine {
+    const { api, store } = session;
+    const engine: SyncEngine = new SyncEngine({
       api,
       connect: browserConnector(api.wsUrl),
-      store: this.store,
+      store,
       getAccessToken: () => api.accessToken,
       prepareConnection: async ({ refresh }) => {
         // §7.2: a token that is still good is used as is (every refresh rotates the refresh token);
         // refresh when it is missing, expires within 60 s, or the server refused it (close 4001).
         if (!refresh && !api.accessTokenExpiresWithin(60_000)) return;
         const tokens = await api.refresh();
-        if (this.api !== api || this.engine !== engine) return;
-        this.me = tokens.user;
-        this.store.setMe(tokens.user);
+        if (session.engine !== engine) return;
+        session.me = tokens.user;
+        store.setMe(tokens.user);
         if (tokens.user.must_change_password) {
-          this.engine?.stop();
-          this.setScreen("change_password");
+          engine.stop();
+          if (this.active === session) this.setScreen("change_password");
           throw new Error("Password change required");
         }
       },
-      onSignedOut: () => { if (this.engine === engine) void this.handleSignedOut(this.account(api.baseUrl, this.username)); },
+      onSignedOut: () => { if (session.engine === engine) void this.handleSignedOut(session); },
       onReminder: (reminder) => {
-        if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return;
-        void notify("リマインダー", (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
+        if (this.quiet(session)) return;
+        void notify(this.notificationTitle(session, "リマインダー"), (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
       },
       onNotify: (message, channel) => {
-        if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return; // M12c: paused / quiet hours
-        const store = this.store;
+        if (this.quiet(session)) return; // M12c: paused / quiet hours
         const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";
         const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || "新しいメッセージ";
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
-        if (channel.type === "dm") void notify(sender, text);
-        else void notify(conversationTitle(channel, store.users, store.me?.id ?? null), `${sender}: ${text}`);
+        if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text);
+        else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);
       },
-      isActive: () => document.hasFocus(),
+      // A workspace in the background is not being looked at: its server may push to the phone (§6).
+      isActive: () => this.active === session && document.hasFocus(),
     });
-    this.engine = engine;
-    engine.subscribe(() => this.emit());
-    this.setScreen("main");
-    if (opened.failure) this.setError("端末に保存したデータを開けませんでした。今回はオフラインでの表示ができません");
-    void engine.start();
-    if (this.entryMessage) {
-      // M12j: the browser has no local store; reveal once the first sync has brought the channels.
-      const unsubscribe = engine.subscribe(() => {
-        if (engine.status !== "online" || this.store.channels.size === 0) return;
-        unsubscribe();
-        void this.revealEntry();
-      });
-    }
-    return true;
+    engine.subscribe(() => {
+      if (this.active === session) this.emit();
+    });
+    return engine;
+  }
+
+  /** M12c: paused notifications or quiet hours of that workspace's account. */
+  private quiet(session: Session): boolean {
+    const me = session.store.me;
+    return dndActive(me ? session.store.users.get(me.id) ?? me : null);
+  }
+
+  /** With several workspaces a notification says where it comes from (WORKSPACES.md §6). */
+  private notificationTitle(session: Session, title: string): string {
+    if (this.workspaces.length < 2) return title;
+    const name = this.workspaces.find((e) => e.serverUrl === session.serverUrl)?.name;
+    return name ? `${title} · ${name}` : title;
+  }
+
+  /** The Dock / taskbar number: every signed-in workspace added up (WORKSPACES.md §6). */
+  private updateBadge(): void {
+    let total = 0;
+    for (const session of this.sessions.values()) total += unreadBadgeTotal(session.store.channels.values());
+    void setUnreadBadge(total);
+  }
+
+  /** A background store changed: re-render only when its rail number or dot did. */
+  private readonly railSeen = new Map<string, string>();
+  private noteRail(session: Session): void {
+    const unread = this.workspaceUnread(session.serverUrl);
+    const key = `${unread.badge}|${unread.unread}`;
+    if (this.railSeen.get(session.serverUrl) === key) return;
+    this.railSeen.set(session.serverUrl, key);
+    this.emit();
   }
 
   /** M13c: post a quote of `message` and its permalink into another conversation. */
@@ -1096,41 +1397,95 @@ export class AppController {
     return false;
   }
 
+  /** Sign out of the workspace on screen; it leaves the list and the next one opens (WORKSPACES.md §5.3). */
   async logout(): Promise<void> {
-    this.engine?.stop();
-    void setUnreadBadge(0);
-    this.engine = null;
-    await this.api?.logout();
+    if (this.activeServer) await this.signOutWorkspace(this.activeServer);
+  }
+
+  /** Sign out of a workspace (on screen or not) and forget it; one already signed out just leaves the list. */
+  async signOutWorkspace(serverUrl: string): Promise<void> {
+    const session = this.sessions.get(serverUrl) ?? (this.active?.serverUrl === serverUrl ? this.active : null);
+    if (session) {
+      session.leaving = true;
+      session.engine?.stop();
+      await session.api.logout(); // → onSignedOut → handleSignedOut
+      await this.handleSignedOut(session);
+      return;
+    }
+    this.workspaces = this.workspaces.filter((e) => e.serverUrl !== serverUrl);
+    this.saveWorkspaces();
+    if (this.activeServer !== serverUrl) {
+      this.emit();
+      return;
+    }
+    const next = this.workspaces.find((e) => this.sessions.has(e.serverUrl));
+    if (next) this.activate(this.sessions.get(next.serverUrl)!);
+    else this.showLogin(this.workspaces[0]?.serverUrl ?? null);
   }
 
   /**
    * Signed out or the session ended (§11): the account's local store (messages, drafts, send queue) is
-   * erased, the badge and the notifications on screen are cleared, the credential is forgotten.
+   * erased, the notifications on screen are cleared, the credential is forgotten. A workspace the user
+   * left goes from the list; one whose session ended stays, signed out, for signing back in.
    */
-  private async handleSignedOut(account: string): Promise<void> {
-    this.engine?.stop();
-    void setUnreadBadge(0);
-    clearNotifications();
-    configureAvatars(null);
-    this.engine = null;
-    this.api = null;
-    this.me = null;
-    this.messageFocus = null;
-    this.editing = null;
-    const store = this.store;
-    this.store = new Store();
+  private handleSignedOut(session: Session): Promise<void> {
+    session.ending ??= this.endSession(session); // the client may report it more than once
+    return session.ending;
+  }
+
+  private async endSession(session: Session): Promise<void> {
+    session.engine?.stop();
+    session.engine = null;
+    if (this.sessions.get(session.serverUrl) === session) this.sessions.delete(session.serverUrl);
+    this.railSeen.delete(session.serverUrl);
+    const wasActive = this.active === session;
+    if (wasActive) {
+      clearNotifications();
+      configureAvatars(null);
+      this.active = null;
+      this.messageFocus = null;
+      this.editing = null;
+    }
+    this.updateBadge();
     try {
-      await store.wipe();
+      await session.store.wipe();
     } catch (err) {
       console.error("could not erase the local store", err);
     }
     try {
-      await this.secrets.delete(account);
+      await this.secrets.delete(this.account(session.serverUrl, session.username));
     } catch (err) {
       console.error("could not remove the saved credential", err);
     }
-    this.setScreen("login");
+    if (session.leaving) {
+      this.workspaces = this.workspaces.filter((e) => e.serverUrl !== session.serverUrl);
+      this.saveWorkspaces();
+    } else {
+      this.patchEntry(session.serverUrl, { signedOut: true });
+    }
+    if (!wasActive) {
+      this.emit();
+      return;
+    }
+    // The next signed-in workspace takes the screen; else the login form (for the one that ended, if any).
+    const next = this.workspaces.find((e) => this.sessions.has(e.serverUrl));
+    if (session.leaving && next) this.activate(this.sessions.get(next.serverUrl)!);
+    else this.showLogin(session.leaving ? (this.workspaces[0]?.serverUrl ?? null) : session.serverUrl);
   }
+}
+
+/** One signed-in workspace (M16c): its API client, local store and sync engine. */
+interface Session {
+  serverUrl: string;
+  username: string;
+  api: ApiClient;
+  store: Store;
+  engine: SyncEngine | null;
+  me: UserMe | null;
+  /** The user signs out: the workspace leaves the list (an ended session stays, signed out). */
+  leaving: boolean;
+  /** The sign-out being handled (erasing the store and the credential). */
+  ending?: Promise<void>;
 }
 
 function describe(err: unknown): string {
