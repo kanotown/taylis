@@ -42,6 +42,8 @@ struct EngineOptions {
     /// §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtl.
     var typingInterval: TimeInterval = 3
     var typingTtl: TimeInterval = 5
+    /// M15d: a draft is saved on the server this long after typing pauses.
+    var draftSave: TimeInterval = 1
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -91,6 +93,8 @@ final class SyncEngine {
     private var stopped = false
     private var flushing = false
     private var reconnectAttempt = 0
+    /// M15d: my drafts across devices.
+    @ObservationIgnored private(set) var drafts: DraftSync!
 
     init(api: SyncApi, connect: @escaping WsConnector, wsUrl: URL, store: Store,
          getAccessToken: @escaping () -> String?, options: EngineOptions = EngineOptions()) {
@@ -100,7 +104,12 @@ final class SyncEngine {
         self.store = store
         self.getAccessToken = getAccessToken
         self.options = options
+        drafts = DraftSync(api: api as? DraftApi, store: store, isOnline: { [weak self] in self?.status == .online }, delay: options.draftSave)
+        store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
     }
+
+    /// Save edited drafts now instead of after the typing pause (tests, sign-out).
+    func flushDrafts() async { await drafts.flush() }
 
     // MARK: serial queue
 
@@ -186,7 +195,10 @@ final class SyncEngine {
             await scheduleReconnect()
             return
         }
-        if status == .online { Task { await flushOutbox() } }
+        if status == .online {
+            Task { await flushOutbox() }
+            Task { await drafts.flush() } // edited while offline (M15d)
+        }
     }
 
     private func waitForHello() async -> Bool {
@@ -311,6 +323,7 @@ final class SyncEngine {
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceGroups(bootstrap.groups ?? [])
         store.replaceSidebar(bootstrap.sidebarSections ?? [])
+        drafts.applyBootstrap(bootstrap.drafts ?? [])
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
         onBadge?(store.badgeCount)
@@ -381,6 +394,8 @@ final class SyncEngine {
             struct Payload: Decodable { let emoji: CustomEmojiOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyCustomEmoji(payload.emoji, deleted: payload.deleted)
+        case "draft.updated":
+            drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }
             store.replaceSidebar(try frame.data.decode(Payload.self).sections)

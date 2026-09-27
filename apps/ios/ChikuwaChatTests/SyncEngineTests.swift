@@ -58,7 +58,10 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(restored.draft("c2").text, "other")
         XCTAssertEqual(restored.uploading("c1"), 0)
         restored.setDraft("c1") { $0 = Draft() }
-        XCTAssertEqual(Store.fromSnapshot(restored.snapshot()).draft("c1"), Draft())
+        let reloaded = Store.fromSnapshot(restored.snapshot()).draft("c1")
+        XCTAssertEqual(reloaded.text, "")
+        XCTAssertEqual(reloaded.attachments, [])
+        XCTAssertTrue(reloaded.isDirty) // M15d: the delete still has to reach the server
         XCTAssertEqual(restored.draft("c1", parentId: "p1").text, "thread")
     }
 

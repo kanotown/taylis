@@ -212,6 +212,12 @@ struct OutboxItem: Codable, Identifiable, Equatable {
 struct Draft: Codable, Equatable {
     var text = ""
     var attachments: [AttachmentOut] = []
+    /// M15d: edited here and not yet saved on the server (an emptied draft stays until its delete is saved).
+    var dirty: Bool? = nil
+    /// M15d: the server's `updated_at` of the version this device last matched.
+    var syncedAt: String? = nil
+
+    var isDirty: Bool { dirty ?? false }
 }
 
 struct Snapshot: Codable {
@@ -277,13 +283,60 @@ final class Store {
 
     private func draftKey(_ channelId: String, _ parentId: String?) -> String { "draft:\(channelId):\(parentId ?? "")" }
     func draft(_ channelId: String, parentId: String? = nil) -> Draft { drafts[draftKey(channelId, parentId)] ?? Draft() }
+    /// M15d: told about every local text change (the engine saves it on the server a moment later).
+    @ObservationIgnored var onDraftEdited: ((_ channelId: String, _ parentId: String?) -> Void)?
+
     func setDraft(_ channelId: String, parentId: String? = nil, _ mutate: (inout Draft) -> Void) {
-        let key = draftKey(channelId, parentId)
-        var value = draft(channelId, parentId: parentId)
+        let previous = draft(channelId, parentId: parentId)
+        var value = previous
         mutate(&value)
-        drafts[key] = value.text.isEmpty && value.attachments.isEmpty ? nil : value
+        let edited = value.text != previous.text
+        if edited { value.dirty = true }
+        writeDraft(draftKey(channelId, parentId), value)
+        if edited { onDraftEdited?(channelId, parentId) }
+    }
+
+    private func writeDraft(_ key: String, _ value: Draft) {
+        let keep = !value.text.isEmpty || !value.attachments.isEmpty || value.isDirty
+        drafts[key] = keep ? value : nil
         let encoded = drafts[key].flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
         persist { try $0.saveMeta(key: key, value: encoded) }
+    }
+
+    /// M15d: every stored draft, including emptied ones whose delete is not saved yet.
+    func draftEntries() -> [DraftEntry] {
+        drafts.keys.sorted().compactMap { key in
+            let parts = key.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3, let draft = drafts[key] else { return nil }
+            return DraftEntry(channelId: String(parts[1]), parentId: parts[2].isEmpty ? nil : String(parts[2]), draft: draft)
+        }
+    }
+
+    /// M15d: a version from my other devices (`body` nil = deleted there); ignored while this device has unsaved edits.
+    func applyRemoteDraft(_ channelId: String, parentId: String?, body: String?, updatedAt: String?) {
+        let key = draftKey(channelId, parentId)
+        let current = drafts[key]
+        if current?.isDirty == true { return }
+        let next = Draft(text: body ?? "", attachments: current?.attachments ?? [], dirty: nil, syncedAt: body == nil ? nil : updatedAt)
+        if let current, current.text == next.text, current.syncedAt == next.syncedAt { return }
+        if current == nil && next.text.isEmpty { return }
+        writeDraft(key, next)
+    }
+
+    /// M15d: the server now holds `text` (no draft when `updatedAt` is nil), unless it was edited again meanwhile.
+    func markDraftSaved(_ channelId: String, parentId: String?, text: String, updatedAt: String?) {
+        let key = draftKey(channelId, parentId)
+        guard var current = drafts[key], current.text == text else { return }
+        current.dirty = nil
+        current.syncedAt = updatedAt
+        writeDraft(key, current)
+    }
+
+    func markDraftDirty(_ channelId: String, parentId: String?) {
+        let key = draftKey(channelId, parentId)
+        guard var current = drafts[key], !current.isDirty else { return }
+        current.dirty = true
+        writeDraft(key, current)
     }
     func uploading(_ channelId: String, parentId: String? = nil) -> Int { uploads[draftKey(channelId, parentId)] ?? 0 }
 
