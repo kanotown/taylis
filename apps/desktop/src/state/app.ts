@@ -849,6 +849,41 @@ export class AppController {
     }
   }
 
+  // --- channel links (M15f) ----------------------------------------------------------------
+
+  async addChannelLink(channelId: string, title: string, url: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.setChannelLinks(channelId, await this.api.addChannelLink(channelId, title, url));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async updateChannelLink(channelId: string, linkId: string, patch: { title?: string; url?: string; position?: number }): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.setChannelLinks(channelId, await this.api.updateChannelLink(channelId, linkId, patch));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async deleteChannelLink(channelId: string, linkId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.setChannelLinks(channelId, await this.api.deleteChannelLink(channelId, linkId));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   // --- acknowledgements (M15e) ----------------------------------------------------------------
 
   async toggleAck(message: MessageState): Promise<void> {

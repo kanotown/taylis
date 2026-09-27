@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -65,6 +65,15 @@ export class Store {
   readonly customEmoji = new Map<string, CustomEmojiOut>();
   /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
   readonly groups = new Map<string, GroupOut>();
+  /** M15f: link bars of the conversations opened so far (not persisted). */
+  readonly channelLinks = new Map<string, ChannelLinkOut[]>();
+  setChannelLinks(channelId: string, links: ChannelLinkOut[]): void {
+    this.channelLinks.set(channelId, links);
+    this.emit();
+  }
+  linksOf(channelId: string): ChannelLinkOut[] {
+    return this.channelLinks.get(channelId) ?? [];
+  }
   /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
   sidebarSections: SidebarSectionOut[] = [];
   version = 0;

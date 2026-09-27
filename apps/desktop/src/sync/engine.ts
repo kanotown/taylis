@@ -7,7 +7,7 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
@@ -30,6 +30,8 @@ export interface SyncApi {
   threadState(messageId: string): Promise<ThreadState>;
   markThreadRead(messageId: string, lastReadSeq: number): Promise<ThreadState>;
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
+  /** M15f: a conversation's link bar. Optional (older fakes). */
+  channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
   /** M15d: drafts shared by my devices. Optional (older fakes). */
   saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
   deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
@@ -242,6 +244,7 @@ export class SyncEngine {
     if (this.status === "online") {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
+      if (this.currentChannelId) void this.loadLinks(this.currentChannelId); // changed while away (M15f)
     }
   }
 
@@ -365,6 +368,16 @@ export class SyncEngine {
     void this.loadReminders();
   }
 
+  /** M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap). */
+  async loadLinks(channelId: string): Promise<void> {
+    if (!this.deps.api.channelLinks) return;
+    try {
+      this.deps.store.setChannelLinks(channelId, await this.deps.api.channelLinks(channelId));
+    } catch (err) {
+      console.warn("could not load channel links", err);
+    }
+  }
+
   /** M12e: open reminders; refreshed after every bootstrap. */
   async loadReminders(): Promise<void> {
     try {
@@ -467,6 +480,11 @@ export class SyncEngine {
       case "emoji.updated": {
         const data = frame.data as { emoji: CustomEmojiOut; deleted: boolean };
         store.applyCustomEmoji(data.emoji, data.deleted);
+        return;
+      }
+      case "channel.links_updated": {
+        const data = frame.data as { channel_id: string; links: ChannelLinkOut[] };
+        store.setChannelLinks(data.channel_id, data.links);
         return;
       }
       case "draft.updated":
@@ -614,6 +632,7 @@ export class SyncEngine {
     this.currentChannelId = channelId;
     for (const held of [...this.unreadHold.keys()]) if (held !== channelId) this.unreadHold.delete(held);
     if (this.status !== "online") return Promise.resolve();
+    void this.loadLinks(channelId);
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);
       if (!channel) return;

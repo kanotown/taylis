@@ -202,6 +202,31 @@ describe("channel browsing", () => {
   });
 });
 
+describe("channel links (M15f)", () => {
+  it("loads a conversation's links when it opens, follows changes and reloads after reconnecting", async () => {
+    const { server, bob, channel, store, engine } = await setup();
+    server.setLinks(channel.id, ["設計書"]);
+    await engine.start();
+    await engine.idle();
+    expect(store.linksOf(channel.id)).toEqual([]); // not part of bootstrap
+    await engine.openChannel(channel.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.linksOf(channel.id).map((l) => l.title)).toEqual(["設計書"]);
+    server.setLinks(channel.id, ["設計書", "監視"]);
+    await engine.idle();
+    expect(store.linksOf(channel.id).map((l) => l.title)).toEqual(["設計書", "監視"]);
+
+    server.disconnect(bob.id);
+    server.links.set(channel.id, []); // changed while away, no event delivered
+    await engine.idle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await engine.idle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.linksOf(channel.id)).toEqual([]);
+    engine.stop();
+  });
+});
+
 describe("message priority (M15e)", () => {
   it("keeps priority and the acknowledgement request through the outbox, only on top-level posts", async () => {
     const { server, bob, channel, store, engine } = await setup();
