@@ -1,20 +1,26 @@
+import type { ReactNode } from "react";
 import { MessageSquareText } from "lucide-react";
-import type { UserPublic } from "../api/types";
+import type { CustomEmojiOut, UserPublic } from "../api/types";
+import type { AppController } from "../state/app";
 import { type Block, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
+import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { cn } from "./primitives";
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
-export function MessageBody({ body, users, className, internalBase, onOpenMessage }: {
+export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller }: {
   body: string;
   users: Map<string, UserPublic>;
   className?: string;
   /** M12b: links on this server (`<base>/m/<id>`) open the message in place instead of a browser. */
   internalBase?: string | null;
   onOpenMessage?: (messageId: string) => void;
+  /** M12f: known custom emoji (by name) and the controller that fetches their images. */
+  customEmoji?: ReadonlyMap<string, CustomEmojiOut>;
+  controller?: AppController;
 }) {
-  const options: InlineOptions = { internalBase, onOpenMessage };
+  const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller };
   return (
     <div className={cn("body text-[14.5px] leading-6", className)}>
       {parseBlocks(body).map((block, i) => (
@@ -58,10 +64,12 @@ function BlockView({ block, users, options }: { block: Block; users: Map<string,
   }
 }
 
-/** M12b: how links on our own server are rendered (a chip that reveals the message). */
+/** M12b: how links on our own server are rendered (a chip that reveals the message); M12f: custom emoji images. */
 export interface InlineOptions {
   internalBase?: string | null;
   onOpenMessage?: (messageId: string) => void;
+  customEmoji?: ReadonlyMap<string, CustomEmojiOut>;
+  controller?: AppController;
 }
 
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {
@@ -74,17 +82,27 @@ function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineO
 }
 
 export function inline(tokens: Token[], users: Map<string, UserPublic>, options: InlineOptions = {}) {
-  const { internalBase, onOpenMessage } = options;
+  const { internalBase, onOpenMessage, customEmoji, controller } = options;
+  /** Shortcodes become glyphs; known custom names become images (M12f). */
+  const emojiNodes = (text: string): ReactNode => {
+    const replaced = replaceShortcodes(text);
+    if (!customEmoji || !controller || customEmoji.size === 0) return replaced;
+    const pieces = splitCustomEmoji(replaced, customEmoji);
+    if (pieces.length === 1 && typeof pieces[0] === "string") return replaced;
+    return pieces.map((piece, index) =>
+      typeof piece === "string" ? piece : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} />,
+    );
+  };
   return tokens.map((token, i) => {
     switch (token.kind) {
       case "text":
-        return <span key={i}>{replaceShortcodes(token.text)}</span>;
+        return <span key={i}>{emojiNodes(token.text)}</span>;
       case "bold":
-        return <strong key={i}>{replaceShortcodes(token.text)}</strong>;
+        return <strong key={i}>{emojiNodes(token.text)}</strong>;
       case "italic":
-        return <em key={i}>{replaceShortcodes(token.text)}</em>;
+        return <em key={i}>{emojiNodes(token.text)}</em>;
       case "strike":
-        return <del key={i}>{replaceShortcodes(token.text)}</del>;
+        return <del key={i}>{emojiNodes(token.text)}</del>;
       case "code":
         return <code key={i}>{token.text}</code>;
       case "codeblock":

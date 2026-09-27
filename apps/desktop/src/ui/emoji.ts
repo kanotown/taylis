@@ -36,6 +36,15 @@ export function emojiCandidates(query: string, limit = 8): EmojiEntry[] {
   return [...prefix, ...rest].slice(0, limit);
 }
 
+/** Custom emoji (M12f) whose name starts with / contains the query, as picker-style entries (`glyph` is `:name:`). */
+export function customEmojiCandidates(query: string, custom: ReadonlyMap<string, { name: string }>, limit = 4): EmojiEntry[] {
+  const q = query.toLowerCase();
+  if (!q) return [];
+  const names = [...custom.keys()];
+  const hits = [...names.filter((n) => n.startsWith(q)), ...names.filter((n) => !n.startsWith(q) && n.includes(q))];
+  return hits.slice(0, limit).map((name) => ({ shortcode: name, glyph: `:${name}:`, category: "custom", keywords: name }));
+}
+
 /** Free-text search for the picker: empty query lists everything (by category order). */
 export function searchEmoji(query: string): EmojiEntry[] {
   const q = query.trim().toLowerCase();

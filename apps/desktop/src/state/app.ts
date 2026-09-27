@@ -4,7 +4,7 @@ import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -237,6 +237,31 @@ export class AppController {
   setNotice(text: string | null): void {
     this.notice = text;
     this.emit();
+  }
+
+  /** M12f: add a custom emoji; everyone gets emoji.updated, this device applies it at once. */
+  async uploadEmoji(name: string, file: File): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const row = await this.api.uploadEmoji(name, file, file.name);
+      this.store.applyCustomEmoji(row, false);
+      this.setNotice(`:${row.name}: を追加しました`);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async deleteEmoji(emojiId: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      await this.api.deleteEmoji(emojiId);
+      const row = [...this.store.customEmoji.values()].find((e) => e.id === emojiId);
+      if (row) this.store.applyCustomEmoji(row, true);
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   /** M12e 「リマインド」: a nudge about the message at `at`. */

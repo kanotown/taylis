@@ -7,6 +7,7 @@ from pydantic import BaseModel, TypeAdapter
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.channels import events as channel_events
+from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
 from app.modules.messages import events as message_events
 from app.modules.notifications import events as notification_events
@@ -51,6 +52,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
+    emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

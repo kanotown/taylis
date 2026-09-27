@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     presence_sweep_interval_seconds: float = 30.0
     # M12d: how often the worker looks for scheduled messages whose time has come.
     scheduled_send_interval_seconds: float = 15.0
+    # M12f: custom emoji images (PNG / GIF / JPEG / WebP, at most 512px).
+    emoji_max_bytes: int = 256 * 1024
     # typing frames from one connection are relayed at most this often.
     typing_min_interval_seconds: float = 2.0
 

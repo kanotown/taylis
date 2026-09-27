@@ -575,6 +575,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/emoji": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Emoji
+         * @description Every custom emoji, by name (also part of bootstrap).
+         */
+        get: operations["list_emoji_api_v1_emoji_get"];
+        put?: never;
+        /**
+         * Add Emoji
+         * @description M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image.
+         */
+        post: operations["add_emoji_api_v1_emoji_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/{emoji_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Emoji
+         * @description The creator or an admin removes it; bodies keep the text `:name:`.
+         */
+        delete: operations["delete_emoji_api_v1_emoji__emoji_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/{emoji_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Emoji Image */
+        get: operations["emoji_image_api_v1_emoji__emoji_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files": {
         parameters: {
             query?: never;
@@ -1168,6 +1229,13 @@ export interface components {
             /** Width */
             width: number | null;
         };
+        /** Body_add_emoji_api_v1_emoji_post */
+        Body_add_emoji_api_v1_emoji_post: {
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+        };
         /** Body_upload_api_v1_attachments_post */
         Body_upload_api_v1_attachments_post: {
             /** File */
@@ -1208,6 +1276,11 @@ export interface components {
             bookmarks: string[];
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
+            /**
+             * Custom Emoji
+             * @default []
+             */
+            custom_emoji: components["schemas"]["CustomEmojiOut"][];
             /**
              * Favorites
              * @default []
@@ -1319,6 +1392,32 @@ export interface components {
             purpose?: string | null;
             /** Topic */
             topic?: string | null;
+        };
+        /** CustomEmojiOut */
+        CustomEmojiOut: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Width */
+            width: number;
         };
         /** DeltaOut */
         DeltaOut: {
@@ -3297,6 +3396,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_emoji_api_v1_emoji_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomEmojiOut"][];
+                };
+            };
+        };
+    };
+    add_emoji_api_v1_emoji_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_emoji_api_v1_emoji_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomEmojiOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_emoji_api_v1_emoji__emoji_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                emoji_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    emoji_image_api_v1_emoji__emoji_id__image_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                emoji_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

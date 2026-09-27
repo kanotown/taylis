@@ -82,3 +82,6 @@ export type ScheduledCreate = components["schemas"]["ScheduledCreate"];
 /** Reminders (M12e). */
 export type ReminderOut = components["schemas"]["ReminderOut"];
 export type ReminderCreate = components["schemas"]["ReminderCreate"];
+
+/** Custom emoji (M12f). */
+export type CustomEmojiOut = components["schemas"]["CustomEmojiOut"];

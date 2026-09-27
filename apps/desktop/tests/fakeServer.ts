@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -449,6 +449,21 @@ export class FakeServer {
     return updated;
   }
 
+  /** Custom emoji by name (M12f); everyone gets emoji.updated. */
+  readonly customEmoji = new Map<string, CustomEmojiOut>();
+
+  addEmoji(name: string, userId: string): CustomEmojiOut {
+    const row: CustomEmojiOut = { id: `emoji-${++this.eventId}`, name, content_type: "image/png", width: 32, height: 32, created_by: userId, created_at: now() };
+    this.customEmoji.set(name, row);
+    return row;
+  }
+
+  emitEmoji(row: CustomEmojiOut, deleted: boolean): void {
+    if (deleted) this.customEmoji.delete(row.name);
+    else this.customEmoji.set(row.name, row);
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "emoji.updated", ts: now(), channel_id: null, seq: null, data: { emoji: row, deleted } });
+  }
+
   /** "user" → open reminders (M12e). */
   readonly reminders = new Map<string, ReminderOut[]>();
 
@@ -584,6 +599,7 @@ export class FakeServer {
           presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
+          custom_emoji: [...this.customEmoji.values()],
         };
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {

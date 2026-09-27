@@ -4,7 +4,7 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -331,6 +331,7 @@ export class SyncEngine {
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
+    store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     void this.loadScheduled();
     void this.loadReminders();
   }
@@ -431,6 +432,11 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "emoji.updated": {
+        const data = frame.data as { emoji: CustomEmojiOut; deleted: boolean };
+        store.applyCustomEmoji(data.emoji, data.deleted);
         return;
       }
       case "reminder.updated": {
