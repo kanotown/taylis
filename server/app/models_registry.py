@@ -3,6 +3,7 @@
 from app.core.base import Base
 from app.events import models as _event_models
 from app.modules.auth import models as _auth_models
+from app.modules.channel_links import models as _channel_link_models
 from app.modules.channels import models as _channel_models
 from app.modules.drafts import models as _draft_models
 from app.modules.groups import models as _group_models
@@ -17,6 +18,7 @@ from app.modules.webhooks import models as _webhook_models
 __all__ = [
     "Base",
     "_auth_models",
+    "_channel_link_models",
     "_channel_models",
     "_draft_models",
     "_event_models",

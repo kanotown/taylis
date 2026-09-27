@@ -28,6 +28,7 @@ from app.modules.auth import repository as auth_repo
 from app.modules.auth.router import router as auth_router
 from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
+from app.modules.channel_links.router import router as channel_links_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
 from app.modules.drafts.router import router as drafts_router
@@ -199,6 +200,7 @@ def build_api_router() -> APIRouter:
     api.include_router(favorites_router)
     api.include_router(sidebar_router)
     api.include_router(drafts_router)
+    api.include_router(channel_links_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)
