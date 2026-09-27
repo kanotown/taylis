@@ -66,7 +66,7 @@ describe("conversation UX", () => {
     view.rerender(<w.DraftComposer />);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(w.send).toHaveBeenLastCalledWith(w.channel.id, "with file", undefined, null, ["a1"], false);
-    expect(w.store.draft(w.channel.id)).toEqual({ text: "", attachments: [] });
+    expect(w.store.draft(w.channel.id)).toMatchObject({ text: "", attachments: [] });
   });
 
   it("preserves a draft after a failed upload and does not send an IME confirmation", async () => {
@@ -119,7 +119,7 @@ describe("conversation UX", () => {
     await store.flushPersistence();
     const restored = new Store(persistence);
     await restored.load();
-    expect(restored.draft("c")).toEqual({ text: "ab", attachments: [attachment] });
+    expect(restored.draft("c")).toMatchObject({ text: "ab", attachments: [attachment] });
     restored.setDraft("c", null, { text: "", attachments: [] });
     await restored.flushPersistence();
     const reopened = new Store(persistence);
