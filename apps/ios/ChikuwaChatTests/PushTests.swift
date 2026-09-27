@@ -11,4 +11,10 @@ final class PushTests: XCTestCase {
         XCTAssertEqual(PushEnvironment.parse("<key>aps-environment</key><string>production</string>"), "production")
         XCTAssertEqual(PushEnvironment.parse("<key>get-task-allow</key><true/>"), "sandbox")
     }
+
+    func testStoreBuildsWithoutAProfileUseProduction() {
+        // App Store / TestFlight builds have no embedded.mobileprovision: a sandbox registration would lose every push.
+        XCTAssertEqual(PushEnvironment.resolve(profile: nil), "production")
+        XCTAssertEqual(PushEnvironment.resolve(profile: "<key>aps-environment</key><string>development</string>"), "sandbox")
+    }
 }

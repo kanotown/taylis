@@ -256,7 +256,10 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
   永続ハンドラとして `main.py` で注入され、Sender は lifespan の背景タスク。設定は `PUSH_*`。
 - `push-test` CLI: `uv run python -m app.cli push-test --user <username>` (compose では `docker compose exec app python -m app.cli push-test --user <username>`)。
 - iOS: `AppDelegate` がトークンを受け取り `PushCenter` が `PUT /devices/current` で登録する。`aps-environment` は
-  `ChikuwaChat.entitlements` で development (= sandbox)。埋め込みプロビジョニングプロファイルから環境を判定する。
+  `ChikuwaChat.entitlements` で development (= sandbox)。埋め込みプロビジョニングプロファイルから環境を判定する
+  (Xcode から入れたビルドは sandbox、Ad Hoc は production)。App Store / TestFlight のビルドには埋め込みプロファイルが
+  無いので production とする (以前は sandbox と判定し、TestFlight の端末に通知が届かないところだった。2026-09-27 修正)。
+  シミュレータは sandbox。
 - M8 で追加するもの: メンション時の通知 (`level = mentions`)、既読チェック、バッジの正確な数。
 
 ## 14. 実装メモ (M7)
