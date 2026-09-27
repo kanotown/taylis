@@ -176,6 +176,10 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    `https://<CHAT_DOMAIN>/` を開くだけでよい。ユーザーは `create-user` (仮パスワード)、管理者 API、
    または管理画面の招待リンク (M12h) で作る。
 
+   1 つのデプロイが 1 つのワークスペースになる。ワークスペース名は `.env` の `WORKSPACE_NAME` (空なら
+   ChikuwaChat) で、クライアントの切り替え一覧と検索欄に出る。チームを分けたいときは、この手順でもう 1 つ
+   デプロイし、各クライアントの「ワークスペースを追加」から登録する (docs/WORKSPACES.md)。
+
 4. **バックアップ** (毎日。`infra/backup.sh` は `pg_dump -Fc` の後にオブジェクトストアの tar を取る)
 
    ```sh
