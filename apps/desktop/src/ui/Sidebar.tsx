@@ -100,9 +100,9 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         {me && <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" />}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-white">{me?.display_name ?? ""}</div>
-          <div className="flex items-center gap-1.5 text-[11px] opacity-80">
-            <span className={cn("h-2 w-2 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-white/30")} />
-            {statusLabel(status)}
+          <div className="flex min-w-0 items-center gap-1.5 text-[11px] opacity-80" title={statusTitle(status)}>
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-white/30")} />
+            <span className="truncate whitespace-nowrap">{statusLabel(status)}</span>
           </div>
         </div>
         {onSearch && (
@@ -351,14 +351,28 @@ function Hint({ children }: { children: React.ReactNode }) {
   return <p className="px-2.5 py-1 text-xs opacity-60">{children}</p>;
 }
 
+/** Short enough for the narrowest sidebar (the banner over the conversation says more). */
 function statusLabel(status: string): string {
   switch (status) {
     case "online":
-      return "接続中";
+      return "オンライン";
     case "connecting":
-      return "接続しています…";
+      return "接続中…";
     case "offline":
-      return "再接続を待っています";
+      return "再接続中…";
+    default:
+      return "オフライン";
+  }
+}
+
+function statusTitle(status: string): string {
+  switch (status) {
+    case "online":
+      return "サーバに接続しています";
+    case "connecting":
+      return "サーバに接続しています…";
+    case "offline":
+      return "サーバに接続できません。自動で再接続します";
     default:
       return "オフライン";
   }
