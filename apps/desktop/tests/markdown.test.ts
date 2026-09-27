@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBlocks, plainText, tokenize, tokenizeInline } from "../src/ui/markdown";
+import { type Block, parseBlocks, plainText, splitTableRow, tokenize, tokenizeInline } from "../src/ui/markdown";
 
 describe("message body tokenizer", () => {
   it("handles the inline subset, mentions, links and newlines", () => {
@@ -88,5 +88,29 @@ describe("group mention tokens (M12k)", () => {
     const tokens = tokenize("<@group:00000000-0000-7000-8000-00000000000a> and <@00000000-0000-7000-8000-000000000001>");
     expect(tokens.map((t) => t.kind)).toEqual(["mention_group", "text", "mention"]);
     expect(tokens[0]).toEqual({ kind: "mention_group", groupId: "00000000-0000-7000-8000-00000000000a" });
+  });
+});
+
+describe("tables (M15g)", () => {
+  it("parses a GFM table with alignment, escaped pipes, short and long rows", () => {
+    const body = "予定:\n| 項目 | 担当 | 期限 |\n| :--- | :-: | ---: |\n| API | <@01234567-89ab-cdef-0123-456789abcdef> | 10/2 |\n| a \\| b | **UI** |\n| x | y | z | extra |\n後書き";
+    const blocks = parseBlocks(body);
+    expect(blocks.map((b) => b.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    const table = blocks[1] as Extract<Block, { kind: "table" }>;
+    expect(table.align).toEqual(["left", "center", "right"]);
+    expect(table.header.map((cell) => cell.map((t) => (t.kind === "text" ? t.text : t.kind)).join(""))).toEqual(["項目", "担当", "期限"]);
+    expect(table.rows).toHaveLength(3);
+    expect(table.rows[0]?.[1]).toEqual([{ kind: "mention", userId: "01234567-89ab-cdef-0123-456789abcdef" }]);
+    expect(table.rows[1]?.[0]).toEqual([{ kind: "text", text: "a | b" }]);
+    expect(table.rows[1]?.[1]).toEqual([{ kind: "bold", text: "UI" }]);
+    expect(table.rows[1]?.[2]).toEqual([]); // padded
+    expect(table.rows[2]).toHaveLength(3); // extra cells dropped
+  });
+
+  it("needs a matching separator line; otherwise pipes stay text", () => {
+    expect(parseBlocks("a | b\nc | d").map((b) => b.kind)).toEqual(["paragraph"]);
+    expect(parseBlocks("| a | b |\n| --- |").map((b) => b.kind)).toEqual(["paragraph"]);
+    expect(splitTableRow("| a | b |")).toEqual(["a", "b"]);
+    expect(plainText("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |")).toBe("項目 担当 API 田中");
   });
 });
