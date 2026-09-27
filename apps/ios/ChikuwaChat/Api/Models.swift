@@ -553,6 +553,9 @@ struct SearchFilters: Codable, Equatable {
     let after: String?
     let before: String?
     var unresolved: [String] = []
+    /// M15h: the has: flags (file, link, pin, reaction, poll) and is:thread the server understood.
+    var has: [String]? = nil
+    var isThread: Bool? = nil
 }
 
 struct SearchOut: Codable {

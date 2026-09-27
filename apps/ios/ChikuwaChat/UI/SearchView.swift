@@ -15,19 +15,33 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             List {
-                if !searched {
-                    Text("絞り込み: from:@名前  in:#チャンネル  before:2026-09-01  after:  on:")
-                        .font(.caption).foregroundStyle(.secondary)
+                // M15h: a hint adds its modifier; a complete one (has:file, is:thread …) searches right away.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(SearchHints.all, id: \.insert) { hint in
+                            Button(hint.label) {
+                                query = SearchHints.append(query, hint.insert)
+                                if hint.complete { Task { await run(offset: 0) } }
+                            }
+                            .font(.caption)
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                        }
+                    }
                 }
+                .listRowSeparator(.hidden)
                 if let filters, !filters.unresolved.isEmpty {
                     Text("見つからない条件があります: \(filters.unresolved.joined(separator: " "))").font(.footnote).foregroundStyle(.red)
                 }
-                if let filters, filters.fromUsername != nil || filters.inChannel != nil || filters.after != nil || filters.before != nil {
+                if let filters, filters.fromUsername != nil || filters.inChannel != nil || filters.after != nil || filters.before != nil
+                    || !(filters.has ?? []).isEmpty || filters.isThread == true {
                     HStack(spacing: 6) {
                         if let name = filters.fromUsername { Text("from: @\(name)") }
                         if let name = filters.inChannel { Text("in: #\(name)") }
                         if let after = filters.after, let date = parseIsoDate(after) { Text(date.formatted(date: .abbreviated, time: .omitted) + " 以降") }
                         if let before = filters.before, let date = parseIsoDate(before) { Text(date.formatted(date: .abbreviated, time: .omitted) + " より前") }
+                        ForEach(filters.has ?? [], id: \.self) { flag in Text(SearchHints.flagLabels[flag] ?? "has:\(flag)") }
+                        if filters.isThread == true { Text("スレッド内") }
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
@@ -74,6 +88,33 @@ struct SearchView: View {
         } catch {
             controller.error = String(describing: error)
         }
+    }
+}
+
+/// M15h: the modifiers offered above the results (same list as the desktop).
+enum SearchHints {
+    struct Hint { let label: String; let insert: String; let complete: Bool }
+
+    static let all: [Hint] = [
+        Hint(label: "from:@名前", insert: "from:@", complete: false),
+        Hint(label: "in:#チャンネル", insert: "in:#", complete: false),
+        Hint(label: "on:", insert: "on:", complete: false),
+        Hint(label: "ファイルあり", insert: "has:file", complete: true),
+        Hint(label: "リンクあり", insert: "has:link", complete: true),
+        Hint(label: "ピン留め", insert: "has:pin", complete: true),
+        Hint(label: "リアクションあり", insert: "has:reaction", complete: true),
+        Hint(label: "投票", insert: "has:poll", complete: true),
+        Hint(label: "スレッド", insert: "is:thread", complete: true),
+    ]
+
+    static let flagLabels = ["file": "ファイルあり", "link": "リンクあり", "pin": "ピン留め", "reaction": "リアクションあり", "poll": "投票"]
+
+    /// Adds a modifier to the query (once); open ones such as "from:@" stay ready for typing.
+    static func append(_ query: String, _ insert: String) -> String {
+        if query.split(whereSeparator: \.isWhitespace).contains(Substring(insert)) { return query }
+        let base = query.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
+        let open = insert.hasSuffix(":") || insert.hasSuffix("@") || insert.hasSuffix("#")
+        return (base.isEmpty ? "" : base + " ") + insert + (open ? "" : " ")
     }
 }
 
