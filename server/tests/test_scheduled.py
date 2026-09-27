@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any, cast
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -18,7 +19,9 @@ from tests.helpers import make_user
 from tests.test_attachments import upload
 
 
-async def _schedule(client: AsyncClient, channel_id: str, body: str, **extra: object) -> dict:
+async def _schedule(
+    client: AsyncClient, channel_id: str, body: str, **extra: object
+) -> dict[str, Any]:
     payload = {
         "client_msg_id": str(uuid.uuid4()),
         "body": body,
@@ -26,7 +29,7 @@ async def _schedule(client: AsyncClient, channel_id: str, body: str, **extra: ob
     } | extra
     response = await client.post(f"/api/v1/channels/{channel_id}/scheduled", json=payload)
     assert response.status_code == 201, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 async def test_schedule_list_cancel_and_validation(

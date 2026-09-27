@@ -202,7 +202,8 @@ async def test_password_change_revokes_only_other_sessions(
     other = await login(client, "alice")
     payload = {"current_password": "wrong", "new_password": "a-brand-new-password"}
     wrong = await client.put("/api/v1/users/me/password", headers=bearer(current), json=payload)
-    assert wrong.status_code == 401 and wrong.json()["error"]["code"] == "invalid_credentials"
+    # 422 (not 401): a wrong current password must not end the session (M12i).
+    assert wrong.status_code == 422 and wrong.json()["error"]["code"] == "invalid_password"
     assert (await refresh(client, other)).status_code == 200
     payload["current_password"] = PASSWORD
     changed = await client.put("/api/v1/users/me/password", headers=bearer(current), json=payload)

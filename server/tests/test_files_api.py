@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from typing import Any, cast
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -12,13 +13,15 @@ from tests.helpers import make_user
 from tests.test_attachments import png_bytes, upload
 
 
-async def _post_with(client: AsyncClient, channel_id: str, body: str, ids: list[str]) -> dict:
+async def _post_with(
+    client: AsyncClient, channel_id: str, body: str, ids: list[str]
+) -> dict[str, Any]:
     response = await client.post(
         f"/api/v1/channels/{channel_id}/messages",
         json={"client_msg_id": str(uuid.uuid4()), "body": body, "attachment_ids": ids},
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 async def test_files_list_filters_pages_and_hides_deleted(

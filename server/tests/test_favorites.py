@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -19,7 +19,7 @@ async def _post(client: AsyncClient, channel_id: str, body: str) -> dict[str, An
         json={"client_msg_id": str(uuid.uuid4()), "body": body},
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 async def _events(db: AsyncSession, event_type: str) -> list[OutboxEvent]:

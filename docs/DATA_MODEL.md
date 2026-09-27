@@ -388,6 +388,24 @@ CREATE INDEX invites_created_idx ON invites (created_at);
   `use_count` / `used_by` を更新。その後は通常の login と同じ経路でセッションを作る。
 - イベントは出さない (管理画面は都度取得)。新しいアカウントは既存の `user.created` で全端末に届く。
 
+### user_totp (2 要素認証、M12i)
+
+```sql
+CREATE TABLE user_totp (
+  user_id          uuid PRIMARY KEY REFERENCES users(id),
+  secret           bytea NOT NULL,          -- 20 バイトの乱数 (RFC 6238、SHA-1 / 6 桁 / 30 秒)
+  enabled_at       timestamptz,             -- NULL の間は設定途中 (コードで確認するまでログインには効かない)
+  recovery_hashes  bytea[] NOT NULL,        -- 未使用の回復コードの SHA-256。使うと取り除く
+  last_used_step   bigint,                  -- 受け付けた最後の 30 秒ステップ (同じコードは 2 度使えない)
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- 秘密は平文で置く (DB を読める人はパスワードハッシュも読める前提。SECURITY.md §2.7)。
+- `users` には列を足さない。有効かどうかは `GET /auth/totp` と admin のユーザー一覧 (`totp_enabled`) で見る。
+- 無効化 / admin のリセットは行を消す。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

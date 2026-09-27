@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any, cast
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -18,13 +19,13 @@ from tests.helpers import make_user
 from tests.test_push_planner import add_device, deliveries, relay_with_planner
 
 
-async def _post(client: AsyncClient, channel_id: str, body: str) -> dict:
+async def _post(client: AsyncClient, channel_id: str, body: str) -> dict[str, Any]:
     response = await client.post(
         f"/api/v1/channels/{channel_id}/messages",
         json={"client_msg_id": str(uuid.uuid4()), "body": body},
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 async def test_reminders_are_personal_and_validated(

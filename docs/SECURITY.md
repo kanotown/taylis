@@ -104,6 +104,22 @@ refresh(token):
   登録ユーザーの内容しか届かないため実害はない。無効なトークンは NULL に戻す。
 - プッシュ本文にメッセージ内容を含めるかは `PUSH_INCLUDE_CONTENT` で切り替えられる。
 
+### 2.7 2 要素認証 (TOTP、M12i)
+
+- 本人が設定で有効にする (RFC 6238: SHA-1、6 桁、30 秒。Google Authenticator / 1Password などの既定)。
+  `POST /auth/totp/setup` (現在のパスワードが必要) が秘密・`otpauth://` URI・QR (PNG) を 1 回だけ返し、
+  `POST /auth/totp/enable` でアプリのコードを確認して初めてログインに効く。同時に回復コード 8 個を
+  1 回だけ返す (SHA-256 で保存、各 1 回きり)。
+- ログインは `POST /auth/login` の `totp_code` (6 桁、または回復コード)。パスワードが正しく 2FA が有効で
+  コードが無いとき `401 totp_required`、違うとき `401 invalid_totp`。パスワードが違えばコードの有無に
+  かかわらず `invalid_credentials` (2FA の有無を漏らさない)。前後 1 ステップの時計ずれを許し、
+  受け付けたステップより古いコードは拒否する (再利用防止)。総当たりはログインのレートリミットが抑える。
+- 本人は `POST /auth/totp/disable` (パスワード) で無効化、管理者は `DELETE /admin/users/{id}/totp` で
+  リセットできる (端末紛失時)。有効化・無効化・リセットは監査ログに残る。
+- セッション中の誤ったパスワード / コードは 422 (`invalid_password` / `invalid_totp`) で返す。
+  クライアントは認証済みリクエストの 401 (token_expired 以外) でセッションを捨てるため、401 にしない。
+  同じ理由でパスワード変更の現在のパスワード誤りも 422 `invalid_password` に改めた。
+
 ## 3. 認可
 
 ### 3.1 ロール

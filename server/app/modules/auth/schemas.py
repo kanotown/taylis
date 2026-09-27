@@ -33,6 +33,9 @@ class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(max_length=128, repr=False)
     device: DeviceCreate
+    # M12i: the authenticator (or recovery) code when the account has 2FA; 401 totp_required asks
+    # for it after the password was accepted.
+    totp_code: str | None = Field(default=None, max_length=16, repr=False)
 
 
 class RefreshRequest(BaseModel):

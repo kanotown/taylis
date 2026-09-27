@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -22,7 +23,7 @@ def _at(text: str) -> datetime:
 
 
 def test_quiet_hours_same_day_window() -> None:
-    kw = {"start": 12 * 60, "end": 13 * 60, "days": None, "tz": "Asia/Tokyo"}
+    kw: dict[str, Any] = {"start": 12 * 60, "end": 13 * 60, "days": None, "tz": "Asia/Tokyo"}
     assert in_quiet_hours(_at("2026-09-28T12:30:00+09:00"), **kw)  # Monday lunch
     assert not in_quiet_hours(_at("2026-09-28T13:00:00+09:00"), **kw)  # end is exclusive
     assert not in_quiet_hours(_at("2026-09-28T11:59:00+09:00"), **kw)
@@ -31,12 +32,12 @@ def test_quiet_hours_same_day_window() -> None:
 
 
 def test_quiet_hours_overnight_belongs_to_the_day_it_starts() -> None:
-    friday_only = {"start": 22 * 60, "end": 7 * 60, "days": [4], "tz": "Asia/Tokyo"}
+    friday_only: dict[str, Any] = {"start": 22 * 60, "end": 7 * 60, "days": [4], "tz": "Asia/Tokyo"}
     assert in_quiet_hours(_at("2026-10-02T23:00:00+09:00"), **friday_only)  # Friday night
     assert in_quiet_hours(_at("2026-10-03T06:30:00+09:00"), **friday_only)  # Saturday morning
     assert not in_quiet_hours(_at("2026-10-03T23:00:00+09:00"), **friday_only)  # Saturday night
     assert not in_quiet_hours(_at("2026-10-02T21:59:00+09:00"), **friday_only)
-    every_day = {"start": 22 * 60, "end": 7 * 60, "days": None, "tz": "Asia/Tokyo"}
+    every_day: dict[str, Any] = {"start": 22 * 60, "end": 7 * 60, "days": None, "tz": "Asia/Tokyo"}
     assert in_quiet_hours(_at("2026-09-28T02:00:00+09:00"), **every_day)
     assert not in_quiet_hours(_at("2026-09-28T08:00:00+09:00"), **every_day)
     assert not in_quiet_hours(_at("2026-09-28T08:00:00+09:00"), start=0, end=0, days=None, tz="UTC")

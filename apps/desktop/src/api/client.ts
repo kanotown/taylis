@@ -37,6 +37,9 @@ import type {
   ThreadListOut,
   ThreadState,
   TokenResponse,
+  TotpEnabledOut,
+  TotpSetupOut,
+  TotpStatusOut,
   UserMe,
   UserUpdate,
   UserPublic,
@@ -79,11 +82,12 @@ export class ApiClient {
 
   // --- auth -----------------------------------------------------------------------------
 
-  async login(username: string, password: string, device: DeviceInfo): Promise<TokenResponse> {
+  /** `totpCode` (M12i) is the authenticator or recovery code once the server answered 401 totp_required. */
+  async login(username: string, password: string, device: DeviceInfo, totpCode?: string): Promise<TokenResponse> {
     const tokens = await this.request<TokenResponse>(
       "POST",
       "/api/v1/auth/login",
-      { username, password, device },
+      { username, password, device, ...(totpCode ? { totp_code: totpCode } : {}) },
       { auth: false },
     );
     this.applyTokens(tokens);
@@ -367,6 +371,30 @@ export class ApiClient {
 
   adminAnonymizeUser(userId: string): Promise<AdminUserOut> {
     return this.request("POST", `/api/v1/admin/users/${userId}/anonymize`);
+  }
+
+  // --- two-factor authentication (M12i) ----------------------------------------------------
+
+  totpStatus(): Promise<TotpStatusOut> {
+    return this.request("GET", "/api/v1/auth/totp");
+  }
+
+  /** Needs my password; the secret and QR come back once. A wrong password is 422 invalid_password. */
+  totpSetup(password: string): Promise<TotpSetupOut> {
+    return this.request("POST", "/api/v1/auth/totp/setup", { password });
+  }
+
+  /** Confirms the setup with an app code; returns the recovery codes once. */
+  totpEnable(code: string): Promise<TotpEnabledOut> {
+    return this.request("POST", "/api/v1/auth/totp/enable", { code });
+  }
+
+  totpDisable(password: string): Promise<void> {
+    return this.request("POST", "/api/v1/auth/totp/disable", { password });
+  }
+
+  adminResetTotp(userId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/users/${userId}/totp`);
   }
 
   // --- invite links (M12h) ------------------------------------------------------------------

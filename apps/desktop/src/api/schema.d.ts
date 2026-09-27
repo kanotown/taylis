@@ -131,6 +131,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Reset Totp
+         * @description Turn 2FA off for a member who lost the authenticator (audited).
+         */
+        delete: operations["admin_reset_totp_api_v1_admin_users__user_id__totp_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments": {
         parameters: {
             query?: never;
@@ -279,6 +299,83 @@ export interface paths {
         post?: never;
         /** Auth:Revoke Session */
         delete: operations["auth_revoke_session_api_v1_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Totp Status
+         * @description Whether my account asks for an authenticator code at login (M12i).
+         */
+        get: operations["totp_status_api_v1_auth_totp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Totp Disable */
+        post: operations["totp_disable_api_v1_auth_totp_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Totp Enable
+         * @description Confirm the setup with a code from the app; returns the recovery codes once.
+         */
+        post: operations["totp_enable_api_v1_auth_totp_enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Totp Setup
+         * @description Start (or restart) the setup: needs my password; the secret is shown only here.
+         */
+        post: operations["totp_setup_api_v1_auth_totp_setup_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1266,6 +1363,11 @@ export interface components {
             /** Role */
             role: string;
             /**
+             * Totp Enabled
+             * @default false
+             */
+            totp_enabled: boolean;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -1782,6 +1884,8 @@ export interface components {
             device: components["schemas"]["DeviceCreate"];
             /** Password */
             password: string;
+            /** Totp Code */
+            totp_code?: string | null;
             /** Username */
             username: string;
         };
@@ -2298,6 +2402,45 @@ export interface components {
             token_type: "bearer";
             user: components["schemas"]["UserMe"];
         };
+        /** TotpEnableRequest */
+        TotpEnableRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * TotpEnabledOut
+         * @description Recovery codes are shown once; each works for one login without the authenticator.
+         */
+        TotpEnabledOut: {
+            /** Recovery Codes */
+            recovery_codes: string[];
+        };
+        /**
+         * TotpSetupOut
+         * @description Shown once: the secret for manual entry, the otpauth URI and its QR code as PNG.
+         */
+        TotpSetupOut: {
+            /** Otpauth Uri */
+            otpauth_uri: string;
+            /** Qr Png Base64 */
+            qr_png_base64: string;
+            /** Secret */
+            secret: string;
+        };
+        /** TotpSetupRequest */
+        TotpSetupRequest: {
+            /** Password */
+            password: string;
+        };
+        /** TotpStatusOut */
+        TotpStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Enabled At */
+            enabled_at: string | null;
+            /** Recovery Codes Left */
+            recovery_codes_left: number;
+        };
         /** UserMe */
         UserMe: {
             /**
@@ -2684,6 +2827,35 @@ export interface operations {
             };
         };
     };
+    admin_reset_totp_api_v1_admin_users__user_id__totp_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_api_v1_attachments_post: {
         parameters: {
             query?: never;
@@ -2933,6 +3105,123 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_status_api_v1_auth_totp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpStatusOut"];
+                };
+            };
+        };
+    };
+    totp_disable_api_v1_auth_totp_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_enable_api_v1_auth_totp_enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpEnableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpEnabledOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_setup_api_v1_auth_totp_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetupOut"];
+                };
             };
             /** @description Validation Error */
             422: {

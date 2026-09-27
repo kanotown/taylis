@@ -13,6 +13,7 @@ from app.modules.admin.schemas import (
     to_admin_out,
 )
 from app.modules.auth.deps import CurrentAdmin
+from app.modules.totp import service as totp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -25,7 +26,9 @@ async def create_user(actor: CurrentAdmin, body: AdminUserCreate, db: Db) -> Adm
 
 @router.get("/users", response_model=list[AdminUserOut])
 async def list_users(_: CurrentAdmin, db: Db) -> list[AdminUserOut]:
-    return [to_admin_out(u) for u in await service.list_users(db)]
+    users = await service.list_users(db)
+    with_totp = await totp.enabled_user_ids(db, [u.id for u in users])
+    return [to_admin_out(u, totp_enabled=u.id in with_totp) for u in users]
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)

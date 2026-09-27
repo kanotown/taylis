@@ -47,6 +47,7 @@ from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
 from app.modules.sync.router import router as sync_router
 from app.modules.threads.router import router as threads_router
+from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
 from app.realtime.hub import RealtimeHub
 from app.realtime.router import router as realtime_router
@@ -179,6 +180,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def build_api_router() -> APIRouter:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(auth_router)
+    api.include_router(totp_router)
     api.include_router(users_router)
     api.include_router(admin_router)
     api.include_router(invites_router)

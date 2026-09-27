@@ -92,3 +92,8 @@ export type InviteCreate = components["schemas"]["InviteCreate"];
 export type InviteCreated = components["schemas"]["InviteCreated"];
 export type InvitePreviewOut = components["schemas"]["InvitePreviewOut"];
 export type InviteAccept = components["schemas"]["InviteAccept"];
+
+/** Two-factor authentication (M12i). */
+export type TotpStatusOut = components["schemas"]["TotpStatusOut"];
+export type TotpSetupOut = components["schemas"]["TotpSetupOut"];
+export type TotpEnabledOut = components["schemas"]["TotpEnabledOut"];
