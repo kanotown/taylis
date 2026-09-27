@@ -1,6 +1,7 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AppController } from "../state/app";
+import type { EngineStatus } from "../sync/engine";
 
 /** Re-render when the controller, the engine or the store changes (single source of truth). */
 export function useAppVersion(controller: AppController): number {
@@ -28,4 +29,31 @@ export function useMediaQuery(query: string): boolean {
     },
     () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches,
   );
+}
+
+/** How long the socket may be down before the connection strip appears (all clients use 2 s). */
+export const CONNECTION_BANNER_GRACE_MS = 2000;
+
+/**
+ * The status the connection strip shows, or null. A reconnect that finishes within the grace period (start-up,
+ * waking the computer, a phone returning to the page) shows nothing: the strip would only flash and push the
+ * conversation down and back. Once shown, it follows the status until the socket is live again.
+ */
+export function useConnectionBanner(status: EngineStatus, graceMs = CONNECTION_BANNER_GRACE_MS): "connecting" | "offline" | null {
+  const [shown, setShown] = useState<"connecting" | "offline" | null>(null);
+  const visible = useRef(false);
+  visible.current = shown !== null;
+  useEffect(() => {
+    if (status !== "connecting" && status !== "offline") {
+      setShown(null);
+      return;
+    }
+    if (visible.current) {
+      setShown(status);
+      return;
+    }
+    const timer = setTimeout(() => setShown(status), graceMs);
+    return () => clearTimeout(timer);
+  }, [status, graceMs]);
+  return shown;
 }

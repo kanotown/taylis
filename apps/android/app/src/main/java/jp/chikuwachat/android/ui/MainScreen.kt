@@ -79,6 +79,7 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -507,16 +508,31 @@ private fun TwoLineTitle(title: String, subtitle: String?) {
     }
 }
 
-/** Thin strip under the app bar while the socket is not live; nothing when online. */
+/**
+ * Thin strip under the app bar while the socket stays down. A reconnect that finishes within [BANNER_GRACE_MS]
+ * (launch, return from the background) shows nothing: the strip would only flash and push the list down and back.
+ * Once shown, it follows the status until the socket is live again (same 2 s on every client).
+ */
 @Composable
 fun ConnectionBanner(status: EngineStatus) {
-    val (text, color) = when (status) {
+    var shown by remember { mutableStateOf<EngineStatus?>(null) }
+    LaunchedEffect(status) {
+        if (status != EngineStatus.CONNECTING && status != EngineStatus.OFFLINE) {
+            shown = null
+            return@LaunchedEffect
+        }
+        if (shown == null) delay(BANNER_GRACE_MS)
+        shown = status
+    }
+    val (text, color) = when (shown) {
         EngineStatus.CONNECTING -> "サーバに接続しています…" to MaterialTheme.colorScheme.primaryContainer
         EngineStatus.OFFLINE -> "オフラインです。再接続を待っています…" to MaterialTheme.colorScheme.errorContainer
         else -> return
     }
     Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.fillMaxWidth().background(color).padding(horizontal = 16.dp, vertical = 4.dp))
 }
+
+private const val BANNER_GRACE_MS = 2_000L
 
 @Composable
 private fun ChannelList(

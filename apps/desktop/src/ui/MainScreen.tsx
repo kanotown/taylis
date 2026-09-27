@@ -21,6 +21,7 @@ import { FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { BackButton, BackToList, useCompact } from "./compact";
+import { useConnectionBanner } from "./hooks";
 import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
@@ -145,6 +146,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // The thread pane belongs to the current channel, or to the channel of the row picked in the threads view.
   const threadChannel: ChannelState | undefined = view === "threads" ? (threadChannelId ? store.getChannel(threadChannelId) : undefined) : current;
   const status = engine?.status ?? "idle";
+  const banner = useConnectionBanner(status);
 
   // The keyboard handler is registered once and reads the latest state through this ref.
   const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen });
@@ -468,9 +470,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   ) : null;
   const centre = (
     <>
-      {status !== "online" && status !== "idle" && (
-        <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", status === "connecting" ? "bg-accent" : "bg-warning")}>
-          {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
+      {banner && (
+        <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", banner === "connecting" ? "bg-accent" : "bg-warning")}>
+          {banner === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
         </div>
       )}
       {view === "search" && search ? (
