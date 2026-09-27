@@ -26,4 +26,17 @@ final class MentionsTests: XCTestCase {
         XCTAssertEqual(Mentions.candidates("", users: users).map(\.username), ["alice", "bob.k", "channel", "here"])
         XCTAssertEqual(Mentions.complete("hello @bo", username: "bob.k"), "hello @bob.k ")
     }
+
+    func testGroupMentionsEncodeDecodeAndSuggest() {
+        let design = GroupOut(id: "00000000-0000-7000-8000-00000000000a", name: "design", description: "デザイン担当", memberIds: [alice.id, bob.id], createdBy: alice.id, createdAt: "", updatedAt: "")
+        XCTAssertEqual(Mentions.encode("@design please, @alice too", users: users, groups: [design]), "<@group:\(design.id)> please, <@\(alice.id)> too")
+        let byId = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+        XCTAssertEqual(Mentions.decode("<@group:\(design.id)> hi", users: byId, groups: [design.id: design]), "@design hi")
+        XCTAssertEqual(Mentions.toNames("<@group:\(design.id)> and <@group:00000000-0000-7000-8000-000000000009>", users: [:], groups: [design.id: design]), "@design and @グループ")
+        let rows = Mentions.candidates("de", users: users, groups: [design])
+        XCTAssertEqual(rows.map(\.username), ["design"])
+        XCTAssertEqual(rows.first?.kind, "group")
+        XCTAssertEqual(rows.first?.label, "グループ · 2 人 · デザイン担当")
+        XCTAssertEqual(Mentions.candidates("", users: users, groups: [design]).map(\.username), ["alice", "bob.k", "design", "channel", "here"])
+    }
 }

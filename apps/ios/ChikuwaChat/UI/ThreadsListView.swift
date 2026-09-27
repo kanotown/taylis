@@ -100,7 +100,7 @@ struct ThreadRowView: View {
     /// One-line preview: mentions as names, light markdown stripped (DATA_MODEL.md 本文の形式).
     private func excerpt(_ message: MessageOut) -> String {
         if message.body.isEmpty { return message.attachments.isEmpty ? "" : "(添付ファイル)" }
-        var text = Mentions.decode(message.body, users: store.users)
+        var text = Mentions.decode(message.body, users: store.users, groups: store.groups)
         for pattern in ["```[a-zA-Z0-9_+-]*", "^#{1,3}\\s+", "^>\\s?", "^\\s*[-*]\\s+", "^\\s*\\d+\\.\\s+", "\\*\\*", "~~", "`"] {
             text = text.replacingOccurrences(of: pattern, with: "", options: [.regularExpression], range: nil)
         }

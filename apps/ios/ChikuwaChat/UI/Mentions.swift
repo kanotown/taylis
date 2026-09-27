@@ -6,43 +6,59 @@ enum Mentions {
     struct Candidate: Identifiable, Equatable {
         let username: String
         let label: String
+        /// M12k: "group" notifies the members; "all" is @channel / @here.
+        var kind: String = "user"
         var id: String { username }
     }
 
     private static let handle = try! NSRegularExpression(pattern: #"(^|[\s(])@([A-Za-z0-9._-]+)"#)
     private static let userToken = try! NSRegularExpression(pattern: #"<@([0-9a-f-]{36})>"#)
     private static let allToken = try! NSRegularExpression(pattern: #"<!(channel|here)>"#)
+    private static let groupToken = try! NSRegularExpression(pattern: #"<@group:([0-9a-f-]{36})>"#)
     private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(])@([A-Za-z0-9._-]*)$"#)
 
-    static func encode(_ text: String, users: some Collection<UserPublic>) -> String {
-        let byName = Dictionary(users.map { ($0.username.lowercased(), $0.id) }, uniquingKeysWith: { first, _ in first })
-        return replace(text, handle) { groups in
-            let lead = groups[1]
-            let name = groups[2].lowercased()
+    static func encode(_ text: String, users: some Collection<UserPublic>, groups: [GroupOut] = []) -> String {
+        var byName = Dictionary(users.map { ($0.username.lowercased(), "<@\($0.id)>") }, uniquingKeysWith: { first, _ in first })
+        for group in groups { byName[group.name.lowercased()] = "<@group:\(group.id)>" } // names never collide (server)
+        return replace(text, handle) { match in
+            let lead = match[1]
+            let name = match[2].lowercased()
             if name == "channel" || name == "here" { return "\(lead)<!\(name)>" }
-            if let id = byName[name] { return "\(lead)<@\(id)>" }
+            if let token = byName[name] { return "\(lead)\(token)" }
             return nil
         }
     }
 
-    static func decode(_ text: String, users: [String: UserPublic]) -> String {
-        let step = replace(text, userToken) { groups in users[groups[1]].map { "@" + $0.username } }
-        return replace(step, allToken) { groups in "@" + groups[1] }
+    static func decode(_ text: String, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        let step = replace(text, userToken) { match in users[match[1]].map { "@" + $0.username } }
+        let withGroups = replace(step, groupToken) { match in groups[match[1]].map { "@" + $0.name } }
+        return replace(withGroups, allToken) { match in "@" + match[1] }
+    }
+
+    /// Mention tokens as display names, for notifications and previews (`@Toru Kano`, `@design`, `@channel`).
+    static func toNames(_ text: String, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        let step = replace(text, userToken) { match in "@" + (users[match[1]]?.displayName ?? "メンバー") }
+        let withGroups = replace(step, groupToken) { match in "@" + (groups[match[1]]?.name ?? "グループ") }
+        return replace(withGroups, allToken) { match in "@" + match[1] }
     }
 
     /// The `@prefix` being typed at the end of `text`, or nil.
     static func query(_ text: String) -> String? { groups(queryPattern, text)?[2] }
 
-    static func candidates(_ query: String, users: some Collection<UserPublic>, limit: Int = 6) -> [Candidate] {
+    static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], limit: Int = 6) -> [Candidate] {
         let q = query.lowercased()
         let people = users
             .filter { $0.deactivatedAt == nil }
             .filter { $0.username.lowercased().hasPrefix(q) || $0.displayName.lowercased().contains(q) }
             .sorted { $0.username < $1.username }
             .map { Candidate(username: $0.username, label: $0.displayName) }
-        let special = [Candidate(username: "channel", label: "全員に通知"), Candidate(username: "here", label: "全員に通知")]
+        let teams = groups
+            .filter { $0.name.lowercased().hasPrefix(q) || ($0.description ?? "").lowercased().contains(q) }
+            .sorted { $0.name < $1.name }
+            .map { Candidate(username: $0.name, label: "グループ · \($0.memberIds.count) 人" + ($0.description.map { " · " + $0 } ?? ""), kind: "group") }
+        let special = [Candidate(username: "channel", label: "全員に通知", kind: "all"), Candidate(username: "here", label: "全員に通知", kind: "all")]
             .filter { $0.username.hasPrefix(q) }
-        return Array((people + special).prefix(limit))
+        return Array((people + teams + special).prefix(limit))
     }
 
     /// Replace the `@prefix` at the end of `text` with the chosen handle.

@@ -23,7 +23,7 @@ struct DraftsView: View {
                                 Text("· \(Schedule.label(iso: row.sendAt)) に送信").font(.footnote).foregroundStyle(.secondary)
                                 if !row.attachments.isEmpty { Text("· 添付 \(row.attachments.count)").font(.footnote).foregroundStyle(.secondary) }
                             }
-                            Text(row.body.isEmpty ? "(本文なし)" : Mentions.decode(row.body, users: store.users)).font(.subheadline).lineLimit(2)
+                            Text(row.body.isEmpty ? "(本文なし)" : Mentions.decode(row.body, users: store.users, groups: store.groups)).font(.subheadline).lineLimit(2)
                             HStack(spacing: 12) {
                                 Button("今すぐ送信") { Task { await controller.sendScheduledNow(row) } }.font(.footnote)
                                 Button("取り消し", role: .destructive) { Task { await controller.cancelScheduled(row) } }.font(.footnote)
