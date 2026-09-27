@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.ReminderOut
@@ -66,6 +67,8 @@ data class MessageState(
     /** M11c: pinned in the channel; rows persisted earlier lack the fields. */
     val pinnedAt: String? = null,
     val pinnedBy: String? = null,
+    /** M14b: the poll, when the message carries one. */
+    val poll: PollOut? = null,
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
     val isReply: Boolean get() = parentId != null
@@ -77,7 +80,7 @@ data class MessageState(
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
             parentId = message.parentId, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
-            pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy,
+            pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
         )
 
         fun placeholder(clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null) = MessageState(

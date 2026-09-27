@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, CustomEmojiOut, GroupOut, MessageOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
+import type { AttachmentOut, ChannelOut, CustomEmojiOut, GroupOut, MessageOut, PollOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
 export type { AttachmentOut, ChannelOut, CustomEmojiOut, GroupOut, MessageOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
 
@@ -26,7 +26,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "reply_count" | "last_reply_at" | "attachments" | "pinned_at" | "pinned_by" | "poll"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -40,6 +40,8 @@ export interface MessageState
   /** M11c: pinned in the channel; rows persisted earlier lack the fields. */
   pinned_at?: string | null;
   pinned_by?: string | null;
+  /** M14b: the poll, when the message carries one. */
+  poll?: PollOut | null;
   pending?: boolean;
   failed?: boolean;
 }

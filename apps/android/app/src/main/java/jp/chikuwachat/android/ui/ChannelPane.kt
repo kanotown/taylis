@@ -285,6 +285,7 @@ fun MessageRow(
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) },
                     )
                 }
+                message.poll?.let { PollCard(it, message, controller) }  // M14b
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(message, store, onToggle = onReact)

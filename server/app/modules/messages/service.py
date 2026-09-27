@@ -98,6 +98,10 @@ async def create_message(
         if parent.parent_id is not None:
             raise bad_request("reply_depth", "Replies to replies are not allowed")
 
+    if (
+        data.poll is not None and not data.body.strip()
+    ):  # M14b: previews / pushes / search see the question
+        data.body = f"📊 {data.poll.question}"
     mentioned, mention_all = extract_mentions(data.body)
     mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
     mentioned = await _with_keyword_hits(db, channel_id, actor.id, data.body, mentioned)
@@ -114,6 +118,16 @@ async def create_message(
                 body=data.body,
                 mentioned_user_ids=mentioned,
                 mention_all=mention_all,
+                poll=(
+                    {
+                        "question": data.poll.question,
+                        "options": data.poll.options,
+                        "multiple": data.poll.multiple,
+                        "closed_at": None,
+                    }
+                    if data.poll
+                    else None
+                ),
             )
             db.add(message)
             await db.flush()
@@ -210,7 +224,11 @@ async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut
     live = [m.id for m in rows if not m.is_deleted]
     reactions = await repo.reactions_for(db, live)
     files = await attachments.for_messages(db, live)
-    return [to_message_out(m, reactions.get(m.id, []), files.get(m.id, [])) for m in rows]
+    votes = await repo.poll_votes_for(db, [m.id for m in rows if m.poll and not m.is_deleted])
+    return [
+        to_message_out(m, reactions.get(m.id, []), files.get(m.id, []), votes.get(m.id, []))
+        for m in rows
+    ]
 
 
 async def message_out(db: AsyncSession, message: Message) -> MessageOut:
@@ -335,6 +353,65 @@ async def list_pins(
 ) -> list[MessageOut]:
     await channels.require_member(db, actor.id, channel_id)
     return await messages_out(db, await repo.list_pinned(db, channel_id, limit=limit))
+
+
+async def _bump_and_announce(db: AsyncSession, message: Message, change: str) -> MessageOut:
+    """A change that keeps the row alive: new updated_seq, message.updated for the channel."""
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change=change).model_dump(mode="json"),  # type: ignore[arg-type]
+    )
+    await db.commit()
+    return out
+
+
+async def set_vote(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, index: int, *, present: bool
+) -> tuple[MessageOut, bool]:
+    """M14b: vote (present=True) or withdraw a vote: (message, changed). Single-choice polls
+    replace the previous vote."""
+    message = await _require_live_message(db, actor, message_id)
+    poll = message.poll
+    if not poll:
+        raise not_found("poll_not_found", "This message has no poll")
+    if poll.get("closed_at"):
+        raise conflict("poll_closed", "The poll is closed")
+    if index < 0 or index >= len(poll.get("options", [])):
+        raise bad_request("poll_option_invalid", "No such option")
+    current = await repo.user_votes(db, message.id, actor.id)
+    if present:
+        if index in current:
+            return await message_out(db, message), False
+        if not poll.get("multiple") and current:
+            await repo.remove_votes(db, message.id, actor.id)
+        await repo.add_vote(db, message.id, actor.id, index)
+    else:
+        if index not in current:
+            return await message_out(db, message), False
+        await repo.remove_votes(db, message.id, actor.id, index)
+    return await _bump_and_announce(db, message, "poll"), True
+
+
+async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
+    """The author or an administrator ends the voting; results stay visible."""
+    message = await _require_live_message(db, actor, message_id)
+    poll = message.poll
+    if not poll:
+        raise not_found("poll_not_found", "This message has no poll")
+    if message.sender_id != actor.id and not actor.is_admin:
+        raise forbidden("forbidden", "Only the author or an administrator can close a poll")
+    if poll.get("closed_at"):
+        return await message_out(db, message)
+    message.poll = {**poll, "closed_at": utcnow().isoformat()}
+    return await _bump_and_announce(db, message, "poll")
 
 
 async def set_reaction(

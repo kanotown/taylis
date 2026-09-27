@@ -130,6 +130,15 @@ struct ReadStateOut: Codable, Equatable {
     let mentionCount: Int
 }
 
+/// A poll on a message (M14b): who voted for each option; counts and "mine" are derived here.
+struct PollOut: Codable, Equatable {
+    let question: String
+    let options: [String]
+    var multiple: Bool = false
+    var closedAt: String? = nil
+    var votes: [[String]] = []
+}
+
 struct ReactionOut: Codable, Equatable {
     let emoji: String
     let count: Int
@@ -172,6 +181,8 @@ struct MessageOut: Codable, Identifiable, Equatable {
     /// Pinned in the channel (M11c); both nil when not pinned.
     var pinnedAt: String? = nil
     var pinnedBy: String? = nil
+    /// M14b: the poll, when the message carries one.
+    var poll: PollOut? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted

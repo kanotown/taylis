@@ -29,6 +29,7 @@ enum SlashCommands {
         Command(name: "unmute", usage: "/unmute", description: "この会話の通知を再開"),
         Command(name: "me", usage: "/me 文", description: "動作を斜体で投稿"),
         Command(name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿"),
+        Command(name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "投票を作る"),
         Command(name: "help", usage: "/help", description: "コマンド一覧"),
     ]
 

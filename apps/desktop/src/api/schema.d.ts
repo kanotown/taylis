@@ -1080,6 +1080,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/poll/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Poll
+         * @description M14b: the author or an administrator ends the voting.
+         */
+        post: operations["close_poll_api_v1_messages__message_id__poll_close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/poll/votes/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Vote
+         * @description M14b: vote for an option (a single-choice poll moves the vote); 201 when it changed.
+         */
+        put: operations["vote_api_v1_messages__message_id__poll_votes__index__put"];
+        post?: never;
+        /** Unvote */
+        delete: operations["unvote_api_v1_messages__message_id__poll_votes__index__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/reactions/{emoji}": {
         parameters: {
             query?: never;
@@ -2180,6 +2221,7 @@ export interface components {
             client_msg_id: string;
             /** Parent Id */
             parent_id?: string | null;
+            poll?: components["schemas"]["PollCreate"] | null;
         };
         /** MessageEdit */
         MessageEdit: {
@@ -2234,6 +2276,7 @@ export interface components {
             pinned_at?: string | null;
             /** Pinned By */
             pinned_by?: string | null;
+            poll?: components["schemas"]["PollOut"] | null;
             /**
              * Reactions
              * @default []
@@ -2290,6 +2333,34 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /**
+         * PollCreate
+         * @description A poll attached to a message (M14b): 2-10 options, one or several votes per person.
+         */
+        PollCreate: {
+            /**
+             * Multiple
+             * @default false
+             */
+            multiple: boolean;
+            /** Options */
+            options: string[];
+            /** Question */
+            question: string;
+        };
+        /** PollOut */
+        PollOut: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Multiple */
+            multiple: boolean;
+            /** Options */
+            options: string[];
+            /** Question */
+            question: string;
+            /** Votes */
+            votes: string[][];
         };
         /** PresenceEntry */
         PresenceEntry: {
@@ -5089,6 +5160,101 @@ export interface operations {
             header?: never;
             path: {
                 message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_poll_api_v1_messages__message_id__poll_close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vote_api_v1_messages__message_id__poll_votes__index__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unvote_api_v1_messages__message_id__poll_votes__index__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+                index: number;
             };
             cookie?: never;
         };

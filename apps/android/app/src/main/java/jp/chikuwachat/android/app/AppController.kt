@@ -691,6 +691,20 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** Password change from the settings sheet; returns the error text or null. */
+    // --- polls (M14b) ------------------------------------------------------------------------
+
+    suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = runCatching {
+        store.upsertMessage(api!!.vote(message.id, option, present)); true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun closePoll(message: MessageState): Boolean = runCatching {
+        store.upsertMessage(api!!.closePoll(message.id)); true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): Boolean = runCatching {
+        store.upsertMessage(api!!.postPoll(channelId, parentId, question, options, multiple)); true
+    }.getOrElse { error = describe(it); false }
+
     // --- slash commands (M13b) ---------------------------------------------------------------
 
     /** Runs a command typed in the composer; false when it could not (the reason is in `error`). */
@@ -770,6 +784,11 @@ class AppController(private val app: Application) {
             "shrug" -> {
                 engine?.send(channelId, (if (command.args.isEmpty()) "" else command.args + " ") + SlashCommands.SHRUG, parentId = parentId)
                 true
+            }
+            "poll" -> {
+                val parts = command.args.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size < 3) { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
+                createPoll(channelId, parentId, parts[0], parts.drop(1), multiple = false)
             }
             else -> false
         }

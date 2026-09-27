@@ -13,7 +13,7 @@ describe("slash commands (M13b)", () => {
   });
 
   it("suggests commands while the name is being typed", () => {
-    expect(commandCandidates("/").length).toBe(12);
+    expect(commandCandidates("/").length).toBe(13);
     expect(commandCandidates("/s").map((c) => c.name)).toEqual(["status", "shrug"]);
     expect(commandCandidates("/status ")).toEqual([]);
     expect(commandCandidates("text /s")).toEqual([]);

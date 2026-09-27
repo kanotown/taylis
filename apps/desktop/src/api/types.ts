@@ -111,3 +111,7 @@ export type WebhookCreated = components["schemas"]["WebhookCreated"];
 
 /** Workspace roles (M13e adds guest). */
 export type Role = components["schemas"]["AdminUserCreate"]["role"];
+
+/** Polls (M14b). */
+export type PollOut = components["schemas"]["PollOut"];
+export type PollCreate = components["schemas"]["PollCreate"];
