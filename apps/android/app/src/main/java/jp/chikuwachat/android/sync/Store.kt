@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AttachmentOut
@@ -178,6 +179,8 @@ class Store(private val persistence: Persistence? = null) {
     /** Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched. */
     val customEmoji = LinkedHashMap<String, CustomEmojiOut>()
     val emojiImages = HashMap<String, ImageBitmap>()
+    /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
+    val groups = LinkedHashMap<String, GroupOut>()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -379,6 +382,19 @@ class Store(private val persistence: Persistence? = null) {
                 maxOf(0, threadSummary.mentionCount + mention(state) - mention(before)),
             )
         }
+        emit()
+    }
+
+    // --- user groups (M12k) ------------------------------------------------------------------
+
+    fun replaceGroups(rows: List<GroupOut>) {
+        groups.clear()
+        rows.forEach { groups[it.id] = it }
+        emit()
+    }
+
+    fun applyGroup(row: GroupOut, deleted: Boolean) {
+        if (deleted) groups.remove(row.id) else groups[row.id] = row
         emit()
     }
 

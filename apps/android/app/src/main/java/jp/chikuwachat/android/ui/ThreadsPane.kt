@@ -95,7 +95,7 @@ private fun ThreadRow(entry: ThreadEntry, store: Store, onClick: () -> Unit) {
     val unread = state.unreadCount > 0
     val author = store.users[parent.senderId]?.displayName ?: "…"
     val last = state.lastReplyAt ?: parent.createdAt
-    val excerpt = plainText(Mentions.toNames(parent.body, store.users)).ifEmpty { if (parent.attachments.isEmpty()) "" else "(添付ファイル)" }
+    val excerpt = plainText(Mentions.toNames(parent.body, store.users, store.groups)).ifEmpty { if (parent.attachments.isEmpty()) "" else "(添付ファイル)" }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top,

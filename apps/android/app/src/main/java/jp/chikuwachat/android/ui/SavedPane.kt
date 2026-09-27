@@ -74,7 +74,7 @@ fun SavedPane(controller: AppController, version: Int, onOpen: (MessageOut) -> U
 fun MessageCard(message: MessageOut, store: Store, onClick: () -> Unit) {
     val sender = store.users[message.senderId]?.displayName ?: "?"
     val channel = store.channel(message.channelId)
-    val text = plainText(Mentions.toNames(message.body, store.users)).ifEmpty { message.attachments.joinToString(", ") { it.filename } }
+    val text = plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { message.attachments.joinToString(", ") { it.filename } }
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.Top) {
         Avatar(message.senderId, sender, size = 32.dp)
         Spacer(Modifier.width(10.dp))

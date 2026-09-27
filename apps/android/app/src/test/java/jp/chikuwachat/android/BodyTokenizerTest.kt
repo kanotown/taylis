@@ -57,4 +57,11 @@ class BodyTokenizerTest {
         assertEquals("今日 太字 と code 引用 docs let x = 1;", jp.chikuwachat.android.ui.plainText("# 今日\n- **太字** と `code`\n> 引用 [docs](https://example.com/d)\n```ts\nlet x = 1;\n```"))
         assertEquals(200, jp.chikuwachat.android.ui.plainText("a".repeat(300)).length)
     }
+
+    @Test fun groupMentionTokens() {
+        assertEquals(
+            listOf(BodyToken.MentionGroup("00000000-0000-7000-8000-00000000000a"), BodyToken.Text(" and "), BodyToken.Mention("00000000-0000-7000-8000-000000000001")),
+            tokenizeBody("<@group:00000000-0000-7000-8000-00000000000a> and <@00000000-0000-7000-8000-000000000001>"),
+        )
+    }
 }

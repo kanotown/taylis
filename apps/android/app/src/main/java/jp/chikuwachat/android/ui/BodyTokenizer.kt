@@ -10,6 +10,7 @@ sealed class BodyToken {
     data class CodeBlock(val text: String, val lang: String? = null) : BodyToken()
     data class Link(val url: String, val label: String? = null) : BodyToken()
     data class Mention(val userId: String) : BodyToken()
+    data class MentionGroup(val groupId: String) : BodyToken()
     data class MentionAll(val target: String) : BodyToken()
     data object Newline : BodyToken()
 }
@@ -25,7 +26,7 @@ sealed class BodyBlock {
 }
 
 private const val INLINE =
-    """(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"""
+    """(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
@@ -57,9 +58,10 @@ private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyTo
                 group(7) != null -> BodyToken.Italic(group(8) ?: "")
                 group(9) != null -> BodyToken.Strike(group(10) ?: "")
                 group(11) != null -> BodyToken.Link(group(13) ?: "", label = group(12))
-                group(14) != null -> BodyToken.Mention(group(15) ?: "")
-                group(16) != null -> BodyToken.MentionAll(group(17) ?: "")
-                group(18) != null -> BodyToken.Link(group(18) ?: "")
+                group(14) != null -> BodyToken.MentionGroup(group(15) ?: "")
+                group(16) != null -> BodyToken.Mention(group(17) ?: "")
+                group(18) != null -> BodyToken.MentionAll(group(19) ?: "")
+                group(20) != null -> BodyToken.Link(group(20) ?: "")
                 else -> BodyToken.Newline
             },
         )

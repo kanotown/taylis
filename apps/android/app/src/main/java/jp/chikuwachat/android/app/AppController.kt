@@ -290,7 +290,7 @@ class AppController(private val app: Application) {
         engine.onNotify = { message, channel ->
             val sender = store.users[message.senderId]?.displayName ?: "?"
             val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
-            notifier.notifyMessage(channel.id, title, plainText(Mentions.toNames(message.body, store.users)).ifEmpty { "新しいメッセージ" })
+            notifier.notifyMessage(channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
         }
         this.engine = engine
         scope.launch { engine.status.collect { if (this@AppController.engine === engine) engineStatus = it } }

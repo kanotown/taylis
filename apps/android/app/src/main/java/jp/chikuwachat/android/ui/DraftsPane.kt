@@ -41,7 +41,7 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                         Text(" · " + Schedule.label(row.sendAt) + " に送信", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (row.attachments.isNotEmpty()) Text(" · 添付 ${row.attachments.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(plainText(Mentions.toNames(row.body, store.users)).ifBlank { "(本文なし)" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    Text(plainText(Mentions.toNames(row.body, store.users, store.groups)).ifBlank { "(本文なし)" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                     Row {
                         TextButton(onClick = { controller.scope.launch { controller.sendScheduledNow(row) } }) { Text("今すぐ送信") }
                         TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text("取り消し") }
