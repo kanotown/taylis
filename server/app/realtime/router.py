@@ -170,7 +170,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 conn.offer(ErrorFrame(code="invalid_frame", message="Unknown frame").model_dump())
                 continue
             if isinstance(frame, PingFrame):
-                hub.mark_active(context.user.id, frame.active)
+                hub.mark_active(conn, frame.active)
                 conn.offer(PongFrame(server_time=utcnow()).model_dump(mode="json"))
             elif isinstance(frame, TypingFrame):
                 now = time.monotonic()

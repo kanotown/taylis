@@ -432,6 +432,12 @@ final class AppController {
         }
     }
 
+    /// Background: the server learns at once that this phone is not in use, so its pushes are not held back for
+    /// the activity window (PUSH_NOTIFICATIONS.md §4.1); iOS suspends the socket soon after.
+    func didEnterBackground() {
+        engine?.reportActivity()
+    }
+
     // MARK: workspaces that are not open (WORKSPACES.md §6, §7, §8)
 
     /// The open workspace's count changed (bootstrap, reads, events): its entry and the app icon follow.

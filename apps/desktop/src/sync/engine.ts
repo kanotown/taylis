@@ -399,6 +399,19 @@ export class SyncEngine {
     ws.send(JSON.stringify(parentId ? { type: "typing", channel_id: channelId, parent_id: parentId } : { type: "typing", channel_id: channelId }));
   }
 
+  /**
+   * Tells the server now whether the reader is using this device (the window lost or got focus, the tab was hidden),
+   * not at the next heartbeat: the reader's phone gets its pushes at once (PUSH_NOTIFICATIONS.md §4.1).
+   */
+  reportActivity(): void {
+    if (this.status !== "online" || !this.ws) return;
+    try {
+      this.ws.send(JSON.stringify({ type: "ping", active: this.deps.isActive?.() ?? true }));
+    } catch {
+      /* the next heartbeat carries it */
+    }
+  }
+
   private startHeartbeat(ws: WsLike, intervalMs: number): void {
     this.clearTimers();
     const tick = (): void => {

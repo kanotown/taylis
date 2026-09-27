@@ -439,6 +439,14 @@ final class SyncEngine {
     }
 
     /// The composer changed: tell the other members, at most once per typingInterval per conversation.
+    /// Tells the server now whether the reader is using this device (the app went to the background or came back),
+    /// not at the next heartbeat: a phone in the background gets its pushes at once (PUSH_NOTIFICATIONS.md §4.1).
+    func reportActivity() {
+        guard status == .online, let ws else { return }
+        let active = isActive()
+        Task { try? await ws.send(ClientFrame.ping(active: active)) }
+    }
+
     func sendTyping(_ channelId: String, parentId: String? = nil) {
         guard status == .online, let ws else { return }
         let key = parentId.map { "\(channelId):\($0)" } ?? channelId

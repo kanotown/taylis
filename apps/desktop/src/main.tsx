@@ -12,3 +12,10 @@ createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 void controller.boot();
+
+// Focus and visibility changes reach the server at once, not at the next heartbeat: while this window is not in
+// use, the reader's phone gets pushes again (PUSH_NOTIFICATIONS.md §4.1).
+const reportActivity = () => controller.engine?.reportActivity();
+window.addEventListener("focus", reportActivity);
+window.addEventListener("blur", reportActivity);
+document.addEventListener("visibilitychange", reportActivity);

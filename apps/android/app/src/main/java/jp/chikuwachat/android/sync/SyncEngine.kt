@@ -506,6 +506,16 @@ class SyncEngine(
     }
 
     /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
+    /**
+     * Tells the server now whether the reader is using this device (the app went to the background or came back),
+     * not at the next heartbeat: a phone in the background gets its pushes at once (PUSH_NOTIFICATIONS.md §4.1).
+     */
+    fun reportActivity() {
+        val socket = ws ?: return
+        if (_status.value != EngineStatus.ONLINE) return
+        runCatching { socket.send(ClientFrame.ping(isActive())) }
+    }
+
     fun sendTyping(channelId: String, parentId: String? = null) {
         val socket = ws ?: return
         if (_status.value != EngineStatus.ONLINE) return

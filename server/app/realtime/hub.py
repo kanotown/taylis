@@ -30,6 +30,9 @@ class Connection:
     visible: frozenset[uuid.UUID] | None = None
     connected_at: float = field(default_factory=time.monotonic)
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    # When this device last said the reader was using it (connecting counts); None once it said it
+    # went to the background. Activity ends with the connection (PUSH_NOTIFICATIONS.md §4.1).
+    last_active: float | None = field(default_factory=time.monotonic)
 
     def offer(self, frame: dict[str, Any]) -> None:
         """Queue a frame; a full queue means the client cannot keep up, so it must resync."""
@@ -57,7 +60,6 @@ class RealtimeHub:
         self.away_seconds = away_seconds
         self._by_user: dict[uuid.UUID, set[Connection]] = {}
         self._by_session: dict[uuid.UUID, set[Connection]] = {}
-        self._last_active: dict[uuid.UUID, float] = {}
         # Last presence announced per user; users not listed are (announced as) offline.
         self._announced: dict[uuid.UUID, PresenceStatus] = {}
 
@@ -76,8 +78,7 @@ class RealtimeHub:
         )
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
-        # Connecting counts as activity: apps connect when they come to the foreground.
-        self._last_active[user_id] = time.monotonic()
+        # Connecting counts as activity (last_active starts now): apps connect in the foreground.
         self._announce(user_id)
         return conn
 
@@ -97,14 +98,20 @@ class RealtimeHub:
         """Oldest first."""
         return sorted(self._by_user.get(user_id, ()), key=lambda c: c.connected_at)
 
-    def mark_active(self, user_id: uuid.UUID, active: bool) -> None:
-        if active:
-            self._last_active[user_id] = time.monotonic()
-            self._announce(user_id)
+    def mark_active(self, conn: Connection, active: bool) -> None:
+        """A ping's `active`: true renews this device's activity; false (the app went to the
+        background, the window lost focus) ends it at once, so pushes need not wait for the window
+        to lapse."""
+        conn.last_active = time.monotonic() if active else None
+        self._announce(conn.user_id)
 
     def is_active(self, user_id: uuid.UUID, within_seconds: float) -> bool:
-        last = self._last_active.get(user_id)
-        return last is not None and time.monotonic() - last <= within_seconds
+        """A connected device of this user was used within the window (closed ones do not count)."""
+        now = time.monotonic()
+        return any(
+            c.last_active is not None and now - c.last_active <= within_seconds
+            for c in self._by_user.get(user_id, ())
+        )
 
     # --- presence (volatile, process-local) ----------------------------------------------
 
