@@ -232,8 +232,11 @@ SELECT count(*)                                                              AS 
        count(*) FILTER (WHERE $me = ANY (mentioned_user_ids) OR mention_all)  AS mention_count
 FROM messages m
 WHERE m.channel_id = $channel AND m.seq > $last_read_seq
-  AND m.parent_id IS NULL AND m.deleted_at IS NULL AND m.type = 'user';
+  AND (m.parent_id IS NULL OR m.also_in_channel) AND m.deleted_at IS NULL AND m.type = 'user';
 ```
+
+スレッドの返信は数えない。ただし「チャンネルにも送信」した返信 (`also_in_channel`、M15c) はチャンネルの
+タイムラインに並ぶので数える。
 
 自分の送信は同一トランザクションで `last_read_seq` を進めるので、自分のメッセージは未読にならない。
 
@@ -511,6 +514,7 @@ CREATE TABLE messages (
   channel_id          uuid NOT NULL REFERENCES channels(id),
   sender_id           uuid REFERENCES users(id),           -- system メッセージは NULL
   parent_id           uuid REFERENCES messages(id),        -- スレッド返信。1 段のみ (返信の返信は不可)
+  also_in_channel     boolean NOT NULL DEFAULT false,      -- M15c: 返信をチャンネルのタイムラインにも出す。parent_id 必須 (CHECK)
   seq                 bigint NOT NULL,                     -- 作成時に採番 (チャンネル内シーケンス)
   updated_seq         bigint NOT NULL,                     -- 最終変更時の seq。作成時は seq と同じ
   client_msg_id       uuid,                                -- クライアント生成 idempotency key
@@ -733,7 +737,7 @@ CREATE TABLE audit_logs (
 
 ```sql
 SELECT * FROM messages
-WHERE channel_id = $1 AND parent_id IS NULL AND deleted_at IS NULL AND seq < $before_seq
+WHERE channel_id = $1 AND (parent_id IS NULL OR also_in_channel) AND deleted_at IS NULL AND seq < $before_seq
 ORDER BY seq DESC LIMIT $limit;
 ```
 

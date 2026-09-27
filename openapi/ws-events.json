@@ -921,6 +921,11 @@
           },
           "MessageOut": {
             "properties": {
+              "also_in_channel": {
+                "default": false,
+                "title": "Also In Channel",
+                "type": "boolean"
+              },
               "attachments": {
                 "default": [],
                 "items": {
@@ -1325,6 +1330,11 @@
           },
           "MessageOut": {
             "properties": {
+              "also_in_channel": {
+                "default": false,
+                "title": "Also In Channel",
+                "type": "boolean"
+              },
               "attachments": {
                 "default": [],
                 "items": {
@@ -1730,6 +1740,11 @@
           },
           "MessageOut": {
             "properties": {
+              "also_in_channel": {
+                "default": false,
+                "title": "Also In Channel",
+                "type": "boolean"
+              },
               "attachments": {
                 "default": [],
                 "items": {

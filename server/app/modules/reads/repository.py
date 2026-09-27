@@ -5,7 +5,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
-from app.modules.messages.models import Message  # read-only (ARCHITECTURE.md §5 exception)
+from app.modules.messages.models import (  # read-only (ARCHITECTURE.md §5 exception)
+    Message,
+    timeline_filter,
+)
 from app.modules.reads.models import ReadState
 
 
@@ -89,7 +92,7 @@ async def counts(
     stmt = select(func.count(), func.count().filter(mentioned)).where(
         Message.channel_id == channel_id,
         Message.seq > last_read_seq,
-        Message.parent_id.is_(None),
+        timeline_filter(),  # replies count only when also sent to the channel (M15c)
         Message.deleted_at.is_(None),
         Message.type == "user",
     )

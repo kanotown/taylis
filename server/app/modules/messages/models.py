@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -15,10 +16,12 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    or_,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.base import Base
 from app.core.ids import uuid7
@@ -33,6 +36,10 @@ class Message(Base):
     sender_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     # Thread reply (one level: replies to replies are rejected).
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
+    # M15c: a reply that is also shown in the channel timeline ("also send to channel").
+    also_in_channel: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     seq: Mapped[int] = mapped_column(BigInteger)
     updated_seq: Mapped[int] = mapped_column(BigInteger)
     client_msg_id: Mapped[uuid.UUID | None]
@@ -58,6 +65,9 @@ class Message(Base):
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),
+        CheckConstraint(
+            "NOT also_in_channel OR parent_id IS NOT NULL", name="also_in_channel_needs_parent"
+        ),
         Index(
             "messages_client_msg_id_uniq",
             "sender_id",
@@ -77,6 +87,11 @@ class Message(Base):
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+
+def timeline_filter() -> ColumnElement[bool]:
+    """Rows of a channel timeline: top-level messages and replies also sent there (M15c)."""
+    return or_(Message.parent_id.is_(None), Message.also_in_channel.is_(True))
 
 
 class Reaction(Base):

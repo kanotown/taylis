@@ -6,7 +6,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.channels.models import Channel, ChannelMember
-from app.modules.messages.models import Message, MessageRevision, PollVote, Reaction
+from app.modules.messages.models import (
+    Message,
+    MessageRevision,
+    PollVote,
+    Reaction,
+    timeline_filter,
+)
 
 
 async def allocate_seq(
@@ -52,7 +58,7 @@ async def list_history(
     db: AsyncSession, channel_id: uuid.UUID, *, before_seq: int | None, limit: int
 ) -> list[Message]:
     stmt = select(Message).where(
-        Message.channel_id == channel_id, Message.deleted_at.is_(None), Message.parent_id.is_(None)
+        Message.channel_id == channel_id, Message.deleted_at.is_(None), timeline_filter()
     )
     if before_seq is not None:
         stmt = stmt.where(Message.seq < before_seq)
@@ -115,7 +121,7 @@ async def list_context(db: AsyncSession, message: Message, limit: int) -> list[M
     """A bounded window around a top-level message, independent of the sync cursor."""
     base = select(Message).where(
         Message.channel_id == message.channel_id,
-        Message.parent_id.is_(None),
+        timeline_filter(),
         Message.deleted_at.is_(None),
     )
     before = await db.scalars(

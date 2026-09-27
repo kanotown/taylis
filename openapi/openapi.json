@@ -1896,6 +1896,11 @@
       },
       "MessageCreate": {
         "properties": {
+          "also_in_channel": {
+            "default": false,
+            "title": "Also In Channel",
+            "type": "boolean"
+          },
           "attachment_ids": {
             "items": {
               "format": "uuid",
@@ -1962,6 +1967,11 @@
       },
       "MessageOut": {
         "properties": {
+          "also_in_channel": {
+            "default": false,
+            "title": "Also In Channel",
+            "type": "boolean"
+          },
           "attachments": {
             "default": [],
             "items": {

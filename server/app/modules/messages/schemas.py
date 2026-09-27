@@ -56,6 +56,8 @@ class MessageCreate(BaseModel):
     client_msg_id: UUID
     body: str = Field(default="", max_length=MAX_BODY_LENGTH)
     parent_id: UUID | None = None
+    # M15c: a reply that also appears in the channel timeline (Slack's "also send to channel").
+    also_in_channel: bool = False
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
     poll: PollCreate | None = None
 
@@ -68,6 +70,8 @@ class MessageCreate(BaseModel):
     def _body_or_attachments(self) -> "MessageCreate":
         if not self.body.strip() and not self.attachment_ids and self.poll is None:
             raise ValueError("body must not be empty")
+        if self.also_in_channel and self.parent_id is None:
+            raise ValueError("also_in_channel is for thread replies")
         return self
 
 
@@ -102,6 +106,8 @@ class MessageOut(BaseModel):
     channel_id: UUID
     sender_id: UUID
     parent_id: UUID | None = None
+    # M15c: this reply is shown in the channel timeline as well as in its thread.
+    also_in_channel: bool = False
     seq: int
     updated_seq: int
     client_msg_id: UUID | None
@@ -188,6 +194,7 @@ def to_message_out(
         channel_id=message.channel_id,
         sender_id=message.sender_id,
         parent_id=message.parent_id,
+        also_in_channel=message.also_in_channel,
         seq=message.seq,
         updated_seq=message.updated_seq,
         client_msg_id=message.client_msg_id,
