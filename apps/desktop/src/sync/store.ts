@@ -27,7 +27,14 @@ export function emptySnapshot(): Snapshot {
   return { meta: {}, users: [], channels: [], messages: [], outbox: [] };
 }
 
-export interface Draft { text: string; attachments: AttachmentOut[] }
+export interface Draft {
+  text: string;
+  attachments: AttachmentOut[];
+  /** M15d: edited here and not yet saved on the server (an emptied draft stays until its delete is saved). */
+  dirty?: boolean;
+  /** M15d: the server's `updated_at` of the version this device last matched. */
+  syncedAt?: string | null;
+}
 
 /** The single source of truth for the UI (ARCHITECTURE.md §11). */
 export class Store {
@@ -79,14 +86,57 @@ export class Store {
   draft(channelId: string, parentId: string | null = null): Draft {
     return this.drafts.get(this.draftKey(channelId, parentId)) ?? { text: "", attachments: [] };
   }
+  /** M15d: told about every local text change (the engine saves it on the server a moment later). */
+  onDraftEdited: ((channelId: string, parentId: string | null) => void) | null = null;
+
   setDraft(channelId: string, parentId: string | null, patch: Partial<Draft>): void {
-    const key = this.draftKey(channelId, parentId);
-    const draft = { ...this.draft(channelId, parentId), ...patch };
-    if (!draft.text && !draft.attachments.length) this.drafts.delete(key);
-    else this.drafts.set(key, draft);
-    const encoded = this.drafts.has(key) ? JSON.stringify(draft) : null;
-    this.persist((p) => p.saveMeta(key, encoded));
+    const previous = this.draft(channelId, parentId);
+    const draft: Draft = { ...previous, ...patch };
+    const edited = patch.text !== undefined && patch.text !== previous.text;
+    if (edited) draft.dirty = true;
+    this.writeDraft(this.draftKey(channelId, parentId), draft);
+    if (edited) this.onDraftEdited?.(channelId, parentId);
+  }
+
+  private writeDraft(key: string, draft: Draft): void {
+    const keep = draft.text !== "" || draft.attachments.length > 0 || draft.dirty === true;
+    if (keep) this.drafts.set(key, draft);
+    else this.drafts.delete(key);
+    this.persist((p) => p.saveMeta(key, keep ? JSON.stringify(draft) : null));
     this.emit();
+  }
+
+  /** M15d: every stored draft, including emptied ones whose delete is not saved yet. */
+  draftEntries(): Array<{ channelId: string; parentId: string | null; draft: Draft }> {
+    return [...this.drafts.entries()].map(([key, draft]) => {
+      const [, channelId = "", parentId = ""] = key.split(":");
+      return { channelId, parentId: parentId || null, draft };
+    });
+  }
+
+  /** M15d: a version from my other devices (`body` null = deleted there); ignored while this device has unsaved edits. */
+  applyRemoteDraft(channelId: string, parentId: string | null, body: string | null, updatedAt: string | null): void {
+    const key = this.draftKey(channelId, parentId);
+    const current = this.drafts.get(key);
+    if (current?.dirty) return;
+    const next: Draft = { text: body ?? "", attachments: current?.attachments ?? [], syncedAt: body === null ? null : updatedAt };
+    if (current && current.text === next.text && (current.syncedAt ?? null) === next.syncedAt) return;
+    if (!current && next.text === "") return;
+    this.writeDraft(key, next);
+  }
+
+  /** M15d: the server now holds `text` (no draft when `updatedAt` is null), unless it was edited again meanwhile. */
+  markDraftSaved(channelId: string, parentId: string | null, text: string, updatedAt: string | null): void {
+    const key = this.draftKey(channelId, parentId);
+    const current = this.drafts.get(key);
+    if (!current || current.text !== text) return;
+    this.writeDraft(key, { ...current, dirty: false, syncedAt: updatedAt });
+  }
+
+  markDraftDirty(channelId: string, parentId: string | null): void {
+    const key = this.draftKey(channelId, parentId);
+    const current = this.drafts.get(key);
+    if (current && !current.dirty) this.writeDraft(key, { ...current, dirty: true });
   }
   uploading(channelId: string, parentId: string | null = null): number { return this.uploads.get(this.draftKey(channelId, parentId)) ?? 0; }
   trackUpload(channelId: string, parentId: string | null, delta: number): void {

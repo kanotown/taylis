@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
 export const COOKIE_SESSION = "cookie";
@@ -267,6 +267,17 @@ export class ApiClient {
 
   scheduleMessage(channelId: string, body: ScheduledCreate): Promise<ScheduledOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/scheduled`, body);
+  }
+
+  // --- drafts (M15d) ------------------------------------------------------------------------
+
+  saveDraft(channelId: string, parentId: string | null, body: string): Promise<DraftOut> {
+    return this.request("PUT", "/api/v1/drafts", { channel_id: channelId, parent_id: parentId, body });
+  }
+
+  deleteDraft(channelId: string, parentId: string | null): Promise<void> {
+    const params = new URLSearchParams({ channel_id: channelId, ...(parentId ? { parent_id: parentId } : {}) });
+    return this.request("DELETE", `/api/v1/drafts?${params}`);
   }
 
   listScheduled(): Promise<ScheduledOut[]> {

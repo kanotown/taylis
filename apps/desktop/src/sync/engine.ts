@@ -4,9 +4,10 @@
  * in Tauri (WebSocket API) and in tests (fake server).
  */
 import { ApiError, isRetryable } from "../api/errors";
+import { DraftSync } from "./drafts";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
@@ -29,6 +30,9 @@ export interface SyncApi {
   threadState(messageId: string): Promise<ThreadState>;
   markThreadRead(messageId: string, lastReadSeq: number): Promise<ThreadState>;
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
+  /** M15d: drafts shared by my devices. Optional (older fakes). */
+  saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
+  deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
 }
 
 export interface WsLike {
@@ -76,6 +80,8 @@ export interface EngineOptions {
   /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
   typingIntervalMs?: number;
   typingTtlMs?: number;
+  /** M15d: a draft is saved on the server this long after typing pauses. */
+  draftSaveMs?: number;
 }
 
 export class SyncEngine {
@@ -119,7 +125,24 @@ export class SyncEngine {
       threadRefreshMs: options.threadRefreshMs ?? 300,
       typingIntervalMs: options.typingIntervalMs ?? 3_000,
       typingTtlMs: options.typingTtlMs ?? 5_000,
+      draftSaveMs: options.draftSaveMs ?? 1_000,
     };
+    const api = deps.api;
+    this.drafts = new DraftSync({
+      api: api.saveDraft && api.deleteDraft ? { saveDraft: (c, p, b) => api.saveDraft!(c, p, b), deleteDraft: (c, p) => api.deleteDraft!(c, p) } : null,
+      store: deps.store,
+      isOnline: () => this.status === "online",
+      delayMs: this.opts.draftSaveMs,
+    });
+    deps.store.onDraftEdited = (channelId, parentId) => this.drafts.edited(channelId, parentId);
+  }
+
+  /** M15d: my drafts across devices. */
+  readonly drafts: DraftSync;
+
+  /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
+  flushDrafts(): Promise<void> {
+    return this.drafts.flush();
   }
 
   get store(): Store {
@@ -216,7 +239,10 @@ export class SyncEngine {
       ws.close();
       await this.scheduleReconnect();
     });
-    if (this.status === "online") void this.flushOutbox();
+    if (this.status === "online") {
+      void this.flushOutbox();
+      void this.drafts.flush(); // edited while offline (M15d)
+    }
   }
 
   private async scheduleReconnect(): Promise<void> {
@@ -334,6 +360,7 @@ export class SyncEngine {
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceGroups(bootstrap.groups ?? []);
     store.replaceSidebar(bootstrap.sidebar_sections ?? []);
+    this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     void this.loadScheduled();
     void this.loadReminders();
   }
@@ -442,6 +469,9 @@ export class SyncEngine {
         store.applyCustomEmoji(data.emoji, data.deleted);
         return;
       }
+      case "draft.updated":
+        this.drafts.applyEvent(frame.data as unknown as DraftUpdated);
+        return;
       case "sidebar.updated": {
         const data = frame.data as { sections: SidebarSectionOut[] };
         store.replaceSidebar(data.sections);

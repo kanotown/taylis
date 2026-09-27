@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { EventFrame } from "../src/sync/types";
 
@@ -498,6 +498,27 @@ export class FakeServer {
 
   /** "user" → starred channel ids (M12a). */
   readonly favorites = new Map<string, string[]>();
+  /** M15d: "user:channel:parent" → the saved draft. */
+  readonly drafts = new Map<string, DraftOut>();
+  draftSaves = 0;
+
+  saveDraft(userId: string, channelId: string, parentId: string | null, body: string): DraftOut {
+    this.requireMember(channelId, userId);
+    const draft: DraftOut = { channel_id: channelId, parent_id: parentId, body, updated_at: now() };
+    this.drafts.set(`${userId}:${channelId}:${parentId ?? ""}`, draft);
+    this.draftSaves += 1;
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "draft.updated", ts: now(), channel_id: null, seq: null, data: { ...draft, deleted: false } });
+    return draft;
+  }
+
+  deleteDraft(userId: string, channelId: string, parentId: string | null): void {
+    if (!this.drafts.delete(`${userId}:${channelId}:${parentId ?? ""}`)) return;
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "draft.updated", ts: now(), channel_id: null, seq: null, data: { channel_id: channelId, parent_id: parentId, body: "", updated_at: now(), deleted: true } });
+  }
+
+  draftsOf(userId: string): DraftOut[] {
+    return [...this.drafts.entries()].filter(([key]) => key.startsWith(`${userId}:`)).map(([, draft]) => draft);
+  }
 
   setFavorite(userId: string, channelId: string, on: boolean): void {
     const list = this.favorites.get(userId) ?? [];
@@ -614,7 +635,16 @@ export class FakeServer {
           custom_emoji: [...this.customEmoji.values()],
           groups: [],
           sidebar_sections: [],
+          drafts: this.draftsOf(userId),
         };
+      },
+      saveDraft: async (channelId, parentId, body) => {
+        maybeFail();
+        return this.saveDraft(userId, channelId, parentId, body);
+      },
+      deleteDraft: async (channelId, parentId) => {
+        maybeFail();
+        this.deleteDraft(userId, channelId, parentId);
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {
         maybeFail();

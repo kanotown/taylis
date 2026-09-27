@@ -124,3 +124,9 @@ export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];
 
 /** Custom sidebar sections (M14f). */
 export type SidebarSectionOut = components["schemas"]["SidebarSectionOut"];
+
+/** Drafts shared by my devices (M15d); draft.updated adds `deleted` (then `body` is empty). */
+export type DraftOut = components["schemas"]["DraftOut"];
+export interface DraftUpdated extends DraftOut {
+  deleted: boolean;
+}
