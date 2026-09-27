@@ -44,6 +44,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.SearchOut
+import jp.chikuwachat.android.api.SearchRequest
+import jp.chikuwachat.android.api.ServerInfoOut
+import jp.chikuwachat.android.ui.RecentSearches
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import jp.chikuwachat.android.platform.KeyValueStore
+import jp.chikuwachat.android.platform.SharedPrefsStore
 import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
@@ -68,6 +75,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
@@ -125,22 +133,61 @@ class AppController(private val app: Application) {
             true
         } catch (e: Exception) { report(e); false }
     }
+    /** What the login form starts from: the workspace it signs in to, else the last server and user. */
     var savedServer = DEFAULT_SERVER
         private set
     var savedUsername = ""
         private set
 
+    // --- workspaces (M16c, WORKSPACES.md) ---------------------------------------------------------
+
+    /** The servers this device knows, in the order they were added. */
+    var workspaces by mutableStateOf<List<Workspace>>(emptyList())
+        private set
+    /** The workspace on screen (its server URL, the list key); null before the first login. */
+    var activeKey by mutableStateOf<String?>(null)
+        private set
+    val activeWorkspace: Workspace? get() = workspaces.firstOrNull { it.serverUrl == activeKey }
+    /** Names the per-workspace screen state (the open conversation, panes, search) while another is shown. */
+    val workspaceKey: String? get() = activeWorkspace?.let { account(it.serverUrl, it.username) }
+    /** The workspace name for titles and the search box. */
+    val workspaceName: String get() = activeWorkspace?.name ?: "ChikuwaChat"
+    /** 「ワークスペースを追加」: the login form for another server is up; cancelling returns to this one (§5.1). */
+    var addingWorkspace by mutableStateOf(false)
+        private set
+    /** The workspace switcher (a bottom sheet). */
+    var switcherOpen by mutableStateOf(false)
+
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val secrets = SecretStore(app)
     private val notifier = Notifier(app)
-    /** FCM token registration (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
-    val push = PushCenter(scope, { fetchFcmToken(app) }, { api }, { deleteFcmToken(app) })
+    /** Plain settings on this device: the workspace list (M16c) and recent searches (M16b). */
+    val prefs: KeyValueStore = SharedPrefsStore(app)
+    /** FCM token registration with every signed-in workspace (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
+    val push = PushCenter(scope, { fetchFcmToken(app) }, { pushTargets() }, { deleteFcmToken(app) })
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    /** The API client of the workspace on screen (one of [clients]). */
     private var api: ApiClient? = null
+    /** One API client per signed-in workspace: its refreshes are serialised (WORKSPACES.md §8, SECURITY.md §2). */
+    private val clients = HashMap<String, ApiClient>()
     private var persistence: RoomPersistence? = null
     var appForeground by mutableStateOf(false)
         private set
     private var booted = false
+    /** Workspace changes (startup, switch, sign-in, sign-out) run one at a time. */
+    private val sessionLock = Mutex()
+    private val loadLock = Mutex()
+    private var workspacesLoaded = false
+    /** Startup has chosen and opened a workspace; before that a tapped notification only records its choice. */
+    private var restored = false
+    /** The workspace a tapped notification asked for (WORKSPACES.md §7). */
+    private var pendingWorkspaceKey: String? = null
+    /** Workspaces being signed out on purpose: their end removes them from the list instead of marking them signed out. */
+    private val leaving = HashSet<String>()
+    /** The workspace on screen whose engine has registered this device's push token for its session. */
+    private var attachedKey: String? = null
+    /** The conversation on the main screen of the workspace on screen: its pushes are not shown in the foreground. */
+    private var openChannelId: String? = null
 
     init {
         // SYNC_PROTOCOL.md §5.3: a network that comes back skips the reconnect backoff.
@@ -157,74 +204,347 @@ class AppController(private val app: Application) {
         val account = account(server, username)
         val api = ApiClient(server, http)
         api.onTokens = { tokens -> scope.launch { secrets.putSecret(account, tokens.refreshToken) } }
-        AvatarCache.fetcher = { path -> api.fetchBytes(path) }  // M14a
-        AvatarCache.scope = scope
-        api.onSignedOut = { scope.launch { if (this@AppController.api === api) handleSignedOut(account) } }
+        api.onSignedOut = { scope.launch { clientSignedOut(server, api) } }
         return api
     }
 
-    /** Startup: restore the previous session with the stored refresh token (SYNC_PROTOCOL.md §7.2). */
+    /** The client of the workspace on screen: its avatars load through it (M14a). */
+    private fun activate(client: ApiClient) {
+        api = client
+        AvatarCache.fetcher = { path -> client.fetchBytes(path) }
+        AvatarCache.scope = scope
+    }
+
+    /** The one API client of a signed-in workspace, made from its stored refresh token (null: sign-in needed). */
+    private suspend fun clientFor(entry: Workspace): ApiClient? {
+        clients[entry.serverUrl]?.let { return it }
+        if (entry.signedOut) return null
+        val token = secrets.secret(account(entry.serverUrl, entry.username)) ?: return null
+        clients[entry.serverUrl]?.let { return it } // made while the secret was read
+        val client = makeApi(entry.serverUrl, entry.username)
+        client.refreshToken = token
+        clients[entry.serverUrl] = client
+        return client
+    }
+
+    private fun saveWorkspaces() = Workspaces.save(prefs, workspaces, activeKey)
+
+    private fun replaceWorkspaces(list: List<Workspace>) {
+        workspaces = list
+        saveWorkspaces()
+    }
+
+    private fun updateWorkspace(serverUrl: String, change: (Workspace) -> Workspace) {
+        val next = workspaces.map { if (it.serverUrl == serverUrl) change(it) else it }
+        if (next != workspaces) replaceWorkspaces(next)
+    }
+
+    /**
+     * The saved list; the first time, migrated from the one server an older install remembers (WORKSPACES.md §4).
+     * Also what a push needs before the app has started.
+     */
+    private suspend fun ensureWorkspacesLoaded() = loadLock.withLock {
+        if (workspacesLoaded) return@withLock
+        val legacyServer = secrets.setting(SERVER_KEY)
+        val legacyUsername = secrets.setting(USERNAME_KEY)
+        val saved = Workspaces.load(prefs) ?: run {
+            val server = legacyServer ?: DEFAULT_SERVER
+            val hasSession = !legacyUsername.isNullOrEmpty() && secrets.secret(account(server, legacyUsername)) != null
+            Workspaces.migrate(server, legacyUsername, hasSession).also { Workspaces.save(prefs, it.entries, it.active) }
+        }
+        workspaces = saved.entries
+        activeKey = saved.active
+        savedServer = legacyServer ?: DEFAULT_SERVER
+        savedUsername = legacyUsername ?: ""
+        workspacesLoaded = true
+    }
+
+    /** Startup: the saved workspaces, then the active one's session (SYNC_PROTOCOL.md §7.2, WORKSPACES.md §5.2). */
     suspend fun boot() {
         if (booted) return
         booted = true
         // In the controller's scope: an activity recreated half-way (rotation) must not cancel the restore.
-        scope.launch { restoreSession() }.join()
+        scope.launch {
+            sessionLock.withLock {
+                ensureWorkspacesLoaded()
+                // A tapped notification's workspace first; else the last one, while it is signed in.
+                val pending = pendingWorkspaceKey?.let { key -> workspaces.firstOrNull { it.serverUrl == key && !it.signedOut } }
+                pendingWorkspaceKey = null
+                val chosen = pending
+                    ?: activeWorkspace?.takeIf { !it.signedOut }
+                    ?: workspaces.firstOrNull { !it.signedOut }
+                    ?: activeWorkspace
+                    ?: workspaces.firstOrNull()
+                if (chosen == null) showLogin(null) else openWorkspace(chosen)
+                restored = true
+            }
+        }.join()
+        push.refresh() // WORKSPACES.md §8: at startup the token goes to every signed-in workspace
     }
 
-    private suspend fun restoreSession() {
-        savedServer = secrets.setting(SERVER_KEY) ?: DEFAULT_SERVER
-        savedUsername = secrets.setting(USERNAME_KEY) ?: ""
-        val refreshToken = if (savedUsername.isEmpty()) null else secrets.secret(account(savedServer, savedUsername))
-        if (refreshToken == null) {
+    /**
+     * Puts a workspace on screen (§5.2): its local store at once, then its session from the stored refresh token
+     * (SYNC_PROTOCOL.md §7.2). A refused refresh ends that workspace's session only (the login form for it).
+     */
+    private suspend fun openWorkspace(entry: Workspace) {
+        // Nothing of a workspace is drawn until its own store is loaded (its saved screen state would meet an empty one).
+        screen = Screen.BOOT
+        if (api != null || engine != null) closeActive()
+        addingWorkspace = false
+        switcherOpen = false
+        totpRequired = false
+        activeKey = entry.serverUrl
+        savedServer = entry.serverUrl
+        savedUsername = entry.username
+        // On screen, its unread marks come from its own store.
+        updateWorkspace(entry.serverUrl) { it.copy(badge = 0, hasUnread = false) }
+        saveWorkspaces()
+        val client = if (entry.signedOut) null else clientFor(entry)
+        if (client == null) {
+            if (!entry.signedOut) updateWorkspace(entry.serverUrl) { it.copy(signedOut = true) }
             screen = Screen.LOGIN
             return
         }
-        val api = makeApi(savedServer, savedUsername)
-        api.refreshToken = refreshToken
-        this.api = api
-        if (startEngine(api, restoring = true)) return
+        activate(client)
+        scope.launch { refreshServerInfo(entry.serverUrl) }
+        if (startEngine(client, restoring = true)) return
         busy = true
         try {
-            val tokens = api.refresh()
-            enterSession(api, savedUsername, tokens.user)
+            val tokens = client.refresh()
+            if (api === client) enterSession(client, entry.username, tokens.user)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            screen = Screen.LOGIN
-            error = if (e is ApiException.Api && e.isAuth) null else describe(e)
+            // A refused refresh has signed the client out (clientSignedOut shows the login for this workspace).
+            if (api === client && !(e is ApiException.Api && e.isAuth)) {
+                screen = Screen.LOGIN
+                error = describe(e)
+            }
         } finally {
             busy = false
         }
     }
 
-    suspend fun login(server: String, username: String, password: String, totpCode: String? = null) {
-        val trimmed = server.trim().trimEnd('/')
-        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+    /** Takes the workspace on screen down; its session stays signed in unless the caller ends it. */
+    private suspend fun closeActive() {
+        screen = Screen.BOOT
+        engine?.stop()
+        engine = null
+        api = null
+        me = null
+        engineStatus = EngineStatus.IDLE
+        messageFocus = null
+        pendingReveal = null
+        linkPreviews.clear()
+        previewLoads.clear()
+        emojiLoads.clear()
+        attachedKey = null
+        openChannelId = null
+        AvatarCache.reset()
+        val old = persistence
+        persistence = null
+        store = Store()
+        if (old != null) withContext(Dispatchers.IO) { old.close() }
+    }
+
+    /** The login form: for a registered workspace (prefilled), or for a first server when none is left. */
+    private fun showLogin(serverUrl: String?) {
+        val entry = serverUrl?.let { key -> workspaces.firstOrNull { it.serverUrl == key } }
+        activeKey = entry?.serverUrl
+        saveWorkspaces()
+        if (entry != null) {
+            savedServer = entry.serverUrl
+            savedUsername = entry.username
+        }
+        addingWorkspace = false
+        switcherOpen = false
+        screen = Screen.LOGIN
+    }
+
+    /** Another workspace on screen (WORKSPACES.md §5.2); the one it replaces stays signed in. */
+    fun switchWorkspace(serverUrl: String) {
+        scope.launch { sessionLock.withLock { switchLocked(serverUrl) } }
+    }
+
+    private suspend fun switchLocked(serverUrl: String) {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return
+        addingWorkspace = false
+        switcherOpen = false
+        if (serverUrl == activeKey && api != null && screen != Screen.LOGIN) return
+        error = null
+        pendingChannelId = null
+        openWorkspace(entry)
+    }
+
+    /** 「ワークスペースを追加」: the login form for another server; cancelling returns to this one (§5.1). */
+    fun beginAddWorkspace() {
+        switcherOpen = false
+        totpRequired = false
+        error = null
+        addingWorkspace = true
+    }
+
+    fun cancelAddWorkspace() {
+        addingWorkspace = false
+        totpRequired = false
+        error = null
+    }
+
+    fun openSwitcher() {
+        switcherOpen = true
+    }
+
+    /** The name and workspace id from GET /server, read again whenever a workspace opens (§4). */
+    private suspend fun refreshServerInfo(serverUrl: String) {
+        val info = try {
+            ApiClient(serverUrl, http).serverInfo()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return // offline, or an older server: the saved name stays
+        }
+        if (info.product != Workspaces.PRODUCT) return
+        updateWorkspace(serverUrl) { it.copy(name = info.name.ifBlank { it.name }, workspaceId = info.workspaceId) }
+    }
+
+    /** The marks of the workspaces that are not open (§6): when the app comes back and when the switcher opens. */
+    fun refreshSummaries() {
+        for (entry in workspaces.filter { !it.signedOut && it.serverUrl != activeKey }) {
+            scope.launch {
+                val client = clientFor(entry) ?: return@launch
+                try {
+                    val summary = client.syncSummary()
+                    if (entry.serverUrl != activeKey) updateWorkspace(entry.serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // offline: the last known marks stay (a refused session ends through clientSignedOut)
+                }
+            }
+        }
+    }
+
+    /**
+     * Where this device's push token goes (WORKSPACES.md §8): every signed-in workspace. The one on screen registers
+     * once its engine has a session; the others (and a start by a push) through their own client, which renews
+     * its access token with the stored refresh token first.
+     */
+    private suspend fun pushTargets(): List<Pair<String, ApiClient>> {
+        ensureWorkspacesLoaded()
+        return workspaces.filter { !it.signedOut }.mapNotNull { entry ->
+            val onScreen = entry.serverUrl == activeKey && api != null
+            if (onScreen) {
+                api?.takeIf { attachedKey == entry.serverUrl }?.let { entry.serverUrl to it }
+            } else {
+                clientFor(entry)?.let { entry.serverUrl to it }
+            }
+        }
+    }
+
+    /**
+     * Login form (SYNC_PROTOCOL.md §7.2 first login, WORKSPACES.md §5.1): the URL is normalized and GET /server
+     * checked; when adding, a server that is not ChikuwaChat is refused and an already registered workspace
+     * (same workspace_id) is switched to instead of signing in twice (one account per server).
+     */
+    suspend fun login(server: String, username: String, password: String, totpCode: String? = null) =
+        // In the controller's scope: the form goes away half-way (the workspace it opens replaces it).
+        scope.launch { loginNow(server, username, password, totpCode) }.join()
+
+    private suspend fun loginNow(server: String, username: String, password: String, totpCode: String?) {
+        val normalized = Workspaces.normalizeServerUrl(server)
+        if (normalized == null) {
             error = "サーバ URL が正しくありません"
             return
         }
-        val api = makeApi(trimmed, username)
+        // A registered address keeps its spelling: it names the saved token and the local store.
+        var key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
         busy = true
         try {
+            val info = try {
+                ApiClient(key, http).serverInfo().takeIf { it.product == Workspaces.PRODUCT }
+            } catch (e: ApiException.Network) {
+                error = describe(e)
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (addingWorkspace && e is ApiException.Api && e.status >= 500) {
+                    error = describe(e)
+                    return
+                }
+                null
+            }
+            if (addingWorkspace && info == null) {
+                error = NOT_CHIKUWA
+                return
+            }
+            val known = info?.let { Workspaces.findRegistered(workspaces, it.workspaceId, key) }
+            if (known != null && !known.signedOut && (addingWorkspace || known.serverUrl != activeKey)) {
+                // Registered and signed in already: that workspace opens instead.
+                error = null
+                totpRequired = false
+                sessionLock.withLock { switchLocked(known.serverUrl) }
+                notice = "${known.name} は登録済みです"
+                return
+            }
+            if (known != null) key = known.serverUrl // registered but signed out: sign in to it again
+            val api = makeApi(key, username)
             val tokens = api.login(username, password, "android", Build.MODEL, BuildConfig.VERSION_NAME, totpCode?.let(Totp::normalize))
-            secrets.putSetting(SERVER_KEY, trimmed)
+            secrets.putSetting(SERVER_KEY, key)
             secrets.putSetting(USERNAME_KEY, username)
-            savedServer = trimmed
-            savedUsername = username
             error = null
             totpRequired = false
-            enterSession(api, username, tokens.user)
+            sessionLock.withLock { adoptSession(api, username, tokens.user, info) }
         } catch (e: ApiException.Api) {
             when (e.code) {
                 "totp_required" -> { totpRequired = true; error = null }
                 "invalid_totp" -> { totpRequired = true; error = Totp.errorText(e.code) }
                 else -> { totpRequired = false; error = describe(e) }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             report(e)
         } finally {
             busy = false
         }
+    }
+
+    /**
+     * A new sign-in (login form or invite): the workspace joins the list, or its entry is renewed, and opens. A
+     * session this replaces on the same server ends on this device (one account per server).
+     */
+    private suspend fun adoptSession(client: ApiClient, username: String, me: UserMe, info: ServerInfoOut?) {
+        screen = Screen.BOOT
+        val serverUrl = client.baseUrl
+        val known = workspaces.firstOrNull { it.serverUrl == serverUrl }
+        if (api != null || engine != null) closeActive()
+        val previous = clients.remove(serverUrl)
+        if (previous != null && previous !== client) {
+            // Revoked on the server; a token it rotates on the way must not overwrite the new one, and its end
+            // finds itself replaced (clientSignedOut).
+            previous.onTokens = null
+            scope.launch { attempt { previous.logout() } }
+        }
+        // One account per server: the account this replaces leaves nothing on this device.
+        if (known != null && known.username != username) forgetAccountData(account(serverUrl, known.username))
+        clients[serverUrl] = client
+        push.detach(serverUrl)
+        val entry = Workspace(
+            serverUrl = serverUrl,
+            workspaceId = info?.workspaceId ?: known?.workspaceId,
+            name = info?.name?.ifBlank { null } ?: known?.name ?: Workspaces.hostLabel(serverUrl),
+            username = username,
+            userId = me.id,
+        )
+        workspaces = if (known != null) workspaces.map { if (it.serverUrl == serverUrl) entry else it } else workspaces + entry
+        activeKey = serverUrl
+        saveWorkspaces()
+        addingWorkspace = false
+        switcherOpen = false
+        savedServer = serverUrl
+        if (info == null) scope.launch { refreshServerInfo(serverUrl) }
+        enterSession(client, username, me)
     }
 
     // --- two-factor authentication (M12i): the settings dialog drives these -----------------
@@ -245,17 +565,27 @@ class AppController(private val app: Application) {
     suspend fun previewInvite(server: String, token: String): InvitePreviewOut = ApiClient(server, http).invitePreview(token)
 
     /** M12h: create the account the link allows and enter the session; returns the failure text, if any. */
-    suspend fun acceptInvite(server: String, token: String, username: String, displayName: String, password: String): String? {
-        val api = makeApi(server, username)
+    suspend fun acceptInvite(server: String, token: String, username: String, displayName: String, password: String): String? =
+        scope.async { acceptInviteNow(server, token, username, displayName, password) }.await()
+
+    private suspend fun acceptInviteNow(server: String, token: String, username: String, displayName: String, password: String): String? {
+        val normalized = Workspaces.normalizeServerUrl(server) ?: return "サーバ URL が正しくありません"
+        val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        val api = makeApi(key, username)
         busy = true
         return try {
             val tokens = api.acceptInvite(token, username, displayName, password, "android", Build.MODEL, BuildConfig.VERSION_NAME)
-            secrets.putSetting(SERVER_KEY, server)
+            val info = try {
+                api.serverInfo().takeIf { it.product == Workspaces.PRODUCT }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null // the name follows when the workspace opens
+            }
+            secrets.putSetting(SERVER_KEY, key)
             secrets.putSetting(USERNAME_KEY, username)
-            savedServer = server
-            savedUsername = username
             error = null
-            enterSession(api, username, tokens.user)
+            sessionLock.withLock { adoptSession(api, username, tokens.user, info) }
             null
         } catch (e: CancellationException) {
             throw e
@@ -282,7 +612,7 @@ class AppController(private val app: Application) {
     }
 
     private suspend fun enterSession(api: ApiClient, username: String, me: UserMe) {
-        this.api = api
+        activate(api)
         this.me = me
         savedUsername = username
         if (me.mustChangePassword) {
@@ -307,6 +637,10 @@ class AppController(private val app: Application) {
             if (cached.mustChangePassword) return false
             me = cached
         } else me?.let { store.setMe(it) }
+        // Notifications of this engine belong to its workspace, even when one arrives after a switch.
+        val workspaceUrl = api.baseUrl
+        fun workspace() = workspaces.firstOrNull { it.serverUrl == workspaceUrl }
+        me?.let { known -> updateWorkspace(workspaceUrl) { if (it.userId == null) it.copy(userId = known.id) else it } }
         val engine = SyncEngine(
             api = api,
             connect = { url, _ -> OkHttpWsTransport.connect(http, url) },
@@ -315,7 +649,8 @@ class AppController(private val app: Application) {
             getAccessToken = { api.accessToken },
             scope = scope,
         )
-        engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) handleSignedOut(account) } }
+        // The session ended (4003, refused token): the client signs out, which ends this workspace (clientSignedOut).
+        engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) api.signOut() } }
         engine.isActive = { appForeground }
         engine.onRead = { channelId -> notifier.clear(channelId) }
         // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up,
@@ -323,14 +658,14 @@ class AppController(private val app: Application) {
         engine.onReminder = { row ->
             val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
             notice = "⏰ $text"
-            if (!dndActive(store)) notifier.notifyMessage(row.channelId, "リマインダー", text, key = "reminder:${row.id}")
+            if (!dndActive(store)) notify(workspace(), row.channelId, "リマインダー", text, key = "reminder:${row.id}")
         }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
                 val sender = store.users[message.senderId]?.displayName ?: "?"
                 val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
-                notifier.notifyMessage(channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
+                notify(workspace(), channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
             }
         }
         this.engine = engine
@@ -359,7 +694,8 @@ class AppController(private val app: Application) {
             }
             if (!attached) {
                 attached = true
-                push.attach() // this session's device row gets the push token
+                attachedKey = api.baseUrl
+                push.attach(api.baseUrl) // this session's device row gets the push token
             }
         }
         screen = Screen.MAIN
@@ -367,28 +703,68 @@ class AppController(private val app: Application) {
         return true
     }
 
+    /** A local notification, for the workspace it belongs to (named when there are two or more, WORKSPACES.md §7). */
+    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId) {
+        val named = workspaces.size >= 2
+        notifier.notifyMessage(channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null)
+    }
+
     /**
-     * A data-only push (PUSH_NOTIFICATIONS.md §9): shown unless the app is in the foreground with a
-     * live socket (the event arrives over the socket then); either way the engine catches up.
+     * A data-only push (PUSH_NOTIFICATIONS.md §9, WORKSPACES.md §7), routed to its workspace. For the workspace on
+     * screen it is shown unless the app is in the foreground with a live socket (the event arrives over the socket,
+     * which alerts for every conversation but the open one); the engine catches up either way. Another workspace's
+     * push is always shown (its server sees no connection) and marks that workspace unread.
      */
     fun handlePush(message: PushMessage) {
         scope.launch {
+            ensureWorkspacesLoaded()
             // §11: signed out on this device (the server may not know it yet): nothing is shown.
-            if (!hasSession()) return@launch
-            val live = appForeground && engineStatus == EngineStatus.ONLINE
+            val target = routePush(message) ?: return@launch
+            // An entry that predates GET /server learns its id from the payload (routing, duplicate checks).
+            if (target.workspaceId == null && message.workspaceId != null) updateWorkspace(target.serverUrl) { it.copy(workspaceId = message.workspaceId) }
             val key = message.notificationKey
-            if (!message.isSilent && !live && message.channelId != null && key != null) {
-                notifier.notifyMessage(message.channelId, message.displayTitle, message.body, key = key)
+            if (target.serverUrl == activeKey && api != null) {
+                // The conversation being read is never announced; while the socket is live everything else arrives
+                // over it (and alerts from there).
+                val live = appForeground && engineStatus == EngineStatus.ONLINE
+                val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
+                if (!message.isSilent && !live && !reading && message.channelId != null && key != null) notify(target, message.channelId, message.displayTitle, message.body, key)
+                engine?.reconnectNow()
+                return@launch
             }
-            engine?.reconnectNow()
+            if (!message.isSilent && message.channelId != null && key != null) notify(target, message.channelId, message.displayTitle, message.body, key)
+            if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
         }
     }
 
-    /** A session is open, or stored for the next start (a push can start the process before boot). */
-    private suspend fun hasSession(): Boolean {
-        if (api != null) return true
-        val username = secrets.setting(USERNAME_KEY) ?: return false
-        return secrets.secret(account(secrets.setting(SERVER_KEY) ?: DEFAULT_SERVER, username)) != null
+    private suspend fun routePush(message: PushMessage): Workspace? =
+        Workspaces.route(workspaces, activeKey, message.workspaceId, message.channelId) { entry, channelId ->
+            if (entry.serverUrl == activeKey && persistence != null) {
+                store.channel(channelId) != null
+            } else {
+                withContext(Dispatchers.IO) { RoomPersistence.hasChannel(app, account(entry.serverUrl, entry.username), channelId) }
+            }
+        }
+
+    /**
+     * A tapped notification (WORKSPACES.md §7): its workspace comes on screen (switching if needed), then the
+     * conversation opens as before (the main screen opens [pendingChannelId] once the store knows it).
+     */
+    fun openFromNotification(workspaceKey: String?, channelId: String) {
+        pendingWorkspaceKey = workspaceKey
+        pendingChannelId = channelId
+        scope.launch {
+            sessionLock.withLock {
+                if (!restored) return@withLock // startup opens the pending workspace itself
+                val key = pendingWorkspaceKey ?: return@withLock
+                pendingWorkspaceKey = null
+                if (workspaces.none { it.serverUrl == key }) return@withLock
+                if (key != activeKey || screen == Screen.LOGIN) {
+                    switchLocked(key)
+                    pendingChannelId = channelId
+                }
+            }
+        }
     }
 
     private fun dndActive(store: Store): Boolean = Dnd.isActive(store.me?.let { store.users[it.id] ?: it.asPublic })
@@ -399,58 +775,123 @@ class AppController(private val app: Application) {
         if (active) {
             engine?.reconnectNow()
             if (api != null) push.refresh()
+            refreshSummaries() // WORKSPACES.md §6: the other workspaces' marks
         }
     }
 
     suspend fun openChannel(channelId: String) {
+        openChannelId = channelId
         try { engine?.openChannel(channelId) } catch (e: Exception) { report(e) }
     }
 
     fun closeChannel() {
-        // Nothing to do yet: the engine keeps currentChannelId for notification suppression only.
+        // The engine keeps currentChannelId for its own suppression; pushes check what is on screen now.
+        openChannelId = null
     }
 
-    /**
-     * SYNC_PROTOCOL.md §11: the server revokes the session first (an expired access token is refreshed and
-     * the call sent again); then everything local goes (handleSignedOut). When the server could not be told,
-     * the push token is deleted so the still-valid session cannot keep notifying this device.
-     */
+    /** 「ログアウト」: sign out of the workspace on screen; it leaves the list and the next one opens (§5.3). */
     suspend fun logout() {
-        val engine = engine
-        if (engine != null) attempt { engine.flushDrafts() } // typed but not saved yet: kept on the server
-        engine?.stop()
-        this.engine = null
-        val api = api
-        if (api == null) {
+        val key = activeKey
+        if (key == null) {
             screen = Screen.LOGIN
             return
         }
-        val revoked = api.logout() // onSignedOut → handleSignedOut
+        signOutWorkspace(key)
+    }
+
+    /**
+     * Sign out of a workspace, on screen or not (SYNC_PROTOCOL.md §11 for that workspace only): the server revokes the
+     * session first (an expired access token is renewed and the call sent again); then its local store, token and
+     * notifications go and it leaves the list (clientSignedOut). When the server could not be told, the push token
+     * is deleted so that the still-valid session cannot keep notifying this device. One already signed out just
+     * leaves the list.
+     */
+    suspend fun signOutWorkspace(serverUrl: String) =
+        // In the controller's scope: the screen that asked goes away with the workspace.
+        scope.launch { signOutNow(serverUrl) }.join()
+
+    private suspend fun signOutNow(serverUrl: String) {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl }
+        val onScreen = serverUrl == activeKey && api != null
+        val client = when {
+            entry == null -> null
+            onScreen -> api
+            else -> clientFor(entry)
+        }
+        if (client == null) {
+            sessionLock.withLock { forgetWorkspace(serverUrl) }
+            return
+        }
+        leaving.add(serverUrl)
+        if (onScreen) {
+            val engine = engine
+            if (engine != null) attempt { engine.flushDrafts() } // typed but not saved yet: kept on the server
+            engine?.stop()
+        }
+        val revoked = client.logout() // onSignedOut → clientSignedOut
         if (!revoked) push.forget()
     }
 
-    private suspend fun handleSignedOut(account: String) {
-        AvatarCache.reset()
-        engine?.stop()
-        engine = null
-        api = null
-        me = null
-        engineStatus = EngineStatus.IDLE
-        messageFocus = null
-        pendingChannelId = null
-        pendingReveal = null
-        linkPreviews.clear()
-        notifier.clearAll() // §11: no notification (or badge) of the old account stays up
-        val persistence = persistence
-        this.persistence = null
-        store = Store()
-        screen = Screen.LOGIN
-        secrets.putSecret(account, null)
-        // §11: the account's messages, drafts and send queue go with the session.
-        withContext(Dispatchers.IO) {
-            persistence?.close()
-            RoomPersistence.delete(app, account)
+    /** A client's session is over: refused refresh, revoked, or signed out on purpose (§11). */
+    private suspend fun clientSignedOut(serverUrl: String, client: ApiClient) {
+        if (clients[serverUrl] !== client) return // replaced by a newer sign-in, or handled already
+        clients.remove(serverUrl)
+        sessionLock.withLock { endSession(serverUrl, client) }
+    }
+
+    /**
+     * SYNC_PROTOCOL.md §11 for one workspace: its local store (messages, drafts, send queue), stored token and
+     * notifications go. A workspace the user left goes from the list (the first remaining one opens, else the login
+     * form); one whose session ended stays, signed out, and shows its login form when it was on screen.
+     */
+    private suspend fun endSession(serverUrl: String, client: ApiClient) {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl }
+        val wasActive = api === client
+        if (wasActive) {
+            closeActive()
+            pendingChannelId = null
         }
+        push.detach(serverUrl)
+        val username = entry?.username ?: if (wasActive) savedUsername else null
+        if (username != null) {
+            secrets.putSecret(account(serverUrl, username), null)
+            withContext(Dispatchers.IO) { RoomPersistence.delete(app, account(serverUrl, username)) }
+        }
+        notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
+        val leave = leaving.remove(serverUrl)
+        if (leave) {
+            username?.let { RecentSearches.clear(prefs, RecentSearches.key(account(serverUrl, it))) }
+            replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
+        } else {
+            updateWorkspace(serverUrl) { it.copy(signedOut = true, badge = 0, hasUnread = false) }
+        }
+        if (!wasActive && !(leave && serverUrl == activeKey)) return
+        if (leave) {
+            val next = workspaces.firstOrNull { !it.signedOut } ?: workspaces.firstOrNull()
+            if (next != null) openWorkspace(next) else showLogin(null)
+        } else {
+            showLogin(serverUrl)
+        }
+    }
+
+    /** A workspace without a session leaves the list (「一覧から外す」); nothing of it stays on this device. */
+    private suspend fun forgetWorkspace(serverUrl: String) {
+        val entry = workspaces.firstOrNull { it.serverUrl == serverUrl } ?: return
+        forgetAccountData(account(serverUrl, entry.username))
+        push.detach(serverUrl)
+        notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
+        replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
+        if (serverUrl != activeKey) return
+        if (api != null || engine != null) closeActive()
+        val next = workspaces.firstOrNull { !it.signedOut } ?: workspaces.firstOrNull()
+        if (next != null) openWorkspace(next) else showLogin(null)
+    }
+
+    /** An account's token, local store and recent searches (§11); its database must not be open. */
+    private suspend fun forgetAccountData(account: String) {
+        secrets.putSecret(account, null)
+        RecentSearches.clear(prefs, RecentSearches.key(account))
+        withContext(Dispatchers.IO) { RoomPersistence.delete(app, account) }
     }
 
     // --- channel actions used by the dialogs (results carry the channel id to open) ----------------
@@ -647,8 +1088,12 @@ class AppController(private val app: Application) {
     /** M13e: confined to the channels they were added to; browsing and creation are hidden. */
     val isGuest: Boolean get() = me?.role == "guest"
 
-    suspend fun searchMessages(query: String, offset: Int = 0): Result<SearchOut> =
-        attempt { api!!.searchMessages(query, offset = offset) }.onFailure { error = describe(it) }
+    /** M16b: one page of results (30, like the desktop); a failure shows as the error snackbar. */
+    suspend fun searchMessages(query: SearchRequest, offset: Int = 0): Result<SearchOut> =
+        attempt { api!!.searchMessages(query, limit = SEARCH_PAGE, offset = offset) }.onFailure { error = describe(it) }
+
+    /** "server|username" of the account on screen: names this device's data for it (recent searches). */
+    val accountKey: String? get() = workspaceKey
 
     // --- attachments (M9a) ---------------------------------------------------------------------------
 
@@ -1013,6 +1458,8 @@ class AppController(private val app: Application) {
     }
 
     private companion object {
+        const val SEARCH_PAGE = 30
+        const val NOT_CHIKUWA = "ChikuwaChat のサーバーではありません"
         const val SERVER_KEY = "server"
         const val USERNAME_KEY = "username"
         // 10.0.2.2 is the host machine from the Android emulator.

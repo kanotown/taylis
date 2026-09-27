@@ -61,7 +61,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -91,7 +93,22 @@ fun MainScreen(controller: AppController) {
     val status = controller.engineStatus
     var selection by rememberSaveable { mutableStateOf<String?>(null) }
     var threadId by rememberSaveable { mutableStateOf<String?>(null) }
+    // M16b: the search screen: the bar (expanded = suggestions), the search on screen and its results. The
+    // results stay while a result's conversation is open, so going back shows them as they were.
     var searching by rememberSaveable { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    var searchParams by rememberSaveable(stateSaver = SearchParamsSaver) { mutableStateOf<SearchParams?>(null) }
+    var searchTab by rememberSaveable { mutableIntStateOf(0) }
+    /** The conversation on screen was opened from the results: back (and 「検索結果に戻る」) returns to them. */
+    var backToSearch by rememberSaveable { mutableStateOf(false) }
+    /** …and the open thread is the result itself (a thread opened from its channel goes back to the channel). */
+    var searchThread by rememberSaveable { mutableStateOf(false) }
+    val searchResults = remember { SearchResults() }
+    val searchListState = rememberLazyListState()
+    val searchFilesState = rememberLazyListState()
+    val recentKey = controller.accountKey?.let { RecentSearches.key(it) }
+    var recentSearches by remember(recentKey) { mutableStateOf(recentKey?.let { RecentSearches.read(controller.prefs, it) } ?: emptyList()) }
     var dialog by remember { mutableStateOf<MainDialog?>(null) }
     // M14f: the conversation whose long-press menu is open, and the section whose 「…」 is.
     var channelMenuFor by remember { mutableStateOf<String?>(null) }
@@ -123,6 +140,9 @@ fun MainScreen(controller: AppController) {
      */
     fun openConversation(channelId: String, parentId: String? = null, fromThreadList: Boolean = false) {
         searching = false
+        searchExpanded = false
+        backToSearch = false
+        searchThread = false
         pinsOpen = false
         showFiles = false
         showSaved = false
@@ -160,15 +180,85 @@ fun MainScreen(controller: AppController) {
 
     val selectedChannel = selection?.let { store.channel(it) }
     if (selectedChannel == null) threadId = null
-    val closeThread: () -> Unit = {
-        threadId = null
-        if (threadFromList) { threadFromList = false; selection = null } // back to the threads list
+
+    // --- search (M16b) ---
+    fun openSearch() {
+        searching = true
+        searchExpanded = true
+        searchText = ""
+        searchParams = null
+        backToSearch = false
+        searchThread = false
     }
-    BackHandler(enabled = searching) { searching = false }
+    fun closeSearch() {
+        searching = false
+        searchExpanded = false
+        searchText = ""
+        searchParams = null
+        backToSearch = false
+        searchThread = false
+    }
+    /** Back from the suggestions: to the results on screen, or out of search when there are none. */
+    fun collapseSearch() {
+        val params = searchParams
+        if (params == null) closeSearch() else { searchExpanded = false; searchText = params.q }
+    }
+    /** Filters, sort and chips change the search on screen (only searches run from the bar are remembered). */
+    fun changeSearch(params: SearchParams) {
+        searchParams = params
+        searchListState.requestScrollToItem(0)
+        searchFilesState.requestScrollToItem(0)
+    }
+    fun runSearch(params: SearchParams) {
+        recentKey?.let { recentSearches = RecentSearches.push(controller.prefs, it, params) }
+        // The files tab reads only the words and the channel: a search by sender, date, kind or thread shows messages.
+        if (params.fromUserId != null || params.date != null || params.has.isNotEmpty() || params.isThread) searchTab = 0
+        changeSearch(params)
+        searchText = params.q
+        searchExpanded = false
+        searching = true
+    }
+    fun returnToSearch() {
+        pinsOpen = false
+        showFiles = false
+        threadId = null
+        threadFromList = false
+        selection = null
+        backToSearch = false
+        searchThread = false
+        searching = true
+        searchExpanded = false
+    }
+    /** A result: its conversation (or thread) around the message, with the way back to the results. */
+    fun openFromSearch(messageId: String, channelId: String, parentId: String?, message: jp.chikuwachat.android.api.MessageOut? = null) {
+        scope.launch {
+            val shown = if (message != null) controller.revealMessage(message) else controller.revealMessage(messageId, channelId, parentId)
+            if (!shown) return@launch
+            openConversation(channelId, parentId)
+            backToSearch = true
+            searchThread = parentId != null
+        }
+    }
+    LaunchedEffect(searchParams) { searchParams?.let { searchResults.show(controller, it) } }
+    LaunchedEffect(searching, searchTab, searchParams?.q, searchParams?.channelId) {
+        val params = searchParams
+        if (searching && searchTab == SEARCH_TAB_FILES && params != null) searchResults.showFiles(controller, params.q.trim().ifEmpty { null }, params.channelId)
+    }
+
+    val closeThread: () -> Unit = {
+        if (backToSearch && searchThread) {
+            returnToSearch()
+        } else {
+            threadId = null
+            if (threadFromList) { threadFromList = false; selection = null } // back to the threads list
+        }
+    }
+    val closeChannel: () -> Unit = { if (backToSearch) returnToSearch() else selection = null }
+    BackHandler(enabled = searching && !searchExpanded) { closeSearch() }
     BackHandler(enabled = !searching && pinsOpen && selectedChannel != null) { pinsOpen = false }
     BackHandler(enabled = !searching && !pinsOpen && showFiles && selectedChannel != null) { showFiles = false }
     BackHandler(enabled = !searching && !pinsOpen && threadId != null) { closeThread() }
-    BackHandler(enabled = threadId == null && !pinsOpen && selectedChannel != null) { selection = null }
+    BackHandler(enabled = !searching && threadId == null && !pinsOpen && !showFiles && selectedChannel != null) { closeChannel() }
     BackHandler(enabled = !searching && selectedChannel == null && listReplaced) { closeLists() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
@@ -189,123 +279,156 @@ fun MainScreen(controller: AppController) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
-                title = {
-                    when {
-                        searching -> Text("検索")
-                        pinsOpen && selectedChannel != null -> TwoLineTitle("ピン留め", channelTitle(selectedChannel, store))
-                        threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
-                        selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
-                            TwoLineTitle(
-                                channelTitle(selectedChannel, store),
-                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
+            if (searching) {
+                SearchTopBar(
+                    controller, version,
+                    text = searchText,
+                    onTextChange = { searchText = it },
+                    expanded = searchExpanded,
+                    onExpandedChange = { open -> if (open) searchExpanded = true else collapseSearch() },
+                    recent = recentSearches,
+                    onRemoveRecent = { params -> recentKey?.let { recentSearches = RecentSearches.remove(controller.prefs, it, params) } },
+                    onClearRecent = {
+                        recentKey?.let { RecentSearches.clear(controller.prefs, it) }
+                        recentSearches = emptyList()
+                    },
+                    onSearch = ::runSearch,
+                    onBack = { if (searchExpanded && searchParams != null) collapseSearch() else closeSearch() },
+                    placeholder = "${controller.workspaceName} を検索",
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        when {
+                            pinsOpen && selectedChannel != null -> TwoLineTitle("ピン留め", channelTitle(selectedChannel, store))
+                            threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
+                            selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
+                                TwoLineTitle(
+                                    channelTitle(selectedChannel, store),
+                                    selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
+                                )
+                            }
+                            showThreads -> Text("スレッド")
+                            showSaved -> Text("保存済み")
+                            showMentions -> Text("メンション")
+                            showDrafts -> Text("下書き")
+                            showFiles -> Text("ファイル")
+                            showReminders -> Text("リマインダー")
+                            else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
+                        }
+                    },
+                    navigationIcon = {
+                        when {
+                            selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (showFiles) showFiles = false else if (threadId != null) closeThread() else closeChannel() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                            }
+                            listReplaced -> IconButton(onClick = closeLists) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
+                            me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
+                        }
+                    },
+                    actions = {
+                        StatusBadge(status)
+                        // THREADS.md §5: follow / unfollow the open thread.
+                        val openId = threadId
+                        val threadState = openId?.let { store.threads[it]?.state }
+                        if (openId != null && threadState != null && selectedChannel?.isMember == true) {
+                            FilterChip(
+                                selected = threadState.following,
+                                onClick = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } },
+                                label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                modifier = Modifier.padding(end = 4.dp),
                             )
                         }
-                        showThreads -> Text("スレッド")
-                        showSaved -> Text("保存済み")
-                        showMentions -> Text("メンション")
-                        showDrafts -> Text("下書き")
-                        showFiles -> Text("ファイル")
-                        showReminders -> Text("リマインダー")
-                        else -> Text("ChikuwaChat")
-                    }
-                },
-                navigationIcon = {
-                    when {
-                        searching -> IconButton(onClick = { searching = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
-                        selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (showFiles) showFiles = false else if (threadId != null) closeThread() else selection = null }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                        if (selectedChannel != null && selectedChannel.isMember && threadId == null) {
+                            val starred = store.isFavorite(selectedChannel.id)
+                            IconButton(onClick = { scope.launch { controller.toggleFavorite(selectedChannel.id) } }) {
+                                Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = if (starred) "お気に入りから外す" else "お気に入りに追加",
+                                     tint = if (starred) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
+                            }
+                            IconButton(onClick = { pinsOpen = !pinsOpen }) {
+                                Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
+                            }
+                            IconButton(onClick = { filesChannelId = selectedChannel.id; showFiles = !showFiles; pinsOpen = false }) {
+                                Icon(if (showFiles) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = "ファイル")
+                            }
+                            val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
+                            val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
+                            IconButton(onClick = { bellOpen = true }) {
+                                Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = "通知設定")
+                            }
+                            DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
+                                listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text((if (level == value) "✓ " else "    ") + label) },
+                                        onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, value, null) } },
+                                    )
+                                }
+                                HorizontalDivider()
+                                if (mute != null) {
+                                    DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, level, null) } })
+                                } else {
+                                    DropdownMenuItem(text = { Text("8 時間ミュート") }, onClick = {
+                                        bellOpen = false
+                                        scope.launch { controller.setNotification(selectedChannel.id, level, Instant.now().plusSeconds(8 * 3600).toString()) }
+                                    })
+                                }
+                            }
+                            IconButton(onClick = { dialog = MainDialog.CHANNEL_INFO }) { Icon(Icons.Default.Info, contentDescription = "チャンネル情報") }
                         }
-                        listReplaced -> IconButton(onClick = closeLists) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
-                        me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
-                    }
-                },
-                actions = {
-                    StatusBadge(status)
-                    // THREADS.md §5: follow / unfollow the open thread.
-                    val openId = threadId
-                    val threadState = openId?.let { store.threads[it]?.state }
-                    if (openId != null && threadState != null && selectedChannel?.isMember == true && !searching) {
-                        FilterChip(
-                            selected = threadState.following,
-                            onClick = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } },
-                            label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
-                            leadingIcon = {
-                                Icon(
-                                    if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            },
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                    if (selectedChannel != null && selectedChannel.isMember && threadId == null && !searching) {
-                        val starred = store.isFavorite(selectedChannel.id)
-                        IconButton(onClick = { scope.launch { controller.toggleFavorite(selectedChannel.id) } }) {
-                            Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = if (starred) "お気に入りから外す" else "お気に入りに追加",
-                                 tint = if (starred) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
-                        }
-                        IconButton(onClick = { pinsOpen = !pinsOpen }) {
-                            Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
-                        }
-                        IconButton(onClick = { filesChannelId = selectedChannel.id; showFiles = !showFiles; pinsOpen = false }) {
-                            Icon(if (showFiles) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = "ファイル")
-                        }
-                        val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
-                        val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
-                        IconButton(onClick = { bellOpen = true }) {
-                            Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = "通知設定")
-                        }
-                        DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
-                            listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = { Text((if (level == value) "✓ " else "    ") + label) },
-                                    onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, value, null) } },
-                                )
+                        IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
+                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
+                            DropdownMenuItem(text = { Text("メンバー") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
+                            if (!controller.isGuest) {
+                                DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                                DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                            }
+                            DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
+                            if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
+                                DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
                             }
                             HorizontalDivider()
-                            if (mute != null) {
-                                DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, level, null) } })
-                            } else {
-                                DropdownMenuItem(text = { Text("8 時間ミュート") }, onClick = {
-                                    bellOpen = false
-                                    scope.launch { controller.setNotification(selectedChannel.id, level, Instant.now().plusSeconds(8 * 3600).toString()) }
-                                })
-                            }
+                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; dialog = MainDialog.SETTINGS })
+                            // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
+                            val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
                         }
-                        IconButton(onClick = { dialog = MainDialog.CHANNEL_INFO }) { Icon(Icons.Default.Info, contentDescription = "チャンネル情報") }
-                    }
-                    if (!searching) IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, contentDescription = "検索") }
-                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
-                        DropdownMenuItem(text = { Text("メンバー") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
-                        if (!controller.isGuest) {
-                            DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
-                            DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
-                        }
-                        DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
-                        if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
-                            DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; dialog = MainDialog.SETTINGS })
-                        DropdownMenuItem(text = { Text("ログアウト") }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ConnectionBanner(status)
+            val shownSearch = searchParams
+            if (!searching && backToSearch && shownSearch != null && selectedChannel != null) {
+                BackToSearchStrip(describeSearch(store, shownSearch), onClick = ::returnToSearch)
+            }
             val openThread = threadId
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (searching) {
-                    SearchPane(controller) { message ->
-                        scope.launch {
-                            if (controller.revealMessage(message)) openConversation(message.channelId, message.parentId)
-                        }
+                    if (shownSearch != null) {
+                        SearchResultsPane(
+                            controller, version, shownSearch, searchResults,
+                            tab = searchTab,
+                            onTabChange = { searchTab = it },
+                            onChange = ::changeSearch,
+                            listState = searchListState,
+                            filesState = searchFilesState,
+                            onLoadMore = { scope.launch { searchResults.loadMore(controller) } },
+                            onLoadMoreFiles = { scope.launch { searchResults.loadMoreFiles(controller) } },
+                            onRetry = { scope.launch { searchResults.retry(controller) } },
+                            onOpen = { message -> openFromSearch(message.id, message.channelId, message.parentId, message) },
+                            onOpenFile = { item -> openFromSearch(item.messageId, item.channelId, item.parentId) },
+                        )
                     }
                 } else if (selectedChannel != null && pinsOpen) {
                     PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal)
@@ -320,7 +443,7 @@ fun MainScreen(controller: AppController) {
                 } else if (showSaved) {
                     SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
-                    ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it })
+                    ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
                 } else if (showReminders) {
                     RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
                 } else if (showMentions) {

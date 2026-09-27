@@ -89,6 +89,12 @@ class ApiClient(
     fun hasFreshAccessToken(marginMs: Long = 60_000): Boolean = accessToken != null && accessExpiresAt - clock() > marginMs
 
     /**
+     * A request that finds no access token (a restored session, a workspace in the background) gets one first. When
+     * several start together only the first refreshes; the others use its token (every rotation risks the token).
+     */
+    private suspend fun ensureAccessToken() = refreshMutex.withLock { if (accessToken == null && refreshToken != null) rotate() }
+
+    /**
      * Rotates the refresh token. When the answer is lost (network error, 429 / 5xx) the server may already
      * have rotated it; the old token is accepted again for 30 s (SECURITY.md §2.3), so the retry comes
      * quickly and inside that window instead of after the reconnect backoff (which would look like reuse).
@@ -272,11 +278,26 @@ class ApiClient(
         return Codec.snake.decodeFromString(MessageOut.serializer(), text) to (status == 201)
     }
 
-    /** GET /search/messages: full-text search across my channels (SECURITY.md: server-side permission filter). */
-    suspend fun searchMessages(query: String, channelId: String? = null, limit: Int = 20, offset: Int = 0): SearchOut {
-        // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
+    /**
+     * GET /search/messages (M16b): words and / or structured filters across my channels (the server applies the
+     * membership filter, SECURITY.md). `has` repeats; typed before: / after: / on: dates are read in the caller's
+     * zone (DATA_MODEL.md 検索), so the offset goes along.
+     */
+    suspend fun searchMessages(query: SearchRequest, limit: Int = 20, offset: Int = 0): SearchOut {
         val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
-        val params = "q=" + Enc.encode(query, "UTF-8") + "&limit=$limit&offset=$offset&tz_offset_minutes=$tzOffset" + (channelId?.let { "&channel_id=$it" } ?: "")
+        val params = buildList {
+            add("q=" + Enc.encode(query.q, "UTF-8"))
+            query.channelId?.let { add("channel_id=" + Enc.encode(it, "UTF-8")) }
+            query.fromUserId?.let { add("from_user_id=" + Enc.encode(it, "UTF-8")) }
+            query.after?.let { add("after=" + Enc.encode(it, "UTF-8")) }
+            query.before?.let { add("before=" + Enc.encode(it, "UTF-8")) }
+            query.has.forEach { add("has=" + Enc.encode(it, "UTF-8")) }
+            if (query.isThread) add("is_thread=true")
+            add("sort=" + Enc.encode(query.sort, "UTF-8"))
+            add("tz_offset_minutes=$tzOffset")
+            add("limit=$limit")
+            add("offset=$offset")
+        }.joinToString("&")
         return request("GET", "/api/v1/search/messages?$params")
     }
 
@@ -292,7 +313,7 @@ class ApiClient(
         Codec.snake.decodeFromString(UserMe.serializer(), upload("/api/v1/users/me/avatar", "avatar", file))
 
     private suspend fun upload(path: String, filename: String, file: RequestBody, retry401: Boolean = true): String {
-        if (accessToken == null && refreshToken != null) refresh()
+        if (accessToken == null && refreshToken != null) ensureAccessToken()
         val part = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file", filename, file).build()
         val request = Request.Builder().url(baseUrl.trimEnd('/') + path).post(part).header("Accept", "application/json")
         accessToken?.let { request.header("Authorization", "Bearer $it") }
@@ -306,7 +327,7 @@ class ApiClient(
 
     /** Authenticated GET returning raw bytes (thumbnails and downloads). */
     suspend fun fetchBytes(path: String): ByteArray {
-        if (accessToken == null && refreshToken != null) refresh()
+        if (accessToken == null && refreshToken != null) ensureAccessToken()
         val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
         accessToken?.let { request.header("Authorization", "Bearer $it") }
         return withContext(Dispatchers.IO) {
@@ -501,6 +522,14 @@ class ApiClient(
             })
         })
 
+    // --- workspaces (M16c) -------------------------------------------------------------------
+
+    /** GET /server, no sign-in: which workspace this URL is (WORKSPACES.md §3.1). */
+    suspend fun serverInfo(): ServerInfoOut = request("GET", "/api/v1/server", auth = false)
+
+    /** GET /sync/summary: the switcher's marks for a workspace that is not open (WORKSPACES.md §3.2). */
+    suspend fun syncSummary(): UnreadSummaryOut = request("GET", "/api/v1/sync/summary")
+
     // --- invite links (M12h) ------------------------------------------------------------------
 
     /** No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked. */
@@ -535,7 +564,7 @@ class ApiClient(
     }
 
     private suspend fun requestRaw(method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean): Pair<String, Int> {
-        if (auth && accessToken == null && refreshToken != null) refresh()
+        if (auth && accessToken == null && refreshToken != null) ensureAccessToken()
         val builder = Request.Builder().url(baseUrl.trimEnd('/') + path).header("Accept", "application/json")
         val requestBody = body?.let { Codec.plain.encodeToString(JsonElement.serializer(), it).toRequestBody("application/json".toMediaType()) }
         builder.method(method, requestBody ?: if (method == "GET") null else "".toRequestBody(null))

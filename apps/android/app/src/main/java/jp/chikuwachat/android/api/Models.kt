@@ -387,6 +387,25 @@ data class SearchOut(
     val limit: Int,
     val offset: Int,
     val hasMore: Boolean,
+    /** M16b: how many messages match; the server stops counting past 1,000 and then sets `totalCapped`. */
+    val total: Int = 0,
+    val totalCapped: Boolean = false,
+)
+
+/**
+ * GET /search/messages parameters (M16b): the words (typed modifiers such as from:@ stay in them) and the
+ * filters picked from menus. `after` is inclusive, `before` exclusive (ISO-8601 with an offset); `has` repeats.
+ */
+data class SearchRequest(
+    val q: String,
+    val channelId: String? = null,
+    val fromUserId: String? = null,
+    val after: String? = null,
+    val before: String? = null,
+    val has: List<String> = emptyList(),
+    val isThread: Boolean = false,
+    /** "relevance" or "newest"; a search without words is newest first whatever this says. */
+    val sort: String = "relevance",
 )
 
 /** What the server understood from the query's modifiers (from: in: before: after: on:). */
@@ -402,6 +421,14 @@ data class SearchFilters(
     val has: List<String> = emptyList(),
     val isThread: Boolean = false,
 )
+
+/** GET /server (M16c, no sign-in): which ChikuwaChat deployment a URL is (WORKSPACES.md §3.1). */
+@Serializable
+data class ServerInfoOut(val product: String, val workspaceId: String, val name: String, val apiVersion: String = "")
+
+/** GET /sync/summary (M16c): the unread marks of a workspace that is not open (WORKSPACES.md §3.2). */
+@Serializable
+data class UnreadSummaryOut(val badge: Int = 0, val hasUnread: Boolean = false)
 
 /** Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable. */
 @Serializable

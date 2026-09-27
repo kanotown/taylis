@@ -20,6 +20,7 @@ import jp.chikuwachat.android.sync.Persistence
 import jp.chikuwachat.android.sync.Snapshot
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 // Rows hold JSON blobs (like the desktop and iOS stores): the schema only needs the keys used for lookups.
@@ -49,6 +50,7 @@ interface LocalDao {
     @Upsert fun putUser(row: UserRow)
 
     @Query("SELECT * FROM channels") fun channels(): List<ChannelRow>
+    @Query("SELECT COUNT(*) FROM channels WHERE id = :id") fun countChannel(id: String): Int
     @Upsert fun putChannel(row: ChannelRow)
     @Query("DELETE FROM channels WHERE id = :id") fun deleteChannel(id: String)
 
@@ -101,7 +103,12 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     }
 
     private fun run(work: () -> Unit) {
-        executor.execute { runCatching(work).onFailure { Log.w("RoomPersistence", "write failed", it) } }
+        // A write that arrives after close() (work of a stopped session finishing late, M16c switch) is dropped.
+        try {
+            executor.execute { runCatching(work).onFailure { Log.w("RoomPersistence", "write failed", it) } }
+        } catch (_: RejectedExecutionException) {
+            Log.i("RoomPersistence", "write after close dropped")
+        }
     }
 
     private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, json: String): T? =
@@ -127,6 +134,23 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         /** Sign-out (§11): the profile's messages, drafts and outbox go with the session. Close it first. */
         fun delete(context: Context, profile: String) {
             context.deleteDatabase(fileName(profile))
+        }
+
+        /**
+         * Whether a profile's local store knows a channel (WORKSPACES.md §7: a push without a known workspace id goes
+         * to the workspace that has its channel). A profile without a database has none; nothing is created.
+         */
+        fun hasChannel(context: Context, profile: String, channelId: String): Boolean {
+            if (!context.getDatabasePath(fileName(profile)).exists()) return false
+            val db = Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile)).fallbackToDestructiveMigration(true).build()
+            return try {
+                db.dao().countChannel(channelId) > 0
+            } catch (e: Exception) {
+                Log.w("RoomPersistence", "channel lookup failed", e)
+                false
+            } finally {
+                db.close()
+            }
         }
     }
 }

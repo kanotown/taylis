@@ -12,6 +12,10 @@ data class PushMessage(
     val subtitle: String? = null,
     /** The channel id for messages, "reminder:<id>" for reminders. */
     val collapseKey: String? = null,
+    /** The deployment that sent it (WORKSPACES.md §3.3): which workspace the notification belongs to. */
+    val workspaceId: String? = null,
+    /** That server's app-icon count for me when it was sent (PUSH_NOTIFICATIONS.md §4.2); an approximation. */
+    val badge: Int? = null,
 ) {
     val isSilent: Boolean get() = kind == "silent"
 
@@ -36,6 +40,8 @@ data class PushMessage(
                 body = data["body"] ?: "",
                 subtitle = data["subtitle"]?.takeIf { it.isNotBlank() },
                 collapseKey = data["collapse_key"]?.takeIf { it.isNotBlank() },
+                workspaceId = data["workspace_id"]?.takeIf { it.isNotBlank() },
+                badge = data["badge"]?.toIntOrNull(),
             )
         }
     }
