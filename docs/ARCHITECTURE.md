@@ -66,7 +66,7 @@ CLAUDE.md を優先し、本書を更新する。
 | バリデーション | Pydantic v2 | OpenAPI もここから生成 |
 | DB | PostgreSQL 17 + PGroonga | 全ドメインデータ、outbox、検索インデックス |
 | オブジェクトストレージ | versitygw (S3 API、posix バックエンド) | 添付ファイルのバイト列のみ。オブジェクトは通常のファイルとして保存される |
-| リバースプロキシ / TLS | Caddy | 自動 TLS |
+| リバースプロキシ / TLS | Caddy | 自動 TLS。既存の nginx が 80 / 443 を持つサーバーではその後ろで HTTP だけ (D22) |
 | コンテナ | Docker Compose | 開発・本番とも |
 | パスワードハッシュ | argon2id (`argon2-cffi`) | |
 | トークン | PyJWT (HS256) | access token 用 |
@@ -438,3 +438,4 @@ RealtimeHub だけ**。永続的な処理は必ず outbox の永続ハンドラ�
 | D19 | オブジェクトストレージは versitygw (posix バックエンド) | MinIO コミュニティ版の終了 (2026-04 archive、イメージ削除) を受けて 2026-09-26 に決定。S3 API をディレクトリの上に載せるだけなので 1 台構成で最も単純、バックアップはファイルコピー、Apache-2.0 | RustFS (MinIO 互換だが 1.0 直後)、Garage (AGPL、分散前提)、アプリ内ローカル FS 実装 (S3 互換の要件から外れる) |
 | D20 | ワークスペースの追加・切り替えはクライアント側で複数サーバーを登録して行う | D12 を保ったまま Slack / Mattermost と同じ操作を提供できる。サーバーの変更は `GET /server`、`GET /sync/summary`、プッシュの `workspace_id` だけ (2026-09-27) | 1 サーバー内に複数ワークスペース (テナント列、権限、検索の分離が全体に及ぶ) |
 | D21 | 本番への自動デプロイはタグ → GitHub Actions → GHCR → SSH の強制コマンド → `docker compose` の入れ替え | 1 台の VPS に数十人規模なら compose のままで足りる。イメージをレジストリに置くとサーバでビルドせずに済み、タグで戻せる。デプロイ前のバックアップと /readyz による確認・自動ロールバックを `infra/deploy.sh` に持たせる (2026-09-27) | Kubernetes / Argo CD (過剰)、サーバ上で git pull してビルド (サーバに Git の権限とビルド環境が要る)、Watchtower (イメージの自動更新が DB バックアップやマイグレーションと連携しない) |
+| D22 | 他のサイトの nginx が 80 / 443 と証明書 (certbot) を持つ共用サーバーでは、nginx が TLS を終端し、Caddy は `127.0.0.1:18080` の HTTP だけを受ける (`docker-compose.behind-proxy.yml`) | 既存のサイトに手を入れずに同居できる。Caddyfile (配信するもの、本文サイズ、CSP) は両方の構成で同じものを使う。利用者のアドレスと https は nginx が上書きした `X-Forwarded-For` / `-Proto` を、この構成でだけ Caddy が信用して (`trusted_proxies`) アプリに渡す (2026-09-27) | nginx から app へ直接 (Web クライアントの配信と CSP を nginx 側に二重に持つ)、Caddy に 443 を譲る (既存のサイトが止まる) |

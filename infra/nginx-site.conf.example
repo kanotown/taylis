@@ -1,0 +1,36 @@
+# ChikuwaChat behind the host's nginx (infra/README.md 「既存の nginx の後ろで動かす」): nginx terminates TLS,
+# Caddy (docker-compose.behind-proxy.yml) serves the web client and the API on 127.0.0.1:18080.
+# Replace chat.example.com, then as root:
+#   cp nginx-site.conf.example /etc/nginx/sites-available/chikuwachat
+#   ln -s /etc/nginx/sites-available/chikuwachat /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx
+#   certbot --nginx -d chat.example.com --redirect     # adds the 443 listener with the certificate
+
+map $http_upgrade $chikuwachat_connection {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name chat.example.com;
+
+    # Attachments up to 100 MB (ATTACHMENT_MAX_BYTES); Caddy applies the exact limit per path.
+    client_max_body_size 110m;
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        # Replace, never append: a client must not choose the address the app records and rate-limits.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # WebSocket (/api/v1/ws) stays open for hours.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $chikuwachat_connection;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        # Stream uploads and downloads instead of spooling them to disk.
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+}

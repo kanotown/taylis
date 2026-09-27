@@ -11,7 +11,8 @@ set -euo pipefail
 
 INFRA="${CHIKUWA_INFRA:-/srv/chikuwachat/infra}"
 TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
-FILES=(docker-compose.yml docker-compose.prod.yml docker-compose.release.yml Caddyfile backup.sh restore.sh deploy.sh)
+FILES=(docker-compose.yml docker-compose.prod.yml docker-compose.release.yml docker-compose.behind-proxy.yml Caddyfile
+       backup.sh restore.sh deploy.sh)
 
 read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
 if [ "${#argv[@]}" -ne 2 ] || ! [[ "${argv[1]}" =~ $TAG_RE ]]; then
