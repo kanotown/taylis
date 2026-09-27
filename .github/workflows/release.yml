@@ -1,15 +1,12 @@
 name: release
 
 # A tag v1.2.3 → the server and web checks → images in GHCR → the production VPS (infra/README.md 「自動デプロイ」).
-# Deploying an existing tag again (a rollback) from the Actions tab skips the checks and the image builds.
+# Deploying an existing tag again (a rollback): Run workflow with that tag chosen under "Use workflow from" (the
+# production environment accepts v* tags only); the checks and the image builds are skipped.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Deploy an existing release again (v1.2.3)"
-        required: true
 
 permissions:
   contents: read
@@ -20,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: ${{ github.ref_name }}
 
 jobs:
   checks:
