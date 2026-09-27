@@ -19,7 +19,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
   const [tab, setTab] = useState<Tab>("users");
   return (
     <Modal onClose={onClose} title="管理" className="w-[760px]">
-      <div className="mt-3 flex gap-1 border-b border-line">
+      <div className="mt-3 flex gap-1 overflow-x-auto border-b border-line">
         {(
           [
             ["users", "ユーザー"],
@@ -36,7 +36,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
             role="tab"
             aria-selected={tab === value}
             onClick={() => setTab(value)}
-            className={cn("-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors", tab === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
+            className={cn("-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors max-md:px-2.5", tab === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
           >
             {label}
           </button>
@@ -141,10 +141,10 @@ function UsersTab({ controller }: { controller: AppController }) {
             const self = user.id === me?.id;
             const off = !!user.deactivated_at;
             return (
-              <li key={user.id} className={cn("flex items-center gap-3 px-3 py-2 text-sm", off && "opacity-60")}>
+              <li key={user.id} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm max-md:gap-y-1.5", off && "opacity-60")}>
                 <Avatar id={user.id} name={user.display_name} size={30} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 max-md:flex-wrap max-md:gap-y-0.5">
                     <span className="truncate font-medium">{user.display_name}</span>
                     <span className="truncate text-xs text-muted">@{user.username}{user.email ? ` · ${user.email}` : ""}</span>
                     {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
@@ -156,8 +156,9 @@ function UsersTab({ controller }: { controller: AppController }) {
                   </div>
                   <div className="text-[11px] text-muted">作成 {fullTimestamp(user.created_at)}</div>
                 </div>
+                {/* On a phone the actions take a line of their own under the name. */}
                 {!self && !off && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 max-md:w-full max-md:flex-wrap max-md:pl-[42px]">
                     {user.role !== "bot" && (
                       <label className="flex items-center gap-1 text-xs text-muted" title="ロール">
                         <ShieldCheck size={14} />
@@ -185,7 +186,7 @@ function UsersTab({ controller }: { controller: AppController }) {
                   </div>
                 )}
                 {!self && off && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 max-md:w-full max-md:flex-wrap max-md:pl-[42px]">
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: false }); })}>
                       再有効化
                     </Button>

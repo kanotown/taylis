@@ -8,6 +8,7 @@ import { dateLabel, fullTimestamp, timeLabel } from "./format";
 import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
+import { BackButton } from "./compact";
 import { Badge, Button, cn } from "./primitives";
 
 /**
@@ -34,12 +35,13 @@ export function ThreadsView({ controller, selectedId, onOpen }: { controller: Ap
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <span className="text-muted">
+        <BackButton />
+        <span className="text-muted max-md:hidden">
           <MessagesSquare size={18} />
         </span>
-        <strong className="text-[15px]">スレッド</strong>
-        <span className="text-xs text-muted">{summary.unread_count > 0 ? `未読 ${summary.unread_count} 件` : "フォロー中のスレッド"}</span>
-        <div className="ml-auto flex rounded-lg bg-panel p-0.5 text-xs font-medium" role="tablist" aria-label="表示">
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">スレッド</strong>
+        <span className="min-w-0 truncate text-xs text-muted">{summary.unread_count > 0 ? `未読 ${summary.unread_count} 件` : "フォロー中のスレッド"}</span>
+        <div className="ml-auto flex shrink-0 rounded-lg bg-panel p-0.5 text-xs font-medium" role="tablist" aria-label="表示">
           {(["all", "unread"] as const).map((value) => (
             <button
               key={value}
@@ -47,7 +49,7 @@ export function ThreadsView({ controller, selectedId, onOpen }: { controller: Ap
               role="tab"
               aria-selected={filter === value}
               onClick={() => setFilter(value)}
-              className={cn("rounded-md px-2.5 py-1 transition-colors", filter === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+              className={cn("whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", filter === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
             >
               {value === "all" ? "すべて" : "未読"}
             </button>

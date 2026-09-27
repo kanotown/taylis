@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { formatSize, useAttachmentUrl } from "./Attachments";
 import { fullTimestamp } from "./format";
 import { channelTitle } from "./MainScreen";
+import { BackButton } from "./compact";
 import { Button, IconButton, Input } from "./primitives";
 
 /** 「ファイル」 (M11i): attachments in my channels (or one channel), newest first; a row reveals its message. */
@@ -38,19 +39,20 @@ export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
   const scope = channelId ? store.getChannel(channelId) : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <span className="text-muted"><Files size={18} /></span>
-        <strong className="text-[15px]">ファイル</strong>
+      <header className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:h-auto max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-2 max-md:py-2">
+        <BackButton />
+        <span className="text-muted max-md:hidden"><Files size={18} /></span>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">ファイル</strong>
         <select
           aria-label="チャンネル"
-          className="h-8 rounded-lg border border-line bg-panel px-2 text-sm"
+          className="h-8 rounded-lg border border-line bg-panel px-2 text-sm max-md:min-w-0 max-md:flex-1"
           value={channelId ?? ""}
           onChange={(e) => onChannelChange(e.target.value || null)}
         >
           <option value="">すべてのチャンネル</option>
           {channels.map((c) => <option key={c.id} value={c.id}>{channelTitle(c, controller)}</option>)}
         </select>
-        <div className="relative ml-auto w-64">
+        <div className="relative ml-auto w-64 max-md:ml-0 max-md:w-full">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <Input value={query} placeholder="ファイル名で絞り込む" className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />
         </div>

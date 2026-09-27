@@ -122,7 +122,7 @@ export function Modal({
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" />
         <Dialog.Content
           className={cn(
-            "rx-dialog fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[460px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none",
+            "rx-dialog fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[460px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none max-md:p-4",
             className,
           )}
         >
@@ -194,7 +194,7 @@ export const PopoverTrigger = Popover.Trigger;
 export function PopoverContent({ className, children, ...props }: ComponentProps<typeof Popover.Content>) {
   return (
     <Popover.Portal>
-      <Popover.Content sideOffset={6} className={cn("rx-popover z-50 rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
+      <Popover.Content sideOffset={6} collisionPadding={8} className={cn("rx-popover z-50 max-w-[calc(100vw-16px)] rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
         {children}
       </Popover.Content>
     </Popover.Portal>

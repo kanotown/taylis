@@ -130,7 +130,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         >
           <Search size={14} className="opacity-70" />
           <span className="flex-1">移動…</span>
-          <Kbd className="border-white/20 bg-transparent text-sidebar-fg/80">{modKey()} K</Kbd>
+          <Kbd className="border-white/20 bg-transparent text-sidebar-fg/80 max-md:hidden">{modKey()} K</Kbd>
         </button>
         <button
           type="button"

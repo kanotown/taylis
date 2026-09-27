@@ -66,7 +66,7 @@ function BlockView({ block, users, options }: { block: Block; users: Map<string,
             <thead>
               <tr>
                 {block.header.map((cell, c) => (
-                  <th key={c} className="border border-line bg-panel px-2.5 py-1 font-semibold" style={{ textAlign: block.align[c] ?? "left" }}>{inline(cell, users, options)}</th>
+                  <th key={c} className="min-w-[4em] border border-line bg-panel px-2.5 py-1 font-semibold" style={{ textAlign: block.align[c] ?? "left" }}>{inline(cell, users, options)}</th>
                 ))}
               </tr>
             </thead>
@@ -74,7 +74,7 @@ function BlockView({ block, users, options }: { block: Block; users: Map<string,
               {block.rows.map((row, r) => (
                 <tr key={r}>
                   {row.map((cell, c) => (
-                    <td key={c} className="border border-line px-2.5 py-1 align-top" style={{ textAlign: block.align[c] ?? "left" }}>{inline(cell, users, options)}</td>
+                    <td key={c} className="min-w-[4em] border border-line px-2.5 py-1 align-top" style={{ textAlign: block.align[c] ?? "left" }}>{inline(cell, users, options)}</td>
                   ))}
                 </tr>
               ))}

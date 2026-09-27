@@ -16,3 +16,16 @@ export function useAppVersion(controller: AppController): number {
 function screenIndex(screen: string): number {
   return ["boot", "login", "change_password", "main"].indexOf(screen) + 1;
 }
+
+/** A CSS media query's current answer, kept up to date (false where matchMedia is missing, e.g. in tests). */
+export function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+      const list = window.matchMedia(query);
+      list.addEventListener("change", listener);
+      return () => list.removeEventListener("change", listener);
+    },
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches,
+  );
+}

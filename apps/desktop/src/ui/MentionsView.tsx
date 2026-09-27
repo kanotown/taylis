@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import type { MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
+import { BackButton } from "./compact";
 import { Button } from "./primitives";
 import { MessageCard } from "./PinsPane";
 
@@ -28,9 +29,10 @@ export function MentionsView({ controller, onOpen }: { controller: AppController
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <span className="text-muted"><AtSign size={18} /></span>
-        <strong className="text-[15px]">メンション</strong>
-        <span className="text-xs text-muted">自分宛てと @channel</span>
+        <BackButton />
+        <span className="text-muted max-md:hidden"><AtSign size={18} /></span>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">メンション</strong>
+        <span className="min-w-0 truncate text-xs text-muted">自分宛てと @channel</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import type { BookmarkItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
+import { BackButton } from "./compact";
 import { Button } from "./primitives";
 import { MessageCard } from "./PinsPane";
 
@@ -32,11 +33,12 @@ export function SavedView({ controller, onOpen }: { controller: AppController; o
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <span className="text-muted">
+        <BackButton />
+        <span className="text-muted max-md:hidden">
           <Bookmark size={18} />
         </span>
-        <strong className="text-[15px]">保存済み</strong>
-        <span className="text-xs text-muted">{items ? `${store.bookmarks.size} 件` : ""}</span>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">保存済み</strong>
+        <span className="min-w-0 truncate text-xs text-muted">{items ? `${store.bookmarks.size} 件` : ""}</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (

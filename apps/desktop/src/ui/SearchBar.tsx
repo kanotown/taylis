@@ -85,13 +85,14 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
       >
         <Search size={14} className="shrink-0 opacity-80" />
         <span className={cn("min-w-0 flex-1 truncate", label && "text-white")}>{label ?? placeholder}</span>
-        <Kbd className="border-white/20 bg-transparent text-[10px] text-sidebar-fg/80">{modKey()} F</Kbd>
+        <Kbd className="border-white/20 bg-transparent text-[10px] text-sidebar-fg/80 max-md:hidden">{modKey()} F</Kbd>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onMouseDown={() => onOpenChange(false)} />
-          <div role="dialog" aria-label="検索" className="rx-popover absolute left-1/2 top-[-6px] z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl">
-            <div className="flex items-center gap-2 border-b border-line px-3">
+          {/* On a phone the search takes the whole screen, with 「キャンセル」 instead of a click outside. */}
+          <div role="dialog" aria-label="検索" className="rx-popover absolute left-1/2 top-[-6px] z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl max-md:fixed max-md:inset-0 max-md:flex max-md:w-auto max-md:translate-x-0 max-md:flex-col max-md:rounded-none max-md:border-0">
+            <div className="flex shrink-0 items-center gap-2 border-b border-line px-3">
               <Search size={16} className="shrink-0 text-muted" />
               <input
                 ref={input}
@@ -104,6 +105,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                 onKeyDown={onKeyDown}
                 placeholder="メッセージ、人、チャンネルを検索 (from:@名前 in:#チャンネル も使えます)"
                 aria-label="検索語"
+                enterKeyHint="search"
                 aria-activedescendant={rows[active] ? `search-suggestion-${active}` : undefined}
                 className="h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
                 autoFocus
@@ -113,8 +115,11 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                   <X size={15} />
                 </button>
               )}
+              <button type="button" className="shrink-0 px-1 text-sm font-medium text-accent md:hidden" onClick={() => onOpenChange(false)}>
+                キャンセル
+              </button>
             </div>
-            <ul role="listbox" className="max-h-[60vh] overflow-y-auto p-1.5">
+            <ul role="listbox" className="max-h-[60vh] overflow-y-auto p-1.5 max-md:max-h-none max-md:min-h-0 max-md:flex-1">
               {rows.map((row, index) => {
                 const heading = sectionHeading(rows, index, text);
                 return (
@@ -150,7 +155,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
               })}
               {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">入力して Enter で検索します</li>}
             </ul>
-            <div className="flex items-center gap-3 border-t border-line bg-panel px-3 py-1.5 text-[11px] text-muted">
+            <div className="flex items-center gap-3 border-t border-line bg-panel px-3 py-1.5 text-[11px] text-muted max-md:hidden">
               <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> 選択</span>
               <span><Kbd>Enter</Kbd> 検索</span>
               <span><Kbd>Esc</Kbd> 閉じる</span>
