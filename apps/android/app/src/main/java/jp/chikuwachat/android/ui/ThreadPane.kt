@@ -61,14 +61,14 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     }
     LaunchedEffect(parentId, controller.engineStatus) {
         try { controller.engine?.loadReplies(channelId, parentId) }
-        catch (e: Exception) { controller.error = controller.describe(e) }
+        catch (e: Exception) { controller.report(e) }
     }
     // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
     LaunchedEffect(parentId, controller.engineStatus, parent?.seq) {
         if (store.threads[parentId] != null) return@LaunchedEffect
         val out = parent?.toOut() ?: return@LaunchedEffect
         try { controller.engine?.loadThreadState(parentId, out) }
-        catch (e: Exception) { controller.error = controller.describe(e) }
+        catch (e: Exception) { controller.report(e) }
     }
     // Read position = the newest reply fully shown (never just "opened"), like the timeline.
     LaunchedEffect(parentId, positioned, controller.engineStatus, controller.appForeground, replies) {
@@ -87,7 +87,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     Column(Modifier.fillMaxSize().imePadding()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
             if (parent != null) {
-                item(key = "parent") { ThreadMessage(parent, store, controller) }
+                item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                 item(key = "divider") {
                     Text(
                         if (replies.isEmpty()) "返信はまだありません" else "${replies.size} 件の返信",
@@ -103,7 +103,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             items(replies, key = { it.id }) { reply ->
                 Column {
                     if (reply.id == firstUnreadId) NewRepliesDivider()
-                    ThreadMessage(reply, store, controller)
+                    ThreadMessage(reply, store, controller, version)
                 }
             }
         }
@@ -130,9 +130,9 @@ private fun NewRepliesDivider() {
 }
 
 @Composable
-private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController) {
+private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController, version: Int) {
     MessageRow(
-        message, store, controller,
+        message, store, controller, version,
         canEdit = !message.pending && message.senderId == store.me?.id,
         canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
         onRetry = { controller.scope.launch { controller.engine?.retryFailed() } },

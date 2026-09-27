@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
@@ -40,6 +41,14 @@ data class ChannelState(
     val unreadCount: Int = 0,
     val mentionCount: Int = 0,
     val hasOlder: Boolean = true,
+    /**
+     * §7.3: the oldest seq of the timeline loaded contiguously (latest page + 「以前を読み込む」); 0 = from the
+     * start, null = no timeline yet. Older rows may be stored (a thread parent a reply bumped, a reaction on
+     * an old message) but the timeline shows seq >= this only, and scroll-back pages from it.
+     */
+    val oldestLoadedSeq: Int? = null,
+    /** §10: a read position set here that the server has not confirmed yet; sent again after reconnecting. */
+    val unsentReadSeq: Int? = null,
 ) {
     val id: String get() = channel.id
     val hasUnread: Boolean get() = unreadCount > 0
@@ -218,6 +227,12 @@ class Store(private val persistence: Persistence? = null) {
     /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
     var sidebarSections: List<SidebarSectionOut> = emptyList()
         private set
+    /** bootstrap.limits (SYNC_PROTOCOL.md §4.1); null until the first bootstrap. */
+    var limits: Limits? = null
+        private set
+    fun setLimits(value: Limits) {
+        limits = value
+    }
     /** M15f: link bars of the conversations opened so far (not persisted). */
     private val channelLinks = HashMap<String, List<ChannelLinkOut>>()
     fun setChannelLinks(channelId: String, links: List<ChannelLinkOut>) {
@@ -312,8 +327,16 @@ class Store(private val persistence: Persistence? = null) {
         }
         me = snapshot.meta["me"]?.let { runCatching { Codec.plain.decodeFromString(UserMe.serializer(), it) }.getOrNull() }
         snapshot.users.forEach { users[it.id] = it }
-        snapshot.channels.forEach { channels[it.id] = it }
-        snapshot.messages.forEach { bucket(it.channelId)[it.id] = it }
+        // §7.3: a timeline cached before `oldestLoadedSeq` existed may hide holes, so it loads again from the
+        // latest page (unsent messages stay).
+        val stale = snapshot.channels.filter { it.syncedSeq != null && it.oldestLoadedSeq == null }.map { it.id }.toSet()
+        snapshot.channels.forEach { channels[it.id] = if (it.id in stale) it.copy(syncedSeq = null, hasOlder = true) else it }
+        snapshot.messages.forEach { if (it.channelId !in stale || it.pending) bucket(it.channelId)[it.id] = it }
+        stale.forEach { id ->
+            val kept = bucket(id).values.toList()
+            val channel = channels.getValue(id)
+            persist { it.clearMessages(id); kept.forEach { m -> it.saveMessage(m) }; it.saveChannel(channel) }
+        }
         outbox.addAll(snapshot.outbox)
     }
 
@@ -360,10 +383,14 @@ class Store(private val persistence: Persistence? = null) {
             isMember = isMember ?: existing?.isMember ?: (channel.membership != null),
             syncedSeq = existing?.syncedSeq,
             lastSeq = maxOf(existing?.lastSeq ?: 0, channel.lastSeq),
-            lastReadSeq = maxOf(existing?.lastReadSeq ?: 0, read?.lastReadSeq ?: 0),
+            // §10: the server's read state is the truth (no max merge): a position that only moved here stays
+            // in unsentReadSeq and is sent again; kept locally it would leave an unread that cannot be read.
+            lastReadSeq = read?.lastReadSeq ?: existing?.lastReadSeq ?: 0,
             unreadCount = read?.unreadCount ?: existing?.unreadCount ?: 0,
             mentionCount = read?.mentionCount ?: existing?.mentionCount ?: 0,
             hasOlder = existing?.hasOlder ?: true,
+            oldestLoadedSeq = existing?.oldestLoadedSeq,
+            unsentReadSeq = existing?.unsentReadSeq,
         )
         channels[channel.id] = merged
         persist { it.saveChannel(merged) }
@@ -395,8 +422,17 @@ class Store(private val persistence: Persistence? = null) {
 
     private fun bucket(channelId: String): LinkedHashMap<String, MessageState> = messagesByChannel.getOrPut(channelId) { LinkedHashMap() }
 
-    /** Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9). */
-    fun messages(channelId: String): List<MessageState> = ordered(bucket(channelId).values.filter { it.inTimeline })
+    /**
+     * The channel timeline: confirmed messages by seq from the loaded range on (§7.3 `oldestLoadedSeq`),
+     * then pending ones in creation order (SYNC_PROTOCOL.md §9).
+     */
+    fun messages(channelId: String): List<MessageState> {
+        val oldest = channels[channelId]?.oldestLoadedSeq
+        return ordered(bucket(channelId).values.filter { it.inTimeline && (it.seq == null || (oldest != null && it.seq >= oldest)) })
+    }
+
+    /** Pinned messages held for the channel, loaded range or not (the pins pane re-reads when they change). */
+    fun pinnedIds(channelId: String): List<String> = bucket(channelId).values.filter { it.pinnedAt != null && !it.pending }.map { it.id }.sorted()
 
     /** A thread: the replies of one parent, oldest first (pending ones last). */
     fun replies(channelId: String, parentId: String): List<MessageState> =

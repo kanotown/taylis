@@ -66,6 +66,11 @@ fun MessageBody(
     onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
     /** M12k: user groups by id, for `<@group:id>`. */
     groups: Map<String, GroupOut> = emptyMap(),
+    /**
+     * The Store's version when the maps above are the Store's own (changed in place): a new value makes the
+     * body render again, so names and custom emoji images appear once they arrive (strong skipping).
+     */
+    @Suppress("UNUSED_PARAMETER") version: Int = 0,
 ) {
     val inlineContent = HashMap<String, InlineTextContent>()
     fun AnnotatedString.Builder.appendWithEmoji(text: String) {
@@ -127,8 +132,9 @@ fun MessageBody(
         }
     }
 
+    val blocks = remember(text) { parseBlocks(text) } // rows now re-render on every Store change (`version`)
     Column(modifier = modifier) {
-        for (block in parseBlocks(text)) {
+        for (block in blocks) {
             when (block) {
                 is BodyBlock.Heading -> Text(
                     inline(block.tokens),

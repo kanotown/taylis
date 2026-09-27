@@ -74,7 +74,14 @@ fun MessageMenu(
 
 /** Reaction chips under a message; tapping toggles my reaction. */
 @Composable
-fun ReactionChips(message: MessageState, store: Store, onToggle: (String) -> Unit, onNeedEmojiImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null) {
+fun ReactionChips(
+    message: MessageState,
+    store: Store,
+    onToggle: (String) -> Unit,
+    onNeedEmojiImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null,
+    /** The Store's version: custom emoji images land in the Store, not in `message` (strong skipping). */
+    @Suppress("UNUSED_PARAMETER") version: Int = 0,
+) {
     if (message.reactions.isEmpty()) return
     val me = store.me?.id
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {

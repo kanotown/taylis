@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- SYNC_PROTOCOL.md §5.3: reconnect as soon as the network comes back instead of after the backoff. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- usesCleartextTraffic: self-hosted servers on a LAN may not have TLS yet (same as the iOS ATS

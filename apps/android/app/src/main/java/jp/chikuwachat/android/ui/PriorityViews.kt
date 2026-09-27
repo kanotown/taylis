@@ -45,13 +45,13 @@ fun PriorityLabel(priority: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** M15e: 「確認しました」 for readers, and who has acknowledged so far. */
+/** M15e: 「確認しました」 for readers, and who has acknowledged so far (`version` keeps their names current). */
 @Composable
-fun AckBar(message: MessageState, store: Store, controller: AppController) {
+fun AckBar(message: MessageState, store: Store, controller: AppController, version: Int = 0) {
     val me = store.me
     val mine = me != null && message.acks.any { it.userId == me.id }
     val own = me?.id == message.senderId
-    val names = message.acks.map { store.users[it.userId]?.displayName ?: "?" }
+    val names = remember(version, message.acks) { message.acks.map { store.users[it.userId]?.displayName ?: "?" } }
     var showNames by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
         if (!own) {

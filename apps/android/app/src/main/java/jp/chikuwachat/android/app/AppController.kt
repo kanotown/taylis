@@ -19,10 +19,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import jp.chikuwachat.android.BuildConfig
+import android.content.ContentResolver
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
 import jp.chikuwachat.android.ui.SlashCommands
@@ -46,6 +50,7 @@ import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.Notifier
 import jp.chikuwachat.android.platform.PushCenter
 import jp.chikuwachat.android.platform.PushMessage
+import jp.chikuwachat.android.platform.deleteFcmToken
 import jp.chikuwachat.android.platform.fetchFcmToken
 import jp.chikuwachat.android.platform.RoomPersistence
 import jp.chikuwachat.android.platform.AvatarCache
@@ -57,13 +62,21 @@ import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.SyncEngine
 import jp.chikuwachat.android.ui.Mentions
 import jp.chikuwachat.android.ui.channelTitle
+import jp.chikuwachat.android.ui.formatSize
 import jp.chikuwachat.android.ui.plainText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.source
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -110,7 +123,7 @@ class AppController(private val app: Application) {
             parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
             messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) })
             true
-        } catch (e: Exception) { error = describe(e); false }
+        } catch (e: Exception) { report(e); false }
     }
     var savedServer = DEFAULT_SERVER
         private set
@@ -121,13 +134,22 @@ class AppController(private val app: Application) {
     private val secrets = SecretStore(app)
     private val notifier = Notifier(app)
     /** FCM token registration (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
-    val push = PushCenter(scope, { fetchFcmToken(app) }, { api })
+    val push = PushCenter(scope, { fetchFcmToken(app) }, { api }, { deleteFcmToken(app) })
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     private var api: ApiClient? = null
     private var persistence: RoomPersistence? = null
     var appForeground by mutableStateOf(false)
         private set
     private var booted = false
+
+    init {
+        // SYNC_PROTOCOL.md §5.3: a network that comes back skips the reconnect backoff.
+        app.getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scope.launch { engine?.reconnectNow() }
+            }
+        })
+    }
 
     private fun account(server: String, username: String) = "$server|$username"
 
@@ -145,6 +167,11 @@ class AppController(private val app: Application) {
     suspend fun boot() {
         if (booted) return
         booted = true
+        // In the controller's scope: an activity recreated half-way (rotation) must not cancel the restore.
+        scope.launch { restoreSession() }.join()
+    }
+
+    private suspend fun restoreSession() {
         savedServer = secrets.setting(SERVER_KEY) ?: DEFAULT_SERVER
         savedUsername = secrets.setting(USERNAME_KEY) ?: ""
         val refreshToken = if (savedUsername.isEmpty()) null else secrets.secret(account(savedServer, savedUsername))
@@ -160,6 +187,8 @@ class AppController(private val app: Application) {
         try {
             val tokens = api.refresh()
             enterSession(api, savedUsername, tokens.user)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             screen = Screen.LOGIN
             error = if (e is ApiException.Api && e.isAuth) null else describe(e)
@@ -192,7 +221,7 @@ class AppController(private val app: Application) {
                 else -> { totpRequired = false; error = describe(e) }
             }
         } catch (e: Exception) {
-            error = describe(e)
+            report(e)
         } finally {
             busy = false
         }
@@ -200,15 +229,15 @@ class AppController(private val app: Application) {
 
     // --- two-factor authentication (M12i): the settings dialog drives these -----------------
 
-    suspend fun totpStatus(): TotpStatusOut? = runCatching { api!!.totpStatus() }.getOrElse { error = describe(it); null }
+    suspend fun totpStatus(): TotpStatusOut? = attempt { api!!.totpStatus() }.getOrElse { error = describe(it); null }
 
     /** The failure text is `Totp.errorText` when 2FA specific, else the general description. */
-    suspend fun beginTotpSetup(password: String): Result<TotpSetupOut> = runCatching { api!!.totpSetup(password) }
+    suspend fun beginTotpSetup(password: String): Result<TotpSetupOut> = attempt { api!!.totpSetup(password) }
 
-    suspend fun enableTotp(code: String): Result<TotpEnabledOut> = runCatching { api!!.totpEnable(Totp.normalize(code)) }
+    suspend fun enableTotp(code: String): Result<TotpEnabledOut> = attempt { api!!.totpEnable(Totp.normalize(code)) }
 
     suspend fun disableTotp(password: String): String? =
-        runCatching { api!!.totpDisable(password); null }.getOrElse { totpFailure(it) }
+        attempt { api!!.totpDisable(password); null }.getOrElse { totpFailure(it) }
 
     fun totpFailure(e: Throwable): String = (e as? ApiException.Api)?.let { Totp.errorText(it.code) } ?: describe(e)
 
@@ -228,6 +257,8 @@ class AppController(private val app: Application) {
             error = null
             enterSession(api, username, tokens.user)
             null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             (e as? ApiException.Api)?.let { Invite.errorText(it.code) } ?: describe(e)
         } finally {
@@ -244,7 +275,7 @@ class AppController(private val app: Application) {
             error = null
             startEngine(api)
         } catch (e: Exception) {
-            error = describe(e)
+            report(e)
         } finally {
             busy = false
         }
@@ -264,7 +295,7 @@ class AppController(private val app: Application) {
     private suspend fun startEngine(api: ApiClient, restoring: Boolean = false): Boolean {
         engine?.stop()
         messageFocus = null
-        persistence?.close()
+        persistence?.let { old -> withContext(Dispatchers.IO) { old.close() } }
         val account = account(api.baseUrl, savedUsername)
         val persistence = withContext(Dispatchers.IO) { runCatching { RoomPersistence.open(app, account) }.getOrNull() }
         val store = Store(persistence)
@@ -287,30 +318,49 @@ class AppController(private val app: Application) {
         engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) handleSignedOut(account) } }
         engine.isActive = { appForeground }
         engine.onRead = { channelId -> notifier.clear(channelId) }
-        // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up.
+        // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up,
+        // as its own notification (the channel's next message must not replace it, nor a read clear it).
         engine.onReminder = { row ->
             val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
             notice = "⏰ $text"
-            if (!Dnd.isActive(store.me?.let { store.users[it.id] ?: it.asPublic })) notifier.notifyMessage(row.channelId, "リマインダー", text)
+            if (!dndActive(store)) notifier.notifyMessage(row.channelId, "リマインダー", text, key = "reminder:${row.id}")
         }
         engine.onNotify = { message, channel ->
-            val sender = store.users[message.senderId]?.displayName ?: "?"
-            val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
-            notifier.notifyMessage(channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
+            // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
+            if (!dndActive(store)) {
+                val sender = store.users[message.senderId]?.displayName ?: "?"
+                val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
+                notifier.notifyMessage(channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
+            }
         }
         this.engine = engine
-        scope.launch { engine.status.collect { if (this@AppController.engine === engine) engineStatus = it } }
-        engine.prepareConnection = prepare@{
-            val tokens = api.refresh()
-            if (this.api !== api || this.engine !== engine) return@prepare
-            me = tokens.user
-            store.setMe(tokens.user)
-            if (tokens.user.mustChangePassword) {
-                engine.stop()
-                screen = Screen.CHANGE_PASSWORD
-                throw IllegalStateException("Password change required")
+        scope.launch {
+            engine.status.collect { status ->
+                if (this@AppController.engine !== engine) return@collect
+                engineStatus = status
+                // The access token is no longer refreshed on every connect: take role and flags from bootstrap.
+                if (status == EngineStatus.ONLINE) store.me?.let { me = it }
             }
-            push.attach()
+        }
+        var attached = false
+        engine.prepareConnection = prepare@{ refresh ->
+            // §7.2: renew only a missing or expiring token (or one the socket refused, 4001). Each refresh
+            // rotates the refresh token, and every needless rotation is a chance to lose it (reuse detection).
+            if (refresh || !api.hasFreshAccessToken()) {
+                val tokens = api.refresh()
+                if (this.api !== api || this.engine !== engine) return@prepare
+                me = tokens.user
+                store.setMe(tokens.user)
+                if (tokens.user.mustChangePassword) {
+                    engine.stop()
+                    screen = Screen.CHANGE_PASSWORD
+                    throw IllegalStateException("Password change required")
+                }
+            }
+            if (!attached) {
+                attached = true
+                push.attach() // this session's device row gets the push token
+            }
         }
         screen = Screen.MAIN
         scope.launch { engine.start() }
@@ -323,13 +373,25 @@ class AppController(private val app: Application) {
      */
     fun handlePush(message: PushMessage) {
         scope.launch {
+            // §11: signed out on this device (the server may not know it yet): nothing is shown.
+            if (!hasSession()) return@launch
             val live = appForeground && engineStatus == EngineStatus.ONLINE
-            if (!message.isSilent && !live && message.channelId != null) {
-                notifier.notifyMessage(message.channelId, message.title, message.body)
+            val key = message.notificationKey
+            if (!message.isSilent && !live && message.channelId != null && key != null) {
+                notifier.notifyMessage(message.channelId, message.displayTitle, message.body, key = key)
             }
             engine?.reconnectNow()
         }
     }
+
+    /** A session is open, or stored for the next start (a push can start the process before boot). */
+    private suspend fun hasSession(): Boolean {
+        if (api != null) return true
+        val username = secrets.setting(USERNAME_KEY) ?: return false
+        return secrets.secret(account(secrets.setting(SERVER_KEY) ?: DEFAULT_SERVER, username)) != null
+    }
+
+    private fun dndActive(store: Store): Boolean = Dnd.isActive(store.me?.let { store.users[it.id] ?: it.asPublic })
 
     /** Foreground / background from the activity: drives push suppression and reconnects (§7.5). */
     fun setForeground(active: Boolean) {
@@ -341,22 +403,30 @@ class AppController(private val app: Application) {
     }
 
     suspend fun openChannel(channelId: String) {
-        runCatching { engine?.openChannel(channelId) }.onFailure { error = describe(it) }
+        try { engine?.openChannel(channelId) } catch (e: Exception) { report(e) }
     }
 
     fun closeChannel() {
         // Nothing to do yet: the engine keeps currentChannelId for notification suppression only.
     }
 
+    /**
+     * SYNC_PROTOCOL.md §11: the server revokes the session first (an expired access token is refreshed and
+     * the call sent again); then everything local goes (handleSignedOut). When the server could not be told,
+     * the push token is deleted so the still-valid session cannot keep notifying this device.
+     */
     suspend fun logout() {
+        val engine = engine
+        if (engine != null) attempt { engine.flushDrafts() } // typed but not saved yet: kept on the server
         engine?.stop()
-        engine = null
+        this.engine = null
         val api = api
         if (api == null) {
             screen = Screen.LOGIN
             return
         }
-        api.logout() // onSignedOut → handleSignedOut
+        val revoked = api.logout() // onSignedOut → handleSignedOut
+        if (!revoked) push.forget()
     }
 
     private suspend fun handleSignedOut(account: String) {
@@ -366,23 +436,36 @@ class AppController(private val app: Application) {
         api = null
         me = null
         engineStatus = EngineStatus.IDLE
-        secrets.putSecret(account, null)
+        messageFocus = null
+        pendingChannelId = null
+        pendingReveal = null
+        linkPreviews.clear()
+        notifier.clearAll() // §11: no notification (or badge) of the old account stays up
+        val persistence = persistence
+        this.persistence = null
+        store = Store()
         screen = Screen.LOGIN
+        secrets.putSecret(account, null)
+        // §11: the account's messages, drafts and send queue go with the session.
+        withContext(Dispatchers.IO) {
+            persistence?.close()
+            RoomPersistence.delete(app, account)
+        }
     }
 
     // --- channel actions used by the dialogs (results carry the channel id to open) ----------------
 
-    suspend fun createChannel(name: String, type: String): Result<String> = runCatching {
+    suspend fun createChannel(name: String, type: String): Result<String> = attempt {
         val channel = api!!.createChannel(name, type)
         store.upsertChannel(channel, isMember = true).id
     }
 
-    suspend fun createDm(userIds: List<String>): Result<String> = runCatching {
+    suspend fun createDm(userIds: List<String>): Result<String> = attempt {
         val channel = api!!.createDm(userIds)
         store.upsertChannel(channel, isMember = true).id
     }
 
-    suspend fun joinChannel(channelId: String): Boolean = runCatching {
+    suspend fun joinChannel(channelId: String): Boolean = attempt {
         val channel = api!!.joinChannel(channelId)
         store.upsertChannel(channel, isMember = true)
         true
@@ -391,19 +474,19 @@ class AppController(private val app: Application) {
     // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated -----
 
     suspend fun editMessage(messageId: String, body: String): Result<Unit> =
-        runCatching { store.upsertMessage(api!!.editMessage(messageId, body)); Unit }.onFailure { error = describe(it) }
+        attempt { store.upsertMessage(api!!.editMessage(messageId, body)); Unit }.onFailure { error = describe(it) }
 
     suspend fun deleteMessage(messageId: String): Result<Unit> =
-        runCatching { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }.onFailure { error = describe(it) }
+        attempt { store.upsertMessage(api!!.deleteMessage(messageId)); Unit }.onFailure { error = describe(it) }
 
-    suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = runCatching { api!!.listPins(channelId) }
-    suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = runCatching { api!!.listBookmarks(cursor) }
-    suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = runCatching { api!!.listMentions(cursor) }
+    suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = attempt { api!!.listPins(channelId) }
+    suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = attempt { api!!.listBookmarks(cursor) }
+    suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = attempt { api!!.listMentions(cursor) }
     suspend fun listFiles(channelId: String? = null, query: String? = null, cursor: String? = null): Result<jp.chikuwachat.android.api.FileListOut> =
-        runCatching { api!!.listFiles(channelId, query, cursor) }
+        attempt { api!!.listFiles(channelId, query, cursor) }
     /** M11h: every public channel plus my private ones, for the channel browser. */
     suspend fun browseChannels(): Result<List<jp.chikuwachat.android.api.ChannelOut>> =
-        runCatching { api!!.channels(includePublic = true).filter { it.type == "public" || it.type == "private" } }
+        attempt { api!!.channels(includePublic = true).filter { it.type == "public" || it.type == "private" } }
 
     // --- link previews (M11g): one fetch per URL per session ------------------------------------
 
@@ -417,6 +500,8 @@ class AppController(private val app: Application) {
         try {
             val preview = api.linkPreview(url)
             linkPreviews[url] = if (preview.status == "ok") preview else null
+        } catch (e: CancellationException) {
+            throw e // the row scrolled away: a later render asks again
         } catch (e: Exception) {
             linkPreviews[url] = null // refused or rate limited: no card this session
         } finally {
@@ -429,7 +514,7 @@ class AppController(private val app: Application) {
         val api = api ?: return
         try {
             store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
-        } catch (e: Exception) { error = describe(e) }
+        } catch (e: Exception) { report(e) }
     }
 
     // --- custom emoji (M12f) ----------------------------------------------------------------------
@@ -458,7 +543,7 @@ class AppController(private val app: Application) {
             store.applyReminder(api.createReminder(messageId, at.toInstant().toString(), note))
             notice = Schedule.label(at) + " にリマインドします"
             true
-        } catch (e: Exception) { error = describe(e); false }
+        } catch (e: Exception) { report(e); false }
     }
 
     /** Cancels a pending reminder or marks a fired one done. */
@@ -467,7 +552,7 @@ class AppController(private val app: Application) {
         try {
             api.closeReminder(row.id)
             store.applyReminder(row.copy(status = if (row.status == "fired") "done" else "cancelled"))
-        } catch (e: Exception) { error = describe(e) }
+        } catch (e: Exception) { report(e) }
     }
 
     // --- scheduled messages (M12d) ----------------------------------------------------------------
@@ -480,7 +565,7 @@ class AppController(private val app: Application) {
             store.applyScheduled(row)
             notice = Schedule.label(sendAt) + " に送信します"
             true
-        } catch (e: Exception) { error = describe(e); false }
+        } catch (e: Exception) { report(e); false }
     }
 
     /** Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost. */
@@ -490,7 +575,7 @@ class AppController(private val app: Application) {
             api.cancelScheduled(row.id)
             store.applyScheduled(row.copy(status = "cancelled"))
             if (row.body.isNotEmpty()) store.setDraft(row.channelId, row.parentId) { it.copy(text = row.body) }
-        } catch (e: Exception) { error = describe(e) }
+        } catch (e: Exception) { report(e) }
     }
 
     suspend fun sendScheduledNow(row: ScheduledOut) {
@@ -498,7 +583,7 @@ class AppController(private val app: Application) {
         try {
             api.sendScheduledNow(row.id)
             store.applyScheduled(row.copy(status = "sent"))
-        } catch (e: Exception) { error = describe(e) }
+        } catch (e: Exception) { report(e) }
     }
 
     // --- permalinks (M12b) ------------------------------------------------------------------------
@@ -516,7 +601,7 @@ class AppController(private val app: Application) {
         try {
             val message = api.message(messageId)
             if (revealMessage(message)) pendingReveal = message
-        } catch (e: Exception) { error = describe(e) }
+        } catch (e: Exception) { report(e) }
     }
 
     /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */
@@ -528,14 +613,14 @@ class AppController(private val app: Application) {
             if (on) api.favoriteChannel(channelId) else api.unfavoriteChannel(channelId)
         } catch (e: Exception) {
             store.setFavorite(channelId, !on)
-            error = describe(e)
+            report(e)
         }
     }
 
     /** M12a 「すべて既読にする」. */
     suspend fun markAllRead() {
         val engine = engine ?: return
-        try { engine.markAllRead() } catch (e: Exception) { error = describe(e) }
+        try { engine.markAllRead() } catch (e: Exception) { report(e) }
     }
 
     /** M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device. */
@@ -547,12 +632,12 @@ class AppController(private val app: Application) {
             if (on) api.bookmarkMessage(messageId) else api.unbookmarkMessage(messageId)
         } catch (e: Exception) {
             store.setBookmarked(messageId, !on)
-            error = describe(e)
+            report(e)
         }
     }
 
-    suspend fun toggleReaction(message: MessageState, emoji: String): Result<Unit> = runCatching {
-        val me = store.me ?: return@runCatching
+    suspend fun toggleReaction(message: MessageState, emoji: String): Result<Unit> = attempt {
+        val me = store.me ?: return@attempt
         val updated = if (message.reactedBy(me.id, emoji)) api!!.removeReaction(message.id, emoji) else api!!.addReaction(message.id, emoji)
         store.upsertMessage(updated)
         Unit
@@ -563,40 +648,56 @@ class AppController(private val app: Application) {
     val isGuest: Boolean get() = me?.role == "guest"
 
     suspend fun searchMessages(query: String, offset: Int = 0): Result<SearchOut> =
-        runCatching { api!!.searchMessages(query, offset = offset) }.onFailure { error = describe(it) }
+        attempt { api!!.searchMessages(query, offset = offset) }.onFailure { error = describe(it) }
 
     // --- attachments (M9a) ---------------------------------------------------------------------------
 
     suspend fun fetchBytes(path: String): ByteArray = api!!.fetchBytes(path)
 
-    /** Read a picked content URI and upload it; the id is bound when the message is sent. */
-    suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = runCatching {
-        val api = api ?: error("ログインが必要です")
+    /**
+     * Upload a picked content URI, streamed from the provider (a large file never sits in memory); the id is
+     * bound when the message is sent. The size is checked against bootstrap.limits before anything is sent.
+     */
+    suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = attempt {
+        val api = api ?: throw Refusal("ログインが必要です")
         val resolver = app.contentResolver
-        var name = "file"
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) name = cursor.getString(0) ?: name
-        }
-        val bytes = withContext(Dispatchers.IO) { resolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("読み込めませんでした")
-        api.uploadAttachment(bytes, name, resolver.getType(uri))
+        val (name, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
+        val limit = store.limits?.maxAttachmentBytes
+        if (limit != null && size != null && size > limit) throw Refusal("ファイルが大きすぎます (上限 ${formatSize(limit)})")
+        api.uploadAttachment(ContentUriBody(resolver, uri, size), name ?: "file")
     }.onFailure { error = describe(it) }
+
+    /** Display name and size of a picked document (either may be unknown); refuses one that cannot be opened. */
+    private fun describeDocument(resolver: ContentResolver, uri: Uri): Pair<String?, Long?> {
+        var name: String? = null
+        var size: Long? = null
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                if (!cursor.isNull(0)) name = cursor.getString(0)
+                if (!cursor.isNull(1)) size = cursor.getLong(1)
+            }
+        }
+        val readable = runCatching { resolver.openInputStream(uri)?.use { true } }.getOrNull() == true
+        if (!readable) throw Refusal("ファイルを読み込めませんでした")
+        return name to size
+    }
 
     fun openAttachment(attachment: AttachmentOut) {
         scope.launch {
-            runCatching {
+            attempt {
                 val bytes = fetchBytes("/api/v1/attachments/${attachment.id}/content")
                 openDownloaded(app as Context, attachment, bytes)
             }.onFailure { error = describe(it) }
         }
     }
 
-    suspend fun members(channelId: String): Result<List<String>> = runCatching { api!!.members(channelId).map { it.userId } }
+    suspend fun members(channelId: String): Result<List<String>> = attempt { api!!.members(channelId).map { it.userId } }
 
-    suspend fun memberList(channelId: String): Result<List<MemberOut>> = runCatching { api!!.members(channelId) }
+    suspend fun memberList(channelId: String): Result<List<MemberOut>> = attempt { api!!.members(channelId) }
 
     // --- channel info & settings (UI brush-up) --------------------------------------------------
 
-    suspend fun updateTopic(channelId: String, topic: String): Boolean = runCatching {
+    suspend fun updateTopic(channelId: String, topic: String): Boolean = attempt {
         val channel = api!!.updateChannel(channelId, topic = topic.trim())
         store.upsertChannel(channel)
         true
@@ -604,34 +705,34 @@ class AppController(private val app: Application) {
 
     // --- channel management (M11h) ------------------------------------------------------------------
 
-    suspend fun updatePurpose(channelId: String, purpose: String): Boolean = runCatching {
+    suspend fun updatePurpose(channelId: String, purpose: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, purpose = purpose.trim()))
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun renameChannel(channelId: String, name: String): Boolean = runCatching {
+    suspend fun renameChannel(channelId: String, name: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, name = name.trim()))
         true
     }.getOrElse { error = describe(it); false }
 
     /** M15a: "owners" makes an announcement channel (owners and admins start the posts). */
-    suspend fun setPostingPolicy(channelId: String, policy: String): Boolean = runCatching {
+    suspend fun setPostingPolicy(channelId: String, policy: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, postingPolicy = policy))
         true
     }.getOrElse { error = describe(it); false }
 
     /** M15b: public → private (owner / admin) or private → public (admin only). */
-    suspend fun convertChannel(channelId: String, type: String): Boolean = runCatching {
+    suspend fun convertChannel(channelId: String, type: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, type = type))
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun archiveChannel(channelId: String): Boolean = runCatching {
+    suspend fun archiveChannel(channelId: String): Boolean = attempt {
         store.upsertChannel(api!!.archiveChannel(channelId))
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun unarchiveChannel(channelId: String): Boolean = runCatching {
+    suspend fun unarchiveChannel(channelId: String): Boolean = attempt {
         store.upsertChannel(api!!.unarchiveChannel(channelId))
         true
     }.getOrElse { error = describe(it); false }
@@ -646,13 +747,13 @@ class AppController(private val app: Application) {
     }
 
     /** Leaving drops the channel locally at once; the server's member_removed confirms it. */
-    suspend fun leaveChannel(channelId: String): Boolean = runCatching {
+    suspend fun leaveChannel(channelId: String): Boolean = attempt {
         api!!.leaveChannel(channelId)
         store.removeChannel(channelId)
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun setNotification(channelId: String, level: String, mutedUntil: String? = null): Boolean = runCatching {
+    suspend fun setNotification(channelId: String, level: String, mutedUntil: String? = null): Boolean = attempt {
         val pref = api!!.setNotificationPreference(channelId, level, mutedUntil)
         store.setNotification(channelId, pref.level, pref.mutedUntil)
         true
@@ -663,7 +764,7 @@ class AppController(private val app: Application) {
         updateProfileJson(buildJsonObject { fields.forEach { (key, value) -> if (value == null) put(key, JsonNull) else put(key, value) } })
 
     /** M12c: quiet_hours is an object, so the status dialog builds the body itself. */
-    suspend fun updateProfileJson(body: JsonObject): Boolean = runCatching {
+    suspend fun updateProfileJson(body: JsonObject): Boolean = attempt {
         val updated = api!!.updateProfile(body)
         me = updated
         store.setMe(updated)
@@ -677,25 +778,25 @@ class AppController(private val app: Application) {
         return createDm(listOf(userId)).getOrElse { error = describe(it); null }
     }
 
-    /** M14a: choose (or drop) my profile picture; the store learns the new version at once. */
-    suspend fun uploadAvatar(uri: Uri): Boolean = runCatching {
-        val api = api ?: error("ログインが必要です")
+    /** M14a: choose (or drop) my profile picture (streamed like attachments); the store learns the new version at once. */
+    suspend fun uploadAvatar(uri: Uri): Boolean = attempt {
+        val api = api ?: throw Refusal("ログインが必要です")
         val resolver = app.contentResolver
-        val bytes = withContext(Dispatchers.IO) { resolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("読み込めませんでした")
-        val updated = api.uploadAvatar(bytes, resolver.getType(uri))
+        val (_, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
+        val updated = api.uploadAvatar(ContentUriBody(resolver, uri, size, fallbackType = "image/jpeg"))
         me = updated
         store.setMe(updated)
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun deleteAvatar(): Boolean = runCatching {
+    suspend fun deleteAvatar(): Boolean = attempt {
         val updated = api!!.deleteAvatar()
         me = updated
         store.setMe(updated)
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun updateDisplayName(displayName: String): Boolean = runCatching {
+    suspend fun updateDisplayName(displayName: String): Boolean = attempt {
         val updated = api!!.updateMe(displayName = displayName.trim())
         me = updated
         store.setMe(updated)
@@ -705,7 +806,7 @@ class AppController(private val app: Application) {
     /** Password change from the settings sheet; returns the error text or null. */
     // --- sidebar sections (M14f) -------------------------------------------------------------
 
-    private suspend fun sidebarChange(work: suspend (ApiClient) -> List<jp.chikuwachat.android.api.SidebarSectionOut>): Boolean = runCatching {
+    private suspend fun sidebarChange(work: suspend (ApiClient) -> List<jp.chikuwachat.android.api.SidebarSectionOut>): Boolean = attempt {
         store.replaceSidebar(work(api!!)); true
     }.getOrElse { error = describe(it); false }
 
@@ -728,19 +829,19 @@ class AppController(private val app: Application) {
     // --- edit history (M14c) -------------------------------------------------------------------
 
     suspend fun messageRevisions(messageId: String): List<jp.chikuwachat.android.api.MessageRevisionOut>? =
-        runCatching { api!!.messageRevisions(messageId) }.getOrElse { error = describe(it); null }
+        attempt { api!!.messageRevisions(messageId) }.getOrElse { error = describe(it); null }
 
     // --- channel links (M15f) ----------------------------------------------------------------
 
-    suspend fun addChannelLink(channelId: String, title: String, url: String): Boolean = runCatching {
+    suspend fun addChannelLink(channelId: String, title: String, url: String): Boolean = attempt {
         store.setChannelLinks(channelId, api!!.addChannelLink(channelId, title, url)); true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun updateChannelLink(channelId: String, linkId: String, title: String? = null, url: String? = null, position: Int? = null): Boolean = runCatching {
+    suspend fun updateChannelLink(channelId: String, linkId: String, title: String? = null, url: String? = null, position: Int? = null): Boolean = attempt {
         store.setChannelLinks(channelId, api!!.updateChannelLink(channelId, linkId, title, url, position)); true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun deleteChannelLink(channelId: String, linkId: String): Boolean = runCatching {
+    suspend fun deleteChannelLink(channelId: String, linkId: String): Boolean = attempt {
         store.setChannelLinks(channelId, api!!.deleteChannelLink(channelId, linkId)); true
     }.getOrElse { error = describe(it); false }
 
@@ -749,20 +850,20 @@ class AppController(private val app: Application) {
     suspend fun toggleAck(message: MessageState) {
         val me = store.me ?: return
         val mine = message.acks.any { it.userId == me.id }
-        runCatching { store.upsertMessage(api!!.acknowledge(message.id, !mine)) }.onFailure { error = describe(it) }
+        attempt { store.upsertMessage(api!!.acknowledge(message.id, !mine)) }.onFailure { error = describe(it) }
     }
 
     // --- polls (M14b) ------------------------------------------------------------------------
 
-    suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = runCatching {
+    suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = attempt {
         store.upsertMessage(api!!.vote(message.id, option, present)); true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun closePoll(message: MessageState): Boolean = runCatching {
+    suspend fun closePoll(message: MessageState): Boolean = attempt {
         store.upsertMessage(api!!.closePoll(message.id)); true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): Boolean = runCatching {
+    suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): Boolean = attempt {
         store.upsertMessage(api!!.postPoll(channelId, parentId, question, options, multiple)); true
     }.getOrElse { error = describe(it); false }
 
@@ -856,20 +957,59 @@ class AppController(private val app: Application) {
     }
 
     suspend fun changePasswordInSession(current: String, new: String): String? =
-        runCatching { api!!.changePassword(current, new); null }.getOrElse { describe(it) }
+        attempt { api!!.changePassword(current, new); null }.getOrElse { describe(it) }
 
-    suspend fun addMember(channelId: String, userId: String): Result<Unit> = runCatching<Unit> { api!!.addMember(channelId, userId) }
+    suspend fun addMember(channelId: String, userId: String): Result<Unit> = attempt<Unit> { api!!.addMember(channelId, userId) }
 
+    /**
+     * A failure in words (ARCHITECTURE.md §9): the Japanese table by code, then by HTTP status, never the
+     * server's English message or an exception's own text.
+     */
     fun describe(e: Throwable): String = when (e) {
-        is ApiException.Api -> when (e.code) {
-            "invalid_credentials" -> "ユーザー名またはパスワードが違います"
-            "rate_limited" -> "しばらく待ってからやり直してください"
-            "password_too_short" -> "パスワードが短すぎます"
-            "invalid_password" -> "現在のパスワードが違います"
-            else -> e.detail.ifBlank { e.code }
+        is ApiException.Api -> ErrorMessages.byCode[e.code] ?: ErrorMessages.byStatus[if (e.status >= 500) "5xx" else e.status.toString()] ?: ErrorMessages.UNKNOWN
+        is ApiException.Network -> ErrorMessages.NETWORK
+        is Refusal -> e.message ?: ErrorMessages.UNKNOWN
+        else -> ErrorMessages.UNKNOWN
+    }
+
+    /**
+     * Shows a failure as the error snackbar. Cancellation (the screen that asked went away) is passed on,
+     * never shown: it is not a failure, and its text ("The coroutine scope left the composition") is not for users.
+     */
+    fun report(e: Throwable) {
+        if (e is CancellationException) throw e
+        error = describe(e)
+    }
+
+    /** runCatching for calls made from screens: cancellation propagates instead of becoming a failure (see [report]). */
+    private inline fun <T> attempt(block: () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Result.failure(e)
         }
-        is ApiException.Network -> "サーバに接続できません"
-        else -> e.message ?: e.toString()
+
+    /** A failure whose message is already the Japanese text to show (checked here, not by the server). */
+    private class Refusal(message: String) : Exception(message)
+
+    /**
+     * A picked document as a request body that streams from the content provider. It can be written again
+     * (a new stream each time) when the upload is retried after a token refresh.
+     */
+    private class ContentUriBody(
+        private val resolver: ContentResolver,
+        private val uri: Uri,
+        private val size: Long?,
+        private val fallbackType: String = "application/octet-stream",
+    ) : RequestBody() {
+        override fun contentType(): MediaType? = (resolver.getType(uri) ?: fallbackType).toMediaTypeOrNull()
+        override fun contentLength(): Long = size ?: -1L
+        override fun writeTo(sink: BufferedSink) {
+            val input = resolver.openInputStream(uri) ?: throw IOException("cannot open $uri")
+            input.source().use { sink.writeAll(it) }
+        }
     }
 
     private companion object {

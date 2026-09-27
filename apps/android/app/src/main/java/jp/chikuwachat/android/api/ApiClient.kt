@@ -4,7 +4,9 @@ import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -19,6 +21,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.URLEncoder
@@ -37,14 +40,25 @@ sealed class ApiException(message: String) : Exception(message) {
 
 fun Throwable.isRetryable(): Boolean = this is ApiException.Network || (this is ApiException.Api && isRetryable)
 
+/** Refused for good (4xx other than 429): sending the same request again cannot succeed. */
+fun Throwable.isRefusal(): Boolean = this is ApiException.Api && status in 400..499 && status != 429
+
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 class ApiClient(
     val baseUrl: String,
     private val http: OkHttpClient = OkHttpClient(),
+    /**
+     * Wall-clock ms (a token keeps expiring while the device sleeps, unlike a monotonic clock) and a wait;
+     * injectable for tests (access token expiry, refresh retries).
+     */
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
+    /** When the access token stops being accepted, on [clock]; 0 = unknown (a token set by hand). */
+    @Volatile private var accessExpiresAt = 0L
     var onTokens: ((TokenResponse) -> Unit)? = null
     var onSignedOut: (() -> Unit)? = null
     private val refreshMutex = Mutex()
@@ -71,23 +85,56 @@ class ApiClient(
         return tokens
     }
 
-    suspend fun refresh(): TokenResponse = refreshMutex.withLock {
+    /** SYNC_PROTOCOL.md §7.2: an access token that is still good for `marginMs` needs no refresh (and no rotation). */
+    fun hasFreshAccessToken(marginMs: Long = 60_000): Boolean = accessToken != null && accessExpiresAt - clock() > marginMs
+
+    /**
+     * Rotates the refresh token. When the answer is lost (network error, 429 / 5xx) the server may already
+     * have rotated it; the old token is accepted again for 30 s (SECURITY.md §2.3), so the retry comes
+     * quickly and inside that window instead of after the reconnect backoff (which would look like reuse).
+     */
+    suspend fun refresh(): TokenResponse = refreshMutex.withLock { rotate() }
+
+    private suspend fun rotate(): TokenResponse {
         val version = sessionVersion
         val token = refreshToken ?: throw ApiException.Api(401, "missing_token", "No refresh token")
-        try {
-            val tokens: TokenResponse = request("POST", "/api/v1/auth/refresh", buildJsonObject { put("refresh_token", token) }, auth = false)
-            if (version != sessionVersion) throw ApiException.Api(401, "session_changed", "Session changed")
-            apply(tokens)
-            tokens
-        } catch (e: ApiException.Api) {
-            if (version == sessionVersion && e.isAuth) signOut()
-            throw e
+        val started = clock()
+        var wait = REFRESH_RETRY_FIRST_MS
+        while (true) {
+            try {
+                val tokens: TokenResponse = request("POST", "/api/v1/auth/refresh", buildJsonObject { put("refresh_token", token) }, auth = false)
+                if (version != sessionVersion) throw ApiException.Api(401, "session_changed", "Session changed")
+                apply(tokens)
+                return tokens
+            } catch (e: ApiException) {
+                if (e.isRetryable() && version == sessionVersion && clock() - started + wait <= REFRESH_GRACE_MS) {
+                    sleep(wait)
+                    wait *= 2
+                    continue
+                }
+                if (e is ApiException.Api && e.isAuth && version == sessionVersion) signOut()
+                throw e
+            }
         }
     }
 
-    suspend fun logout() {
-        runCatching { requestRaw("POST", "/api/v1/auth/logout", null, auth = true, retry401 = false) }
+    /**
+     * SYNC_PROTOCOL.md §11: revokes the session on the server (an expired access token is refreshed and the
+     * call sent again), then forgets the tokens either way. False when the server could not be told.
+     */
+    suspend fun logout(): Boolean {
+        val revoked = try {
+            requestRaw("POST", "/api/v1/auth/logout", null, auth = true, retry401 = true)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiException.Api) {
+            e.isAuth // refused as signed out: the session is gone already
+        } catch (e: ApiException) {
+            false
+        }
         signOut()
+        return revoked
     }
 
     fun signOut() {
@@ -99,6 +146,7 @@ class ApiClient(
 
     private fun apply(tokens: TokenResponse) {
         accessToken = tokens.accessToken
+        accessExpiresAt = clock() + tokens.expiresIn * 1000L
         refreshToken = tokens.refreshToken
         onTokens?.invoke(tokens)
     }
@@ -232,32 +280,26 @@ class ApiClient(
         return request("GET", "/api/v1/search/messages?$params")
     }
 
-    /** POST /attachments (multipart): the server sniffs the type and keeps it pending until a send binds it. */
-    suspend fun uploadAttachment(bytes: ByteArray, filename: String, contentType: String?): AttachmentOut {
-        if (accessToken == null && refreshToken != null) refresh()
-        val part = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("file", filename, bytes.toRequestBody((contentType ?: "application/octet-stream").toMediaType()))
-            .build()
-        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v1/attachments").post(part).header("Accept", "application/json")
-        accessToken?.let { request.header("Authorization", "Bearer $it") }
-        val (status, text) = execute(request.build())
-        if (status == 401) { refresh(); return uploadAttachment(bytes, filename, contentType) }
-        if (status !in 200..299) throw decodeError(status, text)
-        return Codec.snake.decodeFromString(AttachmentOut.serializer(), text)
-    }
+    /**
+     * POST /attachments (multipart): the server sniffs the type and keeps it pending until a send binds it.
+     * `file` may stream from disk (it is written again if the upload is retried after a token refresh).
+     */
+    suspend fun uploadAttachment(file: RequestBody, filename: String): AttachmentOut =
+        Codec.snake.decodeFromString(AttachmentOut.serializer(), upload("/api/v1/attachments", filename, file))
 
     /** M14a: my profile picture (any common image; the server stores a 256px PNG). */
-    suspend fun uploadAvatar(bytes: ByteArray, contentType: String?): UserMe {
+    suspend fun uploadAvatar(file: RequestBody): UserMe =
+        Codec.snake.decodeFromString(UserMe.serializer(), upload("/api/v1/users/me/avatar", "avatar", file))
+
+    private suspend fun upload(path: String, filename: String, file: RequestBody, retry401: Boolean = true): String {
         if (accessToken == null && refreshToken != null) refresh()
-        val part = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("file", "avatar", bytes.toRequestBody((contentType ?: "image/jpeg").toMediaType()))
-            .build()
-        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v1/users/me/avatar").post(part).header("Accept", "application/json")
+        val part = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file", filename, file).build()
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + path).post(part).header("Accept", "application/json")
         accessToken?.let { request.header("Authorization", "Bearer $it") }
         val (status, text) = execute(request.build())
-        if (status == 401) { refresh(); return uploadAvatar(bytes, contentType) }
+        if (status == 401 && retry401) { refresh(); return upload(path, filename, file, retry401 = false) }
         if (status !in 200..299) throw decodeError(status, text)
-        return Codec.snake.decodeFromString(UserMe.serializer(), text)
+        return text
     }
 
     suspend fun deleteAvatar(): UserMe = request("DELETE", "/api/v1/users/me/avatar")
@@ -516,5 +558,11 @@ class ApiClient(
         }
         if (auth && status == 401 && error.code != "token_expired") signOut()
         throw error
+    }
+
+    private companion object {
+        /** Refresh retries stay this far inside the server's 30 s grace for the previous token. */
+        const val REFRESH_GRACE_MS = 25_000L
+        const val REFRESH_RETRY_FIRST_MS = 1_000L
     }
 }

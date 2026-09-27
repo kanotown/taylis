@@ -34,7 +34,9 @@ import jp.chikuwachat.android.sync.CLOSE_SESSION_REVOKED
 import jp.chikuwachat.android.sync.SyncApi
 import jp.chikuwachat.android.sync.WsConnector
 import jp.chikuwachat.android.sync.WsTransport
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -52,18 +54,27 @@ class FakeServer {
         override var onClose: ((Int) -> Unit)? = null
         var dropNext = 0
         var closed = false
+        /** A dead network path (§5.3): nothing the client sends arrives, nothing reaches the client. */
+        var halfOpen = false
+        var pings = 0
 
         var authed = false
 
         override fun send(text: String) {
+            if (halfOpen) return
             val frame = Codec.plain.parseToJsonElement(text).jsonObject
             when (frame["type"]?.jsonPrimitive?.contentOrNull) {
                 "auth" -> {
                     authed = true
                     deliver(buildJsonObject { put("type", "hello"); put("session_id", "s-$userId"); put("server_time", now()); put("heartbeat_interval_sec", 30) })
                     announcePresence(userId)
+                    if (dropAfterHello > 0) {
+                        dropAfterHello -= 1
+                        closeRemote(1006)
+                    }
                 }
                 "ping" -> {
+                    pings += 1
                     if (frame["active"]?.jsonPrimitive?.contentOrNull == "true") markActive(userId)
                     deliver(buildJsonObject { put("type", "pong"); put("server_time", now()) })
                 }
@@ -82,7 +93,7 @@ class FakeServer {
         }
 
         fun deliver(frame: JsonObject) {
-            if (closed) return
+            if (closed || halfOpen) return
             if (frame["type"]?.jsonPrimitive?.contentOrNull == "event" && dropNext > 0) {
                 dropNext -= 1 // simulated loss
                 return
@@ -99,6 +110,10 @@ class FakeServer {
         var pendingFailure: Throwable? = null
         /** When set, bootstrap() suspends until it completes (lets tests deliver events mid-bootstrap). */
         var bootstrapGate: CompletableDeferred<Unit>? = null
+        /** Failures for the next POST /messages calls only, in order. */
+        val postFailures = ArrayDeque<Throwable>()
+        /** When set, the next POST /messages waits for it (a send still in flight). */
+        var postGate: CompletableDeferred<Unit>? = null
 
         private fun maybeFail() {
             pendingFailure?.let { pendingFailure = null; throw it }
@@ -113,7 +128,12 @@ class FakeServer {
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
         override suspend fun postMessage(
             channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, options: SendOptions,
-        ): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options) }
+        ): Pair<MessageOut, Boolean> {
+            maybeFail()
+            postFailures.removeFirstOrNull()?.let { throw it }
+            postGate?.let { gate -> postGate = null; gate.await() }
+            return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options)
+        }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
@@ -140,6 +160,8 @@ class FakeServer {
     /** "user:channel" → last_read_seq (DATA_MODEL.md read_states). */
     val readPositions = HashMap<String, Int>()
     val sockets = ArrayList<Socket>()
+    /** The next N sockets close right after hello (before the client has bootstrapped). */
+    var dropAfterHello = 0
     var holdEvents = false
     private val held = ArrayList<Pair<Set<String>, JsonObject>>()
     private val byClientKey = HashMap<String, MessageOut>()
@@ -182,7 +204,8 @@ class FakeServer {
     fun readState(userId: String, channelId: String): ReadStateOut {
         val record = channels.getValue(channelId)
         val position = readPositions["$userId:$channelId"] ?: 0
-        val unread = record.messages.filter { it.seq > position && !it.deleted && (it.parentId == null || it.alsoInChannel) }
+        // My own posts are never unread (the server excludes them, like replies not sent to the channel).
+        val unread = record.messages.filter { it.seq > position && !it.deleted && (it.parentId == null || it.alsoInChannel) && it.senderId != userId }
         return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) })
     }
 
@@ -352,7 +375,8 @@ class FakeServer {
 
     // --- threads (THREADS.md §2) ------------------------------------------------------------------
 
-    class ThreadFollow(val parentId: String, val userId: String, var following: Boolean, var lastReadSeq: Int, val order: Int)
+    /** `unfollowed`: turned off by hand (auto-follow keeps it off); a row with neither only records a read position. */
+    class ThreadFollow(val parentId: String, val userId: String, var following: Boolean, var lastReadSeq: Int, val order: Int, var unfollowed: Boolean = false)
 
     /** "parent:user" → follow row; `order` doubles as created_at. */
     val threadFollows = LinkedHashMap<String, ThreadFollow>()
@@ -362,7 +386,10 @@ class FakeServer {
         threadFollows.values.filter { it.parentId == parentId && it.following }.sortedBy { it.order }.map { it.userId }
 
     private fun autoFollow(parentId: String, userIds: List<String>) {
-        userIds.forEach { userId -> threadFollows.getOrPut("$parentId:$userId") { ThreadFollow(parentId, userId, true, 0, ++followOrder) } }
+        userIds.forEach { userId ->
+            val row = threadFollows.getOrPut("$parentId:$userId") { ThreadFollow(parentId, userId, true, 0, ++followOrder) }
+            if (!row.following && !row.unfollowed) row.following = true // only read so far: now followed
+        }
     }
 
     private fun threadParent(messageId: String): Pair<ChannelRecord, MessageOut> {
@@ -414,13 +441,13 @@ class FakeServer {
         return ThreadListOut(items, items.lastOrNull()?.parent?.lastReplyAt, threadSummary(userId))
     }
 
+    /** Reading is not following: a thread without a row gets one that only records the position. */
     fun markThreadRead(userId: String, messageId: String, seq: Int): ThreadState {
         val (record, parent) = threadParent(messageId)
         requireMember(record.channel.id, userId)
         val newest = record.messages.filter { it.parentId == parent.id && !it.deleted }.maxOfOrNull { it.seq } ?: 0
         val target = minOf(seq, newest)
-        autoFollow(parent.id, listOf(userId))
-        val row = threadFollows.getValue("${parent.id}:$userId")
+        val row = threadFollows.getOrPut("${parent.id}:$userId") { ThreadFollow(parent.id, userId, false, 0, ++followOrder) }
         if (target > row.lastReadSeq) {
             row.lastReadSeq = target
             emitThread(parent.id, listOf(userId), "read")
@@ -433,8 +460,9 @@ class FakeServer {
         requireMember(record.channel.id, userId)
         val key = "${parent.id}:$userId"
         val changed = threadFollows[key]?.following != following
-        autoFollow(parent.id, listOf(userId))
-        threadFollows.getValue(key).following = following
+        val row = threadFollows.getOrPut(key) { ThreadFollow(parent.id, userId, following, 0, ++followOrder) }
+        row.following = following
+        row.unfollowed = !following
         if (changed) emitThread(parent.id, listOf(userId), "follow")
         return threadState(userId, parent.id)
     }
@@ -483,7 +511,8 @@ class FakeServer {
             put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message))
             if (thread != null) put("parent_thread", Codec.snake.encodeToJsonElement(ParentThread.serializer(), thread))
         }))
-        markRead(senderId, channelId, seq) // the sender has read their own message (§10)
+        // §10: a top-level post reads the channel for its sender; a thread reply moves only the thread's position.
+        if (parentId == null) markRead(senderId, channelId, seq)
         if (thread != null) emitThread(thread.id, followers(thread.id), "reply")
         return message to true
     }
@@ -627,4 +656,34 @@ class FakeServer {
     fun api(userId: String): Api = Api(userId)
 
     fun connector(userId: String): WsConnector = { _, _ -> Socket(userId).also { sockets.add(it) } }
+}
+
+/**
+ * Virtual time for the engine's timers (§5.3 heartbeat deadline, §9 outbox retry): nothing fires until the
+ * test advances it. With the Unconfined scope the woken coroutines run inside [advance].
+ */
+class ManualTime {
+    var now = 0L
+        private set
+    private val sleepers = ArrayList<Pair<Long, CancellableContinuation<Unit>>>()
+
+    val clock: () -> Long = { now }
+    val timer: suspend (Long) -> Unit = { ms ->
+        suspendCancellableCoroutine { continuation ->
+            val entry = (now + ms) to continuation
+            sleepers.add(entry)
+            continuation.invokeOnCancellation { sleepers.remove(entry) }
+        }
+    }
+
+    fun advance(ms: Long) {
+        val target = now + ms
+        while (true) {
+            val next = sleepers.filter { it.first <= target }.minByOrNull { it.first } ?: break
+            sleepers.remove(next)
+            now = next.first
+            next.second.resumeWith(Result.success(Unit))
+        }
+        now = target
+    }
 }

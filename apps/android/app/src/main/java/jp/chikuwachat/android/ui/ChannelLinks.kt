@@ -59,11 +59,14 @@ object ChannelLinks {
         channel.isMember && !channel.channel.archived && role != "guest" && channel.canPostTopLevel(isAdmin = role == "admin")
 }
 
-/** M15f: the conversation's pinned links at the top (Slack's bookmarks bar); hidden while empty. */
+/**
+ * M15f: the conversation's pinned links at the top (Slack's bookmarks bar); hidden while empty. The links
+ * live in the Store (loaded after the pane opens, replaced by events), so `version` must re-read them.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChannelLinksRow(controller: AppController, channel: ChannelState, onAdd: () -> Unit, onEdit: (ChannelLinkOut) -> Unit) {
-    val links = controller.store.linksOf(channel.id)
+fun ChannelLinksRow(controller: AppController, channel: ChannelState, version: Int, onAdd: () -> Unit, onEdit: (ChannelLinkOut) -> Unit) {
+    val links = remember(version, channel.id) { controller.store.linksOf(channel.id) }
     if (links.isEmpty()) return
     val editable = ChannelLinks.canEdit(channel, controller.store.me?.role)
     val uriHandler = LocalUriHandler.current

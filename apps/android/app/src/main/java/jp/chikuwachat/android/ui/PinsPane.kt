@@ -27,8 +27,8 @@ import jp.chikuwachat.android.app.AppController
 fun PinsPane(controller: AppController, channelId: String, version: Int, onOpen: (MessageOut) -> Unit) {
     val store = controller.store
     var pins by remember { mutableStateOf<List<MessageOut>?>(null) }
-    // Pin changes arrive as message.updated on the timeline; re-read when the pinned rows move.
-    val signature = remember(version, channelId) { store.messages(channelId).filter { it.pinnedAt != null }.joinToString(",") { it.id } }
+    // Pin changes arrive as message.updated; re-read when the pinned rows move (also ones older than the loaded timeline).
+    val signature = remember(version, channelId) { store.pinnedIds(channelId).joinToString(",") }
     LaunchedEffect(channelId, signature, controller.engineStatus) {
         controller.listPins(channelId).onSuccess { pins = it }.onFailure { controller.error = controller.describe(it) }
     }

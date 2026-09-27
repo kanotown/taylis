@@ -20,6 +20,7 @@ import jp.chikuwachat.android.sync.Persistence
 import jp.chikuwachat.android.sync.Snapshot
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 // Rows hold JSON blobs (like the desktop and iOS stores): the schema only needs the keys used for lookups.
 
@@ -92,8 +93,10 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     override fun saveOutbox(item: OutboxItem) = run { dao.putOutbox(OutboxRow(item.clientMsgId, Codec.plain.encodeToString(OutboxItem.serializer(), item))) }
     override fun deleteOutbox(clientMsgId: String) = run { dao.deleteOutbox(clientMsgId) }
 
+    /** Lets the queued writes finish (briefly), then closes the database; call off the main thread. */
     fun close() {
         executor.shutdown()
+        executor.awaitTermination(2, TimeUnit.SECONDS)
         db.close()
     }
 
@@ -105,13 +108,25 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         runCatching { Codec.plain.decodeFromString(serializer, json) }.getOrNull()
 
     companion object {
-        /** One database per (server, user) profile, so switching accounts never mixes timelines. */
-        fun open(context: Context, profile: String): RoomPersistence {
+        /**
+         * One database per (server, user) profile, named by a hash of both (SYNC_PROTOCOL.md §11), so switching
+         * accounts never mixes timelines and similar names cannot collide.
+         */
+        fun fileName(profile: String): String {
             val digest = MessageDigest.getInstance("SHA-256").digest(profile.toByteArray()).take(8).joinToString("") { "%02x".format(it) }
-            val db = Room.databaseBuilder(context, LocalDatabase::class.java, "chikuwa-$digest.db")
+            return "chikuwa-$digest.db"
+        }
+
+        fun open(context: Context, profile: String): RoomPersistence {
+            val db = Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile))
                 .fallbackToDestructiveMigration(true)
                 .build()
             return RoomPersistence(db)
+        }
+
+        /** Sign-out (§11): the profile's messages, drafts and outbox go with the session. Close it first. */
+        fun delete(context: Context, profile: String) {
+            context.deleteDatabase(fileName(profile))
         }
     }
 }

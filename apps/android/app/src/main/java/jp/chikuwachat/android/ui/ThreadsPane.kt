@@ -41,11 +41,11 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
     val filter = store.threadsFilter
     val scope = rememberCoroutineScope()
     LaunchedEffect(controller.engineStatus) {
-        try { controller.engine?.loadThreads(store.threadsFilter) } catch (e: Exception) { controller.error = controller.describe(e) }
+        try { controller.engine?.loadThreads(store.threadsFilter) } catch (e: Exception) { controller.report(e) }
     }
     fun load(next: String, more: Boolean = false) {
         scope.launch {
-            try { controller.engine?.loadThreads(next, more) } catch (e: Exception) { controller.error = controller.describe(e) }
+            try { controller.engine?.loadThreads(next, more) } catch (e: Exception) { controller.report(e) }
         }
     }
 
