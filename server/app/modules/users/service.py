@@ -99,6 +99,19 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
     return user
 
 
+async def set_avatar(db: AsyncSession, user_id: uuid.UUID, key: str | None) -> User:
+    """M14a: point the profile at a new picture (or none) and tell every device."""
+    user = await require_user(db, user_id)
+    now = utcnow()
+    user.avatar_key = key
+    user.avatar_updated_at = now if key else None
+    user.updated_at = now
+    await db.flush()
+    await emit_user_event(db, USER_UPDATED, user)
+    await db.commit()
+    return user
+
+
 def change_password_in_tx(user: User, password_hash: str, now: datetime) -> None:
     """Auth commits this change together with revoking the user's other sessions."""
     user.password_hash = password_hash

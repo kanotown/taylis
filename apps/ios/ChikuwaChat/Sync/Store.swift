@@ -325,6 +325,7 @@ final class Store {
     }
 
     func upsertUser(_ user: UserPublic) {
+        AvatarCache.shared.note(user)  // M14a
         users[user.id] = user
         persist { try $0.saveUser(user) }
     }

@@ -96,6 +96,7 @@ def test_settings() -> Settings:
         upload_rate_limit_per_user=100_000,
         search_rate_limit_per_user=100_000,
         attachment_max_bytes=200_000,
+        avatar_max_bytes=200_000,
     )
 
 

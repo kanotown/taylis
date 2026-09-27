@@ -4,6 +4,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -318,6 +320,12 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                             Text(me.displayName, style = MaterialTheme.typography.titleMedium)
                             Text("@" + me.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                    }
+                    // M14a: profile picture
+                    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) scope.launch { controller.uploadAvatar(uri) } }
+                    Row {
+                        TextButton(onClick = { avatarPicker.launch("image/*") }, contentPadding = PaddingValues(0.dp)) { Text("写真を選ぶ") }
+                        if (me.avatarUpdatedAt != null) TextButton(onClick = { scope.launch { controller.deleteAvatar() } }, contentPadding = PaddingValues(0.dp)) { Text("写真を削除", color = MaterialTheme.colorScheme.error) }
                     }
                 }
                 SectionLabel("ステータス")

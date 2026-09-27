@@ -73,6 +73,8 @@ class UserPublic(BaseModel):
     # Do not disturb (M12c): public so that clients can show 🔕 next to the name.
     dnd_until: datetime | None = None
     quiet_hours: QuietHours | None = None
+    # M14a: when the picture changed (clients cache by it); null = no picture.
+    avatar_updated_at: datetime | None = None
 
 
 class UserMe(UserPublic):
@@ -141,6 +143,7 @@ def to_user_public(user: User, now: datetime | None = None) -> UserPublic:
         status_expires_at=None if expired else user.status_expires_at,
         dnd_until=user.dnd_until if user.dnd_until and user.dnd_until > (now or utcnow()) else None,
         quiet_hours=quiet_hours_of(user),
+        avatar_updated_at=user.avatar_updated_at,
     )
 
 

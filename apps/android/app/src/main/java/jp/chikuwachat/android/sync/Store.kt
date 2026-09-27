@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
@@ -249,6 +250,7 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     fun upsertUser(user: UserPublic) {
+        AvatarCache.note(user)  // M14a
         users[user.id] = user
         persist { it.saveUser(user) }
         emit()

@@ -1381,6 +1381,27 @@ export interface paths {
         patch: operations["update_me_api_v1_users_me_patch"];
         trace?: never;
     };
+    "/api/v1/users/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Avatar
+         * @description M14a: a PNG / JPEG / GIF / WebP, cropped square and resized to 256px.
+         */
+        post: operations["upload_avatar_api_v1_users_me_avatar_post"];
+        /** Delete Avatar */
+        delete: operations["delete_avatar_api_v1_users_me_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me/password": {
         parameters: {
             query?: never;
@@ -1407,6 +1428,26 @@ export interface paths {
         };
         /** Get User */
         get: operations["get_user_api_v1_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Avatar
+         * @description The picture (PNG). Clients add `?v=<avatar_updated_at>` so a change is not cached away.
+         */
+        get: operations["get_avatar_api_v1_users__user_id__avatar_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1552,6 +1593,11 @@ export interface components {
         };
         /** Body_upload_api_v1_attachments_post */
         Body_upload_api_v1_attachments_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_avatar_api_v1_users_me_avatar_post */
+        Body_upload_avatar_api_v1_users_me_avatar_post: {
             /** File */
             file: string;
         };
@@ -2629,6 +2675,8 @@ export interface components {
         };
         /** UserMe */
         UserMe: {
+            /** Avatar Updated At */
+            avatar_updated_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2675,6 +2723,8 @@ export interface components {
         };
         /** UserPublic */
         UserPublic: {
+            /** Avatar Updated At */
+            avatar_updated_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5588,6 +5638,59 @@ export interface operations {
             };
         };
     };
+    upload_avatar_api_v1_users_me_avatar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_avatar_api_v1_users_me_avatar_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMe"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_avatar_api_v1_users_me_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMe"];
+                };
+            };
+        };
+    };
     auth_password_api_v1_users_me_password_put: {
         parameters: {
             query?: never;
@@ -5637,6 +5740,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_avatar_api_v1_users__user_id__avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

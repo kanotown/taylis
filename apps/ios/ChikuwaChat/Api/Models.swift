@@ -18,6 +18,8 @@ struct UserPublic: Codable, Identifiable, Equatable, Hashable {
     /// Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name).
     var dndUntil: String? = nil
     var quietHours: QuietHours? = nil
+    /// M14a: when the profile picture changed (nil = no picture); the cache key.
+    var avatarUpdatedAt: String? = nil
 }
 
 /// A daily window (in the user's zone) during which pushes are held back (M12c).
@@ -46,11 +48,12 @@ struct UserMe: Codable, Equatable {
     var quietHours: QuietHours? = nil
     /// M12g: words that make a message count as a mention of me.
     var notifyKeywords: [String]? = nil
+    var avatarUpdatedAt: String? = nil
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
                    title: title, statusText: statusText, statusEmoji: statusEmoji, statusExpiresAt: statusExpiresAt,
-                   dndUntil: dndUntil, quietHours: quietHours)
+                   dndUntil: dndUntil, quietHours: quietHours, avatarUpdatedAt: avatarUpdatedAt)
     }
 }
 

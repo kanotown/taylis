@@ -26,6 +26,7 @@ from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
 from app.modules.auth import repository as auth_repo
 from app.modules.auth.router import router as auth_router
+from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
@@ -183,6 +184,9 @@ def build_api_router() -> APIRouter:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(auth_router)
     api.include_router(totp_router)
+    api.include_router(
+        avatars_router
+    )  # before users: /users/me/avatar must not read as /users/{id}
     api.include_router(users_router)
     api.include_router(admin_router)
     api.include_router(invites_router)
