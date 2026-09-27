@@ -171,3 +171,38 @@ describe("files (M11i)", () => {
     ]);
   });
 });
+
+describe("invite links (M12h)", () => {
+  it("calls the admin and public invite endpoints; accepting logs in", async () => {
+    const calls: Array<{ method: string; path: string; auth: string | null; body: unknown }> = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        const path = String(input).replace("http://server", "");
+        const headers = init?.headers as Record<string, string>;
+        calls.push({ method: init?.method ?? "GET", path, auth: headers["Authorization"] ?? null, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (path.endsWith("/accept")) return jsonResponse(201, tokens(3));
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        if (init?.method === "POST") return jsonResponse(201, { invite: { id: "i1", note: "x" }, token: "tok" });
+        if (path.startsWith("/api/v1/invites/")) return jsonResponse(200, { invited_by: "Root", role: "member", channels: ["general"], expires_at: "", password_min_length: 8 });
+        return jsonResponse(200, []);
+      },
+    });
+    client.accessToken = "a";
+    expect(await client.adminListInvites()).toEqual([]);
+    expect((await client.adminCreateInvite({ channel_ids: ["c1"], note: "x", max_uses: 1, expires_in_hours: 24, role: "member" })).token).toBe("tok");
+    await client.adminRevokeInvite("i1");
+    expect((await client.invitePreview("t_k")).invited_by).toBe("Root");
+    const accepted = await client.acceptInvite("t_k", { username: "tanaka", display_name: "田中", password: "pw" }, { platform: "desktop" });
+    expect(accepted.user.username).toBe("alice");
+    expect(client.refreshToken).toBe("refresh-3");
+    expect(calls.map((c) => `${c.method} ${c.path} ${c.auth ?? "-"}`)).toEqual([
+      "GET /api/v1/admin/invites Bearer a",
+      "POST /api/v1/admin/invites Bearer a",
+      "DELETE /api/v1/admin/invites/i1 Bearer a",
+      "GET /api/v1/invites/t_k -",
+      "POST /api/v1/invites/t_k/accept -",
+    ]);
+    expect(calls[1]!.body).toEqual({ channel_ids: ["c1"], note: "x", max_uses: 1, expires_in_hours: 24, role: "member" });
+    expect(calls[4]!.body).toEqual({ username: "tanaka", display_name: "田中", password: "pw", device: { platform: "desktop" } });
+  });
+});

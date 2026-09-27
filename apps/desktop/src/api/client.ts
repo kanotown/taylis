@@ -13,6 +13,11 @@ import type {
   FavoriteStateOut,
   CustomEmojiOut,
   FileListOut,
+  InviteAccept,
+  InviteCreate,
+  InviteCreated,
+  InviteOut,
+  InvitePreviewOut,
   ReminderCreate,
   ReminderOut,
   ScheduledCreate,
@@ -362,6 +367,38 @@ export class ApiClient {
 
   adminAnonymizeUser(userId: string): Promise<AdminUserOut> {
     return this.request("POST", `/api/v1/admin/users/${userId}/anonymize`);
+  }
+
+  // --- invite links (M12h) ------------------------------------------------------------------
+
+  adminListInvites(): Promise<InviteOut[]> {
+    return this.request("GET", "/api/v1/admin/invites");
+  }
+
+  /** The token comes back once; the link is `inviteLink(baseUrl, token)`. */
+  adminCreateInvite(body: InviteCreate): Promise<InviteCreated> {
+    return this.request("POST", "/api/v1/admin/invites", body);
+  }
+
+  adminRevokeInvite(inviteId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/invites/${inviteId}`);
+  }
+
+  /** No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked. */
+  invitePreview(token: string): Promise<InvitePreviewOut> {
+    return this.request("GET", `/api/v1/invites/${encodeURIComponent(token)}`, undefined, { auth: false });
+  }
+
+  /** Creates the account and logs it in (the response is the same as a login). */
+  async acceptInvite(token: string, form: Omit<InviteAccept, "device">, device: DeviceInfo): Promise<TokenResponse> {
+    const tokens = await this.request<TokenResponse>(
+      "POST",
+      `/api/v1/invites/${encodeURIComponent(token)}/accept`,
+      { ...form, device },
+      { auth: false },
+    );
+    this.applyTokens(tokens);
+    return tokens;
   }
 
   // --- pins and bookmarks (M11c) ---------------------------------------------------------

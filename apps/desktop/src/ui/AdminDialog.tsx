@@ -7,9 +7,10 @@ import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
 import { EmojiAdminTab } from "./customEmoji";
+import { InvitesTab } from "./InvitesTab";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 
-type Tab = "users" | "channels" | "emoji";
+type Tab = "users" | "invites" | "channels" | "emoji";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -20,6 +21,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
         {(
           [
             ["users", "ユーザー"],
+            ["invites", "招待"],
             ["channels", "チャンネル"],
             ["emoji", "絵文字"],
           ] as Array<[Tab, string]>
@@ -36,7 +38,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
           </button>
         ))}
       </div>
-      {tab === "users" ? <UsersTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+      {tab === "users" ? <UsersTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
     </Modal>
   );
 }

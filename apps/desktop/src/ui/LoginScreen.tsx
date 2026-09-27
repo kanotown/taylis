@@ -4,7 +4,7 @@ import { type FormEvent, useState } from "react";
 import type { AppController } from "../state/app";
 import { Button, Field, Input } from "./primitives";
 
-export function LoginScreen({ controller, onDone }: { controller: AppController; onDone: () => void }) {
+export function LoginScreen({ controller, onDone, onInvite }: { controller: AppController; onDone: () => void; onInvite?: () => void }) {
   const [server, setServer] = useState(controller.serverUrl);
   const [username, setUsername] = useState(controller.username);
   const [password, setPassword] = useState("");
@@ -44,6 +44,11 @@ export function LoginScreen({ controller, onDone }: { controller: AppController;
           {busy && <Loader2 size={16} className="animate-spin" />}
           {busy ? "ログイン中…" : "ログイン"}
         </Button>
+        {onInvite && (
+          <button type="button" onClick={onInvite} className="block w-full text-center text-xs text-muted hover:text-ink hover:underline">
+            招待リンクをお持ちの方はこちら
+          </button>
+        )}
       </form>
     </AuthShell>
   );

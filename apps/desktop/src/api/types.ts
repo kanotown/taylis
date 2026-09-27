@@ -85,3 +85,10 @@ export type ReminderCreate = components["schemas"]["ReminderCreate"];
 
 /** Custom emoji (M12f). */
 export type CustomEmojiOut = components["schemas"]["CustomEmojiOut"];
+
+/** Invite links (M12h). */
+export type InviteOut = components["schemas"]["InviteOut"];
+export type InviteCreate = components["schemas"]["InviteCreate"];
+export type InviteCreated = components["schemas"]["InviteCreated"];
+export type InvitePreviewOut = components["schemas"]["InvitePreviewOut"];
+export type InviteAccept = components["schemas"]["InviteAccept"];

@@ -20,7 +20,9 @@ def upgrade() -> None:
     op.add_column("users", sa.Column("title", sa.String(80), nullable=True))
     op.add_column("users", sa.Column("status_text", sa.String(100), nullable=True))
     op.add_column("users", sa.Column("status_emoji", sa.String(32), nullable=True))
-    op.add_column("users", sa.Column("status_expires_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "users", sa.Column("status_expires_at", sa.DateTime(timezone=True), nullable=True)
+    )
 
 
 def downgrade() -> None:

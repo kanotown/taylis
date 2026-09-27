@@ -31,6 +31,7 @@ from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
 from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
+from app.modules.invites.router import router as invites_router
 from app.modules.link_previews.fetcher import build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages.router import router as messages_router
@@ -180,6 +181,7 @@ def build_api_router() -> APIRouter:
     api.include_router(auth_router)
     api.include_router(users_router)
     api.include_router(admin_router)
+    api.include_router(invites_router)
     api.include_router(channels_router)
     api.include_router(messages_router)
     api.include_router(threads_router)
@@ -216,6 +218,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
+        "invite": RateLimiter(settings.invite_rate_limit_per_ip),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
         "search": RateLimiter(settings.search_rate_limit_per_user),
         "link_preview": RateLimiter(settings.link_preview_rate_limit_per_user),

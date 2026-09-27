@@ -18,9 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users", sa.Column("notify_keywords", postgresql.ARRAY(sa.Text()), nullable=True)
-    )
+    op.add_column("users", sa.Column("notify_keywords", postgresql.ARRAY(sa.Text()), nullable=True))
 
 
 def downgrade() -> None:

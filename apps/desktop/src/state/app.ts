@@ -2,9 +2,10 @@
 import { ApiClient } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
+import { inviteErrorText } from "../ui/invite";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, CustomEmojiOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -149,6 +150,30 @@ export class AppController {
       await this.enterSession(api, username, tokens.user);
     } catch (err) {
       this.setScreen("login", describe(err));
+    }
+  }
+
+  /** M12h: what an invite link offers, before any account exists (throws on a dead link). */
+  previewInvite(server: string, token: string): Promise<InvitePreviewOut> {
+    return new ApiClient(server.replace(/\/+$/, "")).invitePreview(token);
+  }
+
+  /** M12h: create the account the link allows and enter the session; returns the failure text, if any. */
+  async acceptInvite(server: string, token: string, form: { username: string; display_name: string; password: string }): Promise<string | null> {
+    server = server.replace(/\/+$/, "");
+    const api = this.createApi(server, form.username);
+    try {
+      const tokens = await api.acceptInvite(token, form, {
+        platform: "desktop",
+        device_name: navigator.platform || "desktop",
+        app_version: APP_VERSION,
+      });
+      localStorage.setItem(SERVER_KEY, server);
+      localStorage.setItem(USERNAME_KEY, form.username);
+      await this.enterSession(api, form.username, tokens.user);
+      return null;
+    } catch (err) {
+      return inviteErrorText(err);
     }
   }
 
