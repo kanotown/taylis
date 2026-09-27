@@ -113,6 +113,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.messageFocus]);
 
+  // M13b: a slash command (/join, /dm) asked for a conversation.
+  useEffect(() => {
+    const id = controller.openChannelRequest;
+    if (!id) return;
+    controller.openChannelRequest = null;
+    open(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openChannelRequest]);
+
   useEffect(() => {
     if (currentId && engine) void engine.openChannel(currentId).catch((error) => controller.setError(error));
   }, [currentId, engine]);

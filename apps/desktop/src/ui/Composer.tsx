@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
 import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
@@ -62,11 +63,23 @@ export function Composer({
   const emojiAt = query ? null : emojiQuery(text, caret);
   const emojiHits = emojiAt ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
-  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length;
+  // `/st` at the very start offers the slash commands (M13b).
+  const commandHits = query || emojiAt ? [] : commandCandidates(text);
+  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : commandHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   const send = () => {
+    const command = parseSlashCommand(text);
+    if (command) {
+      if (!command.known) {
+        controller.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
+        return;
+      }
+      setText("");
+      void controller.runCommand(command, channel, parentId);
+      return;
+    }
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
     if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError("添付は10件、本文は20,000文字までです"); return; }
@@ -119,6 +132,17 @@ export function Composer({
     requestAnimationFrame(() => {
       area.current?.focus();
       area.current?.setSelectionRange(position, position);
+    });
+  };
+
+  const pickCommand = (command: SlashCommand) => {
+    const next = `/${command.name} `;
+    setText(next);
+    setSelected(0);
+    setCaret(next.length);
+    requestAnimationFrame(() => {
+      area.current?.focus();
+      area.current?.setSelectionRange(next.length, next.length);
     });
   };
 
@@ -195,6 +219,7 @@ export function Composer({
         const candidate = candidates[active];
         if (candidate) pick(candidate);
         else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
+        else if (commandHits[active]) pickCommand(commandHits[active]!);
         return;
       }
     }
@@ -297,6 +322,22 @@ export function Composer({
               }}
             >
               <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">グループ</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {commandHits.length > 0 && (
+        <ul className="absolute bottom-full left-4 z-20 mb-1 w-96 rounded-xl border border-line bg-canvas p-1 shadow-xl">
+          {commandHits.map((command, index) => (
+            <li
+              key={command.name}
+              className={cn("flex items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pickCommand(command);
+              }}
+            >
+              <strong className="font-mono">{command.usage}</strong> <span className="text-muted">{command.description}</span>
             </li>
           ))}
         </ul>

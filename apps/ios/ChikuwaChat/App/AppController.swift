@@ -546,6 +546,100 @@ final class AppController {
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
+    // MARK: slash commands (M13b)
+
+    /// Runs a command typed in the composer; false when it could not (the reason is in `error`).
+    func runCommand(_ command: SlashCommands.Parsed, channelId: String, parentId: String?) async -> Bool {
+        guard let api, let state = store.channels[channelId] else { return false }
+        let isDm = state.channel.type == "dm" || state.channel.type == "group_dm"
+        guard let spec = SlashCommands.all.first(where: { $0.name == command.name }) else {
+            error = "/\(command.name) というコマンドはありません (/help で一覧)"
+            return false
+        }
+        if spec.channelOnly && isDm { error = "/\(command.name) はチャンネルでだけ使えます"; return false }
+        func user(_ handle: String) -> UserPublic? {
+            let name = (handle.hasPrefix("@") ? String(handle.dropFirst()) : handle).lowercased()
+            return store.users.values.first { $0.username.lowercased() == name }
+        }
+        let iso = ISO8601DateFormatter()
+        let level = state.channel.notification?.level ?? (isDm ? "all" : "mentions")
+        switch command.name {
+        case "help":
+            notice = SlashCommands.all.map(\.usage).joined(separator: " · ")
+            return true
+        case "status":
+            if command.args.isEmpty || command.args == "clear" {
+                let ok = await updateProfile(statusText: .some(nil), statusEmoji: .some(nil), statusExpiresAt: .some(nil))
+                if ok { notice = "ステータスを消しました" }
+                return ok
+            }
+            let parts = SlashCommands.splitStatus(command.args)
+            let ok = await updateProfile(statusText: .some(parts.text.isEmpty ? nil : parts.text), statusEmoji: .some(parts.emoji), statusExpiresAt: .some(nil))
+            if ok { notice = "ステータスを更新しました" }
+            return ok
+        case "dnd":
+            if command.args.isEmpty || command.args == "off" {
+                let ok = await updateProfile(dndUntil: .some(nil))
+                if ok { notice = "通知の一時停止を解除しました" }
+                return ok
+            }
+            guard let until = SlashCommands.duration(command.args) else { error = "/dnd 30m | 1h | 2h | 4h | tomorrow | off"; return false }
+            let ok = await updateProfile(dndUntil: .some(iso.string(from: until)))
+            if ok { notice = "\(Schedule.label(until)) まで通知を止めます" }
+            return ok
+        case "topic":
+            _ = await updateTopic(channelId, topic: command.args)
+            return true
+        case "leave":
+            _ = await leaveChannel(channelId)
+            return true
+        case "invite":
+            let handles = command.args.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+            if handles.isEmpty { error = "/invite @名前"; return false }
+            for handle in handles {
+                guard let target = user(handle) else { error = "\(handle) というユーザーはいません"; return false }
+                do { _ = try await api.addMember(channelId: channelId, userId: target.id) } catch { self.error = describe(error); return false }
+            }
+            notice = "\(handles.count) 人を追加しました"
+            return true
+        case "join":
+            let name = (command.args.hasPrefix("#") ? String(command.args.dropFirst()) : command.args).lowercased()
+            guard let target = store.channels.values.first(where: { $0.channel.type == "public" && ($0.channel.name ?? "").lowercased() == name }) else {
+                error = "#\(name) という公開チャンネルはありません"
+                return false
+            }
+            if !target.isMember {
+                do { store.upsertChannel(try await api.joinChannel(id: target.id), isMember: true) } catch { self.error = describe(error); return false }
+            }
+            PushCenter.shared.pendingChannelId = target.id
+            return true
+        case "dm":
+            guard let target = user(command.args.split(separator: " ").first.map(String.init) ?? "") else { error = "/dm @名前"; return false }
+            guard let id = await openDmWith(target.id) else { return false }
+            PushCenter.shared.pendingChannelId = id
+            return true
+        case "mute":
+            let until = command.args.isEmpty ? Date().addingTimeInterval(8 * 3600) : SlashCommands.duration(command.args)
+            guard let until else { error = "/mute 1h | 8h | tomorrow"; return false }
+            _ = await setNotification(channelId, level: level, mutedUntil: iso.string(from: until))
+            notice = "\(Schedule.label(until)) まで通知を止めます"
+            return true
+        case "unmute":
+            _ = await setNotification(channelId, level: level, mutedUntil: nil)
+            notice = "通知を再開しました"
+            return true
+        case "me":
+            if command.args.isEmpty { return false }
+            await engine?.send(channelId, body: "_\(command.args)_", parentId: parentId)
+            return true
+        case "shrug":
+            await engine?.send(channelId, body: (command.args.isEmpty ? "" : command.args + " ") + SlashCommands.shrug, parentId: parentId)
+            return true
+        default:
+            return false
+        }
+    }
+
     func logout() async {
         engine?.stop()
         engine = nil

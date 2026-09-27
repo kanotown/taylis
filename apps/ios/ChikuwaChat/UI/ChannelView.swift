@@ -553,6 +553,11 @@ struct ComposerView: View {
     @State private var customSendAt = Date().addingTimeInterval(3600)
     @FocusState private var focused: Bool
 
+    /// `/st` at the very start offers the slash commands (M13b).
+    private var commandHits: [SlashCommands.Command] {
+        guard candidates.isEmpty, emojiCandidates.isEmpty else { return [] }
+        return SlashCommands.candidates(text)
+    }
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
         return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
@@ -592,6 +597,13 @@ struct ComposerView: View {
     }
 
     private func send() {
+        if let command = SlashCommands.parse(trimmed) {  // M13b
+            guard let controller else { return }
+            if !command.known { controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"; return }
+            controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
+            Task { _ = await controller.runCommand(command, channelId: channelId, parentId: parentId) }
+            return
+        }
         let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
         guard canSend else { return }
         guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
@@ -649,6 +661,22 @@ struct ComposerView: View {
                         ForEach(candidates) { candidate in
                             Button { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) } label: {
                                 Text("@\(candidate.username)").fontWeight(.semibold) + Text("  \(candidate.label)").foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .padding(.top, 6)
+            }
+            if !commandHits.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(commandHits) { command in
+                            Button { textBinding.wrappedValue = "/" + command.name + " " } label: {
+                                Text(command.usage).fontWeight(.semibold) + Text("  \(command.description)").foregroundStyle(.secondary)
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)
