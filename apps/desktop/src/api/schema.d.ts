@@ -1055,6 +1055,27 @@ export interface paths {
         patch: operations["edit_message_api_v1_messages__message_id__patch"];
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Acknowledge
+         * @description M15e: 「確認しました」 on a message that asks for it (not your own); idempotent.
+         */
+        put: operations["acknowledge_api_v1_messages__message_id__ack_put"];
+        post?: never;
+        /** Unacknowledge */
+        delete: operations["unacknowledge_api_v1_messages__message_id__ack_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/bookmark": {
         parameters: {
             query?: never;
@@ -1668,6 +1689,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AckOut */
+        AckOut: {
+            /**
+             * Acked At
+             * Format: date-time
+             */
+            acked_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** AdminUserCreate */
         AdminUserCreate: {
             /** Display Name */
@@ -2393,6 +2427,11 @@ export interface components {
         /** MessageCreate */
         MessageCreate: {
             /**
+             * Ack Requested
+             * @default false
+             */
+            ack_requested: boolean;
+            /**
              * Also In Channel
              * @default false
              */
@@ -2412,6 +2451,8 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
             poll?: components["schemas"]["PollCreate"] | null;
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
         };
         /** MessageEdit */
         MessageEdit: {
@@ -2420,6 +2461,16 @@ export interface components {
         };
         /** MessageOut */
         MessageOut: {
+            /**
+             * Ack Requested
+             * @default false
+             */
+            ack_requested: boolean;
+            /**
+             * Acks
+             * @default []
+             */
+            acks: components["schemas"]["AckOut"][];
             /**
              * Also In Channel
              * @default false
@@ -2472,6 +2523,8 @@ export interface components {
             /** Pinned By */
             pinned_by?: string | null;
             poll?: components["schemas"]["PollOut"] | null;
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
             /**
              * Reactions
              * @default []
@@ -5329,6 +5382,68 @@ export interface operations {
                 "application/json": components["schemas"]["MessageEdit"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_api_v1_messages__message_id__ack_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unacknowledge_api_v1_messages__message_id__ack_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

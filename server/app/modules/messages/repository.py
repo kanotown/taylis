@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.messages.models import (
     Message,
+    MessageAck,
     MessageRevision,
     PollVote,
     Reaction,
@@ -272,3 +273,45 @@ async def revisions_for(db: AsyncSession, message_id: uuid.UUID) -> list[Message
 
 async def delete_revisions(db: AsyncSession, message_id: uuid.UUID) -> None:
     await db.execute(delete(MessageRevision).where(MessageRevision.message_id == message_id))
+
+
+async def acks_for(
+    db: AsyncSession, message_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[MessageAck]]:
+    """M15e: acknowledgements per message, oldest first."""
+    if not message_ids:
+        return {}
+    stmt = (
+        select(MessageAck)
+        .where(MessageAck.message_id.in_(message_ids))
+        .order_by(MessageAck.acked_at, MessageAck.user_id)
+    )
+    grouped: dict[uuid.UUID, list[MessageAck]] = {}
+    for row in (await db.execute(stmt)).scalars().all():
+        grouped.setdefault(row.message_id, []).append(row)
+    return grouped
+
+
+async def has_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    stmt = select(MessageAck.user_id).where(
+        MessageAck.message_id == message_id, MessageAck.user_id == user_id
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def add_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    await db.execute(
+        pg_insert(MessageAck)
+        .values(message_id=message_id, user_id=user_id)
+        .on_conflict_do_nothing()
+    )
+
+
+async def remove_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    await db.execute(
+        delete(MessageAck).where(MessageAck.message_id == message_id, MessageAck.user_id == user_id)
+    )
+
+
+async def delete_acks(db: AsyncSession, message_id: uuid.UUID) -> None:
+    await db.execute(delete(MessageAck).where(MessageAck.message_id == message_id))

@@ -1,6 +1,26 @@
 {
   "components": {
     "schemas": {
+      "AckOut": {
+        "properties": {
+          "acked_at": {
+            "format": "date-time",
+            "title": "Acked At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "acked_at"
+        ],
+        "title": "AckOut",
+        "type": "object"
+      },
       "AdminUserCreate": {
         "properties": {
           "display_name": {
@@ -1976,6 +1996,11 @@
       },
       "MessageCreate": {
         "properties": {
+          "ack_requested": {
+            "default": false,
+            "title": "Ack Requested",
+            "type": "boolean"
+          },
           "also_in_channel": {
             "default": false,
             "title": "Also In Channel",
@@ -2022,6 +2047,21 @@
                 "type": "null"
               }
             ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
           }
         },
         "required": [
@@ -2047,6 +2087,19 @@
       },
       "MessageOut": {
         "properties": {
+          "ack_requested": {
+            "default": false,
+            "title": "Ack Requested",
+            "type": "boolean"
+          },
+          "acks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AckOut"
+            },
+            "title": "Acks",
+            "type": "array"
+          },
           "also_in_channel": {
             "default": false,
             "title": "Also In Channel",
@@ -2178,6 +2231,21 @@
                 "type": "null"
               }
             ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
           },
           "reactions": {
             "default": [],
@@ -7434,6 +7502,101 @@
           }
         ],
         "summary": "Edit Message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/ack": {
+      "delete": {
+        "operationId": "unacknowledge_api_v1_messages__message_id__ack_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unacknowledge",
+        "tags": [
+          "messages"
+        ]
+      },
+      "put": {
+        "description": "M15e: 「確認しました」 on a message that asks for it (not your own); idempotent.",
+        "operationId": "acknowledge_api_v1_messages__message_id__ack_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Acknowledge",
         "tags": [
           "messages"
         ]

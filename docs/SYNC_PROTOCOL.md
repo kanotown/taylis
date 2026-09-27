@@ -125,6 +125,8 @@
 { "client_msg_id": "6f1c...-uuid4", "body": "hello <@u1>", "attachment_ids": [], "parent_id": null }
 ```
 
+- `priority` (`important` / `urgent`) と `ack_requested` (M15e) はトップレベルの投稿にだけ付けられる (返信は 422)。
+  クライアントは送信キュー (§9) にも保持して再送で落とさない。
 - `also_in_channel: true` (M15c) は返信 (`parent_id` あり) にだけ付けられ (他は 422)、その返信はスレッドに加えて
   チャンネルのタイムラインにも並び、チャンネルの未読に数える。1 通のメッセージなので編集・削除・リアクションは
   両方の表示に効く。投稿制限チャンネル (M15a) では新規投稿と同じ権限が要る (`403 posting_restricted`)。
@@ -201,7 +203,7 @@
 | type | audience | seq | data |
 | --- | --- | --- | --- |
 | `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, updated_seq, participant_ids }`。`participant_ids` はスレッドのフォロワー (THREADS.md §2) で、プッシュ対象の判定に使う) |
-| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b) |
+| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b) / `ack` (M15e: `acks` の変化) |
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |

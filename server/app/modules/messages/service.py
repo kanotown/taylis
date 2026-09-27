@@ -138,6 +138,8 @@ async def create_message(
                     if data.poll
                     else None
                 ),
+                priority=data.priority,
+                ack_requested=data.ack_requested,
             )
             db.add(message)
             await db.flush()
@@ -235,8 +237,11 @@ async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut
     reactions = await repo.reactions_for(db, live)
     files = await attachments.for_messages(db, live)
     votes = await repo.poll_votes_for(db, [m.id for m in rows if m.poll and not m.is_deleted])
+    acks = await repo.acks_for(db, [m.id for m in rows if m.ack_requested and not m.is_deleted])
     return [
-        to_message_out(m, reactions.get(m.id, []), files.get(m.id, []), votes.get(m.id, []))
+        to_message_out(
+            m, reactions.get(m.id, []), files.get(m.id, []), votes.get(m.id, []), acks.get(m.id, [])
+        )
         for m in rows
     ]
 
@@ -304,6 +309,7 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message.updated_seq = seq
     await db.flush()
     await repo.delete_revisions(db, message.id)  # M14c: a deleted message keeps no old text
+    await repo.delete_acks(db, message.id)  # M15e
     await attachments.mark_deleted_in_tx(db, message.id)
     parent_thread = None
     if message.parent_id is not None:
@@ -428,6 +434,24 @@ async def set_vote(
             return await message_out(db, message), False
         await repo.remove_votes(db, message.id, actor.id, index)
     return await _bump_and_announce(db, message, "poll"), True
+
+
+async def set_ack(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, *, present: bool
+) -> MessageOut:
+    """M15e: acknowledge (present=True) a message that asked for it, or take it back."""
+    message = await _require_live_message(db, actor, message_id)
+    if not message.ack_requested:
+        raise conflict("ack_not_requested", "This message does not ask for acknowledgements")
+    if message.sender_id == actor.id:
+        raise bad_request("ack_own_message", "You cannot acknowledge your own message")
+    if present == await repo.has_ack(db, message.id, actor.id):
+        return await message_out(db, message)
+    if present:
+        await repo.add_ack(db, message.id, actor.id)
+    else:
+        await repo.remove_ack(db, message.id, actor.id)
+    return await _bump_and_announce(db, message, "ack")
 
 
 async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
