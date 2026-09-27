@@ -27,13 +27,14 @@ CLAUDE.md を優先し、本書を更新する。
   メンション、添付ファイル、全文検索、未読管理、プッシュ通知。
 - Desktop (Windows / macOS)、iOS、Android の 3 クライアントが、切断・オフラインを挟んでも同じ状態に
   収束する。
+- ブラウザ (M12j): Desktop と同じ React バンドルを Caddy が API と同じオリジンで配信する。ローカル永続化は
+  持たず (メモリのみ)、起動のたびに bootstrap から作り直す。
 
 ### 非目標 (現時点で作らないもの)
 
 - 数千人規模、複数ノードへの水平分散、マイクロサービス
 - マルチワークスペース (1 デプロイ = 1 ワークスペース)
 - E2E 暗号化 (検索・プッシュ本文・将来の AI 機能と両立しない)
-- Web ブラウザクライアント (拡張余地だけ残す。§10)
 - 外部連携 (Bot API、Webhook、OAuth アプリ)、URL アンファール
 - 音声 / ビデオ通話
 - 埋め込み・LLM を使う機能 (意味検索、要約、抽出、QA)。ただし後から足せる構造にする (§10)
@@ -342,7 +343,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | --- | --- | --- |
 | API プロセスを複数にする / worker 分離 | `EventBus` を `RedisEventBus` (pub/sub) に差し替え (`EVENT_BUS=redis`)。Relay は 1 プロセスだけで動かす。presence / ratelimit を Redis に移す | outbox、ハンドラ、Hub のインタフェース、クライアント |
 | 添付の直接アップロード / ダウンロード | `BlobStore` に presigned URL 発行を追加。API は URL を返す | アクセス制御の判定 (API に残る) |
-| Web ブラウザクライアント | cookie ベース認証 + CSRF 対策、`CORS_ALLOW_ORIGINS` への追加、WS の Origin 検証 | データモデル、同期プロトコル |
+| ~~Web ブラウザクライアント~~ (M12j で実装) | 同一オリジン配信なので CORS 追加は不要。refresh token は HttpOnly cookie + `X-Requested-With`、WS は Origin 検証 (SECURITY.md §2.3 / §2.4) | データモデル、同期プロトコル |
 | OIDC ログイン | `auth` に provider を追加。session の仕組みはそのまま | |
 | 検索の高度化 | PGroonga の tokenizer / ranking 調整。Elasticsearch は不要 | |
 | 通知の細分化 (quiet hours 等) | PushPlanner の判定ルールと `notification_preferences` の列追加 | 配送の仕組み |

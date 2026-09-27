@@ -1,3 +1,4 @@
+import { COOKIE_SESSION } from "../api/client";
 import { isTauri } from "./env";
 
 /** Refresh tokens: Keychain / Credential Manager through the Rust commands (SECURITY.md §2.3). */
@@ -26,21 +27,24 @@ class TauriSecretStore implements SecretStore {
   }
 }
 
-/** Browser dev fallback only (`npm run dev` outside Tauri): never used in the packaged app. */
-class LocalStorageSecretStore implements SecretStore {
+/**
+ * Browser (M12j): the refresh token is an HttpOnly cookie the page cannot read, so nothing secret
+ * is stored here; we only remember that a session was opened, to try the cookie at startup.
+ */
+class CookieSessionStore implements SecretStore {
   async get(account: string): Promise<string | null> {
-    return localStorage.getItem("secret:" + account);
+    return localStorage.getItem("session:" + account) ? COOKIE_SESSION : null;
   }
 
-  async set(account: string, value: string): Promise<void> {
-    localStorage.setItem("secret:" + account, value);
+  async set(account: string): Promise<void> {
+    localStorage.setItem("session:" + account, "1");
   }
 
   async delete(account: string): Promise<void> {
-    localStorage.removeItem("secret:" + account);
+    localStorage.removeItem("session:" + account);
   }
 }
 
 export function secretStore(): SecretStore {
-  return isTauri() ? new TauriSecretStore() : new LocalStorageSecretStore();
+  return isTauri() ? new TauriSecretStore() : new CookieSessionStore();
 }

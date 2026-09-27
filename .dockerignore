@@ -1,0 +1,9 @@
+# The web image (infra/web.Dockerfile) needs only the desktop sources and the Caddyfile.
+*
+!apps/desktop
+!infra/Caddyfile
+apps/desktop/node_modules
+apps/desktop/dist
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+apps/desktop/screenshots

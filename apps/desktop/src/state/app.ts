@@ -1,15 +1,16 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
-import { ApiClient } from "../api/client";
+import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
+import { parseEntryPath } from "../ui/routes";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
 import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
-import { isTauri } from "../platform/env";
+import { isTauri, isWeb } from "../platform/env";
 import { notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
@@ -93,8 +94,29 @@ export class AppController {
     this.emit();
   }
 
+  /** In a browser (M12j) the app is served next to the API, so the server is the page's own origin. */
   get serverUrl(): string {
+    if (isWeb()) return location.origin;
     return localStorage.getItem(SERVER_KEY) ?? "http://127.0.0.1:8000";
+  }
+
+  /** M12j: what the browser URL asked for, consumed once (an invite link, or a message to reveal). */
+  entryInvite: string | null = null;
+  private entryMessage: string | null = null;
+
+  private takeEntryPath(): void {
+    const entry = parseEntryPath(location.pathname);
+    if (!entry) return;
+    if (entry.kind === "invite") this.entryInvite = entry.token;
+    else this.entryMessage = entry.id;
+    history.replaceState(null, "", "/");
+  }
+
+  private async revealEntry(): Promise<void> {
+    const id = this.entryMessage;
+    if (!id) return;
+    this.entryMessage = null;
+    await this.openPermalink(id);
   }
 
   get username(): string {
@@ -116,6 +138,7 @@ export class AppController {
 
   /** Startup: restore the previous session from the credential store (SYNC_PROTOCOL.md §7.2). */
   async boot(): Promise<void> {
+    if (isWeb()) this.takeEntryPath();
     const server = this.serverUrl;
     const username = this.username;
     if (!username) {
@@ -139,15 +162,19 @@ export class AppController {
     }
   }
 
+  private deviceInfo(): DeviceInfo {
+    return {
+      platform: isWeb() ? "web" : "desktop",
+      device_name: isWeb() ? "ブラウザ" : navigator.platform || "desktop",
+      app_version: APP_VERSION,
+    };
+  }
+
   async login(server: string, username: string, password: string, totpCode?: string): Promise<void> {
     server = server.replace(/\/+$/, "");
     const api = this.createApi(server, username);
     try {
-      const tokens = await api.login(username, password, {
-        platform: "desktop",
-        device_name: navigator.platform || "desktop",
-        app_version: APP_VERSION,
-      }, totpCode);
+      const tokens = await api.login(username, password, this.deviceInfo(), totpCode);
       localStorage.setItem(SERVER_KEY, server);
       localStorage.setItem(USERNAME_KEY, username);
       this.totpRequired = false;
@@ -219,11 +246,7 @@ export class AppController {
     server = server.replace(/\/+$/, "");
     const api = this.createApi(server, form.username);
     try {
-      const tokens = await api.acceptInvite(token, form, {
-        platform: "desktop",
-        device_name: navigator.platform || "desktop",
-        app_version: APP_VERSION,
-      });
+      const tokens = await api.acceptInvite(token, form, this.deviceInfo());
       localStorage.setItem(SERVER_KEY, server);
       localStorage.setItem(USERNAME_KEY, form.username);
       await this.enterSession(api, form.username, tokens.user);
@@ -669,6 +692,14 @@ export class AppController {
     engine.subscribe(() => this.emit());
     this.setScreen("main");
     void engine.start();
+    if (this.entryMessage) {
+      // M12j: the browser has no local store; reveal once the first sync has brought the channels.
+      const unsubscribe = engine.subscribe(() => {
+        if (engine.status !== "online" || this.store.channels.size === 0) return;
+        unsubscribe();
+        void this.revealEntry();
+      });
+    }
     return true;
   }
 

@@ -93,11 +93,25 @@ export function MainScreen({ controller }: { controller: AppController }) {
   state.current = { currentId, dialog, threadId, searching, switcher, view, pinsOpen };
 
   useEffect(() => {
+    // Only a channel I belong to; a new member without channels sees the empty state (M12h invites).
     if (!currentId && channels.length > 0) {
-      const first = channels.find((c) => c.isMember) ?? channels[0];
+      const first = channels.find((c) => c.isMember);
       if (first) setCurrentId(first.id);
     }
   }, [currentId, channels.length]);
+
+  // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation.
+  useEffect(() => {
+    const focus = controller.messageFocus;
+    if (!focus || (focus.channelId === currentId && view === "channel")) return;
+    setView("channel");
+    setSearching(false);
+    setPinsOpen(false);
+    setCurrentId(focus.channelId);
+    setThreadChannelId(focus.channelId);
+    setThreadId(focus.parentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.messageFocus]);
 
   useEffect(() => {
     if (currentId && engine) void engine.openChannel(currentId).catch((error) => controller.setError(error));

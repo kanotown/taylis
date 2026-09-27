@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.auth.models import Device, UserSession
 from app.modules.users.schemas import UserMe
 
-Platform = Literal["ios", "android", "desktop"]
+Platform = Literal["ios", "android", "desktop", "web"]  # web (M12j): the browser build
 PushProvider = Literal["apns", "fcm", "none"]
 PushEnvironment = Literal["sandbox", "production"]
 
@@ -39,7 +39,8 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=1, max_length=256, repr=False)
+    # Omitted by the browser client, whose token is the HttpOnly cookie (auth.web_session, M12j).
+    refresh_token: str | None = Field(default=None, min_length=1, max_length=256, repr=False)
 
 
 class PasswordChange(BaseModel):

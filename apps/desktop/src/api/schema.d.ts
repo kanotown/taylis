@@ -1618,7 +1618,7 @@ export interface components {
              * Platform
              * @enum {string}
              */
-            platform: "ios" | "android" | "desktop";
+            platform: "ios" | "android" | "desktop" | "web";
             /** Push Environment */
             push_environment?: ("sandbox" | "production") | null;
             /** Push Provider */
@@ -2127,7 +2127,7 @@ export interface components {
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
-            refresh_token: string;
+            refresh_token?: string | null;
         };
         /** ReminderCreate */
         ReminderCreate: {

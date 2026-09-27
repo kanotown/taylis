@@ -1,6 +1,7 @@
 import { Loader2, MessageCircle, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
+import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
 import { Button, Field, Input } from "./primitives";
 
@@ -32,9 +33,13 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
             <p className="text-xs text-muted">チームのチャットにログイン</p>
           </div>
         </div>
-        <Field label="サーバ URL">
-          <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" />
-        </Field>
+        {isWeb() ? (
+          <p className="text-xs text-muted">サーバ: {server}</p>
+        ) : (
+          <Field label="サーバ URL">
+            <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" />
+          </Field>
+        )}
         <Field label="ユーザー名">
           <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoCapitalize="off" />
         </Field>

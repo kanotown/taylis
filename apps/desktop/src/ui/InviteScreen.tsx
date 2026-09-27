@@ -1,5 +1,5 @@
 import { ArrowLeft, Loader2, Ticket } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import type { InvitePreviewOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -9,8 +9,8 @@ import { AuthShell } from "./LoginScreen";
 import { Button, Field, Input } from "./primitives";
 
 /** Joining with an invite link (M12h): paste the link, see who invites, choose a name and a password. */
-export function InviteScreen({ controller, onBack, onDone }: { controller: AppController; onBack: () => void; onDone: () => void }) {
-  const [link, setLink] = useState("");
+export function InviteScreen({ controller, onBack, onDone, initialLink }: { controller: AppController; onBack: () => void; onDone: () => void; initialLink?: string }) {
+  const [link, setLink] = useState(initialLink ?? "");
   const [target, setTarget] = useState<{ server: string; token: string } | null>(null);
   const [preview, setPreview] = useState<InvitePreviewOut | null>(null);
   const [username, setUsername] = useState("");
@@ -24,6 +24,14 @@ export function InviteScreen({ controller, onBack, onDone }: { controller: AppCo
 
   const check = async (event: FormEvent) => {
     event.preventDefault();
+    await runCheck();
+  };
+  useEffect(() => {
+    if (initialLink) void runCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runCheck = async () => {
     const parsed = parseInviteLink(link);
     if (!parsed) {
       setError("招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)");

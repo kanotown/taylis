@@ -57,7 +57,11 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2
+    # Caddy plus the browser client (M12j): infra/web.Dockerfile builds the desktop bundle into the image.
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    image: chikuwachat-web
     profiles: ["proxy"]
     ports:
       - "80:80"

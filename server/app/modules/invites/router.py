@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Response
 from app.core.db import Db
 from app.core.errors import rate_limited
 from app.core.ratelimit import RateLimiter
+from app.modules.auth import web_session
 from app.modules.auth.deps import CurrentAdmin
 from app.modules.auth.schemas import TokenResponse
 from app.modules.invites import service
@@ -62,4 +63,7 @@ async def accept_invite(
     _throttle(request)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-    return await service.accept(db, token, body, request.app.state.settings, _client_ip(request))
+    tokens = await service.accept(db, token, body, request.app.state.settings, _client_ip(request))
+    if web_session.is_web(body.device.platform):
+        web_session.issue(response, request, tokens)
+    return tokens

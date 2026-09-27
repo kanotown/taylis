@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiClient } from "../src/api/client";
+import { ApiClient, COOKIE_SESSION } from "../src/api/client";
 import { ApiError, NetworkError } from "../src/api/errors";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -246,5 +246,29 @@ describe("two-factor authentication (M12i)", () => {
     ]);
     expect(calls[0]!.body).toEqual({ username: "alice", password: "pw", device: { platform: "desktop" } });
     expect(calls[1]!.body).toEqual({ username: "alice", password: "pw", device: { platform: "desktop" }, totp_code: "123456" });
+  });
+});
+
+describe("browser session (M12j)", () => {
+  it("refreshes through the cookie when the server keeps the refresh token", async () => {
+    const calls: Array<{ path: string; body: unknown; requestedWith: string | null }> = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        const headers = init?.headers as Record<string, string>;
+        calls.push({ path: String(input).replace("http://server", ""), body: init?.body ? JSON.parse(String(init.body)) : undefined, requestedWith: headers["X-Requested-With"] ?? null });
+        if (String(input).endsWith("/auth/login")) return jsonResponse(200, { ...tokens(1), refresh_token: "" });
+        if (String(input).endsWith("/auth/refresh")) return jsonResponse(200, { ...tokens(2), refresh_token: "" });
+        return jsonResponse(200, tokens(2).user);
+      },
+    });
+    await client.login("alice", "pw", { platform: "web" });
+    expect(client.refreshToken).toBe(COOKIE_SESSION);
+    client.accessToken = null; // a reload: only the cookie is left
+    await client.me();
+    expect(calls.map((c) => c.path)).toEqual(["/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/users/me"]);
+    expect(calls[1]!.body).toEqual({});
+    expect(calls[1]!.requestedWith).toBe("ChikuwaChat");
+    expect(calls[0]!.requestedWith).toBeNull();
+    expect(client.refreshToken).toBe(COOKIE_SESSION);
   });
 });

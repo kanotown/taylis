@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { AppController } from "../state/app";
 import { ChangePasswordScreen } from "./ChangePasswordScreen";
 import { useAppVersion } from "./hooks";
+import { inviteLink } from "./invite";
 import { InviteScreen } from "./InviteScreen";
 import { LoginScreen } from "./LoginScreen";
 import { MainScreen } from "./MainScreen";
@@ -19,7 +20,12 @@ export function App({ controller }: { controller: AppController }) {
     case "boot":
       return <div className="flex h-full items-center justify-center text-sm text-muted">起動中…</div>;
     case "login":
-      return invite ? <InviteScreen controller={controller} onBack={() => setInvite(false)} onDone={() => { setInvite(false); bump(); }} /> : <LoginScreen controller={controller} onDone={bump} onInvite={() => setInvite(true)} />;
+      if (invite || controller.entryInvite) {
+        const initialLink = controller.entryInvite ? inviteLink(controller.serverUrl, controller.entryInvite) : undefined;
+        const leave = () => { controller.entryInvite = null; setInvite(false); };
+        return <InviteScreen controller={controller} initialLink={initialLink} onBack={leave} onDone={() => { leave(); bump(); }} />;
+      }
+      return <LoginScreen controller={controller} onDone={bump} onInvite={() => setInvite(true)} />;
     case "change_password":
       return <ChangePasswordScreen controller={controller} onDone={bump} />;
     case "main":
