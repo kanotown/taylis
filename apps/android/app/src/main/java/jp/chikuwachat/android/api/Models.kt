@@ -245,7 +245,17 @@ data class BootstrapOut(
     val groups: List<GroupOut> = emptyList(),
     /** My sidebar sections (M14f); changes arrive as sidebar.updated. */
     val sidebarSections: List<SidebarSectionOut> = emptyList(),
+    /** My drafts shared by my devices (M15d); changes arrive as draft.updated. */
+    val drafts: List<DraftOut> = emptyList(),
 )
+
+/** A draft saved on the server (M15d): text only, one per composer. */
+@Serializable
+data class DraftOut(val channelId: String, val parentId: String? = null, val body: String, val updatedAt: String)
+
+/** draft.updated (M15d): saved or deleted (then `body` is empty) on one of my devices. */
+@Serializable
+data class DraftUpdated(val channelId: String, val parentId: String? = null, val body: String = "", val updatedAt: String, val deleted: Boolean = false)
 
 /** One of my sidebar sections (M14f); `channelIds` are the conversations placed in it. */
 @Serializable
