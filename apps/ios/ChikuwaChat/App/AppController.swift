@@ -433,13 +433,15 @@ final class AppController {
 
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
-                       dndUntil: String?? = nil, quietHours: QuietHours?? = nil) async -> Bool {
+                       dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
         if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
         if let statusText { fields["status_text"] = statusText.map(JSONValue.string) ?? .null }
         if let statusEmoji { fields["status_emoji"] = statusEmoji.map(JSONValue.string) ?? .null }
         if let statusExpiresAt { fields["status_expires_at"] = statusExpiresAt.map(JSONValue.string) ?? .null }
+        // M12g
+        if let notifyKeywords { fields["notify_keywords"] = .array(notifyKeywords.map(JSONValue.string)) }
         // M12c
         if let dndUntil { fields["dnd_until"] = dndUntil.map(JSONValue.string) ?? .null }
         if let quietHours {

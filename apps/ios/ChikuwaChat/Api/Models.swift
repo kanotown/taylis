@@ -44,6 +44,8 @@ struct UserMe: Codable, Equatable {
     var statusExpiresAt: String? = nil
     var dndUntil: String? = nil
     var quietHours: QuietHours? = nil
+    /// M12g: words that make a message count as a mention of me.
+    var notifyKeywords: [String]? = nil
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
