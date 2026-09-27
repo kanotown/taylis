@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, exists, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.modules.bookmarks.models import Bookmark
+from app.modules.channels.models import ChannelMember  # read-only: membership
 from app.modules.messages.models import Message  # read-only (ARCHITECTURE.md §5 exception)
 
 
@@ -26,12 +28,29 @@ async def remove(db: AsyncSession, user_id: uuid.UUID, message_id: uuid.UUID) ->
     return bool(getattr(result, "rowcount", 0))
 
 
+def _visible(user_id: uuid.UUID) -> ColumnElement[bool]:
+    """The message still exists and I am still in its channel (a bookmark must not keep showing
+    a private channel's messages after I left it)."""
+    return and_(
+        Message.deleted_at.is_(None),
+        exists(
+            select(ChannelMember.user_id).where(
+                ChannelMember.channel_id == Message.channel_id, ChannelMember.user_id == user_id
+            )
+        ),
+    )
+
+
+async def channel_of(db: AsyncSession, message_id: uuid.UUID) -> uuid.UUID | None:
+    return (await db.execute(select(Message.channel_id).where(Message.id == message_id))).scalar()
+
+
 async def live_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    """Saved message ids whose message still exists (for bootstrap; deleted ones are dropped)."""
+    """Saved message ids I can still see (for bootstrap)."""
     stmt = (
         select(Bookmark.message_id)
         .join(Message, Message.id == Bookmark.message_id)
-        .where(Bookmark.user_id == user_id, Message.deleted_at.is_(None))
+        .where(Bookmark.user_id == user_id, _visible(user_id))
         .order_by(Bookmark.created_at.desc())
     )
     return list((await db.execute(stmt)).scalars().all())
@@ -43,7 +62,7 @@ async def list_for_user(
     stmt = (
         select(Bookmark, Message)
         .join(Message, Message.id == Bookmark.message_id)
-        .where(Bookmark.user_id == user_id, Message.deleted_at.is_(None))
+        .where(Bookmark.user_id == user_id, _visible(user_id))
         .order_by(Bookmark.created_at.desc())
         .limit(limit)
     )

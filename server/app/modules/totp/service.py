@@ -100,6 +100,11 @@ async def disable(db: AsyncSession, user: User, password: str) -> None:
     await db.commit()
 
 
+async def remove_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """The caller's transaction drops the second factor (an anonymized account)."""
+    await repo.remove(db, user_id)
+
+
 async def admin_reset(db: AsyncSession, actor: User, user_id: uuid.UUID) -> None:
     """For a member who lost the authenticator: 2FA off, they log in with the password alone."""
     if await repo.remove(db, user_id):

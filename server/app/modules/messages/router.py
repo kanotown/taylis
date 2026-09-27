@@ -1,9 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Path, Query, Response
+from fastapi import APIRouter, Path, Query, Request, Response
 
 from app.core.db import Db
+from app.core.errors import rate_limited
 from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service
 from app.modules.messages.schemas import (
@@ -24,8 +25,17 @@ Emoji = Path(min_length=1, max_length=32, pattern=EMOJI_PATTERN)
 
 @router.post("/channels/{channel_id}/messages", response_model=MessageOut)
 async def create_message(
-    channel_id: UUID, user: CurrentUser, body: MessageCreate, db: Db, response: Response
+    channel_id: UUID,
+    user: CurrentUser,
+    body: MessageCreate,
+    db: Db,
+    request: Request,
+    response: Response,
 ) -> MessageOut:
+    limiter = request.app.state.limiters["message"]  # SECURITY.md §5: posts per user per minute
+    key = str(user.id)
+    if not limiter.try_acquire(key):
+        raise rate_limited(limiter.retry_after_seconds(key))
     message, created = await service.create_message(db, user, channel_id, body)
     response.status_code = 201 if created else 200
     return await service.message_out(db, message)

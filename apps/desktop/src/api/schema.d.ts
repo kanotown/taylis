@@ -964,7 +964,8 @@ export interface paths {
         };
         /**
          * List Groups
-         * @description Every group with its members (M12k); also part of the bootstrap.
+         * @description Every group with its members (M12k); also part of the bootstrap. Guests see only the
+         *     members they share a channel with (M13e).
          */
         get: operations["list_groups_api_v1_groups_get"];
         put?: never;

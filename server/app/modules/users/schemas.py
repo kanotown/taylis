@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from app.core.time import utcnow
 from app.modules.users.models import User
@@ -93,9 +93,9 @@ class UserUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=80)
     status_text: str | None = Field(default=None, max_length=100)
     status_emoji: str | None = Field(default=None, max_length=32)
-    status_expires_at: datetime | None = None
+    status_expires_at: AwareDatetime | None = None
     # M12c: null clears; a past dnd_until also clears.
-    dnd_until: datetime | None = None
+    dnd_until: AwareDatetime | None = None
     quiet_hours: QuietHours | None = None
     # M12g: at most 20 keywords of 1-40 characters; blanks and duplicates are dropped.
     notify_keywords: list[str] | None = Field(default=None, max_length=20)

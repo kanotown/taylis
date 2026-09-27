@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, bad_request, not_found
+from app.core.errors import AppError, bad_request, conflict, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.attachments import service as attachments
@@ -66,6 +66,12 @@ async def _emit(db: AsyncSession, row: ScheduledMessage) -> None:
 async def create(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, data: ScheduledCreate
 ) -> ScheduledOut:
+    existing = await repo.get_by_client_msg_id(db, data.client_msg_id)
+    if existing is not None:
+        # A retried request: the row it created (the key is global, so check whose it is).
+        if existing.user_id != actor.id or existing.channel_id != channel_id:
+            raise conflict("idempotency_conflict", "client_msg_id was already used")
+        return await to_out(db, existing)
     channel, _ = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
     now = utcnow()
@@ -101,7 +107,7 @@ async def list_mine(db: AsyncSession, actor: User) -> list[ScheduledOut]:
 async def _require_pending(
     db: AsyncSession, actor: User, scheduled_id: uuid.UUID
 ) -> ScheduledMessage:
-    row = await repo.get(db, scheduled_id)
+    row = await repo.get(db, scheduled_id, for_update=True)  # the worker may be sending it
     if row is None or row.user_id != actor.id or row.status != "pending":
         raise not_found("scheduled_not_found", "No such scheduled message")
     return row
@@ -129,7 +135,11 @@ async def _send(db: AsyncSession, row: ScheduledMessage, user: User) -> Message:
         parent_id=row.parent_id,
         attachment_ids=list(row.attachment_ids or []),
     )
-    message, _ = await messages.create_message(db, user, row.channel_id, data)  # commits
+    # Idempotent by client_msg_id: after a crash between the post and "sent", the retry finds the
+    # message instead of failing on the channel's new state.
+    message, _ = await messages.create_message(
+        db, user, row.channel_id, data, advance_read=False
+    )  # commits
     await db.refresh(row)  # the commit may have expired the row (session-dependent)
     row.status = "sent"
     row.sent_message_id = message.id
@@ -147,12 +157,14 @@ async def send_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
     # Ids are read up front: a rollback below expires the instances (and lazy loads are sync).
     due = [(row.id, row.user_id) for row in await repo.due(db, moment, limit)]
     for row_id, user_id in due:
-        row = await repo.get(db, row_id)
+        row = await repo.get(db, row_id, for_update=True)  # a concurrent cancel waits for us
         user = await users.get_user(db, user_id)
-        if row is None:
+        if row is None or row.status != "pending":
+            await db.commit()
             continue
         if user is None or user.deactivated_at is not None:
             row.status, row.error, row.updated_at = "failed", "user_unavailable", utcnow()
+            await attachments.release_in_tx(db, list(row.attachment_ids or []))
             await _emit(db, row)
             await db.commit()
             continue

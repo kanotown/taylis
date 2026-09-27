@@ -23,6 +23,7 @@ from app.modules.notifications.service import default_level
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
+from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
@@ -53,6 +54,11 @@ class PushPlanner:
         channel = await channels.require_channel(db, event.channel_id)
         thread = event.payload.get("parent_thread") or {}
         participants = {uuid.UUID(str(uid)) for uid in thread.get("participant_ids", [])}
+        if thread and not message.get("also_in_channel"):
+            # A reply in a thread the user unfollowed stays silent whatever the channel level
+            # (THREADS.md §4); a reply also sent to the channel is a channel message.
+            muted = set(await threads.unfollowed(db, uuid.UUID(str(thread["id"]))))
+            recipients = [uid for uid in recipients if uid not in muted]
         targets = await self.select_recipients(db, channel, recipients, message, participants)
         if not targets:
             return

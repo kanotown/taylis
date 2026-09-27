@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     search_rate_limit_per_user: int = 30
     # Link previews (M11g, SECURITY.md §14): bounded fetches of public pages, cached.
     link_preview_rate_limit_per_user: int = 60
+    # SECURITY.md §5: posts per user per minute, and WebSocket sockets / attempts.
+    message_rate_limit_per_user: int = 60
+    ws_max_connections_per_user: int = 10
+    ws_connect_rate_limit_per_ip: int = 30
     link_preview_timeout_seconds: float = 5.0
     link_preview_max_bytes: int = 512 * 1024
     link_preview_ttl_hours: int = 168

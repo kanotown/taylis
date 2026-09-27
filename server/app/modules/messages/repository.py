@@ -118,6 +118,27 @@ async def list_delta(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def live_bodies(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not message_ids:
+        return {}
+    stmt = select(Message.id, Message.body).where(
+        Message.id.in_(message_ids), Message.deleted_at.is_(None)
+    )
+    return {row[0]: row[1] for row in (await db.execute(stmt)).all()}
+
+
+async def list_at_updated_seq(
+    db: AsyncSession, channel_id: uuid.UUID, updated_seq: int
+) -> list[Message]:
+    """Every row changed by one seq (a reply and its parent share it)."""
+    stmt = (
+        select(Message)
+        .where(Message.channel_id == channel_id, Message.updated_seq == updated_seq)
+        .order_by(Message.id)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def list_context(db: AsyncSession, message: Message, limit: int) -> list[Message]:
     """A bounded window around a top-level message, independent of the sync cursor."""
     base = select(Message).where(

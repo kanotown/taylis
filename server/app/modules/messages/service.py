@@ -81,9 +81,24 @@ async def _with_keyword_hits(
 
 
 async def create_message(
-    db: AsyncSession, actor: User, channel_id: uuid.UUID, data: MessageCreate
+    db: AsyncSession,
+    actor: User,
+    channel_id: uuid.UUID,
+    data: MessageCreate,
+    *,
+    advance_read: bool = True,
 ) -> tuple[Message, bool]:
-    """Returns (message, created). Retrying with the same client_msg_id returns the same message."""
+    """Returns (message, created). Retrying with the same client_msg_id returns the same message.
+
+    `advance_read=False` for posts nobody is looking at (scheduled sends): the sender's read
+    position stays where it was.
+    """
+    # A retry of a message that is already stored gets that message back, whatever happened to
+    # the channel since (archived, restricted, left): otherwise the client would mark a delivered
+    # message failed and the user would send it again.
+    existing = await repo.get_by_client_msg_id(db, actor.id, data.client_msg_id)
+    if existing is not None:
+        return _same_channel(existing, channel_id), False
     channel, membership = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
     if (
@@ -94,10 +109,6 @@ async def create_message(
         and membership.role != "owner"
     ):
         raise forbidden("posting_restricted", "Only owners and administrators can post here")
-
-    existing = await repo.get_by_client_msg_id(db, actor.id, data.client_msg_id)
-    if existing is not None:
-        return _same_channel(existing, channel_id), False
 
     parent: Message | None = None
     if data.parent_id is not None:
@@ -168,8 +179,10 @@ async def create_message(
                     parent_thread=parent_thread,
                 ).model_dump(mode="json"),
             )
-            # The sender has read their own message (SYNC_PROTOCOL.md §10).
-            await reads.advance_in_tx(db, actor.id, channel_id, seq, last_seq=seq)
+            # Posting in the channel reads it (SYNC_PROTOCOL.md §10); a thread reply only moves the
+            # thread's position (THREADS.md), and a scheduled send moves nothing.
+            if advance_read and data.parent_id is None:
+                await reads.advance_in_tx(db, actor.id, channel_id, seq, last_seq=seq)
     except IntegrityError:
         # Concurrent retry with the same client_msg_id: the savepoint (and its seq) rolled back.
         existing = await repo.get_by_client_msg_id(db, actor.id, data.client_msg_id)
@@ -214,8 +227,16 @@ async def list_delta(
     channel_last_seq = await repo.get_channel_last_seq(db, channel_id)
     rows = await repo.list_delta(db, channel_id, since_seq=since_seq, limit=limit + 1)
     has_more = len(rows) > limit
-    rows = rows[:limit]
-    next_since_seq = rows[-1].updated_seq if has_more else max(channel_last_seq, since_seq)
+    if has_more:
+        # A reply and its parent share one updated_seq: a page must end on a boundary, or the
+        # next page (updated_seq > cursor) would skip the half left behind.
+        boundary = rows[limit - 1].updated_seq
+        rows = [r for r in rows if r.updated_seq < boundary] + await repo.list_at_updated_seq(
+            db, channel_id, boundary
+        )
+        next_since_seq = boundary
+    else:
+        next_since_seq = max(channel_last_seq, since_seq)
     return DeltaOut(
         messages=await messages_out(db, rows),
         next_since_seq=next_since_seq,
@@ -244,6 +265,11 @@ async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut
         )
         for m in rows
     ]
+
+
+async def live_bodies(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Bodies of the messages that still exist (reminder previews); deleted ones are absent."""
+    return await repo.live_bodies(db, message_ids)
 
 
 async def message_out(db: AsyncSession, message: Message) -> MessageOut:

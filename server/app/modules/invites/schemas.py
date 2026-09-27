@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.admin.schemas import USERNAME_PATTERN, Role
 from app.modules.auth.schemas import DeviceCreate
@@ -60,6 +60,15 @@ class InviteAccept(BaseModel):
     username: str = Field(pattern=USERNAME_PATTERN)
     display_name: str = Field(min_length=1, max_length=80)
     # The minimum length is a server setting (password_min_length) checked in the service.
+
+    @field_validator("display_name")
+    @classmethod
+    def _display_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("display_name must not be blank")
+        return cleaned
+
     password: str = Field(min_length=1, max_length=128, repr=False)
     device: DeviceCreate
 

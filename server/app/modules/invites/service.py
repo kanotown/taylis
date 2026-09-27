@@ -166,8 +166,12 @@ async def accept(
             db,
             AdminUserCreate(
                 username=data.username,
-                display_name=data.display_name.strip(),
-                role="admin" if invite.role == "admin" else "member",
+                display_name=data.display_name,
+                role="admin"
+                if invite.role == "admin"
+                else "guest"
+                if invite.role == "guest"
+                else "member",
             ),
             password_hash=password_hash,
             must_change_password=False,
@@ -178,6 +182,11 @@ async def accept(
             channel = await channels.find_channel(db, channel_id)
             if channel is None or channel.is_archived or channel.is_dm:
                 continue  # the invite outlived the channel
+            if (
+                channel.type == "private"
+                and await channels.membership_of(db, invite.created_by, channel.id) is None
+            ):
+                continue  # made private since, or the issuer left: not theirs to hand out
             await channels.add_member_in_tx(db, channel, user.id)
         invite.use_count += 1
         invite.used_by = [*(invite.used_by or []), user.id]

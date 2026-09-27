@@ -92,6 +92,7 @@ async def counts(
     stmt = select(func.count(), func.count().filter(mentioned)).where(
         Message.channel_id == channel_id,
         Message.seq > last_read_seq,
+        Message.sender_id != user_id,  # my own posts are never unread (replies no longer read)
         timeline_filter(),  # replies count only when also sent to the channel (M15c)
         Message.deleted_at.is_(None),
         Message.type == "user",

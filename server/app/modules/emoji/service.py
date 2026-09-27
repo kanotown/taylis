@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.events.outbox import write_outbox
 from app.modules.attachments.blobstore import BlobStore
@@ -82,6 +83,7 @@ async def upload(
     if width > MAX_PIXELS or height > MAX_PIXELS:
         raise bad_request("emoji_too_big", f"Emoji images are at most {MAX_PIXELS}px wide and high")
     row = CustomEmoji(
+        id=uuid7(),  # the default is only applied at INSERT: the key below needs it now
         name=cleaned,
         created_by=actor.id,
         content_type=content_type,

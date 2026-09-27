@@ -26,6 +26,8 @@ class Connection:
     user_id: uuid.UUID
     session_id: uuid.UUID
     queue: asyncio.Queue[dict[str, Any]]
+    # M13e: for a guest, the people it may see (presence is filtered); None = everyone.
+    visible: frozenset[uuid.UUID] | None = None
     connected_at: float = field(default_factory=time.monotonic)
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
@@ -59,9 +61,18 @@ class RealtimeHub:
         # Last presence announced per user; users not listed are (announced as) offline.
         self._announced: dict[uuid.UUID, PresenceStatus] = {}
 
-    def new_connection(self, user_id: uuid.UUID, session_id: uuid.UUID) -> Connection:
+    def new_connection(
+        self,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
+        *,
+        visible: frozenset[uuid.UUID] | None = None,
+    ) -> Connection:
         conn = Connection(
-            user_id=user_id, session_id=session_id, queue=asyncio.Queue(self.queue_size)
+            user_id=user_id,
+            session_id=session_id,
+            queue=asyncio.Queue(self.queue_size),
+            visible=visible,
         )
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
@@ -81,6 +92,10 @@ class RealtimeHub:
 
     def connection_count(self) -> int:
         return sum(len(c) for c in self._by_user.values())
+
+    def connections_of(self, user_id: uuid.UUID) -> list[Connection]:
+        """Oldest first."""
+        return sorted(self._by_user.get(user_id, ()), key=lambda c: c.connected_at)
 
     def mark_active(self, user_id: uuid.UUID, active: bool) -> None:
         if active:
@@ -115,7 +130,11 @@ class RealtimeHub:
             self._announced.pop(user_id, None)
         else:
             self._announced[user_id] = status
-        self.broadcast(PresenceOut(user_id=user_id, status=status).model_dump(mode="json"))
+        frame = PresenceOut(user_id=user_id, status=status).model_dump(mode="json")
+        for conns in self._by_user.values():
+            for conn in conns:
+                if conn.visible is None or user_id in conn.visible:
+                    conn.offer(frame)
 
     def broadcast(self, frame: dict[str, Any]) -> None:
         for conns in self._by_user.values():

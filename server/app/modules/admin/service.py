@@ -1,5 +1,6 @@
 """Administrator operations on user accounts (SECURITY.md §2.5)."""
 
+import logging
 import uuid
 from typing import Any
 
@@ -11,10 +12,12 @@ from app.core.errors import conflict, not_found
 from app.core.security import generate_temporary_password, hash_password
 from app.core.time import utcnow
 from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
+from app.modules.attachments.blobstore import BlobStore
 from app.modules.audit import service as audit
 from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
 from app.modules.groups import service as groups
+from app.modules.totp import service as totp
 from app.modules.users.events import (
     USER_CREATED,
     USER_DEACTIVATED,
@@ -22,6 +25,8 @@ from app.modules.users.events import (
     emit_user_event,
 )
 from app.modules.users.models import User
+
+log = logging.getLogger("app.admin")
 
 
 async def _get_user(db: AsyncSession, user_id: uuid.UUID) -> User:
@@ -207,8 +212,11 @@ async def revoke_sessions(db: AsyncSession, actor: User, user_id: uuid.UUID) -> 
     return count
 
 
-async def anonymize_user(db: AsyncSession, actor: User | None, user_id: uuid.UUID) -> User:
-    """Erase the identity (name, e-mail, credentials, devices) and end all sessions.
+async def anonymize_user(
+    db: AsyncSession, actor: User | None, user_id: uuid.UUID, blobs: BlobStore | None = None
+) -> User:
+    """Erase the identity (name, e-mail, credentials, devices, profile, picture, second factor)
+    and end all sessions.
 
     Messages stay (the history of a channel is the team's), attributed to a generic name.
     The audit row carries only the id, on purpose.
@@ -220,6 +228,18 @@ async def anonymize_user(db: AsyncSession, actor: User | None, user_id: uuid.UUI
     user.username = f"deleted-{user.id.hex[:12]}"
     user.display_name = "退会したユーザー"
     user.email = None
+    # Everything else that describes the person goes too (profile, status, private keywords).
+    user.title = None
+    user.status_text = user.status_emoji = None
+    user.status_expires_at = None
+    user.notify_keywords = None
+    user.dnd_until = None
+    user.quiet_hours_start = user.quiet_hours_end = None
+    user.quiet_hours_days = None
+    user.quiet_hours_tz = None
+    avatar_key = user.avatar_key
+    user.avatar_key = None
+    user.avatar_updated_at = None
     user.password_hash = await hash_password(generate_temporary_password())
     user.must_change_password = True
     user.deactivated_at = user.deactivated_at or now
@@ -227,6 +247,7 @@ async def anonymize_user(db: AsyncSession, actor: User | None, user_id: uuid.UUI
     await db.flush()
     await auth.revoke_all_sessions(db, user.id, "anonymized", now)
     await auth_repo.clear_push_tokens(db, user.id)
+    await totp.remove_in_tx(db, user.id)
     await emit_user_event(db, USER_DEACTIVATED, user)
     await audit.record_in_tx(
         db,
@@ -236,4 +257,9 @@ async def anonymize_user(db: AsyncSession, actor: User | None, user_id: uuid.UUI
         target_id=user.id,
     )
     await db.commit()
+    if avatar_key and blobs is not None:
+        try:
+            await blobs.delete(avatar_key)
+        except Exception:  # the row no longer points at it; a stray object is harmless
+            log.warning("could not delete the avatar of an anonymized user")
     return user

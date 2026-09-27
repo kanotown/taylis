@@ -4,10 +4,11 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.db import Db
-from app.core.errors import rate_limited
+from app.core.errors import not_found, rate_limited
 from app.modules.attachments import service as attachments
 from app.modules.auth.deps import CurrentUser
 from app.modules.avatars import service
+from app.modules.channels import service as channels  # M13e guest visibility
 from app.modules.users.schemas import UserMe, to_user_me
 
 router = APIRouter(tags=["users"])
@@ -34,8 +35,13 @@ async def delete_avatar(request: Request, user: CurrentUser, db: Db) -> UserMe:
 
 
 @router.get("/users/{user_id}/avatar")
-async def get_avatar(user_id: UUID, request: Request, _: CurrentUser, db: Db) -> StreamingResponse:
+async def get_avatar(
+    user_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> StreamingResponse:
     """The picture (PNG). Clients add `?v=<avatar_updated_at>` so a change is not cached away."""
+    visible = await channels.visible_user_ids(db, user)
+    if visible is not None and user_id not in visible:  # M13e
+        raise not_found("avatar_not_found", "No picture")
     key = await service.storage_key(db, user_id)
     return StreamingResponse(
         attachments.stream(request.app.state.blobs, key),

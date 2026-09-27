@@ -79,14 +79,22 @@ async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
     return await repo.followers(db, parent_id)
 
 
+async def unfollowed(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
+    """Members who unfollowed the thread by hand: its replies never push to them."""
+    return await repo.unfollowed(db, parent_id)
+
+
 async def on_reply_created_in_tx(db: AsyncSession, parent: Message, reply: Message) -> None:
     """Auto-follow (parent author, repliers, people mentioned in the thread), mark the replier's
     own reply read, then tell every follower about the thread's new state."""
-    await repo.auto_follow(
-        db,
-        parent.id,
-        [parent.sender_id, reply.sender_id, *parent.mentioned_user_ids, *reply.mentioned_user_ids],
-    )
+    candidates = [
+        parent.sender_id,
+        reply.sender_id,
+        *parent.mentioned_user_ids,
+        *reply.mentioned_user_ids,
+    ]
+    # Mentions may name people outside the channel (or whole groups): only members follow.
+    await repo.auto_follow(db, parent.id, await repo.member_ids(db, parent.channel_id, candidates))
     await repo.advance_read(db, parent.id, reply.sender_id, reply.seq)
     await _emit_to_followers(db, parent, "reply")
 

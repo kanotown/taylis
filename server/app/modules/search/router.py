@@ -1,7 +1,7 @@
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
+from pydantic import AwareDatetime
 
 from app.core.db import Db
 from app.core.errors import rate_limited
@@ -20,8 +20,8 @@ async def search_messages(
     q: str = Query(min_length=1, max_length=MAX_QUERY_LENGTH),
     channel_id: UUID | None = None,
     from_user_id: UUID | None = None,
-    after: datetime | None = None,
-    before: datetime | None = None,
+    after: AwareDatetime | None = None,
+    before: AwareDatetime | None = None,
     tz_offset_minutes: int = Query(default=0, ge=-840, le=840),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10_000),
