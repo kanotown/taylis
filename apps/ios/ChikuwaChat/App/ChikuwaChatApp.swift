@@ -12,6 +12,7 @@ struct ChikuwaChatApp: App {
                 .task { await controller.boot() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { controller.didBecomeActive() }
+                    if phase == .background { controller.didEnterBackground() }
                 }
         }
     }

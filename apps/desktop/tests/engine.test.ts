@@ -47,6 +47,25 @@ afterEach(() => {
 });
 
 describe("SyncEngine", () => {
+  it("reports activity at once when the window loses focus", async () => {
+    let active = true;
+    const { server, engine } = await setup();
+    (engine as unknown as { deps: { isActive: () => boolean } }).deps.isActive = () => active;
+    await engine.start();
+    await engine.idle();
+    const sent: string[] = [];
+    const ws = (engine as unknown as { ws: { send: (data: string) => void } }).ws;
+    const original = ws.send.bind(ws);
+    ws.send = (data: string) => {
+      sent.push(data);
+      original(data);
+    };
+    active = false;
+    engine.reportActivity();
+    expect(sent.map((s) => JSON.parse(s))).toEqual([{ type: "ping", active: false }]);
+    void server;
+  });
+
   it("catches up a conversation opened while the connection was still starting", async () => {
     // Start-up: the connection catches up the conversation open at that moment; the reader taps another one before
     // the engine is online. That one used to stay empty ("まだメッセージはありません") until something else synced it.

@@ -775,6 +775,7 @@ class AppController(private val app: Application) {
     /** Foreground / background from the activity: drives push suppression and reconnects (§7.5). */
     fun setForeground(active: Boolean) {
         appForeground = active
+        engine?.reportActivity()
         if (active) {
             engine?.reconnectNow()
             if (api != null) push.refresh()
