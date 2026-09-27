@@ -1,7 +1,7 @@
 import { Archive, ArchiveRestore, Copy, KeyRound, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import type { AdminUserOut } from "../api/types";
+import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
@@ -51,7 +51,7 @@ function UsersTab({ controller }: { controller: AppController }) {
   const me = controller.store.me;
   const [users, setUsers] = useState<AdminUserOut[] | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "member" as "admin" | "member" });
+  const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "member" as Role });
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [confirm, setConfirm] = useState<AdminUserOut | null>(null);
   const [busy, setBusy] = useState(false);
@@ -123,9 +123,10 @@ function UsersTab({ controller }: { controller: AppController }) {
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
           <Field label="ロール">
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "member" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
               <option value="member">メンバー</option>
               <option value="admin">管理者</option>
+              <option value="guest">ゲスト (参加したチャンネルだけ)</option>
             </select>
           </Field>
           <div className="col-span-2 flex justify-end gap-2">
@@ -147,6 +148,8 @@ function UsersTab({ controller }: { controller: AppController }) {
                     <span className="truncate font-medium">{user.display_name}</span>
                     <span className="truncate text-xs text-muted">@{user.username}{user.email ? ` · ${user.email}` : ""}</span>
                     {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
+                    {user.role === "guest" && <Badge>ゲスト</Badge>}
+                    {user.role === "bot" && <Badge>BOT</Badge>}
                     {off && <Badge>無効</Badge>}
                     {user.must_change_password && !off && <Badge tone="danger">仮パスワード</Badge>}
                     {user.totp_enabled && <Badge tone="accent">2FA</Badge>}
@@ -155,9 +158,16 @@ function UsersTab({ controller }: { controller: AppController }) {
                 </div>
                 {!self && !off && (
                   <div className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" title={user.role === "admin" ? "メンバーにする" : "管理者にする"} disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { role: user.role === "admin" ? "member" : "admin" }); })}>
-                      <ShieldCheck size={14} /> {user.role === "admin" ? "メンバーに" : "管理者に"}
-                    </Button>
+                    {user.role !== "bot" && (
+                      <label className="flex items-center gap-1 text-xs text-muted" title="ロール">
+                        <ShieldCheck size={14} />
+                        <select value={user.role} disabled={busy} onChange={(e) => void run(async () => { await controller.api!.adminUpdateUser(user.id, { role: e.target.value as Role }); })} className="h-7 rounded-md border border-line bg-canvas px-1.5 text-xs">
+                          <option value="member">メンバー</option>
+                          <option value="admin">管理者</option>
+                          <option value="guest">ゲスト</option>
+                        </select>
+                      </label>
+                    )}
                     <Button size="sm" variant="ghost" title="仮パスワードを発行" disabled={busy} onClick={() => void run(async () => { const out = await controller.api!.adminResetPassword(user.id); setIssued({ username: user.username, password: out.temporary_password }); })}>
                       <KeyRound size={14} /> 再設定
                     </Button>

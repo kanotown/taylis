@@ -65,6 +65,8 @@ fun ProfileDialog(controller: AppController, userId: String, onDismiss: () -> Un
                     Avatar(userId, user?.displayName ?: "?", size = 56.dp, presence = presence)
                     Column(Modifier.padding(start = 14.dp)) {
                         Text(user?.displayName ?: "?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (user?.role == "guest") Text("ゲスト (参加したチャンネルだけ見えます)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (user?.role == "bot") Text("受信 Webhook の bot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (Dnd.isActive(user)) {

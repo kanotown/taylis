@@ -21,6 +21,8 @@ struct ProfileSheet: View {
                         AvatarView(id: userId, name: user?.displayName ?? "?", size: 64, presence: controller.store.presenceOf(userId))
                         VStack(alignment: .leading, spacing: 3) {
                             Text(user?.displayName ?? "?").font(.title3).bold()
+                            if user?.role == "guest" { Text("ゲスト (参加したチャンネルだけ見えます)").font(.caption).foregroundStyle(.secondary) }
+                            if user?.role == "bot" { Text("受信 Webhook の bot").font(.caption).foregroundStyle(.secondary) }
                             Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
                             if let title = user?.title, !title.isEmpty { Text(title).font(.footnote).foregroundStyle(.secondary) }
                             Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)

@@ -23,6 +23,14 @@ from app.modules.users.models import User
 from app.modules.users.schemas import to_user_me, to_user_public
 
 
+async def _visible_users(db: AsyncSession, actor: User) -> list[User]:
+    rows = await users.list_users(db)
+    if not actor.is_guest:
+        return rows
+    visible = await channels.shared_member_ids(db, actor.id)  # M13e
+    return [u for u in rows if u.id in visible]
+
+
 async def bootstrap(
     db: AsyncSession,
     actor: User,
@@ -46,7 +54,7 @@ async def bootstrap(
     return BootstrapOut(
         server_time=utcnow(),
         me=to_user_me(actor),
-        users=[to_user_public(u) for u in await users.list_users(db)],
+        users=[to_user_public(u) for u in await _visible_users(db, actor)],
         channels=with_prefs,
         threads=await threads.summary_for(db, actor.id),
         bookmarks=await bookmarks.ids_for(db, actor.id),

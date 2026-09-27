@@ -133,6 +133,10 @@ refresh(token):
 
 - ワークスペース: `admin` / `member`。admin はユーザー管理・任意チャンネルのアーカイブ・
   任意メッセージの削除ができる。
+- `guest` (M13e): 参加させられたチャンネルの中だけで動ける外部の人。公開チャンネルの一覧・参加、チャンネル作成、
+  メンバー追加、カスタム絵文字の追加はできない (`403 guest_restricted`)。ユーザー一覧 (bootstrap の `users` と
+  `GET /users`) は同じチャンネルにいる人だけ、DM もその人たちとだけ。公開チャンネル作成の `channel.created`
+  (audience all) は guest に配らない。admin がロールを付け、招待リンクにも指定できる。
 - `bot` (M13a): 受信 Webhook 専用のアカウント。ログインは `invalid_credentials` で拒否し、投稿は自分の Webhook の
   URL 経由だけ。一覧には出る (クライアントは BOT バッジ)。
 - チャンネル: `owner` / `member`。owner は作成者。名前・トピック変更、メンバー除外、アーカイブができる。
@@ -151,6 +155,8 @@ refresh(token):
 | メンバー除外 | owner / admin | owner / admin | 不可 |
 | 名前・トピック変更 | owner / admin | owner / admin | 不可 |
 | アーカイブ | owner / admin | owner / admin | 不可 |
+
+guest は上の表の「誰でも」「メンバー」のうち、一覧・参加、チャンネル作成、メンバー追加ができない (M13e)。
 
 実装規約: メッセージ・添付・既読・検索のあらゆるアクセスは `channels.require_member(user, channel_id)`
 を通す。`sender_id` は必ず認証ユーザーから取り、リクエスト本文から受け取らない。ロール・権限・時刻も同様。

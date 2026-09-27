@@ -26,7 +26,8 @@
             "default": "member",
             "enum": [
               "admin",
-              "member"
+              "member",
+              "guest"
             ],
             "title": "Role",
             "type": "string"
@@ -155,7 +156,8 @@
               {
                 "enum": [
                   "admin",
-                  "member"
+                  "member",
+                  "guest"
                 ],
                 "type": "string"
               },
@@ -1436,7 +1438,8 @@
             "default": "member",
             "enum": [
               "admin",
-              "member"
+              "member",
+              "guest"
             ],
             "title": "Role",
             "type": "string"

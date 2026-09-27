@@ -108,3 +108,6 @@ export type WebhookOut = components["schemas"]["WebhookOut"];
 export type WebhookCreate = components["schemas"]["WebhookCreate"];
 export type WebhookUpdate = components["schemas"]["WebhookUpdate"];
 export type WebhookCreated = components["schemas"]["WebhookCreated"];
+
+/** Workspace roles (M13e adds guest). */
+export type Role = components["schemas"]["AdminUserCreate"]["role"];

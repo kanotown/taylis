@@ -1464,7 +1464,7 @@ export interface components {
              * @default member
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "admin" | "member" | "guest";
             /** Username */
             username: string;
         };
@@ -1514,7 +1514,7 @@ export interface components {
             /** Deactivated */
             deactivated?: boolean | null;
             /** Role */
-            role?: ("admin" | "member") | null;
+            role?: ("admin" | "member" | "guest") | null;
         };
         /** AttachmentOut */
         AttachmentOut: {
@@ -1961,7 +1961,7 @@ export interface components {
              * @default member
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "admin" | "member" | "guest";
         };
         /**
          * InviteCreated

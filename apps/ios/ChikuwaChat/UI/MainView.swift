@@ -34,8 +34,10 @@ struct MainView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button("ダイレクトメッセージ", systemImage: "person.2") { sheet = .newDm }
-                            Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
-                            Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
+                            if !controller.isGuest {
+                                Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
+                                Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
+                            }
                             Divider()
                             Button("すべて既読にする", systemImage: "checkmark.circle") { Task { await controller.markAllRead() } }
                         } label: { Image(systemName: "plus") }

@@ -30,7 +30,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(() => ({
     note: "",
-    role: "member" as "member" | "admin",
+    role: "member" as "member" | "admin" | "guest",
     uses: "1" as (typeof USES)[number][0],
     expiry: "168" as (typeof EXPIRY)[number][0],
     channelIds: new Set(channels.filter((c) => c.name === "general").map((c) => c.id)),
@@ -123,9 +123,10 @@ export function InvitesTab({ controller }: { controller: AppController }) {
             <Input value={form.note} maxLength={80} autoFocus onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </Field>
           <Field label="ロール">
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "member" | "admin" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "member" | "admin" | "guest" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
               <option value="member">メンバー</option>
               <option value="admin">管理者</option>
+              <option value="guest">ゲスト (参加したチャンネルだけ)</option>
             </select>
           </Field>
           <Field label="使える回数">
@@ -168,6 +169,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
                     <span className="truncate font-medium">{invite.note || "招待リンク"}</span>
                     <Badge tone={active ? "accent" : "neutral"}>{INVITE_STATUS_LABELS[invite.status]}</Badge>
                     {invite.role === "admin" && <Badge tone="danger">管理者</Badge>}
+                    {invite.role === "guest" && <Badge>ゲスト</Badge>}
                     <span className="text-xs text-muted">{inviteUsesLabel(invite)}</span>
                   </div>
                   <div className="truncate text-[11px] text-muted">

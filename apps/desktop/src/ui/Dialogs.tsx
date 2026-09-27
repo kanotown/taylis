@@ -221,6 +221,7 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}
                   {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
+                  {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>ゲスト</Badge>}
                   {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
                     <Button
                       size="sm"

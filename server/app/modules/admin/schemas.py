@@ -8,7 +8,7 @@ from app.modules.users.models import User
 
 USERNAME_PATTERN = r"^[a-z0-9._-]{3,32}$"
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-Role = Literal["admin", "member"]
+Role = Literal["admin", "member", "guest"]  # guest (M13e): restricted to their channels
 
 
 class AdminUserCreate(BaseModel):

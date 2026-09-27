@@ -93,6 +93,8 @@ def dm_key_for(user_ids: list[uuid.UUID]) -> str:
 async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audience:
     """Injected into the OutboxRelay: turns an outbox row's audience into user / session ids."""
     if event.audience_type == "all":
+        if event.event_type == events.CHANNEL_CREATED:  # a public channel: not for guests (M13e)
+            return Audience(kind="users", ids=tuple(await repo.non_guest_user_ids(db)))
         return Audience(kind="all")
     if event.audience_type == "user" and event.audience_id is not None:
         return Audience(kind="users", ids=(event.audience_id,))
@@ -152,6 +154,19 @@ async def _emit_member(
 # --- access checks ----------------------------------------------------------------------------
 
 
+def require_not_guest(actor: User) -> None:
+    """M13e: guests neither create nor browse nor join channels, nor add members."""
+    if actor.is_guest:
+        raise forbidden("guest_restricted", "Guests cannot do this")
+
+
+async def shared_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid.UUID]:
+    """Everyone who shares a channel with the user (the people a guest may see and message)."""
+    rows = await repo.list_user_channels(db, user_id)
+    members = await repo.member_ids_for_channels(db, [c.id for c, _ in rows])
+    return {uid for ids in members.values() for uid in ids} | {user_id}
+
+
 async def find_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
     """A channel row or None, for modules that own the access decision (M12h invites)."""
     return await repo.get_channel(db, channel_id)
@@ -202,6 +217,7 @@ async def _load_for_manage(
 
 
 async def create_channel(db: AsyncSession, actor: User, data: ChannelCreate) -> ChannelOut:
+    require_not_guest(actor)
     if await repo.get_channel_by_name(db, data.name) is not None:
         raise conflict("name_taken", "A channel with this name already exists")
     channel = Channel(
@@ -232,7 +248,8 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
     rows = await repo.list_user_channels(db, actor.id)
     dm_ids = [c.id for c, _ in rows if c.is_dm]
     members = await repo.member_ids_for_channels(db, dm_ids)
-    browsable = await repo.list_public_channels_not_member(db, actor.id) if include_public else []
+    browse = include_public and not actor.is_guest  # M13e: guests see only their channels
+    browsable = await repo.list_public_channels_not_member(db, actor.id) if browse else []
     counts = await repo.member_counts_for_channels(
         db, [c.id for c, _ in rows if not c.is_dm] + [c.id for c in browsable]
     )
@@ -331,6 +348,7 @@ async def unarchive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID
 
 
 async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
+    require_not_guest(actor)
     channel = await require_channel(db, channel_id)
     if channel.type != "public":
         raise forbidden("not_a_member", "You are not a member of this channel")
@@ -384,6 +402,7 @@ async def list_members(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
 async def add_member(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, target: User
 ) -> MemberOut:
+    require_not_guest(actor)
     channel, _ = await require_member(db, actor.id, channel_id)
     _require_not_dm(channel)
     require_writable(channel)
@@ -492,6 +511,10 @@ async def get_or_create_dm(
     for user in participants:
         if not user.is_active:
             raise conflict("user_deactivated", "User is deactivated")
+    if actor.is_guest:  # M13e: only people who share a channel with the guest
+        allowed = await shared_member_ids(db, actor.id)
+        if any(u.id not in allowed for u in participants):
+            raise forbidden("guest_restricted", "Guests can only message members of their channels")
     user_ids = sorted({u.id for u in participants} | {actor.id})
     if len(user_ids) > MAX_DM_MEMBERS:
         raise bad_request(

@@ -45,7 +45,7 @@ struct ChannelListView: View {
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
                 if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
-                if !unreadOnly { browseRow }
+                if !unreadOnly && !controller.isGuest { browseRow }
             }
             Section("ダイレクトメッセージ") {
                 ForEach(dms) { row($0) }

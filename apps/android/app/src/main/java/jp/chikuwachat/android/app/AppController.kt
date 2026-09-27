@@ -555,6 +555,8 @@ class AppController(private val app: Application) {
     }.onFailure { error = describe(it) }
 
     val isAdmin: Boolean get() = me?.role == "admin"
+    /** M13e: confined to the channels they were added to; browsing and creation are hidden. */
+    val isGuest: Boolean get() = me?.role == "guest"
 
     suspend fun searchMessages(query: String, offset: Int = 0): Result<SearchOut> =
         runCatching { api!!.searchMessages(query, offset = offset) }.onFailure { error = describe(it) }

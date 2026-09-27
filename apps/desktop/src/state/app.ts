@@ -273,6 +273,11 @@ export class AppController {
     return this.me?.role === "admin";
   }
 
+  /** M13e: confined to the channels they were added to; the sidebar hides browsing and creation. */
+  get isGuest(): boolean {
+    return this.me?.role === "guest";
+  }
+
   /** Fetch the bytes with the bearer token and hand them to the platform save dialog. */
   async downloadAttachment(attachment: AttachmentOut): Promise<void> {
     if (!this.api) return;

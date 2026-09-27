@@ -349,7 +349,7 @@ CI / 監視の通知がチームチャットの主用途のひとつなので最
 | M13b | スラッシュコマンド | クライアントのみ。入力欄の先頭で `/status [絵文字] 文` (clear で消す)、`/dnd 30m|1h|2h|4h|tomorrow|off`、`/topic 文`、`/invite @名前 …`、`/leave`、`/join #チャンネル`、`/dm @名前`、`/mute [1h|8h|tomorrow]` / `/unmute`、`/me 文` (斜体)、`/shrug [文]` (コードスパンで `¯\_(ツ)_/¯`)、`/help` を既存 API に対応づける。`/` を打つと候補 (usage と説明) が出る。未知のコマンドはエラー表示して送らない。`/remind` はメッセージが必要なので対象外 | **実装済み (2026-09-27)**: Desktop vitest 117 (実サーバで目視: 候補 → status / me / shrug / dnd / 未知)、iOS XCTest 77、Android JUnit 78 + ビルド |
 | M13c | メッセージの共有 | クライアントのみ。メッセージ操作の「別のチャンネルに共有」: 共有先 (参加中の会話) とコメントを選び、`コメント\n> 引用 (300 文字まで)\nパーマリンク` を投稿する (パーマリンクは「メッセージを表示」チップになる)。3 端末の `Share` ヘルパは同じ本文を作る | **実装済み (2026-09-27)**: Desktop vitest 119 (実サーバで目視)、iOS XCTest 79、Android JUnit 80 + ビルド |
 | M13d | アーカイブの解除 | `POST /channels/{id}/unarchive` (owner / admin、`channel.updated` で全員に届く、監査 `channel.unarchived`)。Desktop はチャンネルメニューと管理画面の「アーカイブを解除」、iOS / Android はチャンネル情報から | **実装済み (2026-09-27)**: サーバ pytest 176、3 端末ビルド |
-| M13e | ゲスト | system role `guest`: 参加中のチャンネルしか見えず、公開チャンネルの一覧 / 参加、チャンネル作成、招待ができない。DM は同じチャンネルのメンバーとだけ。admin がロールを付け、招待リンクにも指定できる | 未着手 |
+| M13e | ゲスト | system role `guest` (`Role` に追加、`User.is_guest`)。サーバで強制: チャンネル作成 / 公開一覧 / 参加 / メンバー追加 / カスタム絵文字追加は `403 guest_restricted`、ユーザー一覧 (bootstrap と `GET /users`) と DM の相手は同じチャンネルの人だけ (`channels.shared_member_ids`)、公開チャンネル作成の `channel.created` は guest 以外に配る。admin がロールを付け (管理画面のロール選択に「ゲスト」)、招待リンクにも指定できる。3 端末はゲストに「チャンネルを作成 / 探す」を出さず、プロフィールにゲスト表示 | **実装済み (2026-09-27)**: サーバ pytest 178、Desktop vitest 119、iOS XCTest 79、Android ビルド |
 | M13f | Desktop の未読バッジ | Dock / タスクバーのバッジとウィンドウタイトルの未読数、通知音 | 未着手 |
 | M13g | メンバーディレクトリ | 全メンバーの一覧 (肩書・ステータス・在席) から DM を始める。3 端末 | 未着手 |
 
