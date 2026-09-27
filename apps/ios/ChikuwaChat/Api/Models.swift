@@ -403,6 +403,15 @@ struct MemberOut: Codable, Equatable {
     let joinedAt: String
 }
 
+/// What an invite link offers before any account exists (M12h).
+struct InvitePreviewOut: Codable, Equatable {
+    let invitedBy: String
+    let role: String
+    let channels: [String]
+    let expiresAt: String
+    var passwordMinLength: Int = 8
+}
+
 struct DeviceInfo: Encodable {
     let platform: String
     let deviceName: String?

@@ -101,6 +101,27 @@ final class AppController {
         }
     }
 
+    /// M12h: what an invite link offers, before any account exists (throws on a dead link).
+    func previewInvite(server: URL, token: String) async throws -> InvitePreviewOut {
+        try await ApiClient(baseUrl: server).invitePreview(token: token)
+    }
+
+    /// M12h: create the account the link allows and enter the session; returns the failure text, if any.
+    func acceptInvite(server: URL, token: String, username: String, displayName: String, password: String) async -> String? {
+        let api = makeApi(server: server, username: username)
+        do {
+            let tokens = try await api.acceptInvite(token: token, username: username, displayName: displayName, password: password,
+                                                    device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion))
+            defaults.set(server.absoluteString, forKey: Self.serverKey)
+            defaults.set(username, forKey: Self.usernameKey)
+            error = nil
+            await enterSession(api: api, username: username, me: tokens.user)
+            return nil
+        } catch {
+            return Invite.errorText(error) ?? describe(error)
+        }
+    }
+
     func changePassword(current: String, new: String) async {
         guard let api else { return }
         do {

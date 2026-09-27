@@ -393,6 +393,30 @@ final class ApiClient: SyncApi {
         emoji.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? emoji
     }
 
+    // MARK: invite links (M12h)
+
+    /// No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked.
+    func invitePreview(token: String) async throws -> InvitePreviewOut {
+        try await request("GET", "/api/v1/invites/\(token)", auth: false)
+    }
+
+    /// Creates the account and logs it in (the response is the same as a login).
+    func acceptInvite(token: String, username: String, displayName: String, password: String, device: DeviceInfo) async throws -> TokenResponse {
+        let body: JSONValue = .object([
+            "username": .string(username),
+            "display_name": .string(displayName),
+            "password": .string(password),
+            "device": .object([
+                "platform": .string(device.platform),
+                "device_name": device.deviceName.map(JSONValue.string) ?? .null,
+                "app_version": device.appVersion.map(JSONValue.string) ?? .null,
+            ]),
+        ])
+        let tokens: TokenResponse = try await request("POST", "/api/v1/invites/\(token)/accept", body: body, auth: false)
+        apply(tokens)
+        return tokens
+    }
+
     // MARK: transport
 
     private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true) async throws -> T {
