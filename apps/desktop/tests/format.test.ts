@@ -25,6 +25,15 @@ describe("timeline presentation", () => {
     expect(dateLabel("2025-12-31T09:00:00", now)).toBe("2025年12月31日 (水)");
   });
 
+  it("groups my pending messages like sent ones, so confirming them changes nothing", () => {
+    const pending = (id: string, at: string): MessageState => ({ ...message(id, "me", at, null), pending: true });
+    const shape = (items: ReturnType<typeof buildTimeline>) => items.map((i) => (i.kind === "message" ? `${i.message.id}${i.compact ? "*" : ""}` : i.kind));
+    const sending = buildTimeline([message("a", "me", "2026-09-26T10:00:00", 1), pending("b", "2026-09-26T10:00:05"), pending("c", "2026-09-26T10:00:09")], { firstUnreadAfterSeq: null, meId: "me", now });
+    const sent = buildTimeline([message("a", "me", "2026-09-26T10:00:00", 1), message("b", "me", "2026-09-26T10:00:05", 2), message("c", "me", "2026-09-26T10:00:09", 3)], { firstUnreadAfterSeq: null, meId: "me", now });
+    expect(shape(sending)).toEqual(["date", "a", "b*", "c*"]);
+    expect(shape(sent)).toEqual(shape(sending));
+  });
+
   it("groups consecutive messages and places the unread divider once", () => {
     const items = buildTimeline(
       [
