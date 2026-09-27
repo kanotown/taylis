@@ -45,6 +45,8 @@ data class UserMe(
     val statusExpiresAt: String? = null,
     val dndUntil: String? = null,
     val quietHours: QuietHours? = null,
+    /** M12g: words that make a message count as a mention of me. */
+    val notifyKeywords: List<String> = emptyList(),
 ) {
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours)
 }

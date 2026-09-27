@@ -1,5 +1,9 @@
 package jp.chikuwachat.android.ui
 
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -275,6 +279,10 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var displayName by remember { mutableStateOf(me?.displayName ?: "") }
     var title by remember { mutableStateOf(me?.title ?: "") }
+    // M12g: notification keywords, edited as a comma-separated line.
+    var keywords by remember { mutableStateOf((me?.notifyKeywords ?: emptyList()).joinToString(", ")) }
+    val parsedKeywords: List<String> = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
+    val keywordsChanged = parsedKeywords != (me?.notifyKeywords ?: emptyList<String>())
     var nameSaved by remember { mutableStateOf(false) }
     var editingStatus by remember { mutableStateOf(false) }
     if (editingStatus) {
@@ -309,15 +317,17 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                 SectionLabel("プロフィール")
                 OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(title, { title = it.take(80); nameSaved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                OutlinedTextField(keywords, { keywords = it; nameSaved = false }, label = { Text("通知キーワード (任意、コンマ区切り)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
-                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title),
+                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title || keywordsChanged),
                         onClick = {
                             scope.launch {
                                 busy = true
                                 var ok = true
                                 if (displayName.trim() != me?.displayName) ok = controller.updateDisplayName(displayName)
                                 if (ok && title.trim().ifEmpty { null } != me?.title) ok = controller.updateProfile(mapOf("title" to title.trim().ifEmpty { null }))
+                                if (ok && keywordsChanged) ok = controller.updateProfileJson(buildJsonObject { put("notify_keywords", buildJsonArray { parsedKeywords.forEach { add(JsonPrimitive(it)) } }) })
                                 nameSaved = ok
                                 busy = false
                             }
