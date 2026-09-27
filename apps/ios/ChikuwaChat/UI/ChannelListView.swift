@@ -5,6 +5,10 @@ struct ChannelListView: View {
     @Binding var selection: String?
     @AppStorage("sidebar.unreadOnly") private var unreadOnly = false
     @State private var showBrowser = false
+    /// M14f: naming a new section (optionally for a conversation) or renaming one.
+    private enum Naming: Equatable { case create(String?), rename(String) }
+    @State private var naming: Naming?
+    @State private var nameText = ""
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     /// The unread filter keeps the open conversation so the selection never disappears.
@@ -15,8 +19,9 @@ struct ChannelListView: View {
         channels.filter { $0.isMember && !$0.channel.archived && starred($0) && keep($0) }
             .sorted { channelTitle($0, store: controller.store) < channelTitle($1, store: controller.store) }
     }
-    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && !starred($0) && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
-    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
+    private func placed(_ channel: ChannelState) -> Bool { controller.store.sectionOf(channel.id) != nil }
+    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && !starred($0) && !placed($0) && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && !placed($0) && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
     private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
     var body: some View {
@@ -42,6 +47,7 @@ struct ChannelListView: View {
                     ForEach(favorites) { row($0) }
                 }
             }
+            customSections
             Section("チャンネル") {
                 ForEach(mine) { row($0) }
                 if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
@@ -67,8 +73,89 @@ struct ChannelListView: View {
             }
         }
         .listStyle(.sidebar)
+        .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
+            TextField("セクション名", text: $nameText)
+            Button("キャンセル", role: .cancel) { naming = nil }
+            Button("OK") { submitName() }
+        }
         .sheet(isPresented: $showBrowser) {
             ChannelBrowserView(controller: controller) { id in selection = id }
+        }
+    }
+
+    // MARK: sidebar sections (M14f)
+
+    private func members(of section: SidebarSectionOut) -> [ChannelState] {
+        let rows = channels.filter { $0.isMember && !$0.channel.archived && !starred($0) && keep($0) && section.channelIds.contains($0.id) }
+        let named = rows.filter { !$0.channel.isDm }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") }
+        let direct = rows.filter { $0.channel.isDm }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") }
+        return named + direct
+    }
+
+    @ViewBuilder
+    private var customSections: some View {
+        let sections = controller.store.sidebarSections
+        ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+            Section {
+                let rows = members(of: section)
+                ForEach(rows) { row($0) }
+                if rows.isEmpty && !unreadOnly { hint("会話を長押し →「セクションに移動」で追加できます。") }
+            } header: {
+                sectionHeader(section, index: index, count: sections.count)
+            }
+        }
+    }
+
+    private func sectionHeader(_ section: SidebarSectionOut, index: Int, count: Int) -> some View {
+        HStack {
+            Text(section.name)
+            Spacer()
+            Menu {
+                Button("名前を変更", systemImage: "pencil") { nameText = section.name; naming = .rename(section.id) }
+                Button("上へ", systemImage: "arrow.up") { Task { _ = await controller.moveSection(section.id, position: index - 1) } }.disabled(index == 0)
+                Button("下へ", systemImage: "arrow.down") { Task { _ = await controller.moveSection(section.id, position: index + 1) } }.disabled(index == count - 1)
+                Button("新しいセクション…", systemImage: "plus") { nameText = ""; naming = .create(nil) }
+                Button("セクションを削除", systemImage: "trash", role: .destructive) { Task { _ = await controller.deleteSection(section.id) } }
+            } label: {
+                Image(systemName: "ellipsis").padding(.horizontal, 4)
+            }
+            .accessibilityLabel("\(section.name) のメニュー")
+        }
+    }
+
+    @ViewBuilder
+    private func rowMenu(_ channel: ChannelState) -> some View {
+        let current = controller.store.sectionOf(channel.id)
+        Button(starred(channel) ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred(channel) ? "star.slash" : "star") {
+            Task { await controller.toggleFavorite(channel.id) }
+        }
+        Menu("セクションに移動", systemImage: "folder") {
+            ForEach(controller.store.sidebarSections) { section in
+                Button(section.name) { Task { _ = await controller.moveToSection(channel.id, sectionId: section.id) } }
+                    .disabled(current == section.id)
+            }
+            Button("新しいセクション…", systemImage: "plus") { nameText = ""; naming = .create(channel.id) }
+        }
+        if current != nil {
+            Button("セクションから外す", systemImage: "folder.badge.minus") { Task { _ = await controller.moveToSection(channel.id, sectionId: nil) } }
+        }
+    }
+
+    private var namingTitle: String {
+        if case .rename = naming { return "セクション名を変更" }
+        return "新しいセクション"
+    }
+
+    private func submitName() {
+        let name = nameText.trimmingCharacters(in: .whitespaces)
+        let target = naming
+        naming = nil
+        guard !name.isEmpty, let target else { return }
+        Task {
+            switch target {
+            case .create(let channelId): _ = await controller.createSection(name, channelId: channelId)
+            case .rename(let id): _ = await controller.renameSection(id, name: name)
+            }
         }
     }
 
@@ -238,6 +325,7 @@ struct ChannelListView: View {
             .padding(.vertical, 2)
             .opacity(muted && !unread ? 0.6 : 1)
         }
+        .contextMenu { rowMenu(channel) }
         .swipeActions(edge: .leading) {
             Button(starred(channel) ? "お気に入りから外す" : "お気に入り", systemImage: starred(channel) ? "star.slash" : "star") {
                 Task { await controller.toggleFavorite(channel.id) }

@@ -197,4 +197,24 @@ final class ApiClientTests: XCTestCase {
         XCTAssertEqual(rows, [MessageRevisionOut(body: "old", writtenAt: "2026-09-27T00:00:00Z", replacedAt: "2026-09-27T00:05:00Z")])
         XCTAssertEqual(paths, ["/api/v1/messages/m1/revisions"])
     }
+
+    func testSidebarSectionCallsReturnTheWholeList() async throws {
+        var calls: [String] = []
+        StubProtocol.handler = { request in
+            calls.append("\(request.httpMethod ?? "GET") \(request.url!.path)")
+            return (200, Data(#"[{"id":"s1","name":"プロジェクト","position":0,"channel_ids":["c1"]}]"#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        _ = try await client.createSidebarSection(name: "プロジェクト")
+        _ = try await client.updateSidebarSection("s1", position: 1)
+        _ = try await client.placeInSidebarSection("s1", channelId: "c1")
+        _ = try await client.removeFromSidebarSection("c1")
+        let rows = try await client.deleteSidebarSection("s1")
+        XCTAssertEqual(rows, [SidebarSectionOut(id: "s1", name: "プロジェクト", position: 0, channelIds: ["c1"])])
+        XCTAssertEqual(calls, [
+            "POST /api/v1/sidebar/sections", "PATCH /api/v1/sidebar/sections/s1", "PUT /api/v1/sidebar/sections/s1/channels/c1",
+            "DELETE /api/v1/sidebar/channels/c1", "DELETE /api/v1/sidebar/sections/s1",
+        ])
+    }
 }
