@@ -1,6 +1,7 @@
 """Administrator operations on user accounts (SECURITY.md §2.5)."""
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -39,6 +40,43 @@ async def _ensure_unique(db: AsyncSession, username: str, email: str | None) -> 
             raise conflict("email_taken", "Email is already in use")
 
 
+async def create_user_in_tx(
+    db: AsyncSession,
+    data: AdminUserCreate,
+    *,
+    password_hash: str,
+    must_change_password: bool,
+    actor_id: uuid.UUID | None,
+    details: dict[str, Any] | None = None,
+) -> User:
+    """Insert an account, its user.created event and the audit row; the caller commits.
+
+    Raises ``conflict`` when the username or e-mail is taken; a concurrent insert surfaces as
+    ``IntegrityError`` at commit time, which the caller maps to the same 409.
+    """
+    await _ensure_unique(db, data.username, data.email)
+    user = User(
+        username=data.username,
+        display_name=data.display_name,
+        email=data.email,
+        password_hash=password_hash,
+        role=data.role,
+        must_change_password=must_change_password,
+    )
+    db.add(user)
+    await db.flush()
+    await emit_user_event(db, USER_CREATED, user)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor_id,
+        action="admin.user_created",
+        target_type="user",
+        target_id=user.id,
+        details={"username": user.username, "role": user.role, **(details or {})},
+    )
+    return user
+
+
 async def create_user(
     db: AsyncSession,
     data: AdminUserCreate,
@@ -48,27 +86,14 @@ async def create_user(
     actor: User | None = None,
 ) -> tuple[User, str]:
     """Create an account. Without ``password`` a temporary one is generated and returned once."""
-    await _ensure_unique(db, data.username, data.email)
     secret = password or generate_temporary_password()
-    user = User(
-        username=data.username,
-        display_name=data.display_name,
-        email=data.email,
-        password_hash=await hash_password(secret),
-        role=data.role,
-        must_change_password=must_change_password,
-    )
-    db.add(user)
     try:
-        await db.flush()
-        await emit_user_event(db, USER_CREATED, user)
-        await audit.record_in_tx(
+        user = await create_user_in_tx(
             db,
+            data,
+            password_hash=await hash_password(secret),
+            must_change_password=must_change_password,
             actor_id=actor.id if actor else None,
-            action="admin.user_created",
-            target_type="user",
-            target_id=user.id,
-            details={"username": user.username, "role": user.role},
         )
         await db.commit()
     except IntegrityError as exc:

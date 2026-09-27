@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>ChikuwaChat への招待</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; display: grid; place-items: center;
+       min-height: 100vh; background: #f6f7fb; color: #1f2333; }
+main { width: min(26rem, calc(100vw - 2rem)); padding: 2rem; background: #fff; border-radius: 1rem;
+       box-shadow: 0 10px 30px rgba(31, 35, 51, .08); }
+h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+p { margin: .25rem 0; color: #5b6172; font-size: .9rem; }
+label { display: block; margin-top: .9rem; font-size: .8rem; color: #5b6172; }
+input { width: 100%; box-sizing: border-box; margin-top: .25rem; padding: .55rem .7rem;
+        border: 1px solid #d5d8e2; border-radius: .5rem; font: inherit; }
+button { width: 100%; margin-top: 1.25rem; padding: .65rem; border: 0; border-radius: .6rem;
+         background: #4f46e5; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+button[disabled] { opacity: .6; cursor: default; }
+.error { margin-top: .9rem; padding: .6rem .8rem; border-radius: .5rem; background: #fde8e8; color: #b42318; }
+.hidden { display: none; }
+code { background: #f1f2f7; padding: .1rem .35rem; border-radius: .3rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>ChikuwaChat への招待</h1>
+<div id="loading"><p>招待を確認しています…</p></div>
+<div id="invalid" class="hidden"><p id="invalid-text"></p></div>
+<form id="form" class="hidden">
+  <p id="intro"></p>
+  <p id="channels"></p>
+  <label>ユーザー名 (3〜32 文字、a-z 0-9 . _ -)<input id="username" pattern="[a-z0-9._-]{3,32}" autocomplete="username" autocapitalize="off" required></label>
+  <label>表示名<input id="display_name" maxlength="80" required></label>
+  <label id="password-label">パスワード<input id="password" type="password" autocomplete="new-password" required></label>
+  <label>パスワード (確認)<input id="confirm" type="password" autocomplete="new-password" required></label>
+  <div id="error" class="error hidden"></div>
+  <button id="submit" type="submit">参加する</button>
+</form>
+<div id="done" class="hidden">
+  <p>アカウントを作成しました。デスクトップ / iPhone / Android のアプリを開き、次の情報でログインしてください。</p>
+  <p>サーバ URL: <code id="server"></code></p>
+  <p>ユーザー名: <code id="done-username"></code></p>
+</div>
+</main>
+<script>
+(function () {
+  var token = location.pathname.split("/").pop();
+  var api = "/api/v1/invites/" + encodeURIComponent(token);
+  var $ = function (id) { return document.getElementById(id); };
+  var messages = {
+    invite_not_found: "この招待リンクは無効です。",
+    invite_expired: "この招待リンクは期限切れです。招待した人に新しいリンクを頼んでください。",
+    invite_exhausted: "この招待リンクはすでに使われています。",
+    invite_revoked: "この招待リンクは取り消されています。",
+    username_taken: "このユーザー名はすでに使われています。",
+    password_too_short: "パスワードが短すぎます。",
+    validation_error: "入力内容を確認してください。",
+    rate_limited: "しばらく待ってからやり直してください。"
+  };
+  function describe(body, status) {
+    var code = body && body.error && body.error.code;
+    return messages[code] || (body && body.error && body.error.message) || ("エラー (" + status + ")");
+  }
+  function show(id) { ["loading", "invalid", "form", "done"].forEach(function (k) { $(k).classList.toggle("hidden", k !== id); }); }
+  var minLength = 8;
+  fetch(api, { headers: { Accept: "application/json" } }).then(function (r) {
+    return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body }; });
+  }).then(function (r) {
+    if (!r.ok) { $("invalid-text").textContent = describe(r.body, r.status); show("invalid"); return; }
+    minLength = r.body.password_min_length || 8;
+    $("password").minLength = minLength;
+    $("password-label").firstChild.textContent = "パスワード (" + minLength + " 文字以上)";
+    $("intro").textContent = r.body.invited_by + " さんから招待されています。" + (r.body.role === "admin" ? "管理者として参加します。" : "");
+    $("channels").textContent = r.body.channels.length ? "参加するチャンネル: " + r.body.channels.map(function (n) { return "#" + n; }).join(" ") : "";
+    show("form");
+  }).catch(function () { $("invalid-text").textContent = "サーバに接続できません。"; show("invalid"); });
+  $("form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var error = $("error");
+    error.classList.add("hidden");
+    if ($("password").value !== $("confirm").value) { error.textContent = "パスワードが一致しません。"; error.classList.remove("hidden"); return; }
+    if ($("password").value.length < minLength) { error.textContent = "パスワードは " + minLength + " 文字以上にしてください。"; error.classList.remove("hidden"); return; }
+    $("submit").disabled = true;
+    var payload = { username: $("username").value.trim(), display_name: $("display_name").value.trim(), password: $("password").value,
+                    device: { platform: "desktop", device_name: "Web (ブラウザ)" } };
+    fetch(api + "/accept", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body }; }); })
+      .then(function (r) {
+        if (!r.ok) { error.textContent = describe(r.body, r.status); error.classList.remove("hidden"); $("submit").disabled = false; return; }
+        // The browser keeps no session: end the one the API just opened.
+        fetch("/api/v1/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + r.body.access_token } }).catch(function () {});
+        $("server").textContent = location.origin;
+        $("done-username").textContent = r.body.user.username;
+        show("done");
+      })
+      .catch(function () { error.textContent = "サーバに接続できません。"; error.classList.remove("hidden"); $("submit").disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

@@ -152,6 +152,11 @@ async def _emit_member(
 # --- access checks ----------------------------------------------------------------------------
 
 
+async def find_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
+    """A channel row or None, for modules that own the access decision (M12h invites)."""
+    return await repo.get_channel(db, channel_id)
+
+
 async def require_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel:
     channel = await repo.get_channel(db, channel_id)
     if channel is None:
@@ -386,6 +391,34 @@ async def add_member(
             raise
         return to_member_out(existing)
     return to_member_out(membership)
+
+
+async def membership_of(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID
+) -> ChannelMember | None:
+    return await repo.get_membership(db, channel_id, user_id)
+
+
+async def add_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUID) -> bool:
+    """Membership for a freshly created account (M12h invites); the caller commits.
+
+    Returns False when the user already belongs to the channel. Archived channels and DMs are the
+    caller's responsibility (invites drop them silently, as the invite may be older than the
+    archive).
+    """
+    if await repo.get_membership(db, channel.id, user_id) is not None:
+        return False
+    membership = ChannelMember(channel_id=channel.id, user_id=user_id, role="member")
+    await reads.initialize_in_tx(db, user_id, channel.id, channel.last_seq)
+    db.add(membership)
+    await db.flush()
+    await _emit_member(
+        db, events.CHANNEL_MEMBER_ADDED, channel.id, user_id, audience_type="channel"
+    )
+    await _emit_channel(
+        db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=user_id
+    )
+    return True
 
 
 async def remove_member(

@@ -361,6 +361,33 @@ CREATE INDEX channel_favorites_user_idx ON channel_favorites (user_id, created_a
   で揃え、bootstrap には id の一覧 (`favorites`) を入れる。星を付けられるのはメンバーだけ。
 - 退出しても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える (再参加で戻る)。
 
+### invites (招待リンク、M12h)
+
+```sql
+CREATE TABLE invites (
+  id           uuid PRIMARY KEY,
+  token_hash   bytea NOT NULL UNIQUE,          -- SHA-256(token)。トークン自体は発行応答に 1 回だけ載せる
+  created_by   uuid NOT NULL REFERENCES users(id),
+  role         varchar(16) NOT NULL DEFAULT 'member',  -- 参加した人のシステムロール
+  channel_ids  uuid[] NOT NULL,                -- 参加時に加わるチャンネル (public か、発行者が入っている private)
+  note         varchar(80),                    -- 誰向けか (管理画面の表示用)
+  max_uses     integer,                        -- NULL = 期限内なら何度でも
+  use_count    integer NOT NULL DEFAULT 0,
+  used_by      uuid[] NOT NULL,                -- このリンクで作られたアカウント
+  expires_at   timestamptz NOT NULL,           -- 発行から 1 時間〜30 日
+  revoked_at   timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX invites_created_idx ON invites (created_at);
+```
+
+- 状態は行から導く: `revoked_at` あり → revoked、`expires_at` 経過 → expired、`use_count >= max_uses` → exhausted、
+  それ以外が active。active でないトークンは公開エンドポイントで `410 invite_<状態>`、未知のトークンは 404。
+- 受諾は 1 トランザクション: 行を `FOR UPDATE` で取り、`users` を挿入 (`must_change_password = false`、
+  監査行に `invite_id`)、`channel_ids` のうち残っている (アーカイブされていない) チャンネルに参加、
+  `use_count` / `used_by` を更新。その後は通常の login と同じ経路でセッションを作る。
+- イベントは出さない (管理画面は都度取得)。新しいアカウントは既存の `user.created` で全端末に届く。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

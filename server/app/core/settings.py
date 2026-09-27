@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     password_min_length: int = 8  # NIST SP 800-63B minimum; raise via PASSWORD_MIN_LENGTH
     login_rate_limit_per_ip: int = 10  # attempts per minute
     login_rate_limit_per_account: int = 5  # attempts per minute
+    # M12h: the public invite endpoints (preview / accept), per client IP.
+    invite_rate_limit_per_ip: int = 20
 
     # Object storage (S3 API, versitygw). Used from M9; only the readiness check touches it in M1.
     s3_endpoint: str | None = None
