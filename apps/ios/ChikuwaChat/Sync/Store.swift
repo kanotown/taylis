@@ -294,6 +294,10 @@ final class Store {
     var groups: [String: GroupOut] = [:]
     /// My sidebar sections (M14f), in order; from bootstrap and sidebar.updated.
     var sidebarSections: [SidebarSectionOut] = []
+    /// M15f: link bars of the conversations opened so far (not persisted).
+    var channelLinks: [String: [ChannelLinkOut]] = [:]
+    func setChannelLinks(_ channelId: String, _ links: [ChannelLinkOut]) { channelLinks[channelId] = links }
+    func linksOf(_ channelId: String) -> [ChannelLinkOut] { channelLinks[channelId] ?? [] }
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 

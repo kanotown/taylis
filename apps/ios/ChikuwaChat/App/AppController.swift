@@ -468,6 +468,28 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    // MARK: channel links (M15f)
+
+    func addChannelLink(_ channelId: String, title: String, url: String) async -> Bool {
+        guard let api else { return false }
+        do { store.setChannelLinks(channelId, try await api.addChannelLink(channelId: channelId, title: title, url: url)); return true }
+        catch { self.error = describe(error); return false }
+    }
+
+    func updateChannelLink(_ channelId: String, linkId: String, title: String? = nil, url: String? = nil, position: Int? = nil) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.setChannelLinks(channelId, try await api.updateChannelLink(channelId: channelId, linkId: linkId, title: title, url: url, position: position))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func deleteChannelLink(_ channelId: String, linkId: String) async -> Bool {
+        guard let api else { return false }
+        do { store.setChannelLinks(channelId, try await api.deleteChannelLink(channelId: channelId, linkId: linkId)); return true }
+        catch { self.error = describe(error); return false }
+    }
+
     /// M15e: 「確認しました」 on a message that asks for it, or take it back.
     func toggleAck(_ message: MessageState) async {
         guard let api, let me = store.me else { return }

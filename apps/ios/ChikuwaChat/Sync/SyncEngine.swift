@@ -117,6 +117,12 @@ final class SyncEngine {
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
     }
 
+    /// M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap).
+    func loadLinks(_ channelId: String) async {
+        guard let linksApi = api as? ChannelLinksApi else { return }
+        if let links = try? await linksApi.channelLinks(channelId: channelId) { store.setChannelLinks(channelId, links) }
+    }
+
     /// Save edited drafts now instead of after the typing pause (tests, sign-out).
     func flushDrafts() async { await drafts.flush() }
 
@@ -207,6 +213,7 @@ final class SyncEngine {
         if status == .online {
             Task { await flushOutbox() }
             Task { await drafts.flush() } // edited while offline (M15d)
+            if let current = currentChannelId { Task { await loadLinks(current) } } // changed while away (M15f)
         }
     }
 
@@ -403,6 +410,10 @@ final class SyncEngine {
             struct Payload: Decodable { let emoji: CustomEmojiOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyCustomEmoji(payload.emoji, deleted: payload.deleted)
+        case "channel.links_updated":
+            struct Payload: Decodable { let channelId: String; let links: [ChannelLinkOut] }
+            let payload = try frame.data.decode(Payload.self)
+            store.setChannelLinks(payload.channelId, payload.links)
         case "draft.updated":
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "sidebar.updated":
@@ -550,6 +561,7 @@ final class SyncEngine {
         currentChannelId = channelId
         for held in unreadHold.keys where held != channelId { unreadHold[held] = nil }
         guard status == .online else { return }
+        Task { await loadLinks(channelId) }
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId) else { return }
             if channel.syncedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }

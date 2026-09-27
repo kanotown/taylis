@@ -149,6 +149,7 @@ struct ChannelInfoView: View {
     @State private var confirmLeave = false
     @State private var confirmArchive = false
     @State private var confirmConvert = false
+    @State private var addingLink = false
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     /// Owners and admins manage the channel (rename / archive); every member may leave.
@@ -232,6 +233,9 @@ struct ChannelInfoView: View {
                 })) {
                     Label("投稿をオーナーと管理者に限る", systemImage: "megaphone")
                 }
+            }
+            if channel.canEditLinks(isAdmin: isAdmin, isGuest: controller.store.me?.role == "guest") {
+                Button("リンクを追加", systemImage: "link") { addingLink = true }  // M15f
             }
             // M15b: making a channel public shows its whole history, so that direction is for admins only.
             if canManage && channel.channel.type == "public" {
@@ -355,6 +359,7 @@ struct ChannelInfoView: View {
                 }
             } message: { Text(convertMessage) }
             .task { await loadMembers() }
+            .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
             .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
                 AddMemberView(controller: controller, channelId: channelId)
             }

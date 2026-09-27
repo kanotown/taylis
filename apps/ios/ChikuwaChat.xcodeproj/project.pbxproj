@@ -21,6 +21,7 @@
 		1C8D809901927C185631CCC1 /* Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B404F9D56E0D4FC24A30F35 /* Schedule.swift */; };
 		214B994514BE464424A29889 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */; };
 		23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2F59D2D7208CD22462EB0C /* JSON.swift */; };
+		26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */; };
 		2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6511D58639F80B71BAF90EC5 /* Assets.xcassets */; };
 		2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */; };
 		2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551D58741D5F426321F75F3F /* AppDelegate.swift */; };
@@ -30,6 +31,7 @@
 		380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCAE33D55025EFA146CADC2 /* MentionsView.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
 		48C7FDA6E58AED3E9E04985A /* Mentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E494C7AA73C2DCB826BFF98 /* Mentions.swift */; };
+		4A200550DAB5D48B6138873E /* ChannelLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A98B6538AD4A468120DB91A /* ChannelLinks.swift */; };
 		4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD73867C215B4C74259890CB /* AppController.swift */; };
 		4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B03D2E682612B378434AF45 /* Store.swift */; };
 		4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7662F23ED981268EBFB0F8 /* ChannelView.swift */; };
@@ -121,6 +123,7 @@
 		11ADABD71F51A91011248A1E /* PollCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollCardView.swift; sourceTree = "<group>"; };
 		13B6130C50876B86E11534F6 /* LiveBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBackendTests.swift; sourceTree = "<group>"; };
 		1427088F8204B7D1A390857F /* TimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineTests.swift; sourceTree = "<group>"; };
+		1A98B6538AD4A468120DB91A /* ChannelLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLinks.swift; sourceTree = "<group>"; };
 		1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomEmojiTests.swift; sourceTree = "<group>"; };
 		1FCAE33D55025EFA146CADC2 /* MentionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentionsView.swift; sourceTree = "<group>"; };
 		20149D2520CFB689B293AEB2 /* ApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClient.swift; sourceTree = "<group>"; };
@@ -162,6 +165,7 @@
 		7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriorityViews.swift; sourceTree = "<group>"; };
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSyncTests.swift; sourceTree = "<group>"; };
+		888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLinksTests.swift; sourceTree = "<group>"; };
 		8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
@@ -292,6 +296,7 @@
 				B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */,
 				84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */,
 				57361050F0BB2C12BDB8B78B /* BrowserSnapshotTests.swift */,
+				888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */,
 				9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */,
 				6D6ACD361FF6151716ED35A5 /* CommandsTests.swift */,
 				7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */,
@@ -329,6 +334,7 @@
 				6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */,
 				8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */,
 				040510582EF3182E66D21640 /* ChannelIntroView.swift */,
+				1A98B6538AD4A468120DB91A /* ChannelLinks.swift */,
 				9B7251E3E02E155A12489239 /* ChannelListView.swift */,
 				3F7662F23ED981268EBFB0F8 /* ChannelView.swift */,
 				5A1F069A68D7455481B1FB4B /* Commands.swift */,
@@ -506,6 +512,7 @@
 				94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */,
 				CCDA600DF1E454593B370952 /* BodyTokenizerTests.swift in Sources */,
 				FB26D88A3A28AF522C46FD3B /* BrowserSnapshotTests.swift in Sources */,
+				26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */,
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
 				8613449A516B8C7EA5D701A8 /* CommandsTests.swift in Sources */,
 				1573E0EAFD2600EF5EE55CDE /* ComposerSnapshotTests.swift in Sources */,
@@ -547,6 +554,7 @@
 				8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */,
 				146F95B96F756A3F63D664AB /* ChannelBrowserView.swift in Sources */,
 				B60B25516F421B2D785D44C4 /* ChannelIntroView.swift in Sources */,
+				4A200550DAB5D48B6138873E /* ChannelLinks.swift in Sources */,
 				BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */,
 				4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */,
 				2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */,

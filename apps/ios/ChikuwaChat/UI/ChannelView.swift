@@ -21,7 +21,8 @@ struct ChannelView: View {
 
     enum ChannelSheet: Identifiable {
         case info, addMember, pins
-        var id: Int { switch self { case .info: 0; case .addMember: 1; case .pins: 2 } }
+        case link(ChannelLinkOut?)  // M15f: add (nil) or edit
+        var id: Int { switch self { case .info: 0; case .addMember: 1; case .pins: 2; case .link: 3 } }
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
@@ -79,6 +80,7 @@ struct ChannelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let channel { ChannelLinksRow(controller: controller, channel: channel, onAdd: { sheet = .link(nil) }, onEdit: { sheet = .link($0) }) }  // M15f
             if focus != nil {
                 HStack {
                     Text("検索位置の前後の会話").font(.caption)
@@ -255,6 +257,7 @@ struct ChannelView: View {
                 }
             }
             case .addMember: AddMemberView(controller: controller, channelId: channelId)
+            case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
             }
         }
         .sheet(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
