@@ -223,7 +223,13 @@ data class BootstrapOut(
     val favorites: List<String> = emptyList(),
     /** Custom emoji (M12f): the whole table; changes arrive as emoji.updated. */
     val customEmoji: List<CustomEmojiOut> = emptyList(),
+    /** User groups (M12k): every group with its members; changes arrive as group.updated. */
+    val groups: List<GroupOut> = emptyList(),
 )
+
+/** A named set of members that `@name` notifies (M12k). */
+@Serializable
+data class GroupOut(val id: String, val name: String, val description: String? = null, val memberIds: List<String> = emptyList(), val createdBy: String, val createdAt: String, val updatedAt: String)
 
 /** A workspace emoji (M12f) used as `:name:` in text and reactions. */
 @Serializable

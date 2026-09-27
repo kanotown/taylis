@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.GroupOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,8 @@ fun MessageBody(
     customEmoji: Map<String, CustomEmojiOut> = emptyMap(),
     emojiImages: Map<String, ImageBitmap> = emptyMap(),
     onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
+    /** M12k: user groups by id, for `<@group:id>`. */
+    groups: Map<String, GroupOut> = emptyMap(),
 ) {
     val inlineContent = HashMap<String, InlineTextContent>()
     fun AnnotatedString.Builder.appendWithEmoji(text: String) {
@@ -102,6 +105,7 @@ fun MessageBody(
                 is BodyToken.Mention -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) {
                     append("@" + (users[token.userId]?.displayName ?: "unknown"))
                 }
+                is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: "グループ")) }
                 is BodyToken.MentionAll -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + token.target) }
                 BodyToken.Newline -> append("\n")
             }

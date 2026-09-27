@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
 
 /**
@@ -10,41 +11,54 @@ object Mentions {
     private val HANDLE = Regex("""(^|[\s(])@([A-Za-z0-9._-]+)""")
     private val USER_TOKEN = Regex("""<@([0-9a-f-]{36})>""")
     private val ALL_TOKEN = Regex("""<!(channel|here)>""")
+    private val GROUP_TOKEN = Regex("""<@group:([0-9a-f-]{36})>""")
     private val QUERY = Regex("""(^|[\s(])@([A-Za-z0-9._-]*)$""")
 
-    data class Candidate(val username: String, val label: String)
+    /** `kind` (M12k): "group" notifies the members; "all" is @channel / @here. */
+    data class Candidate(val username: String, val label: String, val kind: String = "user")
 
-    fun encode(text: String, users: Collection<UserPublic>): String {
-        val byName = users.associateBy { it.username.lowercase() }
+    fun encode(text: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList()): String {
+        val byName = HashMap<String, String>()
+        users.forEach { byName[it.username.lowercase()] = "<@${it.id}>" }
+        groups.forEach { byName[it.name.lowercase()] = "<@group:${it.id}>" } // names never collide (server)
         return HANDLE.replace(text) { match ->
             val lead = match.groupValues[1]
             val name = match.groupValues[2].lowercase()
             when {
                 name == "channel" || name == "here" -> "$lead<!$name>"
-                byName[name] != null -> "$lead<@${byName.getValue(name).id}>"
+                byName[name] != null -> lead + byName.getValue(name)
                 else -> match.value
             }
         }
     }
 
     /** Mention tokens as display names, for notifications and previews. */
-    fun toNames(text: String, users: Map<String, UserPublic>): String =
-        ALL_TOKEN.replace(USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.displayName } ?: "@メンバー" }) { "@" + it.groupValues[1] }
+    fun toNames(text: String, users: Map<String, UserPublic>, groups: Map<String, GroupOut> = emptyMap()): String {
+        val people = USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.displayName } ?: "@メンバー" }
+        val teams = GROUP_TOKEN.replace(people) { m -> "@" + (groups[m.groupValues[1]]?.name ?: "グループ") }
+        return ALL_TOKEN.replace(teams) { "@" + it.groupValues[1] }
+    }
 
-    fun decode(text: String, users: Map<String, UserPublic>): String =
-        ALL_TOKEN.replace(USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.username } ?: m.value }) { "@" + it.groupValues[1] }
+    fun decode(text: String, users: Map<String, UserPublic>, groups: Map<String, GroupOut> = emptyMap()): String {
+        val people = USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.username } ?: m.value }
+        val teams = GROUP_TOKEN.replace(people) { m -> groups[m.groupValues[1]]?.let { "@" + it.name } ?: m.value }
+        return ALL_TOKEN.replace(teams) { "@" + it.groupValues[1] }
+    }
 
     /** The `@prefix` being typed at the end of `text`, or null. */
     fun query(text: String): String? = QUERY.find(text)?.groupValues?.get(2)
 
-    fun candidates(query: String, users: Collection<UserPublic>, limit: Int = 6): List<Candidate> {
+    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6): List<Candidate> {
         val q = query.lowercase()
         val people = users.filter { it.deactivatedAt == null }
             .filter { it.username.lowercase().startsWith(q) || it.displayName.lowercase().contains(q) }
             .sortedBy { it.username }
             .map { Candidate(it.username, it.displayName) }
-        val special = listOf(Candidate("channel", "全員に通知"), Candidate("here", "全員に通知")).filter { it.username.startsWith(q) }
-        return (people + special).take(limit)
+        val teams = groups.filter { it.name.lowercase().startsWith(q) || (it.description ?: "").lowercase().contains(q) }
+            .sortedBy { it.name }
+            .map { Candidate(it.name, "グループ · ${it.memberIds.size} 人" + (it.description?.let { d -> " · $d" } ?: ""), kind = "group") }
+        val special = listOf(Candidate("channel", "全員に通知", kind = "all"), Candidate("here", "全員に通知", kind = "all")).filter { it.username.startsWith(q) }
+        return (people + teams + special).take(limit)
     }
 
     /** Replace the `@prefix` at the end of `text` with the chosen handle. */

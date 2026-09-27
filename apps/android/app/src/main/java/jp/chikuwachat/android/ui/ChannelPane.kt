@@ -137,7 +137,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onRetry = { scope.launch { controller.engine?.retryFailed() } },
                                 onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                 onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                                onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values)) } },
+                                onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.id) },
                                 onMarkUnread = message.seq?.takeIf { !message.pending }?.let { seq -> { controller.engine?.markUnread(channelId, seq); unreadMark = seq - 1 } },
@@ -275,7 +275,7 @@ fun MessageRow(
                 }
                 if (message.body.isNotEmpty()) {
                     MessageBody(
-                        message.body, store.users, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
+                        message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) },
                     )
                 }
@@ -312,7 +312,7 @@ fun MessageRow(
     }
     if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
-    if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
+    if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
 }
 
@@ -349,7 +349,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     Column {
         if (uploading > 0) Text("添付をアップロード中…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp))
         val query = Mentions.query(draft)
-        val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
+        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
         val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
             val names = store.customEmoji.keys.filter { it.startsWith(q) || it.contains(q) }.take(4)
@@ -384,7 +384,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             var customOpen by remember { mutableStateOf(false) }
             val canSchedule = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty())
             fun schedule(at: java.time.ZonedDateTime) {
-                val body = Mentions.encode(draft.trim(), store.users.values)
+                val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
                 val ids = pendingUploads.map { it.id }
                 if (!canSchedule) return
                 if (at.isBefore(java.time.ZonedDateTime.now().plusMinutes(1))) { controller.error = "1 分以上先の時刻を選んでください"; return }
@@ -406,7 +406,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
             IconButton(
                 onClick = {
-                    val body = Mentions.encode(draft.trim(), store.users.values)
+                    val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
                     val ids = pendingUploads.map { it.id }
                     if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
                     if (body.length > 20_000) { controller.error = "本文は20,000文字までです"; return@IconButton }
