@@ -227,3 +227,34 @@ async def test_search_has_and_is_modifiers(
     unknown = await _search(client, "仕様 has:video")
     assert unknown["hits"] == [] and unknown["filters"]["unresolved"] == ["has:video"]
     assert (await _search(client, "is:saved"))["filters"]["unresolved"] == ["is:saved"]
+
+
+async def test_structured_filters_sort_and_total(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Filter menus send has= / is_thread= / sort= instead of editing the words; total counts."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = (await client.post("/api/v1/channels", json={"name": "general"})).json()["id"]
+    old = await _post(client, cid, "リリース 準備 リリース リリース")  # the best match, but oldest
+    await _post(client, cid, "リリース https://example.com/notes")
+    new = await _post(client, cid, "リリース 当日")
+
+    ranked = await _search(client, "リリース")
+    assert ranked["total"] == 3 and ranked["total_capped"] is False
+    newest = await _search(client, "リリース", sort="newest")
+    assert bodies(newest)[0] == new["body"] and bodies(newest)[-1] == old["body"]
+
+    linked = await _search(client, "リリース", has=["link"])
+    assert bodies(linked) == ["リリース https://example.com/notes"] and linked["total"] == 1
+    assert linked["filters"]["has"] == ["link"]
+    # Filters alone (no words) are a valid search: newest first.
+    only = await _search(client, "", has=["link"])
+    assert bodies(only) == ["リリース https://example.com/notes"]
+    thread_only = await _search(client, "", is_thread=True)
+    assert thread_only["hits"] == [] and thread_only["filters"]["is_thread"] is True
+    # Unknown flags are a validation error; nothing at all is still "empty_query".
+    bad = await client.get("/api/v1/search/messages", params={"q": "x", "has": "video"})
+    assert bad.status_code == 422
+    empty = await client.get("/api/v1/search/messages", params={"q": ""})
+    assert empty.status_code == 400 and empty.json()["error"]["code"] == "empty_query"
