@@ -385,8 +385,9 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
   ワークフローのログに出る。直前のリリースに戻せるのは同じ DB で動く場合。新しいリリースのマイグレーションが
   適用済みで古いコードが動かないときは、デプロイ直前のバックアップを戻す
   (`CHIKUWA_PROD=1 ./restore.sh /srv/backups/<時刻>`。復元は `.release` のリリースで起動する)。
-- **前のリリースに戻したい**: Actions → release → Run workflow で戻したいタグ (例 `v1.2.2`) を入れる。
-  テストとイメージ作成は省き、デプロイだけを行う。
+- **前のリリースに戻したい**: Actions → release → Run workflow の「Use workflow from」で Tags から戻したいタグ
+  (例 `v1.2.2`) を選んで実行する。テストとイメージ作成は省き、デプロイだけを行う (`production` はタグ `v*`
+  からしか動かないので、ブランチのまま実行すると拒否される)。
 - 状態: `/srv/chikuwachat/infra/.release` (今のリリース)、`.release.previous`、`releases/<tag>/`
   (各リリースの infra ファイル)。イメージは今と直前の 2 つだけを残す。
 

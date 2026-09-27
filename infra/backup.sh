@@ -14,6 +14,12 @@ COMPOSE=(docker compose -f "$HERE/docker-compose.yml")
 set -a; . "$HERE/.env"; set +a
 
 mkdir -p "$DEST"
+# A failed run leaves nothing behind: a partial directory would count as one of the 14 kept below.
+discard_partial() {
+  local status=$?
+  [ "$status" -eq 0 ] || { rm -rf "$DEST"; echo "[$(date -u +%FT%TZ)] backup failed, nothing kept" >&2; }
+}
+trap discard_partial EXIT
 echo "[$(date -u +%FT%TZ)] backup -> $DEST"
 
 # 1. PostgreSQL: custom format (compressed, restorable table by table with pg_restore).
