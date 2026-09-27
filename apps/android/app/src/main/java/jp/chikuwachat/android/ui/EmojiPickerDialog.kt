@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,14 @@ import androidx.compose.ui.unit.sp
 
 /** Emoji picker (M11f): search by shortcode / keyword (en + ja) or browse by category. */
 @Composable
-fun EmojiPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+fun EmojiPickerDialog(
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+    /** M12f: custom emoji shown under 「カスタム」 and found by name; a pick hands back `:name:`. */
+    custom: List<jp.chikuwachat.android.api.CustomEmojiOut> = emptyList(),
+    images: Map<String, androidx.compose.ui.graphics.ImageBitmap> = emptyMap(),
+    onNeedImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null,
+) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(EmojiData.categories.first().first) }
     val searching = query.isNotBlank()
@@ -42,11 +50,28 @@ fun EmojiPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                 OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("検索 (例: tada、乾杯)") }, modifier = Modifier.fillMaxWidth())
                 if (!searching) {
                     FlowRow(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        EmojiData.categories.forEach { (key, label) -> FilterChip(selected = category == key, onClick = { category = key }, label = { Text(label) }) }
+                        (EmojiData.categories + if (custom.isNotEmpty()) listOf("custom" to "カスタム") else emptyList()).forEach { (key, label) -> FilterChip(selected = category == key, onClick = { category = key }, label = { Text(label) }) }
                     }
                 }
                 LazyVerticalGrid(columns = GridCells.Fixed(8), modifier = Modifier.fillMaxWidth().height(240.dp)) {
-                    items(shown, key = { it.shortcode }) { entry ->
+                    val customShown = if (query.isBlank()) (if (category == "custom") custom else emptyList()) else custom.filter { it.name.contains(query.trim().lowercase()) }
+
+                    items(customShown, key = { "custom:" + it.id }) { emoji ->
+
+                        val image = images[emoji.id]
+
+                        if (image == null) onNeedImage?.invoke(emoji)
+
+                        androidx.compose.foundation.layout.Box(Modifier.size(40.dp).clickable { onPick(":" + emoji.name + ":") }, contentAlignment = androidx.compose.ui.Alignment.Center) {
+
+                            if (image != null) androidx.compose.foundation.Image(image, contentDescription = ":" + emoji.name + ":", modifier = Modifier.size(28.dp))
+
+                            else Text(":" + emoji.name + ":", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+
+                        }
+
+                    }
+                    items(if (category == "custom" && query.isBlank()) emptyList() else shown, key = { it.shortcode }) { entry ->
                         Text(
                             entry.glyph,
                             fontSize = 24.sp,

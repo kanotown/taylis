@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
@@ -205,6 +206,20 @@ class FakeServer {
 
     /** user → saved message ids, newest first. */
     val bookmarks = HashMap<String, MutableList<String>>()
+    /** Custom emoji by name (M12f); everyone gets emoji.updated. */
+    val customEmoji = LinkedHashMap<String, CustomEmojiOut>()
+
+    fun addEmoji(name: String, userId: String): CustomEmojiOut {
+        val row = CustomEmojiOut(id = "emoji-${++eventId}", name = name, contentType = "image/png", width = 32, height = 32, createdBy = userId, createdAt = now())
+        customEmoji[name] = row
+        return row
+    }
+
+    fun emitEmoji(row: CustomEmojiOut, deleted: Boolean) {
+        if (deleted) customEmoji.remove(row.name) else customEmoji[row.name] = row
+        emit(users.keys.toSet(), event("emoji.updated", null, null, buildJsonObject { put("emoji", Codec.snake.encodeToJsonElement(CustomEmojiOut.serializer(), row)); put("deleted", deleted) }))
+    }
+
     /** "user" → open reminders (M12e). */
     val reminders = HashMap<String, MutableList<ReminderOut>>()
 
@@ -528,6 +543,7 @@ class FakeServer {
             now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it) ) },
             bookmarks[userId]?.toList() ?: emptyList(),
             favorites = (favorites[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true },
+            customEmoji = customEmoji.values.toList(),
         )
     }
 

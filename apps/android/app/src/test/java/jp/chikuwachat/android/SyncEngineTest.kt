@@ -462,6 +462,24 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    @Test fun customEmojiLoadFromBootstrapAndFollowEvents() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice")
+        server.createChannel("general", alice.id)
+        server.addEmoji("party_parrot", alice.id)
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(alice.id), server.connector(alice.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); settle(engine)
+        assertEquals(listOf("party_parrot"), store.customEmoji.keys.toList())
+        val ok = server.addEmoji("ok", alice.id)
+        server.emitEmoji(ok, false); settle(engine)
+        assertEquals(listOf("ok", "party_parrot"), store.customEmoji.keys.sorted())
+        server.emitEmoji(ok, true); settle(engine)
+        assertEquals(listOf("party_parrot"), store.customEmoji.keys.toList())
+        engine.stop(); scope.cancel()
+    }
+
     @Test fun remindersLoadListFiredFirstAndNudgeOnce() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice")

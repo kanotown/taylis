@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,7 +72,7 @@ fun MessageMenu(
 
 /** Reaction chips under a message; tapping toggles my reaction. */
 @Composable
-fun ReactionChips(message: MessageState, store: Store, onToggle: (String) -> Unit) {
+fun ReactionChips(message: MessageState, store: Store, onToggle: (String) -> Unit, onNeedEmojiImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null) {
     if (message.reactions.isEmpty()) return
     val me = store.me?.id
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -78,15 +80,24 @@ fun ReactionChips(message: MessageState, store: Store, onToggle: (String) -> Uni
             val mine = me != null && me in reaction.userIds
             val shape = RoundedCornerShape(12.dp)
             val background = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-            Text(
-                "${reaction.emoji} ${reaction.count}",
-                style = MaterialTheme.typography.labelLarge,
+            val custom = CustomEmoji.name(reaction.emoji)?.let { store.customEmoji[it] }
+            val image = custom?.let { store.emojiImages[it.id] }
+            if (custom != null && image == null) onNeedEmojiImage?.invoke(custom)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
                     .background(background, shape)
                     .clickable { onToggle(reaction.emoji) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
-            )
+            ) {
+                if (image != null) {
+                    androidx.compose.foundation.Image(image, contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
+                    Text(" ${reaction.count}", style = MaterialTheme.typography.labelLarge)
+                } else {
+                    Text("${reaction.emoji} ${reaction.count}", style = MaterialTheme.typography.labelLarge)
+                }
+            }
         }
     }
 }
