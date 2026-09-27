@@ -49,6 +49,9 @@ import kotlinx.serialization.json.put
 
 /** In-process model of the server side of SYNC_PROTOCOL.md (same behaviour as the other clients' fakes). */
 class FakeServer {
+    /** M12g notification keywords per user; like the server, hits never appear in mentionedUserIds. */
+    val keywords = mutableMapOf<String, List<String>>()
+
     inner class Socket(val userId: String) : WsTransport {
         override var onMessage: ((String) -> Unit)? = null
         override var onClose: ((Int) -> Unit)? = null
@@ -621,7 +624,7 @@ class FakeServer {
 
     fun bootstrap(userId: String): BootstrapOut {
         val user = users.getValue(userId)
-        val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false)
+        val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false, notifyKeywords = keywords[userId] ?: emptyList())
         val mine = channels.values.filter { userId in it.members }.map { record ->
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id), memberCount = record.members.size)
         }
