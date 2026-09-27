@@ -146,7 +146,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           {unresolved.length > 0 && (
             <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>見つからない条件は無視しました: {unresolved.join(" ")}</span>
+              <span>見つからない条件があります (直すと検索できます): {unresolved.join(" ")}</span>
             </div>
           )}
           {loaded && hits.length === 0 ? (
