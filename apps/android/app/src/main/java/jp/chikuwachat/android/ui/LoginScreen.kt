@@ -29,20 +29,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(controller: AppController) {
+    // M16c: adding another workspace (キャンセル returns), or signing back in to a registered one (prefilled).
+    val adding = controller.addingWorkspace
+    val entry = if (adding) null else controller.activeWorkspace
+    val others = controller.workspaces.any { it.serverUrl != controller.activeKey }
     // M12h: 「招待リンクで参加」 replaces the login form until the account exists or the user goes back.
     var invite by rememberSaveable { mutableStateOf(false) }
-    if (invite) {
+    if (invite && !adding) {
         InviteScreen(controller, onBack = { invite = false })
         return
     }
-    var server by rememberSaveable { mutableStateOf(controller.savedServer) }
-    var username by rememberSaveable { mutableStateOf(controller.savedUsername) }
+    var server by rememberSaveable { mutableStateOf(if (adding) "" else controller.savedServer) }
+    var username by rememberSaveable { mutableStateOf(if (adding) "" else controller.savedUsername) }
     var password by rememberSaveable { mutableStateOf("") }
     var totpCode by rememberSaveable { mutableStateOf("") }
     val needsCode = controller.totpRequired
@@ -55,9 +60,18 @@ fun LoginScreen(controller: AppController) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("ChikuwaChat", style = MaterialTheme.typography.headlineMedium)
+        if (entry != null) {
+            WorkspaceTile(entry, entry.name, 48.dp)
+            Spacer(Modifier.height(12.dp))
+        }
+        Text(if (adding) "ワークスペースを追加" else entry?.name ?: "ChikuwaChat", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        when {
+            adding -> Text("別の ChikuwaChat サーバにログインします", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            entry?.signedOut == true -> Text("もう一度ログインしてください", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(server, { server = it }, label = { Text("サーバ URL") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://chat.example.com") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(username, { username = it }, label = { Text("ユーザー名") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -75,6 +89,12 @@ fun LoginScreen(controller: AppController) {
         Spacer(Modifier.height(16.dp))
         controller.error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
         if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(if (needsCode) "コードを確認してログイン" else "ログイン") }
-        TextButton(onClick = { invite = true }) { Text("招待リンクをお持ちの方はこちら") }
+        if (adding) {
+            TextButton(onClick = { controller.cancelAddWorkspace() }) { Text("キャンセル") }
+        } else {
+            // WORKSPACES.md §5.2: a workspace whose session ended does not lock the others away.
+            if (others) TextButton(onClick = { controller.openSwitcher() }) { Text("別のワークスペースに切り替える") }
+            TextButton(onClick = { invite = true }) { Text("招待リンクをお持ちの方はこちら") }
+        }
     }
 }

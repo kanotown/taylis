@@ -202,6 +202,34 @@ class ApiClientTest {
         assertTrue(status.enabled); assertEquals(7, status.recoveryCodesLeft)
     }
 
+    @Test fun requestsWithoutATokenShareOneRefresh() = runBlocking { // WORKSPACES.md §8: a background workspace
+        var refreshes = 0
+        val gate = CountDownLatch(1)
+        val client = ApiClient("http://server", stubbed { request ->
+            when (request.url.encodedPath) {
+                "/api/v1/auth/refresh" -> { refreshes += 1; gate.await(5, TimeUnit.SECONDS); 200 to tokens(2) }
+                "/api/v1/sync/summary" -> 200 to """{"badge":3,"has_unread":true}"""
+                else -> 200 to """{"product":"chikuwachat","workspace_id":"w1","name":"開発チーム","api_version":"0.1.0"}"""
+            }
+        })
+        client.refreshToken = "refresh-1"
+        val first = async(kotlinx.coroutines.Dispatchers.IO) { client.syncSummary() }
+        val second = async(kotlinx.coroutines.Dispatchers.IO) { client.syncSummary() }
+        Thread.sleep(200)
+        gate.countDown()
+        assertEquals(3, first.await().badge)
+        assertTrue(second.await().hasUnread)
+        assertEquals(1, refreshes)
+        assertEquals("refresh-2", client.refreshToken)
+        // GET /server needs no sign-in.
+        val info = ApiClient("http://server", stubbed { request ->
+            assertNull(request.header("Authorization"))
+            200 to """{"product":"chikuwachat","workspace_id":"w1","name":"開発チーム","api_version":"0.1.0"}"""
+        }).serverInfo()
+        assertEquals("w1", info.workspaceId)
+        assertEquals("開発チーム", info.name)
+    }
+
     @Test fun messageRevisionsDecode() = runBlocking {
         val paths = ArrayList<String>()
         val client = ApiClient("http://server", stubbed { request ->

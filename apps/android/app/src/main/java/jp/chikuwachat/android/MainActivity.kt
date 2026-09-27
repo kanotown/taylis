@@ -35,8 +35,11 @@ class MainActivity : ComponentActivity() {
 
     private fun takeConversation(intent: Intent?) {
         val channelId = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID) ?: return
+        val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
         intent.removeExtra(Notifier.EXTRA_CHANNEL_ID)
-        controller.pendingChannelId = channelId
+        intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+        // M16c: the notification's workspace comes on screen first (WORKSPACES.md §7).
+        controller.openFromNotification(workspace, channelId)
     }
 
     override fun onStart() {

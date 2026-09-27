@@ -116,7 +116,7 @@ fun FilesPane(
 
 /** Thumbnail or file icon, name, and where / who / when; the trailing button downloads and opens the file. */
 @Composable
-private fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
+fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
     val store = controller.store
     val attachment = item.attachment
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
