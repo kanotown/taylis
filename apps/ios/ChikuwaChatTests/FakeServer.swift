@@ -249,6 +249,24 @@ final class FakeServer {
 
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
+    /// Custom emoji by name (M12f); everyone gets emoji.updated.
+    var customEmoji: [String: CustomEmojiOut] = [:]
+
+    func addEmoji(_ name: String, userId: String) -> CustomEmojiOut {
+        eventId += 1
+        let row = CustomEmojiOut(id: "emoji-\(eventId)", name: name, contentType: "image/png", width: 32, height: 32, createdBy: userId, createdAt: now())
+        customEmoji[name] = row
+        return row
+    }
+
+    func emitEmoji(_ row: CustomEmojiOut, deleted: Bool) {
+        if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+        eventId += 1
+        emit(Set(users.keys), .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("emoji.updated"), "ts": .string(now()),
+                                       "channel_id": .null, "seq": .null,
+                                       "data": .object(["emoji": try! JSONValue.from(row), "deleted": .bool(deleted)])]))
+    }
+
     /// "user" → open reminders (M12e).
     var reminders: [String: [ReminderOut]] = [:]
 
@@ -667,7 +685,8 @@ final class FakeServer {
                             threads: threadSummary(for: userId),
                             presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
                             bookmarks: bookmarks[userId] ?? [],
-                            favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true })
+                            favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
+                            customEmoji: Array(customEmoji.values))
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

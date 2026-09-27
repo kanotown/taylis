@@ -164,6 +164,10 @@ struct MessageBodyView: View {
     let users: [String: UserPublic]
     /// M12b: links on this server (`<base>/m/<id>`) become in-app links; the row's `openURL` handler reveals the message.
     var internalBase: URL? = nil
+    /// M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one.
+    var customEmoji: [String: CustomEmojiOut] = [:]
+    var emojiImages: [String: UIImage] = [:]
+    var onNeedEmojiImage: ((CustomEmojiOut) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -224,12 +228,16 @@ struct MessageBodyView: View {
         tokens.reduce(Text("")) { $0 + render($1) }
     }
 
+    private func emojiText(_ text: String) -> Text {
+        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage)
+    }
+
     private func render(_ token: BodyToken) -> Text {
         switch token {
-        case .text(let text): return Text(Emoji.replaceShortcodes(text))
-        case .bold(let text): return Text(Emoji.replaceShortcodes(text)).bold()
-        case .italic(let text): return Text(Emoji.replaceShortcodes(text)).italic()
-        case .strike(let text): return Text(Emoji.replaceShortcodes(text)).strikethrough()
+        case .text(let text): return emojiText(text)
+        case .bold(let text): return emojiText(text).bold()
+        case .italic(let text): return emojiText(text).italic()
+        case .strike(let text): return emojiText(text).strikethrough()
         case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
         case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
         case .link(let url, let label):

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Observation
 
 /// A channel as the client stores it: server fields plus the sync cursor (SYNC_PROTOCOL.md §7.1).
@@ -246,6 +247,9 @@ final class Store {
     var scheduled: [String: ScheduledOut] = [:]
     /// My open reminders (M12e): fired ones wait for 完了, pending ones for their time.
     var reminders: [String: ReminderOut] = [:]
+    /// Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched.
+    var customEmoji: [String: CustomEmojiOut] = [:]
+    var emojiImages: [String: UIImage] = [:]
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -398,6 +402,16 @@ final class Store {
             let mention = (state.following && state.mentionCount > 0 ? 1 : 0) - (before.following && before.mentionCount > 0 ? 1 : 0)
             threadSummary = ThreadSummary(unreadCount: max(0, threadSummary.unreadCount + unread), mentionCount: max(0, threadSummary.mentionCount + mention))
         }
+    }
+
+    // MARK: custom emoji (M12f)
+
+    func replaceCustomEmoji(_ rows: [CustomEmojiOut]) {
+        customEmoji = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+    }
+
+    func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
+        if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
     }
 
     // MARK: reminders (M12e)
