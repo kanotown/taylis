@@ -106,8 +106,9 @@ enum Timeline {
                 previous = nil
             }
             var compact = false
-            // A reply also sent to the channel (M15c) keeps its own header.
-            if let previous, previous.senderId == message.senderId, !previous.pending, !message.pending, !previous.isReply, !message.isReply,
+            // A reply also sent to the channel (M15c) keeps its own header. Pending messages group like sent ones:
+            // my second message must not show the header until the server confirms it and then drop it.
+            if let previous, previous.senderId == message.senderId, !previous.isReply, !message.isReply,
                let previousAt = parseIsoDate(previous.createdAt) {
                 compact = abs(at.timeIntervalSince(previousAt)) < groupWindow
             }

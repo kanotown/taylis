@@ -88,6 +88,12 @@ fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (Str
         title = { Text("ダイレクトメッセージ") },
         text = {
             Column {
+                // A DM with only myself: notes to self (as in Slack).
+                store.me?.id?.let { me ->
+                    TextButton(onClick = {
+                        scope.launch { controller.createDm(listOf(me)).onSuccess { onOpened(it); onDismiss() }.onFailure { error = controller.describe(it) } }
+                    }) { Text("自分へのメモ (自分だけが見られる DM)") }
+                }
                 if (users.isEmpty()) Text("相手になるユーザーがいません")
                 UserPicker(users) { user ->
                     scope.launch {

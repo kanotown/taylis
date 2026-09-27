@@ -62,7 +62,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     const unread = hasUnread(channel) && channel.id !== currentId;
     const badge = badgeCount(channel);
     const active = channel.id === currentId;
-    const other = isDmChannel(channel) ? (channel.dm_user_ids ?? []).find((id) => id !== me?.id) : undefined;
+    // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
+    const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== me?.id) ?? me?.id) : undefined;
     return (
       <li key={channel.id}>
         <ChannelContextMenu controller={controller} channel={channel}>

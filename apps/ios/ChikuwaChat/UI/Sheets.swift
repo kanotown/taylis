@@ -14,10 +14,27 @@ struct NewDmView: View {
 
     var body: some View {
         NavigationStack {
-            List(users, selection: $selected) { user in
-                HStack {
-                    Text(user.displayName)
-                    Text("@\(user.username)").foregroundStyle(.secondary).font(.footnote)
+            List(selection: $selected) {
+                // A DM with only myself: notes to self (as in Slack).
+                if let me = controller.store.me?.id {
+                    Section {
+                        Button { open([me]) } label: {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("自分へのメモ")
+                                    Text("自分だけが見られる DM").foregroundStyle(.secondary).font(.footnote)
+                                }
+                            } icon: { Image(systemName: "square.and.pencil") }
+                        }
+                    }
+                }
+                Section {
+                    ForEach(users) { user in
+                        HStack {
+                            Text(user.displayName)
+                            Text("@\(user.username)").foregroundStyle(.secondary).font(.footnote)
+                        }
+                    }
                 }
             }
             .environment(\.editMode, .constant(.active))
@@ -25,21 +42,23 @@ struct NewDmView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("開く") {
-                        Task {
-                            guard let api = controller.api else { return }
-                            do {
-                                let channel = try await api.createDm(userIds: Array(selected))
-                                controller.store.upsertChannel(channel, isMember: true)
-                                onOpen(channel.id)
-                                dismiss()
-                            } catch { self.error = controller.describe(error) }
-                        }
-                    }
-                    .disabled(selected.isEmpty || selected.count > 8)
+                    Button("開く") { open(Array(selected)) }
+                        .disabled(selected.isEmpty || selected.count > 8)
                 }
             }
             if let error { Text(error).foregroundStyle(.red).font(.footnote).padding() }
+        }
+    }
+
+    private func open(_ userIds: [String]) {
+        Task {
+            guard let api = controller.api else { return }
+            do {
+                let channel = try await api.createDm(userIds: userIds)
+                controller.store.upsertChannel(channel, isMember: true)
+                onOpen(channel.id)
+                dismiss()
+            } catch { self.error = controller.describe(error) }
         }
     }
 }

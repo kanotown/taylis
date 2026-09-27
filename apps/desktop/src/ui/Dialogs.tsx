@@ -1,4 +1,4 @@
-import { Check, Hash, ImagePlus, Lock, LogOut, ShieldCheck } from "lucide-react";
+import { Check, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
@@ -57,10 +57,11 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   const [error, setError] = useState<string | null>(null);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  const create = async () => {
-    if (!controller.api || selected.length === 0) return;
+  const create = () => open(selected);
+  const open = async (userIds: string[]) => {
+    if (!controller.api || userIds.length === 0) return;
     try {
-      const channel = await controller.api.createDm(selected);
+      const channel = await controller.api.createDm(userIds);
       controller.store.upsertChannel(channel, { isMember: true });
       onOpen(channel.id);
       onClose();
@@ -72,6 +73,18 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   return (
     <Modal onClose={onClose} title="ダイレクトメッセージ" description="相手を選びます。複数選ぶとグループ DM になります。">
       <div className="mt-4 space-y-3">
+        {/* A DM with only myself: notes to self (as in Slack). */}
+        {me && (
+          <button
+            type="button"
+            onClick={() => void open([me])}
+            className="flex w-full items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-panel"
+          >
+            <NotebookPen size={16} className="text-muted" />
+            <span className="font-medium">自分へのメモ</span>
+            <span className="text-xs text-muted">自分だけが見られる DM</span>
+          </button>
+        )}
         <UserPicker users={users} selected={selected} onToggle={toggle} empty="相手になるユーザーがいません" />
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
