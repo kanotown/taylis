@@ -1,6 +1,13 @@
 import { isTauri } from "./env";
 
 let shown: number | null = null;
+/** The browser tab says which workspace it is (M16c): the name from GET /server. */
+let titleBase = "ChikuwaChat";
+
+export function setTitleBase(name: string): void {
+  titleBase = name || "ChikuwaChat";
+  if (!isTauri() && typeof document !== "undefined") document.title = shown ? `(${shown}) ${titleBase}` : titleBase;
+}
 
 /** The unread count on the Dock / taskbar icon in Tauri, in the tab title in a browser (M13f). */
 export async function setUnreadBadge(count: number): Promise<void> {
@@ -15,5 +22,5 @@ export async function setUnreadBadge(count: number): Promise<void> {
     }
     return;
   }
-  if (typeof document !== "undefined") document.title = count > 0 ? `(${count}) ChikuwaChat` : "ChikuwaChat";
+  if (typeof document !== "undefined") document.title = count > 0 ? `(${count}) ${titleBase}` : titleBase;
 }
