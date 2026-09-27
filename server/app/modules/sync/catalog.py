@@ -7,6 +7,7 @@ from pydantic import BaseModel, TypeAdapter
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.channels import events as channel_events
+from app.modules.drafts import events as draft_events
 from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
 from app.modules.groups import events as group_events
@@ -53,6 +54,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     bookmark_events.BOOKMARK_UPDATED: (bookmark_events.BookmarkUpdatedData, "user", False),
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),
     sidebar_events.SIDEBAR_UPDATED: (sidebar_events.SidebarUpdatedData, "user", False),
+    draft_events.DRAFT_UPDATED: (draft_events.DraftUpdatedData, "user", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

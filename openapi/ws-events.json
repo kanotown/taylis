@@ -672,6 +672,54 @@
         "type": "object"
       }
     },
+    "draft.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "draft.updated: a draft saved or deleted (then `body` is empty) on one of my devices.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "body",
+          "updated_at"
+        ],
+        "title": "DraftUpdatedData",
+        "type": "object"
+      }
+    },
     "emoji.updated": {
       "audience": "all",
       "consumes_seq": false,

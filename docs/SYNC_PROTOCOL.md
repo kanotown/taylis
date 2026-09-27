@@ -72,7 +72,8 @@
   "favorites": [ "<channel_id>", "..." ],
   "custom_emoji": [ { "id": "...", "name": "party_parrot", "content_type": "image/gif", "width": 64, "height": 64, "created_by": "...", "created_at": "..." } ],
   "groups": [ { "id": "...", "name": "design", "description": "デザイン担当", "member_ids": ["..."], "created_by": "...", "created_at": "...", "updated_at": "..." } ],
-  "sidebar_sections": [ { "id": "...", "name": "プロジェクト", "position": 0, "channel_ids": ["..."] } ]
+  "sidebar_sections": [ { "id": "...", "name": "プロジェクト", "position": 0, "channel_ids": ["..."] } ],
+  "drafts": [ { "channel_id": "...", "parent_id": null, "body": "書きかけ", "updated_at": "..." } ]
 }
 ```
 
@@ -209,6 +210,7 @@
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える |
 | `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut] }` (M14f)。自分のサイドバーのセクション一覧全体。クライアントは差し替える |
+| `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
@@ -326,6 +328,34 @@ apply read.updated(e):
 ```
 
 同じ `updated_seq` のメッセージが 2 回来た場合は 2 回目を無視してよい (内容は同じ)。
+
+### 下書きの同期 (M15d)
+
+下書きは入力欄 (`channel_id` + `parent_id`) ごとに端末に置き、本文だけをサーバと共有する。
+端末の未送信の編集を他の端末の古い版で消さないため、各下書きに 2 つの状態を持つ:
+
+- `dirty`: この端末で編集してまだサーバに保存していない (サーバの版を知らない既存の下書きも dirty とみなす)
+- `synced_at`: 最後にサーバと一致した時の `updated_at`
+
+```
+local edit(key, text):
+    draft.text = text; draft.dirty = true
+    入力が 1 秒止まったら push(key)          # 送信で空になった場合もすぐ push
+
+push(key):                                   # オンラインのときだけ。失敗したら dirty のまま再接続後に再送
+    text が空 → DELETE /drafts?channel_id=&parent_id=   (成功で dirty=false)
+    それ以外 → PUT /drafts {channel_id, parent_id, body} (成功で dirty=false, synced_at=応答の updated_at)
+    403 / 404 / 422 (会話を抜けた、親が消えた等) → dirty=false にして手元の本文は残す
+
+apply draft.updated(e) / bootstrap の drafts:
+    local = drafts[key]
+    if local.dirty: 無視 (この端末の編集が勝つ。次の push でサーバも置き換わる)
+    elif e.deleted: 本文を空に (添付は端末のものなので残す)
+    else: 本文 = e.body; synced_at = e.updated_at
+bootstrap の後:
+    サーバに無く、dirty でもなく synced_at を持つ下書き → 他の端末で送信 / 削除された。本文を空に
+    dirty な下書き → push
+```
 
 ## 9. 送信の冪等性と楽観的 UI
 
