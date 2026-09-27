@@ -72,6 +72,16 @@ data class InvitePreviewOut(
     val passwordMinLength: Int = 8,
 )
 
+/** Two-factor authentication (M12i). */
+@Serializable
+data class TotpStatusOut(val enabled: Boolean, val enabledAt: String? = null, val recoveryCodesLeft: Int = 0)
+
+@Serializable
+data class TotpSetupOut(val secret: String, val otpauthUri: String, val qrPngBase64: String)
+
+@Serializable
+data class TotpEnabledOut(val recoveryCodes: List<String>)
+
 @Serializable
 data class DeviceOut(
     val id: String,

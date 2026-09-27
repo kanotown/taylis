@@ -44,9 +44,11 @@ fun LoginScreen(controller: AppController) {
     var server by rememberSaveable { mutableStateOf(controller.savedServer) }
     var username by rememberSaveable { mutableStateOf(controller.savedUsername) }
     var password by rememberSaveable { mutableStateOf("") }
+    var totpCode by rememberSaveable { mutableStateOf("") }
+    val needsCode = controller.totpRequired
     val scope = rememberCoroutineScope()
-    val canSubmit = !controller.busy && server.isNotBlank() && username.isNotBlank() && password.isNotEmpty()
-    fun submit() { if (canSubmit) scope.launch { controller.login(server, username, password) } }
+    val canSubmit = !controller.busy && server.isNotBlank() && username.isNotBlank() && password.isNotEmpty() && (!needsCode || totpCode.isNotBlank())
+    fun submit() { if (canSubmit) scope.launch { controller.login(server, username, password, if (needsCode) totpCode else null) } }
 
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -64,9 +66,15 @@ fun LoginScreen(controller: AppController) {
         OutlinedTextField(password, { password = it }, label = { Text("パスワード") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done))
+        if (needsCode) {
+            Spacer(Modifier.height(8.dp))
+            Text("2 要素認証: 認証アプリのコードを入力してください", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(totpCode, { totpCode = it }, label = { Text("6 桁のコード (または回復コード)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done))
+        }
         Spacer(Modifier.height(16.dp))
         controller.error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
-        if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text("ログイン") }
+        if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(if (needsCode) "コードを確認してログイン" else "ログイン") }
         TextButton(onClick = { invite = true }) { Text("招待リンクをお持ちの方はこちら") }
     }
 }

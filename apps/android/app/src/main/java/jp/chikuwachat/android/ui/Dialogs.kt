@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.RadioButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import jp.chikuwachat.android.api.MemberOut
+import jp.chikuwachat.android.api.TotpStatusOut
 import jp.chikuwachat.android.sync.ChannelState
 import java.time.Instant
 import jp.chikuwachat.android.api.UserPublic
@@ -289,6 +290,14 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
         StatusDialog(controller, onDismiss = { editingStatus = false })
         return
     }
+    // M12i: whether my account asks for an authenticator code, and the setup / disable dialogs.
+    var totp by remember { mutableStateOf<TotpStatusOut?>(null) }
+    var totpDialog by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { totp = controller.totpStatus() }
+    when (totpDialog) {
+        "setup" -> { TotpSetupDialog(controller, onDismiss = { totpDialog = null }, onEnabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } }); return }
+        "disable" -> { TotpDisableDialog(controller, onDismiss = { totpDialog = null }, onDisabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } }); return }
+    }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
@@ -334,6 +343,18 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                         },
                     ) { Text("プロフィールを保存") }
                     if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                SectionLabel("2 要素認証")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val status = totp
+                    Column(Modifier.weight(1f)) {
+                        Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
+                        if (status != null) Text(
+                            if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
                 }
                 SectionLabel("パスワードの変更")
                 OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
