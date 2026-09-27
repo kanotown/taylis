@@ -17,6 +17,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,12 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(controller: AppController) {
+    // M12h: 「招待リンクで参加」 replaces the login form until the account exists or the user goes back.
+    var invite by rememberSaveable { mutableStateOf(false) }
+    if (invite) {
+        InviteScreen(controller, onBack = { invite = false })
+        return
+    }
     var server by rememberSaveable { mutableStateOf(controller.savedServer) }
     var username by rememberSaveable { mutableStateOf(controller.savedUsername) }
     var password by rememberSaveable { mutableStateOf("") }
@@ -60,5 +67,6 @@ fun LoginScreen(controller: AppController) {
         Spacer(Modifier.height(16.dp))
         controller.error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
         if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text("ログイン") }
+        TextButton(onClick = { invite = true }) { Text("招待リンクをお持ちの方はこちら") }
     }
 }

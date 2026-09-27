@@ -23,6 +23,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import jp.chikuwachat.android.api.InvitePreviewOut
+import jp.chikuwachat.android.ui.Invite
 import jp.chikuwachat.android.api.LinkPreviewOut
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.serialization.json.put
@@ -171,6 +173,29 @@ class AppController(private val app: Application) {
             enterSession(api, username, tokens.user)
         } catch (e: Exception) {
             error = describe(e)
+        } finally {
+            busy = false
+        }
+    }
+
+    /** M12h: what an invite link offers, before any account exists (throws on a dead link). */
+    suspend fun previewInvite(server: String, token: String): InvitePreviewOut = ApiClient(server, http).invitePreview(token)
+
+    /** M12h: create the account the link allows and enter the session; returns the failure text, if any. */
+    suspend fun acceptInvite(server: String, token: String, username: String, displayName: String, password: String): String? {
+        val api = makeApi(server, username)
+        busy = true
+        return try {
+            val tokens = api.acceptInvite(token, username, displayName, password, "android", Build.MODEL, BuildConfig.VERSION_NAME)
+            secrets.putSetting(SERVER_KEY, server)
+            secrets.putSetting(USERNAME_KEY, username)
+            savedServer = server
+            savedUsername = username
+            error = null
+            enterSession(api, username, tokens.user)
+            null
+        } catch (e: Exception) {
+            (e as? ApiException.Api)?.let { Invite.errorText(it.code) } ?: describe(e)
         } finally {
             busy = false
         }
