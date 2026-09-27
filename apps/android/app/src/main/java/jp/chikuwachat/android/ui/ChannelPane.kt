@@ -4,6 +4,9 @@ import jp.chikuwachat.android.ui.EmojiEntry
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.outlined.Campaign
+import jp.chikuwachat.android.sync.SendOptions
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -275,6 +278,7 @@ fun MessageRow(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, onOpenThread)  // M15c
+                message.priority?.let { PriorityLabel(it, Modifier.padding(bottom = 2.dp)) }  // M15e
                 val saved = store.isBookmarked(message.id)
                 val pinnedBy = message.pinnedAt?.let { store.users[message.pinnedBy ?: ""]?.displayName ?: "?" }
                 if (pinnedBy != null || saved) {
@@ -323,6 +327,7 @@ fun MessageRow(
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller) }  // M14b
+                if (message.ackRequested && !message.pending) AckBar(message, store, controller)  // M15e
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(message, store, onToggle = onReact)
@@ -444,6 +449,17 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 Text(if (channel?.channel?.isDm == true) "会話にも送信" else "#${channel?.channel?.name ?: ""} にも送信", style = MaterialTheme.typography.bodySmall)
             }
         }
+        // M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
+        var priority by remember(channelId, parentId) { mutableStateOf<String?>(null) }
+        var ackRequested by remember(channelId, parentId) { mutableStateOf(false) }
+        var priorityOpen by remember { mutableStateOf(false) }
+        if (priority != null || ackRequested) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 16.dp, top = 6.dp)) {
+                priority?.let { PriorityLabel(it) }
+                if (ackRequested) Text("確認を求める", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("外す", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { priority = null; ackRequested = false })
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
@@ -471,7 +487,31 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
             if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }
-            OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
+            OutlinedTextField(
+                draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6,
+                trailingIcon = if (parentId != null) null else { {
+                    Box {
+                        IconButton(onClick = { priorityOpen = true }) {
+                            Icon(Icons.Outlined.Flag, contentDescription = "重要度", tint = if (priority != null || ackRequested) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DropdownMenu(expanded = priorityOpen, onDismissRequest = { priorityOpen = false }) {
+                            listOf(null to "通常", "important" to "重要", "urgent" to "緊急").forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { if (value == null) Text(label) else PriorityLabel(value) },
+                                    onClick = { priority = value; priorityOpen = false },
+                                    trailingIcon = { if (priority == value) Icon(Icons.Default.Check, contentDescription = null) },
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("確認を求める") },
+                                onClick = { ackRequested = !ackRequested },
+                                leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) },
+                            )
+                        }
+                    }
+                } },
+            )
             IconButton(
                 onClick = {
                     SlashCommands.parse(draft)?.let { command ->  // M13b
@@ -485,9 +525,15 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
                     if (body.length > 20_000) { controller.error = "本文は20,000文字までです"; return@IconButton }
                     store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
-                    val shared = canShare && alsoInChannel
+                    val options = SendOptions(
+                        alsoInChannel = canShare && alsoInChannel,
+                        priority = if (parentId == null) priority else null,
+                        ackRequested = parentId == null && ackRequested,
+                    )
                     alsoInChannel = false
-                    controller.scope.launch { controller.engine?.send(channelId, body, parentId = parentId, attachmentIds = ids, alsoInChannel = shared) }
+                    priority = null
+                    ackRequested = false
+                    controller.scope.launch { controller.engine?.send(channelId, body, parentId = parentId, attachmentIds = ids, sendOptions = options) }
                 },
                 enabled = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty()),
             ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }

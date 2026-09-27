@@ -12,6 +12,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DraftOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.sync.DraftApi
+import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.Limits
@@ -108,8 +109,8 @@ class FakeServer {
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
         override suspend fun postMessage(
-            channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, alsoInChannel: Boolean,
-        ): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, alsoInChannel) }
+            channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, options: SendOptions,
+        ): Pair<MessageOut, Boolean> { maybeFail(); return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options) }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
@@ -430,7 +431,7 @@ class FakeServer {
 
     fun post(
         channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(),
-        alsoInChannel: Boolean = false,
+        options: SendOptions = SendOptions(),
     ): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
@@ -445,7 +446,8 @@ class FakeServer {
         record.channel = record.channel.copy(lastSeq = seq, lastMessageAt = now())
         val mentioned = Regex("<@([0-9a-f-]{36})>").findAll(body).map { it.groupValues[1] }.distinct().toList()
         val message = MessageOut(
-            id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, alsoInChannel = alsoInChannel && parentId != null,
+            id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, alsoInChannel = options.alsoInChannel && parentId != null,
+            priority = if (parentId == null) options.priority else null, ackRequested = parentId == null && options.ackRequested,
             seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
             attachments = attachmentIds.map { AttachmentOut(it, "file-$it", "application/octet-stream", 1, status = "attached", createdAt = now()) },

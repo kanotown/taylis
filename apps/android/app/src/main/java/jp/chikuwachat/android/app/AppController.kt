@@ -730,6 +730,14 @@ class AppController(private val app: Application) {
     suspend fun messageRevisions(messageId: String): List<jp.chikuwachat.android.api.MessageRevisionOut>? =
         runCatching { api!!.messageRevisions(messageId) }.getOrElse { error = describe(it); null }
 
+    // --- acknowledgements (M15e) ----------------------------------------------------------------
+
+    suspend fun toggleAck(message: MessageState) {
+        val me = store.me ?: return
+        val mine = message.acks.any { it.userId == me.id }
+        runCatching { store.upsertMessage(api!!.acknowledge(message.id, !mine)) }.onFailure { error = describe(it) }
+    }
+
     // --- polls (M14b) ------------------------------------------------------------------------
 
     suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = runCatching {

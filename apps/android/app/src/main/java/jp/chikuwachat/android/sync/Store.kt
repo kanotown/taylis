@@ -8,6 +8,7 @@ import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
+import jp.chikuwachat.android.api.AckOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -75,6 +76,10 @@ data class MessageState(
     val pinnedBy: String? = null,
     /** M14b: the poll, when the message carries one. */
     val poll: PollOut? = null,
+    /** M15e: priority label and acknowledgements (only when asked for). */
+    val priority: String? = null,
+    val ackRequested: Boolean = false,
+    val acks: List<AckOut> = emptyList(),
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
     val isReply: Boolean get() = parentId != null
@@ -89,13 +94,16 @@ data class MessageState(
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
             parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
+            priority = message.priority, ackRequested = message.ackRequested, acks = message.acks,
         )
 
         fun placeholder(
             clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = null, alsoInChannel: Boolean = false,
+            priority: String? = null, ackRequested: Boolean = false,
         ) = MessageState(
             id = LOCAL_PREFIX + clientMsgId, channelId = channelId, senderId = senderId, seq = null, updatedSeq = -1,
             clientMsgId = clientMsgId, body = body, createdAt = createdAt, pending = true, parentId = parentId, alsoInChannel = alsoInChannel,
+            priority = priority, ackRequested = ackRequested,
         )
     }
 }
@@ -110,6 +118,9 @@ data class OutboxItem(
     val parentId: String? = null,
     val attachmentIds: List<String> = emptyList(),
     val alsoInChannel: Boolean = false,
+    /** M15e */
+    val priority: String? = null,
+    val ackRequested: Boolean = false,
 )
 
 @Serializable
@@ -164,7 +175,7 @@ fun MessageState.toOut(): MessageOut? {
         id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
-        pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll,
+        pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks,
     )
 }
 

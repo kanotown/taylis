@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.DraftApi
+import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -204,7 +205,7 @@ class ApiClient(
         request("PUT", "/api/v1/channels/$channelId/read", buildJsonObject { put("last_read_seq", lastReadSeq); put("mode", "set") })
 
     override suspend fun postMessage(
-        channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, alsoInChannel: Boolean,
+        channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, options: SendOptions,
     ): Pair<MessageOut, Boolean> {
         val (text, status) = requestRaw(
             "POST", "/api/v1/channels/$channelId/messages",
@@ -213,7 +214,9 @@ class ApiClient(
                 put("body", body)
                 put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
-                if (alsoInChannel) put("also_in_channel", true) // M15c
+                if (options.alsoInChannel) put("also_in_channel", true) // M15c
+                options.priority?.let { put("priority", it) } // M15e
+                if (options.ackRequested) put("ack_requested", true)
             },
             auth = true, retry401 = true,
         )
@@ -411,6 +414,12 @@ class ApiClient(
         request("PUT", "/api/v1/sidebar/sections/$sectionId/channels/$channelId", buildJsonObject {})
 
     suspend fun removeFromSidebarSection(channelId: String): List<SidebarSectionOut> = request("DELETE", "/api/v1/sidebar/channels/$channelId")
+
+    // --- acknowledgements (M15e) ----------------------------------------------------------------
+
+    suspend fun acknowledge(messageId: String, present: Boolean): MessageOut =
+        if (present) request("PUT", "/api/v1/messages/$messageId/ack", buildJsonObject {})
+        else request("DELETE", "/api/v1/messages/$messageId/ack")
 
     // --- polls (M14b) ------------------------------------------------------------------------
 
