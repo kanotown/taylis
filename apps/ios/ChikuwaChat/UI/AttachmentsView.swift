@@ -2,6 +2,27 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Photo library picks for upload: PNG / JPEG / GIF / WebP go as they are; anything else (HEIC on most iPhones) is
+/// re-encoded as JPEG like the camera path, since the server makes thumbnails and avatars from those four only.
+enum ImageUpload {
+    /// The format of `data` by its magic bytes, when the server takes it as it is.
+    static func kind(of data: Data) -> (ext: String, mime: String)? {
+        let head = [UInt8](data.prefix(12))
+        if head.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return ("png", "image/png") }
+        if head.starts(with: [0xFF, 0xD8, 0xFF]) { return ("jpg", "image/jpeg") }
+        if head.starts(with: [0x47, 0x49, 0x46, 0x38]) { return ("gif", "image/gif") }
+        if head.count == 12, head.starts(with: [0x52, 0x49, 0x46, 0x46]), Array(head[8..<12]) == [0x57, 0x45, 0x42, 0x50] { return ("webp", "image/webp") }
+        return nil
+    }
+
+    /// nil when the bytes are no image at all.
+    static func prepare(_ data: Data) -> (data: Data, ext: String, mime: String)? {
+        if let kind = kind(of: data) { return (data, kind.ext, kind.mime) }
+        guard let image = UIImage(data: data), let jpeg = image.normalizedUp().jpegData(compressionQuality: 0.85) else { return nil }
+        return (jpeg, "jpg", "image/jpeg")
+    }
+}
+
 func formatSize(_ bytes: Int64) -> String {
     if bytes >= 1_048_576 { return String(format: "%.1f MB", Double(bytes) / 1_048_576) }
     if bytes >= 1024 { return String(format: "%.0f KB", Double(bytes) / 1024) }

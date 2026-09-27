@@ -14,6 +14,9 @@ struct ChannelState: Codable, Identifiable, Equatable {
     var unreadCount: Int
     var mentionCount: Int
     var hasOlder: Bool
+    /// §7.3: the oldest seq of the timeline window read contiguously from the newest page (0 = all of it; nil = no
+    /// window yet). Older rows that arrive on their own are stored but neither shown nor used for paging.
+    var oldestLoadedSeq: Int?
 
     var id: String { channel.id }
     var hasUnread: Bool { unreadCount > 0 }
@@ -33,9 +36,10 @@ struct ChannelState: Codable, Identifiable, Equatable {
         !channel.isAnnouncement || isAdmin || channel.membership?.role == "owner"
     }
 
-    enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder }
+    enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder, oldestLoadedSeq }
 
-    init(channel: ChannelOut, isMember: Bool, syncedSeq: Int?, lastSeq: Int, lastReadSeq: Int = 0, unreadCount: Int = 0, mentionCount: Int = 0, hasOlder: Bool) {
+    init(channel: ChannelOut, isMember: Bool, syncedSeq: Int?, lastSeq: Int, lastReadSeq: Int = 0, unreadCount: Int = 0, mentionCount: Int = 0, hasOlder: Bool,
+         oldestLoadedSeq: Int? = nil) {
         self.channel = channel
         self.isMember = isMember
         self.syncedSeq = syncedSeq
@@ -44,6 +48,7 @@ struct ChannelState: Codable, Identifiable, Equatable {
         self.unreadCount = unreadCount
         self.mentionCount = mentionCount
         self.hasOlder = hasOlder
+        self.oldestLoadedSeq = oldestLoadedSeq
     }
 
     /// Rows persisted before M8b carry a local `seenSeq` instead of the server read state.
@@ -57,6 +62,7 @@ struct ChannelState: Codable, Identifiable, Equatable {
         unreadCount = try c.decodeIfPresent(Int.self, forKey: .unreadCount) ?? 0
         mentionCount = try c.decodeIfPresent(Int.self, forKey: .mentionCount) ?? 0
         hasOlder = try c.decode(Bool.self, forKey: .hasOlder)
+        oldestLoadedSeq = try c.decodeIfPresent(Int.self, forKey: .oldestLoadedSeq)
     }
 }
 
@@ -246,6 +252,7 @@ struct Snapshot: Codable {
 
 /// Write-through persistence (SQLite in the app; nil in tests).
 protocol Persistence {
+    func close()
     func loadAll() throws -> Snapshot
     func saveMeta(key: String, value: String?) throws
     func saveUser(_ user: UserPublic) throws
@@ -294,6 +301,21 @@ final class Store {
     var groups: [String: GroupOut] = [:]
     /// My sidebar sections (M14f), in order; from bootstrap and sidebar.updated.
     var sidebarSections: [SidebarSectionOut] = []
+    /// Server limits from bootstrap (max attachment size …); nil until the first one.
+    var limits: Limits?
+    /// A conversation left the store (left, removed, made private); the engine forgets it as the open one.
+    @ObservationIgnored var onChannelRemoved: ((String) -> Void)?
+    /// §10: read positions this device reached that the server has not confirmed yet, by channel id or
+    /// "thread:<parent id>". Persisted, so a mark made just before the app quit is still sent after reconnecting.
+    @ObservationIgnored private(set) var unsentReads: [String: Int] = [:]
+    private static let unsentReadsKey = "unsent_reads"
+
+    func setUnsentRead(_ key: String, _ seq: Int?) {
+        guard unsentReads[key] != seq else { return }
+        unsentReads[key] = seq
+        let encoded = unsentReads.isEmpty ? nil : (try? JSON.plainEncoder.encode(unsentReads)).flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.unsentReadsKey, value: encoded) }
+    }
     /// M15f: link bars of the conversations opened so far (not persisted).
     var channelLinks: [String: [ChannelLinkOut]] = [:]
     func setChannelLinks(_ channelId: String, _ links: [ChannelLinkOut]) { channelLinks[channelId] = links }
@@ -393,11 +415,17 @@ final class Store {
         apply(snapshot)
     }
 
+    /// Sign-out: the database is closed before its files are deleted; later writes fail quietly.
+    func close() { persistence?.close() }
+
     private func apply(_ snapshot: Snapshot) {
         for (key, value) in snapshot.meta where key.hasPrefix("draft:") {
             if let data = value.data(using: .utf8), let draft = try? JSON.plainDecoder.decode(Draft.self, from: data) { drafts[key] = draft }
         }
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
+        if let raw = snapshot.meta[Self.unsentReadsKey], let data = raw.data(using: .utf8) {
+            unsentReads = (try? JSON.plainDecoder.decode([String: Int].self, from: data)) ?? [:]
+        }
         for user in snapshot.users { users[user.id] = user }
         for channel in snapshot.channels { channels[channel.id] = channel }
         for message in snapshot.messages { messagesByChannel[message.channelId, default: [:]][message.id] = message }
@@ -427,7 +455,8 @@ final class Store {
 
     func channel(_ id: String) -> ChannelState? { channels[id] }
 
-    /// Merge server fields into the local channel, keeping the local cursor.
+    /// Merge server fields into the local channel, keeping the local cursor. A read state (bootstrap) is the
+    /// server's and replaces the local one as it is (SYNC_PROTOCOL.md §10: no max merge).
     @discardableResult
     func upsertChannel(_ channel: ChannelOut, isMember: Bool? = nil) -> ChannelState {
         let existing = channels[channel.id]
@@ -444,10 +473,11 @@ final class Store {
             isMember: isMember ?? existing?.isMember ?? (channel.membership != nil),
             syncedSeq: existing?.syncedSeq,
             lastSeq: max(existing?.lastSeq ?? 0, channel.lastSeq),
-            lastReadSeq: max(existing?.lastReadSeq ?? 0, read?.lastReadSeq ?? 0),
+            lastReadSeq: read?.lastReadSeq ?? existing?.lastReadSeq ?? 0,
             unreadCount: read?.unreadCount ?? existing?.unreadCount ?? 0,
             mentionCount: read?.mentionCount ?? existing?.mentionCount ?? 0,
-            hasOlder: existing?.hasOlder ?? true
+            hasOlder: existing?.hasOlder ?? true,
+            oldestLoadedSeq: existing?.oldestLoadedSeq
         )
         channels[channel.id] = merged
         persist { try $0.saveChannel(merged) }
@@ -637,14 +667,25 @@ final class Store {
             try $0.clearMessages(channelId: id)
             try $0.deleteChannel(id: id)
         }
+        onChannelRemoved?(id)
     }
 
     // MARK: messages
 
-    /// Confirmed messages by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
-    /// Top-level messages: confirmed by seq, then pending ones in creation order (SYNC_PROTOCOL.md §9).
+    /// The channel timeline: top-level messages of the loaded window (seq >= oldest_loaded_seq, SYNC_PROTOCOL.md §7.3)
+    /// by seq, then pending ones in creation order (§9). Older rows that arrived on their own are left out, so the
+    /// window never shows a gap.
     func messages(_ channelId: String) -> [MessageState] {
-        ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.inTimeline })
+        let floor = timelineFloor(channelId)
+        return ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.inTimeline && ($0.seq.map { $0 >= floor } ?? true) })
+    }
+
+    /// No page read yet: nothing but pending rows. A timeline stored before the window was tracked shows everything
+    /// until its next catch_up reads it again.
+    private func timelineFloor(_ channelId: String) -> Int {
+        guard let channel = channels[channelId] else { return 0 }
+        if let oldest = channel.oldestLoadedSeq { return oldest }
+        return channel.syncedSeq == nil ? Int.max : 0
     }
 
     /// A thread: the replies of one parent, oldest first (pending ones last).
@@ -711,9 +752,14 @@ final class Store {
         persist { try $0.saveMessage(message) }
     }
 
+    /// Drops a channel's stored rows before its newest page is read again; unsent (pending) rows stay with their outbox items.
     func clearMessages(_ channelId: String) {
-        messagesByChannel[channelId] = nil
-        persist { try $0.clearMessages(channelId: channelId) }
+        let pending = (messagesByChannel[channelId] ?? [:]).filter { $0.value.pending }
+        messagesByChannel[channelId] = pending.isEmpty ? nil : pending
+        persist {
+            try $0.clearMessages(channelId: channelId)
+            for message in pending.values { try $0.saveMessage(message) }
+        }
     }
 
     // MARK: outbox
@@ -744,6 +790,7 @@ final class Store {
             if let data = try? JSON.plainEncoder.encode(value) { snapshot.meta[key] = String(data: data, encoding: .utf8) }
         }
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
+        if !unsentReads.isEmpty, let data = try? JSON.plainEncoder.encode(unsentReads) { snapshot.meta[Self.unsentReadsKey] = String(data: data, encoding: .utf8) }
         snapshot.users = Array(users.values)
         snapshot.channels = Array(channels.values)
         snapshot.messages = messagesByChannel.values.flatMap { $0.values }

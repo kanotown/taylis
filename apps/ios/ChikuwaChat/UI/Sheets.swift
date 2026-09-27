@@ -512,8 +512,13 @@ struct SettingsView: View {
             .onChange(of: avatarItem) { _, item in
                 guard let item else { return }
                 Task {
+                    // HEIC library photos become JPEG: the server takes PNG / JPEG / GIF / WebP only.
                     if let data = try? await item.loadTransferable(type: Data.self) {
-                        _ = await controller.uploadAvatar(data: data, contentType: item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg")
+                        if let photo = ImageUpload.prepare(data) {
+                            _ = await controller.uploadAvatar(data: photo.data, contentType: photo.mime)
+                        } else {
+                            controller.error = ErrorMessages.byCode["avatar_not_image"] ?? ErrorMessages.unknown
+                        }
                     }
                     avatarItem = nil
                 }

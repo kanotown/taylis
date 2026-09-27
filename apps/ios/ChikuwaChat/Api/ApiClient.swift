@@ -15,9 +15,32 @@ enum ApiError: Error {
         }
     }
 
+    /// 4xx other than 401 and 429: the request itself was refused, so sending it again cannot help.
+    var isRefused: Bool {
+        if case .api(let status, _, _) = self { return (400..<500).contains(status) && status != 401 && status != 429 }
+        return false
+    }
+
     var code: String {
         if case .api(_, let code, _) = self { return code }
         return "network_error"
+    }
+}
+
+extension ErrorMessages {
+    /// What the user reads for a failure (ARCHITECTURE.md §9): the shared Japanese text for the code, else for the
+    /// HTTP status, the network text for no response; never the server's English message or a Swift description.
+    static func text(for error: Error) -> String {
+        switch error {
+        case ApiError.api(let status, let code, _):
+            if let text = byCode[code] { return text }
+            if status >= 500 { return byStatus["5xx"] ?? unknown }
+            return byStatus[String(status)] ?? unknown
+        case ApiError.network:
+            return network
+        default:
+            return unknown
+        }
     }
 }
 
@@ -28,10 +51,16 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     private var sessionVersion = 0
     var accessToken: String?
     var refreshToken: String?
+    /// When the access token stops being accepted, from `expires_in` on this device's clock (nil = unknown).
+    private(set) var accessTokenExpiresAt: Date?
+    /// Pauses between attempts of a refresh that failed on the way (SYNC_PROTOCOL.md §7.2).
+    var refreshRetryDelays: [TimeInterval] = [1, 2, 4, 8]
     var onTokens: ((TokenResponse) -> Void)?
     var onSignedOut: (() -> Void)?
     private let session: URLSession
     private var refreshTask: Task<TokenResponse, Error>?
+    /// A refresh answers quickly or is retried; the old token is honoured for 30 s only (SECURITY.md §2.3).
+    private static let refreshTimeout: TimeInterval = 10
 
     init(baseUrl: URL, session: URLSession = .shared) {
         self.baseUrl = baseUrl
@@ -64,19 +93,37 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         return tokens
     }
 
+    /// §7.2: connect with the access token we have unless it is missing or expires within `margin` seconds.
+    /// Every refresh rotates the refresh token, so refreshing only when needed keeps a lost response rare.
+    func needsRefresh(margin: TimeInterval = 60) -> Bool {
+        guard accessToken != nil, let expiresAt = accessTokenExpiresAt else { return true }
+        return expiresAt.timeIntervalSinceNow < margin
+    }
+
     func refresh() async throws -> TokenResponse {
         if let task = refreshTask { return try await task.value }
         guard let token = refreshToken else { throw ApiError.api(status: 401, code: "missing_token", message: "No refresh token") }
         let version = sessionVersion
+        let delays = refreshRetryDelays
         let task = Task<TokenResponse, Error> {
-            do {
-                let tokens: TokenResponse = try await request("POST", "/api/v1/auth/refresh", body: .object(["refresh_token": .string(token)]), auth: false)
-                guard version == sessionVersion else { throw ApiError.api(status: 401, code: "session_changed", message: "Session changed") }
-                apply(tokens)
-                return tokens
-            } catch {
-                if version == sessionVersion, let apiError = error as? ApiError, apiError.isAuth { signOut() }
-                throw error
+            var attempt = 0
+            while true {
+                do {
+                    guard version == sessionVersion else { throw ApiError.api(status: 401, code: "session_changed", message: "Session changed") }
+                    let tokens: TokenResponse = try await request("POST", "/api/v1/auth/refresh", body: .object(["refresh_token": .string(token)]),
+                                                                  auth: false, timeout: Self.refreshTimeout)
+                    guard version == sessionVersion else { throw ApiError.api(status: 401, code: "session_changed", message: "Session changed") }
+                    apply(tokens)
+                    return tokens
+                } catch let error as ApiError where error.isRetryable && attempt < delays.count {
+                    // The server may have rotated the token and the answer got lost: the old one still works for
+                    // 30 s, so try again at short intervals inside that grace (SYNC_PROTOCOL.md §7.2).
+                    try? await Task.sleep(nanoseconds: UInt64(delays[attempt] * 1_000_000_000))
+                    attempt += 1
+                } catch {
+                    if version == sessionVersion, let apiError = error as? ApiError, apiError.isAuth { signOut() }
+                    throw error
+                }
             }
         }
         refreshTask = task
@@ -84,22 +131,36 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         return try await task.value
     }
 
+    /// Ends the server session (the device stops getting pushes), refreshing first when the access token has
+    /// expired (SYNC_PROTOCOL.md §11); signed out locally in any case.
     func logout() async {
-        _ = try? await requestRaw("POST", "/api/v1/auth/logout", body: nil, auth: true, retry401: false)
+        _ = try? await requestRaw("POST", "/api/v1/auth/logout", body: nil, auth: true, retry401: true)
         signOut()
     }
 
     func signOut() {
         sessionVersion += 1
         accessToken = nil
+        accessTokenExpiresAt = nil
         refreshToken = nil
         onSignedOut?()
     }
 
     private func apply(_ tokens: TokenResponse) {
         accessToken = tokens.accessToken
+        accessTokenExpiresAt = Date().addingTimeInterval(TimeInterval(tokens.expiresIn))
         refreshToken = tokens.refreshToken
         onTokens?(tokens)
+    }
+
+    /// A path with a query. URLComponents leaves "+" as it is, which servers read as a space ("C++", links with
+    /// "+" in them), so it is percent-encoded as well.
+    static func pathWithQuery(_ path: String, _ items: [URLQueryItem]) -> String {
+        var components = URLComponents()
+        components.path = path
+        components.queryItems = items
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        return components.string ?? path
     }
 
     // MARK: endpoints
@@ -242,19 +303,14 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     }
 
     func deleteDraft(channelId: String, parentId: String?) async throws {
-        var components = URLComponents()
-        components.path = "/api/v1/drafts"
-        components.queryItems = [URLQueryItem(name: "channel_id", value: channelId)] + (parentId.map { [URLQueryItem(name: "parent_id", value: $0)] } ?? [])
-        _ = try await requestRaw("DELETE", components.string ?? "/api/v1/drafts", body: nil, auth: true, retry401: true)
+        let items = [URLQueryItem(name: "channel_id", value: channelId)] + (parentId.map { [URLQueryItem(name: "parent_id", value: $0)] } ?? [])
+        _ = try await requestRaw("DELETE", Self.pathWithQuery("/api/v1/drafts", items), body: nil, auth: true, retry401: true)
     }
 
     // MARK: link previews (M11g)
 
     func linkPreview(url: String) async throws -> LinkPreviewOut {
-        var components = URLComponents()
-        components.path = "/api/v1/link-previews"
-        components.queryItems = [URLQueryItem(name: "url", value: url)]
-        return try await request("GET", components.string ?? "/api/v1/link-previews")
+        try await request("GET", Self.pathWithQuery("/api/v1/link-previews", [URLQueryItem(name: "url", value: url)]))
     }
 
     // MARK: reminders (M12e)
@@ -305,29 +361,20 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
         if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
-        var components = URLComponents()
-        components.path = "/api/v1/files"
-        components.queryItems = items
-        return try await request("GET", components.string ?? "/api/v1/files")
+        return try await request("GET", Self.pathWithQuery("/api/v1/files", items))
     }
 
     /// M11h: messages that mention me or everyone in my channels.
     func listMentions(cursor: String? = nil, limit: Int = 50) async throws -> MentionListOut {
         var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
-        var components = URLComponents()
-        components.path = "/api/v1/mentions"
-        components.queryItems = items
-        return try await request("GET", components.string ?? "/api/v1/mentions")
+        return try await request("GET", Self.pathWithQuery("/api/v1/mentions", items))
     }
 
     func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {
         var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
-        var components = URLComponents()
-        components.path = "/api/v1/bookmarks"
-        components.queryItems = items
-        return try await request("GET", components.string ?? "/api/v1/bookmarks")
+        return try await request("GET", Self.pathWithQuery("/api/v1/bookmarks", items))
     }
 
     func bookmarkMessage(id: String) async throws -> BookmarkStateOut { try await request("PUT", "/api/v1/messages/\(id)/bookmark") }
@@ -339,10 +386,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     func threads(filter: String = "all", cursor: String? = nil, limit: Int = 50) async throws -> ThreadListOut {
         var items = [URLQueryItem(name: "filter", value: filter), URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
-        var components = URLComponents()
-        components.path = "/api/v1/threads"
-        components.queryItems = items
-        return try await request("GET", components.string ?? "/api/v1/threads")
+        return try await request("GET", Self.pathWithQuery("/api/v1/threads", items))
     }
 
     func threadState(messageId: String) async throws -> ThreadState { try await request("GET", "/api/v1/messages/\(messageId)/thread") }
@@ -361,30 +405,38 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
         // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
         items.append(URLQueryItem(name: "tz_offset_minutes", value: String(TimeZone.current.secondsFromGMT() / 60)))
-        var components = URLComponents()
-        components.path = "/api/v1/search/messages"
-        components.queryItems = items
-        return try await request("GET", components.string ?? "/api/v1/search/messages")
+        return try await request("GET", Self.pathWithQuery("/api/v1/search/messages", items))
     }
 
     /// POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent.
     func uploadAttachment(data fileData: Data, filename: String, contentType: String) async throws -> AttachmentOut {
         let boundary = "chikuwa-" + UUID().uuidString
-        var body = Data()
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename.replacingOccurrences(of: "\"", with: "_"))\"\r\nContent-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        var body = Multipart.head(boundary: boundary, filename: filename, contentType: contentType)
         body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append(Multipart.tail(boundary: boundary))
         let (data, _) = try await requestData("POST", "/api/v1/attachments", body: body, contentType: "multipart/form-data; boundary=\(boundary)", retry401: true)
+        return try JSON.snakeDecoder.decode(AttachmentOut.self, from: data)
+    }
+
+    /// The same for a file on disk: the multipart body is streamed into a temporary file and uploaded from there,
+    /// so a large file is never held in memory.
+    func uploadAttachment(fileAt url: URL, filename: String, contentType: String) async throws -> AttachmentOut {
+        let boundary = "chikuwa-" + UUID().uuidString
+        let head = Multipart.head(boundary: boundary, filename: filename, contentType: contentType)
+        let tail = Multipart.tail(boundary: boundary)
+        let body = try await Task.detached(priority: .userInitiated) { try Multipart.write(head: head, file: url, tail: tail) }.value
+        defer { try? FileManager.default.removeItem(at: body) }
+        let (data, _) = try await requestData("POST", "/api/v1/attachments", body: nil, fromFile: body,
+                                              contentType: "multipart/form-data; boundary=\(boundary)", retry401: true)
         return try JSON.snakeDecoder.decode(AttachmentOut.self, from: data)
     }
 
     /// M14a: my profile picture (any common image; the server stores a 256px PNG).
     func uploadAvatar(data fileData: Data, contentType: String) async throws -> UserMe {
         let boundary = "chikuwa-" + UUID().uuidString
-        var body = Data()
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"avatar\"\r\nContent-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        var body = Multipart.head(boundary: boundary, filename: "avatar", contentType: contentType)
         body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append(Multipart.tail(boundary: boundary))
         let (data, _) = try await requestData("POST", "/api/v1/users/me/avatar", body: body, contentType: "multipart/form-data; boundary=\(boundary)", retry401: true)
         return try JSON.snakeDecoder.decode(UserMe.self, from: data)
     }
@@ -396,24 +448,29 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         try await requestData("GET", path, body: nil, contentType: nil, retry401: true).0
     }
 
-    private func requestData(_ method: String, _ path: String, body: Data?, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
+    /// `fromFile` uploads the body from a file instead of `body` (large attachments).
+    private func requestData(_ method: String, _ path: String, body: Data?, fromFile: URL? = nil, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
         if accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = body
+        if fromFile == nil { request.httpBody = body }
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            if let fromFile {
+                (data, response) = try await session.upload(for: request, fromFile: fromFile)
+            } else {
+                (data, response) = try await session.data(for: request)
+            }
         } catch {
             throw ApiError.network(error)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 && retry401 {
             _ = try await refresh()
-            return try await requestData(method, path, body: body, contentType: contentType, retry401: false)
+            return try await requestData(method, path, body: body, fromFile: fromFile, contentType: contentType, retry401: false)
         }
         if !(200...299).contains(status) {
             struct Envelope: Decodable { struct Inner: Decodable { let code: String; let message: String }; let error: Inner }
@@ -554,8 +611,8 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
 
     // MARK: transport
 
-    private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true) async throws -> T {
-        let (data, _) = try await requestRaw(method, path, body: body, auth: auth, retry401: true)
+    private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil) async throws -> T {
+        let (data, _) = try await requestRaw(method, path, body: body, auth: auth, retry401: true, timeout: timeout)
         do {
             return try JSON.snakeDecoder.decode(T.self, from: data)
         } catch {
@@ -563,10 +620,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         }
     }
 
-    private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool) async throws -> (Data, Int) {
+    private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool, timeout: TimeInterval? = nil) async throws -> (Data, Int) {
         if auth, accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
+        if let timeout { request.timeoutInterval = timeout }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -594,5 +652,34 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         }
         if auth, response.statusCode == 401, error.code != "token_expired" { signOut() }
         throw error
+    }
+}
+
+/// multipart/form-data with a single "file" part (POST /attachments, avatars).
+enum Multipart {
+    static func head(boundary: String, filename: String, contentType: String) -> Data {
+        let name = filename.replacingOccurrences(of: "\"", with: "_")
+        return Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: \(contentType)\r\n\r\n".utf8)
+    }
+
+    static func tail(boundary: String) -> Data { Data("\r\n--\(boundary)--\r\n".utf8) }
+
+    /// head + the file + tail in a temporary file, copied 1 MB at a time; the caller removes it.
+    static func write(head: Data, file: URL, tail: Data) throws -> URL {
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: out.path, contents: head) else { throw CocoaError(.fileWriteUnknown) }
+        do {
+            let writer = try FileHandle(forWritingTo: out)
+            defer { try? writer.close() }
+            try writer.seekToEnd()
+            let reader = try FileHandle(forReadingFrom: file)
+            defer { try? reader.close() }
+            while let chunk = try reader.read(upToCount: 1 << 20), !chunk.isEmpty { try writer.write(contentsOf: chunk) }
+            try writer.write(contentsOf: tail)
+            return out
+        } catch {
+            try? FileManager.default.removeItem(at: out)
+            throw error
+        }
     }
 }

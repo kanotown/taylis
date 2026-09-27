@@ -363,6 +363,11 @@ struct MessageRow: View {
     private var engine: SyncEngine? { controller.engine }
     private var isMine: Bool { store.me?.id == message.senderId }
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
+    /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
+    private var failureText: String {
+        let code = store.outbox.first { $0.clientMsgId == message.clientMsgId }?.failed
+        return code.flatMap { ErrorMessages.byCode[$0] }.map { "送信に失敗しました: \($0)" } ?? "送信に失敗しました"
+    }
 
     /// M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared.
     @ViewBuilder
@@ -469,7 +474,7 @@ struct MessageRow: View {
                 }
                 if message.failed {
                     HStack {
-                        Text("送信に失敗しました").font(.caption).foregroundStyle(.red)
+                        Text(failureText).font(.caption).foregroundStyle(.red)
                         Button("再送") { Task { await engine?.retryFailed() } }.font(.caption)
                         Button("破棄", role: .destructive) { if let key = message.clientMsgId { engine?.discardFailed(key) } }.font(.caption)
                     }
@@ -618,8 +623,23 @@ struct ComposerView: View {
         guard let controller else { return }
         let store = controller.store
         guard pending.count < 10 else { controller.error = "添付は10件までです"; return }
+        if let tooLarge = controller.attachmentTooLarge(data.count) { controller.error = tooLarge; return }
         if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) {
             store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
+        }
+    }
+
+    /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole).
+    private func upload(file url: URL) async {
+        guard let controller else { return }
+        guard pending.count < 10 else { controller.error = "添付は10件までです"; return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if let tooLarge = controller.attachmentTooLarge(size) { controller.error = tooLarge; return }
+        let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        if let uploaded = await controller.uploadAttachment(fileAt: url, filename: url.lastPathComponent, contentType: type) {
+            controller.store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
         }
     }
 
@@ -814,9 +834,9 @@ struct ComposerView: View {
             Task {
                 defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
                 for item in items {
-                    guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-                    let type = item.supportedContentTypes.first
-                    await upload(data: data, filename: "photo." + (type?.preferredFilenameExtension ?? "jpg"), contentType: type?.preferredMIMEType ?? "image/jpeg")
+                    // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
+                    guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else { continue }
+                    await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
                 }
             }
         }
@@ -836,13 +856,7 @@ struct ComposerView: View {
             controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
             Task {
                 defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
-                for url in urls {
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                    guard let data = try? Data(contentsOf: url) else { continue }
-                    let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                    await upload(data: data, filename: url.lastPathComponent, contentType: type)
-                }
+                for url in urls { await upload(file: url) }
             }
         }
     }
