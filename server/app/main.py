@@ -293,7 +293,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=settings.cors_origins,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
+            # X-Requested-With: the desktop sends it with every refresh (the browser build needs it
+            # for the cookie session, M12j); without it the WebView's preflight fails and the app
+            # can never renew its token. Cookies stay out (allow_credentials=False).
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "X-Request-ID",
+                "X-Requested-With",
+            ],
             expose_headers=["X-Request-ID", "Retry-After"],
             allow_credentials=False,
             max_age=600,
