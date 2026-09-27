@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: local SQLite store, OS notifications and the credential-store commands.",
+  "description": "Main window: local SQLite store, OS notifications, the unread badge and the credential-store commands.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-badge-count",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",

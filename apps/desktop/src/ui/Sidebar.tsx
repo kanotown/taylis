@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, Compass, Files, FileText, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, Compass, FileText, Files, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -17,6 +17,8 @@ interface Props {
   onOpen: (id: string) => void;
   onJoin: (id: string) => void;
   onNewDm: () => void;
+  /** M13g: the member directory. */
+  onDirectory?: () => void;
   onNewChannel: () => void;
   onSearch?: () => void;
   onSettings?: () => void;
@@ -44,7 +46,8 @@ interface Props {
   remindersActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm,
+  onDirectory, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -285,9 +288,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       <Section
         title="ダイレクトメッセージ"
         action={
-          <IconButton tone="sidebar" label={`DM を開始 (${modKey()}+Shift+K)`} className="h-6 w-6" onClick={onNewDm}>
-            <Plus size={14} />
-          </IconButton>
+          <span className="flex items-center">
+            {onDirectory && (
+              <IconButton tone="sidebar" label="メンバー一覧" className="h-6 w-6" onClick={onDirectory}>
+                <Users size={14} />
+              </IconButton>
+            )}
+            <IconButton tone="sidebar" label={`DM を開始 (${modKey()}+Shift+K)`} className="h-6 w-6" onClick={onNewDm}>
+              <Plus size={14} />
+            </IconButton>
+          </span>
         }
       >
         <ul className="space-y-px">{sections.dms.map(item)}</ul>

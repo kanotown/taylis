@@ -7,7 +7,7 @@ struct MainView: View {
     @State private var pendingThreadId: String?
 
     enum Sheet: Identifiable {
-        case newDm, newChannel, search, settings, browse
+        case newDm, newChannel, search, settings, browse, directory
         var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4 } }
     }
 
@@ -34,6 +34,7 @@ struct MainView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button("ダイレクトメッセージ", systemImage: "person.2") { sheet = .newDm }
+                            Button("メンバー", systemImage: "person.3") { sheet = .directory }
                             if !controller.isGuest {
                                 Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
                                 Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
@@ -99,6 +100,7 @@ struct MainView: View {
         .sheet(item: $sheet) { which in
             switch which {
             case .newDm: NewDmView(controller: controller) { id in selection = id }
+            case .directory: DirectoryView(controller: controller) { id in selection = id }
             case .newChannel: NewChannelView(controller: controller) { id in selection = id }
             case .search: SearchView(controller: controller) { message in
                 Task {
