@@ -329,6 +329,12 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var displayName = ""
     @State private var title = ""
+    // M12g: notification keywords, edited as a comma-separated line.
+    @State private var keywords = ""
+    private var parsedKeywords: [String] {
+        Array(keywords.split(whereSeparator: { $0 == "," || $0 == "、" || $0 == "\n" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(20))
+    }
+    private var keywordsChanged: Bool { parsedKeywords != (controller.store.me?.notifyKeywords ?? []) }
     @State private var nameSaved = false
     @State private var editingStatus = false
     @State private var current = ""
@@ -374,6 +380,9 @@ struct SettingsView: View {
                             .onChange(of: displayName) { _, _ in nameSaved = false }
                         TextField("肩書 (任意)", text: $title)
                             .onChange(of: title) { _, _ in nameSaved = false }
+                        TextField("通知キーワード (任意、コンマ区切り)", text: $keywords)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .onChange(of: keywords) { _, _ in nameSaved = false }
                         HStack {
                             Button("プロフィールを保存") {
                                 Task {
@@ -383,11 +392,12 @@ struct SettingsView: View {
                                     var ok = true
                                     if name != me.displayName { ok = await controller.updateDisplayName(name) }
                                     if ok, (newTitle.isEmpty ? nil : newTitle) != me.title { ok = await controller.updateProfile(title: .some(newTitle.isEmpty ? nil : newTitle)) }
+                                    if ok, keywordsChanged { ok = await controller.updateProfile(notifyKeywords: parsedKeywords) }
                                     nameSaved = ok
                                     busy = false
                                 }
                             }
-                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || (displayName.trimmingCharacters(in: .whitespaces) == me.displayName && (title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : title.trimmingCharacters(in: .whitespaces)) == me.title))
+                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || (displayName.trimmingCharacters(in: .whitespaces) == me.displayName && (title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : title.trimmingCharacters(in: .whitespaces)) == me.title && !keywordsChanged))
                             if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
                         }
                     }
@@ -419,7 +429,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
             .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
-            .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? "" }
+            .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ") }
         }
     }
 }
