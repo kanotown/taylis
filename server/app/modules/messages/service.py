@@ -84,8 +84,16 @@ async def create_message(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, data: MessageCreate
 ) -> tuple[Message, bool]:
     """Returns (message, created). Retrying with the same client_msg_id returns the same message."""
-    channel, _ = await channels.require_member(db, actor.id, channel_id)
+    channel, membership = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
+    if (
+        channel.posting_policy == "owners"  # M15a: an announcement channel
+        and data.parent_id is None
+        and not actor.is_admin
+        and actor.role != "bot"
+        and membership.role != "owner"
+    ):
+        raise forbidden("posting_restricted", "Only owners and administrators can post here")
 
     existing = await repo.get_by_client_msg_id(db, actor.id, data.client_msg_id)
     if existing is not None:

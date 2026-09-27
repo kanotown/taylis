@@ -160,6 +160,15 @@
                 ],
                 "default": null
               },
+              "posting_policy": {
+                "default": "everyone",
+                "enum": [
+                  "everyone",
+                  "owners"
+                ],
+                "title": "Posting Policy",
+                "type": "string"
+              },
               "purpose": {
                 "anyOf": [
                   {
@@ -484,6 +493,15 @@
                   }
                 ],
                 "default": null
+              },
+              "posting_policy": {
+                "default": "everyone",
+                "enum": [
+                  "everyone",
+                  "owners"
+                ],
+                "title": "Posting Policy",
+                "type": "string"
               },
               "purpose": {
                 "anyOf": [

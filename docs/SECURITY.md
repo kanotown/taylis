@@ -155,8 +155,15 @@ refresh(token):
 | メンバー除外 | owner / admin | owner / admin | 不可 |
 | 名前・トピック変更 | owner / admin | owner / admin | 不可 |
 | アーカイブ | owner / admin | owner / admin | 不可 |
+| 投稿制限の切り替え (M15a) | owner / admin | owner / admin | 不可 |
+| 公開 → 非公開 (M15b) | owner / admin | — | 不可 |
+| 非公開 → 公開 (M15b) | — | admin | 不可 |
 
 guest は上の表の「誰でも」「メンバー」のうち、一覧・参加、チャンネル作成、メンバー追加ができない (M13e)。
+投稿制限 (`posting_policy = owners`) のチャンネルでは、トップレベルの投稿はチャンネルの owner・admin・BOT
+(受信 Webhook) だけ (`403 posting_restricted`)。スレッドの返信とリアクションは従来どおりメンバー全員。
+非公開 → 公開は過去ログ全体を全員に見せる操作なので admin に限り、変換はどちら向きも監査ログ
+`channel.converted` に残す。
 編集履歴 (M14c) は投稿者本人にだけ見せる。編集で取り消した内容 (誤って貼った秘密など) を他のメンバーに
 残さないため。メッセージを削除すると履歴も消える。
 

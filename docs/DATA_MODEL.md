@@ -165,8 +165,10 @@ CREATE TABLE channels (
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now(),
   archived_at      timestamptz,
+  posting_policy   varchar(16) NOT NULL DEFAULT 'everyone', -- M15a: 'everyone' | 'owners' (アナウンス)
   CHECK ((type IN ('public', 'private')) = (name IS NOT NULL)),
-  CHECK ((type IN ('dm', 'group_dm')) = (dm_key IS NOT NULL))
+  CHECK ((type IN ('dm', 'group_dm')) = (dm_key IS NOT NULL)),
+  CHECK (posting_policy IN ('everyone', 'owners'))
 );
 CREATE UNIQUE INDEX channels_name_uniq   ON channels (name)   WHERE name IS NOT NULL;
 CREATE UNIQUE INDEX channels_dm_key_uniq ON channels (dm_key) WHERE dm_key IS NOT NULL;
@@ -181,6 +183,8 @@ CREATE UNIQUE INDEX channels_dm_key_uniq ON channels (dm_key) WHERE dm_key IS NO
 | メンバー変更 | join / leave / 招待 / 除外 | 招待 / 除外 / leave | 不可 (固定 2 人。自分宛ては 1 人) | 不可 (別の組み合わせは別チャンネル) |
 | 一覧 | ブラウズ可 | メンバーのみ | メンバーのみ | メンバーのみ |
 | アーカイブ | 可 | 可 | 不可 | 不可 |
+| 投稿制限 (M15a) | 可 | 可 | 不可 | 不可 |
+| 種類の変換 (M15b) | → private (owner / admin) | → public (admin) | 不可 | 不可 |
 | 通知の既定 | mentions | mentions | all | all |
 | メッセージ / 既読 / 同期 / 検索 | すべて共通 | | | |
 
