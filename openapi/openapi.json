@@ -2089,6 +2089,32 @@
         "title": "MessageOut",
         "type": "object"
       },
+      "MessageRevisionOut": {
+        "description": "An earlier body of a message (M14c), oldest first; the current body is the message's.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "replaced_at": {
+            "format": "date-time",
+            "title": "Replaced At",
+            "type": "string"
+          },
+          "written_at": {
+            "format": "date-time",
+            "title": "Written At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "written_at",
+          "replaced_at"
+        ],
+        "title": "MessageRevisionOut",
+        "type": "object"
+      },
       "NotificationPreferenceIn": {
         "properties": {
           "level": {
@@ -7699,6 +7725,59 @@
           }
         ],
         "summary": "List Replies",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/revisions": {
+      "get": {
+        "description": "M14c: the bodies earlier edits replaced, oldest first (author only).",
+        "operationId": "list_revisions_api_v1_messages__message_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageRevisionOut"
+                  },
+                  "title": "Response List Revisions Api V1 Messages  Message Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Revisions",
         "tags": [
           "messages"
         ]

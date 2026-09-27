@@ -589,6 +589,13 @@ final class AppController {
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
+    // MARK: edit history (M14c)
+
+    func messageRevisions(_ messageId: String) async -> [MessageRevisionOut]? {
+        guard let api else { return nil }
+        do { return try await api.messageRevisions(messageId) } catch { self.error = describe(error); return nil }
+    }
+
     // MARK: polls (M14b)
 
     func vote(_ message: MessageState, option: Int, present: Bool) async -> Bool {

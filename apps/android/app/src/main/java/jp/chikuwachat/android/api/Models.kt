@@ -166,6 +166,10 @@ data class AttachmentOut(
 @Serializable
 data class PollOut(val question: String, val options: List<String>, val multiple: Boolean = false, val closedAt: String? = null, val votes: List<List<String>> = emptyList())
 
+/** A body an edit replaced (M14c); the current body is the message's own. */
+@Serializable
+data class MessageRevisionOut(val body: String, val writtenAt: String, val replacedAt: String)
+
 @Serializable
 data class MessageOut(
     val id: String,

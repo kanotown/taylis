@@ -32,6 +32,8 @@ TABLES = [
     "webhooks",
     "attachments",
     "read_states",
+    "message_revisions",
+    "poll_votes",
     "reactions",
     "push_deliveries",
     "notification_preferences",

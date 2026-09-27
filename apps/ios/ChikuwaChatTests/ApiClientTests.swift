@@ -184,4 +184,17 @@ final class ApiClientTests: XCTestCase {
         let status = try await client.totpStatus()
         XCTAssertEqual(status, TotpStatusOut(enabled: true, enabledAt: "2026-09-27T00:00:00Z", recoveryCodesLeft: 7))
     }
+
+    func testMessageRevisionsDecode() async throws {
+        var paths: [String] = []
+        StubProtocol.handler = { request in
+            paths.append(request.url!.path)
+            return (200, Data(#"[{"body":"old","written_at":"2026-09-27T00:00:00Z","replaced_at":"2026-09-27T00:05:00Z"}]"#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        let rows = try await client.messageRevisions("m1")
+        XCTAssertEqual(rows, [MessageRevisionOut(body: "old", writtenAt: "2026-09-27T00:00:00Z", replacedAt: "2026-09-27T00:05:00Z")])
+        XCTAssertEqual(paths, ["/api/v1/messages/m1/revisions"])
+    }
 }

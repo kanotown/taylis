@@ -115,3 +115,6 @@ export type Role = components["schemas"]["AdminUserCreate"]["role"];
 /** Polls (M14b). */
 export type PollOut = components["schemas"]["PollOut"];
 export type PollCreate = components["schemas"]["PollCreate"];
+
+/** Edit history (M14c). */
+export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];

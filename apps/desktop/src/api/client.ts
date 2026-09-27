@@ -31,6 +31,7 @@ import type {
   HistoryOut,
   MemberOut,
   MessageOut,
+  MessageRevisionOut,
   NotificationLevel,
   PollCreate,
   NotificationPreferenceOut,
@@ -633,6 +634,11 @@ export class ApiClient {
 
   getMessage(messageId: string): Promise<MessageOut> {
     return this.request("GET", `/api/v1/messages/${messageId}`);
+  }
+
+  /** M14c: the bodies earlier edits replaced, oldest first (author only; 403 for others). */
+  messageRevisions(messageId: string): Promise<MessageRevisionOut[]> {
+    return this.request("GET", `/api/v1/messages/${messageId}/revisions`);
   }
 
   messageContext(messageId: string): Promise<MessageOut[]> {

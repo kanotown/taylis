@@ -123,6 +123,14 @@ class MessageOut(BaseModel):
     poll: PollOut | None = None
 
 
+class MessageRevisionOut(BaseModel):
+    """An earlier body of a message (M14c), oldest first; the current body is the message's."""
+
+    body: str
+    written_at: datetime
+    replaced_at: datetime
+
+
 class MentionListOut(BaseModel):
     """Messages that mention me (M11h), newest first; `next_cursor` goes back as `cursor`."""
 

@@ -278,6 +278,8 @@ class ApiClient(
     }
 
     suspend fun messageContext(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/context")
+    /** M14c: the bodies earlier edits replaced, oldest first (author only; 403 for others). */
+    suspend fun messageRevisions(messageId: String): List<MessageRevisionOut> = request("GET", "/api/v1/messages/$messageId/revisions")
 
     override suspend fun replies(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/replies")
 

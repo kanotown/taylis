@@ -9,6 +9,7 @@ import { buildTimeline, fullTimestamp, timeLabel } from "./format";
 import { decodeMentions, encodeMentions } from "./mentions";
 import { MessageBody } from "./MessageBody";
 import { PollCard } from "./PollCard";
+import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
@@ -259,6 +260,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
   const editing = controller.editing === message.id;
 
   const sender = store.users.get(message.sender_id);
@@ -323,7 +325,14 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             {sender?.role === "bot" && <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="受信 Webhook の投稿">BOT</span>}
             <StatusEmoji controller={controller} userId={message.sender_id} />
             <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
-            {message.edited_at && <span>(編集済み)</span>}
+            {message.edited_at &&
+              (mine ? (
+                <button type="button" className="hover:text-ink hover:underline" title="編集履歴を見る" onClick={() => setRevisionsOpen(true)}>
+                  (編集済み)
+                </button>
+              ) : (
+                <span title={fullTimestamp(message.edited_at)}>(編集済み)</span>
+              ))}
           </div>
         )}
         {editing ? (
@@ -475,6 +484,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         </div>
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
+      {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
     </article>
   );
 }

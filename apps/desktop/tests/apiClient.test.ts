@@ -292,3 +292,19 @@ describe("incoming webhooks (M13a)", () => {
     expect(calls).toEqual(["GET /api/v1/admin/webhooks", "POST /api/v1/admin/webhooks", "PATCH /api/v1/admin/webhooks/w1", "DELETE /api/v1/admin/webhooks/w1"]);
   });
 });
+
+describe("edit history (M14c)", () => {
+  it("fetches the revisions of one message", async () => {
+    const paths: string[] = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input) => {
+        paths.push(String(input).replace("http://server", ""));
+        return jsonResponse(200, [{ body: "old", written_at: "2026-09-27T00:00:00Z", replaced_at: "2026-09-27T00:05:00Z" }]);
+      },
+    });
+    client.accessToken = "a";
+    const rows = await client.messageRevisions("m1");
+    expect(rows.map((r) => r.body)).toEqual(["old"]);
+    expect(paths).toEqual(["/api/v1/messages/m1/revisions"]);
+  });
+});

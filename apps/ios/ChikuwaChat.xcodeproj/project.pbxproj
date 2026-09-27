@@ -56,6 +56,7 @@
 		90F6A6D17DBE28C9A8F6B9A9 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8EAE5A6ED788AD8AC1252 /* ThreadView.swift */; };
 		94795BEA74A315E918DE49B2 /* ApiClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04D62C7707EB64D28E1A801 /* ApiClientTests.swift */; };
 		96F9C758ED3FAB648F703260 /* DraftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EC40A71175595521F5E564 /* DraftsView.swift */; };
+		995E4F17B336663DCCF7D424 /* RevisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411D0F28175679909161F694 /* RevisionsView.swift */; };
 		9E7035C4099857904103250B /* AttachmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0331E3481EE3CCEC391E1E4 /* AttachmentsView.swift */; };
 		9FBA5F10614875FDAE440DCC /* ScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */; };
 		A03EA59917F14D6087656DE5 /* DND.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0979C692C57AD564B5051EAC /* DND.swift */; };
@@ -126,6 +127,7 @@
 		39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTests.swift; sourceTree = "<group>"; };
 		3F7662F23ED981268EBFB0F8 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
+		411D0F28175679909161F694 /* RevisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevisionsView.swift; sourceTree = "<group>"; };
 		41D8FE044BFBF564E1DC7816 /* LinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinksTests.swift; sourceTree = "<group>"; };
 		4324FDC43FE12F139725608A /* WebSocketTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketTransport.swift; sourceTree = "<group>"; };
 		44AD78A04AB0A93B55D3FBD1 /* Invite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Invite.swift; sourceTree = "<group>"; };
@@ -342,6 +344,7 @@
 				11ADABD71F51A91011248A1E /* PollCardView.swift */,
 				62B9AE41DC03738ACC485851 /* ProfileSheet.swift */,
 				D5025810DA770D8747ACC610 /* RemindersView.swift */,
+				411D0F28175679909161F694 /* RevisionsView.swift */,
 				9B4C8A95833707C7581F036D /* SavedView.swift */,
 				0B404F9D56E0D4FC24A30F35 /* Schedule.swift */,
 				4E8952935F7E755BB8B341C5 /* SearchView.swift */,
@@ -562,6 +565,7 @@
 				6FC3F67CB482231A52586E10 /* ProfileSheet.swift in Sources */,
 				6B2FA428DA0DFA1858ACA00C /* PushCenter.swift in Sources */,
 				E4DA52B9A5BEDC920C00F9D2 /* RemindersView.swift in Sources */,
+				995E4F17B336663DCCF7D424 /* RevisionsView.swift in Sources */,
 				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
 				F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */,
 				1C8D809901927C185631CCC1 /* Schedule.swift in Sources */,

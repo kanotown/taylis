@@ -691,6 +691,11 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** Password change from the settings sheet; returns the error text or null. */
+    // --- edit history (M14c) -------------------------------------------------------------------
+
+    suspend fun messageRevisions(messageId: String): List<jp.chikuwachat.android.api.MessageRevisionOut>? =
+        runCatching { api!!.messageRevisions(messageId) }.getOrElse { error = describe(it); null }
+
     // --- polls (M14b) ------------------------------------------------------------------------
 
     suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = runCatching {

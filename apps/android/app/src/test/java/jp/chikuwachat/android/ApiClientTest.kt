@@ -146,4 +146,16 @@ class ApiClientTest {
         val status = client.totpStatus()
         assertTrue(status.enabled); assertEquals(7, status.recoveryCodesLeft)
     }
+
+    @Test fun messageRevisionsDecode() = runBlocking {
+        val paths = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            paths.add(request.url.encodedPath)
+            200 to """[{"body":"old","written_at":"2026-09-27T00:00:00Z","replaced_at":"2026-09-27T00:05:00Z"}]"""
+        })
+        client.accessToken = "a"
+        val rows = client.messageRevisions("m1")
+        assertEquals(listOf(jp.chikuwachat.android.api.MessageRevisionOut("old", "2026-09-27T00:00:00Z", "2026-09-27T00:05:00Z")), rows)
+        assertEquals(listOf("/api/v1/messages/m1/revisions"), paths)
+    }
 }
