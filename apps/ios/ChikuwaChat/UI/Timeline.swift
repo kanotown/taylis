@@ -20,6 +20,13 @@ enum Timeline {
     static func excerpt(_ body: String, hasAttachments: Bool, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
         if body.isEmpty { return hasAttachments ? "(添付ファイル)" : "" }
         var text = Mentions.decode(body, users: users, groups: groups)
+        // M15g: a table becomes its cell text (separator rows vanish, pipes become spaces).
+        text = text.replacingOccurrences(of: #"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#, with: "", options: .regularExpression)
+        text = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("|"), trimmed.hasSuffix("|") else { return String(line) }
+            return BodyTokenizer.splitTableRow(trimmed).joined(separator: " ")
+        }.joined(separator: "\n")
         for pattern in ["```[a-zA-Z0-9_+-]*", "^#{1,3}\\s+", "^>\\s?", "^\\s*[-*]\\s+", "^\\s*\\d+\\.\\s+", "\\*\\*", "~~", "`"] {
             text = text.replacingOccurrences(of: pattern, with: "", options: [.regularExpression], range: nil)
         }
