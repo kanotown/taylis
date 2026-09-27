@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
 
 /** Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data. */
@@ -14,6 +15,7 @@ export function LinkPreviewCard({ controller, url }: { controller: AppController
       href={preview.url}
       target="_blank"
       rel="noreferrer noopener"
+      onClick={(event) => openExternalLink(event, preview.url)}
       className="mt-1.5 flex max-w-xl gap-3 rounded-lg border border-line border-l-[3px] border-l-accent/60 bg-panel px-3 py-2 text-sm no-underline transition-colors hover:bg-panel-2"
     >
       <div className="min-w-0 flex-1">

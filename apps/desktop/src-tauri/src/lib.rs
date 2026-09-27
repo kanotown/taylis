@@ -1,4 +1,5 @@
-//! Tauri shell: SQLite (tauri-plugin-sql), notifications and the OS credential store.
+//! Tauri shell: SQLite (tauri-plugin-sql), notifications, the system browser for external links
+//! (tauri-plugin-opener) and the OS credential store.
 //! Refresh tokens never touch the file system: they live in Keychain / Credential Manager.
 
 use keyring::{Entry, Error as KeyringError};
@@ -38,6 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![secret_get, secret_set, secret_delete])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

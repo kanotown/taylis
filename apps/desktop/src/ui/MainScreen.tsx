@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { canPostTopLevel, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
+import { canPostTopLevel, conversationTitle, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -604,9 +604,5 @@ function ConvertConfirm({ channel, isAdmin, busy, onClose, onConfirm }: {
 }
 
 export function channelTitle(channel: ChannelState, controller: AppController): string {
-  if (channel.type === "public" || channel.type === "private") return `#${channel.name ?? ""}`;
-  const me = controller.store.me?.id;
-  const others = (channel.dm_user_ids ?? []).filter((id) => id !== me);
-  if (others.length === 0) return "自分へのメモ";
-  return others.map((id) => controller.store.users.get(id)?.display_name ?? "…").join(", ");
+  return conversationTitle(channel, controller.store.users, controller.store.me?.id ?? null);
 }

@@ -15,8 +15,8 @@ import { IconButton } from "./primitives";
 export function PinsPane({ controller, channel, onOpen, onClose }: { controller: AppController; channel: ChannelState; onOpen: (message: MessageOut) => void; onClose: () => void }) {
   const store = controller.store;
   const [pins, setPins] = useState<MessageOut[] | null>(null);
-  // Pin changes arrive as message.updated on the timeline; re-read the list when the store moves.
-  const pinnedSignature = store.messages(channel.id).filter((m) => m.pinned_at).map((m) => m.id).join(",");
+  // Pin changes arrive as message.updated (also for old rows outside the loaded timeline); re-read the list when they move.
+  const pinnedSignature = store.pinned(channel.id).map((m) => m.id).sort().join(",");
   useEffect(() => {
     if (!controller.api) return;
     void controller.api.listPins(channel.id).then(setPins, (error) => controller.setError(error));

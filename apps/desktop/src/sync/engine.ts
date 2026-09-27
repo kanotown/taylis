@@ -53,7 +53,11 @@ export interface EngineDeps {
   connect: WsConnector;
   store: Store;
   getAccessToken: () => string | null;
-  prepareConnection?: () => Promise<void>;
+  /**
+   * Runs before every connection attempt (§7.2): make the access token usable. `refresh` asks for a
+   * new token even when the current one looks valid (the server closed the socket with 4001).
+   */
+  prepareConnection?: (options: { refresh: boolean }) => Promise<void>;
   onSignedOut?: () => void;
   onNotify?: (message: MessageOut, channel: ChannelState) => void;
   /** M12e: a reminder just fired (a nudge in the app while it is open). */
@@ -84,6 +88,9 @@ export interface EngineOptions {
   typingTtlMs?: number;
   /** M15d: a draft is saved on the server this long after typing pauses. */
   draftSaveMs?: number;
+  /** §9: a temporary send failure is retried after this long, doubling up to sendRetryMaxMs. */
+  sendRetryMinMs?: number;
+  sendRetryMaxMs?: number;
 }
 
 export class SyncEngine {
@@ -96,17 +103,30 @@ export class SyncEngine {
   private readonly readCancels = new Map<string, () => void>();
   /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
   private readonly threadReadFloor = new Map<string, number>();
+  /** §10: thread read marks the server has not taken (a failed PUT); sent again after reconnecting. */
+  private readonly unsentThreadReads = new Map<string, number>();
+  /** Threads whose replies were loaded here: their live replies are kept even without a timeline (§7.4). */
+  private readonly loadedThreads = new Set<string>();
   private threadRefreshCancel: (() => void) | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
   private readonly typingSent = new Map<string, number>();
   private ws: WsLike | null = null;
+  /** Bumped by every connection attempt, stop and sign-out: the work of an older attempt is dropped (§5.3). */
+  private connection = 0;
+  /** Close code 4001: the next attempt gets a new access token first. */
+  private refreshBeforeConnect = false;
   private chain: Promise<void> = Promise.resolve();
   private helloResolve: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setTimeout> | null = null;
-  private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the current socket last received anything (ms); the §5.3 deadline counts from here. */
+  private lastFrameAt = 0;
   private stopped = false;
-  private flushing = false;
+  private flushRun: Promise<void> | null = null;
+  private flushAgain = false;
+  private sendRetry: ReturnType<typeof setTimeout> | null = null;
+  private sendAttempt = 0;
   private reconnectAttempt = 0;
   private readonly listeners = new Set<() => void>();
   private readonly opts: Required<EngineOptions>;
@@ -128,6 +148,8 @@ export class SyncEngine {
       typingIntervalMs: options.typingIntervalMs ?? 3_000,
       typingTtlMs: options.typingTtlMs ?? 5_000,
       draftSaveMs: options.draftSaveMs ?? 1_000,
+      sendRetryMinMs: options.sendRetryMinMs ?? 2_000,
+      sendRetryMaxMs: options.sendRetryMaxMs ?? 30_000,
     };
     const api = deps.api;
     this.drafts = new DraftSync({
@@ -168,9 +190,13 @@ export class SyncEngine {
     return next;
   }
 
-  /** Resolves once all queued frames / steps have been processed (tests and UI hooks). */
-  idle(): Promise<void> {
-    return this.chain;
+  /** Resolves once all queued frames / steps and a running outbox flush have been processed (tests). */
+  async idle(): Promise<void> {
+    await this.chain;
+    if (this.flushRun) {
+      await this.flushRun;
+      await this.chain; // events the sends caused
+    }
   }
 
   // --- §7.2 start, §7.5 reconnect ------------------------------------------------------
@@ -182,39 +208,54 @@ export class SyncEngine {
 
   stop(): void {
     this.stopped = true;
-    this.clearTimers();
-    this.ws?.close();
-    this.ws = null;
+    this.connection += 1;
+    this.cancelSendRetry();
+    this.dropSocket();
     this.setStatus("idle");
   }
 
   private async connect(): Promise<void> {
-    if (this.stopped || ["connecting", "online"].includes(this.status)) return;
+    // "online" without a socket means that connection died: connect again (§5.3).
+    if (this.stopped || this.status === "connecting" || (this.status === "online" && this.ws)) return;
+    const attempt = ++this.connection;
+    const current = (): boolean => attempt === this.connection;
     this.setStatus("connecting");
-    try { await this.deps.prepareConnection?.(); } catch (error) {
+    const refresh = this.refreshBeforeConnect;
+    try {
+      await this.deps.prepareConnection?.({ refresh });
+    } catch (error) {
+      if (!current()) return;
       if (error instanceof ApiError && error.isAuth) this.signOut();
       else await this.scheduleReconnect();
       return;
     }
-    if (this.stopped) return;
+    if (!current()) return;
+    if (refresh) this.refreshBeforeConnect = false;
     const token = this.deps.getAccessToken();
     if (!token) {
       this.signOut();
       return;
     }
-    this.setStatus("connecting");
     let ws: WsLike;
     try {
       ws = await this.deps.connect(token);
     } catch {
-      await this.scheduleReconnect();
+      if (current()) await this.scheduleReconnect();
+      return;
+    }
+    if (!current()) {
+      ws.close(); // stopped or superseded while the socket was opening
       return;
     }
     this.ws = ws;
+    // This attempt still owns the socket: once it is closed or dropped, nothing here may report "online".
+    const live = (): boolean => current() && this.ws === ws;
     const hello = new Promise<void>((resolve) => {
       this.helloResolve = resolve;
     });
-    ws.onMessage((raw) => this.onRaw(raw));
+    ws.onMessage((raw) => {
+      if (this.ws === ws) this.onRaw(ws, raw); // a dropped socket's late frames are ignored
+    });
     ws.onClose((code) => void this.handleClose(ws, code));
     ws.send(JSON.stringify({ type: "auth", token }));
 
@@ -222,28 +263,31 @@ export class SyncEngine {
       const timeout = new Promise<"timeout">((resolve) =>
         setTimeout(() => resolve("timeout"), this.opts.helloTimeoutMs),
       );
-      if ((await Promise.race([hello, timeout])) === "timeout") {
-        ws.close();
-        throw new Error("hello timeout");
-      }
+      if ((await Promise.race([hello, timeout])) === "timeout") throw new Error("hello timeout");
+      // Closed or dropped meanwhile (its close handling already scheduled the one reconnect).
+      if (!live()) return;
       // Frames that arrive from here on are queued behind this step (= buffered, §7.2).
       const bootstrap = await this.deps.api.bootstrap();
+      if (!live()) return;
       this.applyBootstrap(bootstrap);
       await this.loadBrowsableChannels();
       if (this.currentChannelId) await this.catchUp(this.currentChannelId);
+      if (!live()) return;
       this.reconnectAttempt = 0;
       this.setStatus("online");
     }).catch(async (err: unknown) => {
+      if (!live()) return;
       if (err instanceof ApiError && err.isAuth) {
         this.signOut();
         return;
       }
-      ws.close();
+      this.dropSocket(ws);
       await this.scheduleReconnect();
     });
-    if (this.status === "online") {
+    if (this.status === "online" && live()) {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
+      this.resendReads(); // §10: marks that did not reach the server
       if (this.currentChannelId) void this.loadLinks(this.currentChannelId); // changed while away (M15f)
     }
   }
@@ -259,21 +303,39 @@ export class SyncEngine {
     await this.connect();
   }
 
+  /** §5.3 close codes: 4003 signs out; 4001 gets a new access token before reconnecting; the rest reconnect. */
   private async handleClose(ws: WsLike, code: number): Promise<void> {
-    if (this.ws !== ws) return; // an older socket
-    this.ws = null;
-    this.clearTimers();
-    if (code === 4003 || code === 4001) {
+    if (!this.detach(ws)) return; // an older socket, or one dropped on purpose
+    if (code === 4003) {
       this.signOut();
       return;
     }
+    // The auth frame came late or the token was refused: only a refused refresh signs out.
+    if (code === 4001) this.refreshBeforeConnect = true;
     if (!this.stopped) await this.scheduleReconnect();
   }
 
-  private signOut(): void {
-    this.clearTimers();
-    this.ws?.close();
+  /** Forget the current socket: its timers stop and a step waiting for its hello wakes up (and sees it is gone). */
+  private detach(ws: WsLike): boolean {
+    if (this.ws !== ws) return false;
     this.ws = null;
+    this.clearTimers();
+    this.helloResolve?.();
+    this.helloResolve = null;
+    return true;
+  }
+
+  /** Detach and close the socket (the current one by default); its own close event is then ignored. */
+  private dropSocket(ws: WsLike | null = this.ws): boolean {
+    if (!ws || !this.detach(ws)) return false;
+    ws.close();
+    return true;
+  }
+
+  private signOut(): void {
+    this.connection += 1;
+    this.cancelSendRetry();
+    this.dropSocket();
     this.setStatus("signed_out");
     this.deps.onSignedOut?.();
   }
@@ -285,7 +347,8 @@ export class SyncEngine {
 
   // --- frames ---------------------------------------------------------------------------
 
-  private onRaw(raw: string): void {
+  private onRaw(ws: WsLike, raw: string): void {
+    this.lastFrameAt = Date.now(); // anything received proves the connection alive (§5.3)
     let frame: ServerFrame;
     try {
       frame = JSON.parse(raw) as ServerFrame;
@@ -295,14 +358,10 @@ export class SyncEngine {
     if (frame.type === "hello") {
       this.helloResolve?.();
       this.helloResolve = null;
-      this.startHeartbeat(frame.heartbeat_interval_sec * 1000);
+      this.startHeartbeat(ws, (frame.heartbeat_interval_sec || 30) * 1000);
       return;
     }
-    if (frame.type === "pong") {
-      if (this.pongTimer) clearTimeout(this.pongTimer);
-      this.pongTimer = null;
-      return;
-    }
+    if (frame.type === "pong") return; // its arrival already moved the deadline
     if (frame.type === "event") void this.enqueue(() => this.applyEvent(frame));
     else if (frame.type === "typing") {
       // Volatile (SYNC_PROTOCOL.md §5.2): shown for a few seconds, never stored.
@@ -324,23 +383,37 @@ export class SyncEngine {
     ws.send(JSON.stringify(parentId ? { type: "typing", channel_id: channelId, parent_id: parentId } : { type: "typing", channel_id: channelId }));
   }
 
-  private startHeartbeat(intervalMs: number): void {
+  private startHeartbeat(ws: WsLike, intervalMs: number): void {
     this.clearTimers();
     const tick = (): void => {
-      const ws = this.ws;
-      if (!ws) return;
+      if (this.ws !== ws) return;
       ws.send(JSON.stringify({ type: "ping", active: this.deps.isActive?.() ?? true }));
-      this.pongTimer = setTimeout(() => ws.close(), intervalMs * 2);
       this.heartbeat = setTimeout(tick, intervalMs);
     };
     this.heartbeat = setTimeout(tick, intervalMs);
+    this.watchSilence(ws, intervalMs * 2);
+  }
+
+  /**
+   * §5.3: the connection counts as lost once nothing (a pong or any other frame) has arrived for
+   * `limitMs`. The deadline runs from the last frame received; sending a ping never extends it, or a
+   * half-open connection would go unnoticed for ever. The dead socket is dropped at once (a close
+   * handshake on it may never finish) and one reconnect is scheduled.
+   */
+  private watchSilence(ws: WsLike, limitMs: number): void {
+    const left = this.lastFrameAt + limitMs - Date.now();
+    if (left > 0) {
+      this.silenceTimer = setTimeout(() => this.watchSilence(ws, limitMs), left);
+      return;
+    }
+    if (this.dropSocket(ws)) void this.scheduleReconnect();
   }
 
   private clearTimers(): void {
     if (this.heartbeat) clearTimeout(this.heartbeat);
-    if (this.pongTimer) clearTimeout(this.pongTimer);
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.heartbeat = null;
-    this.pongTimer = null;
+    this.silenceTimer = null;
   }
 
   private applyBootstrap(bootstrap: BootstrapOut): void {
@@ -350,11 +423,14 @@ export class SyncEngine {
     const seen = new Set<string>();
     for (const channel of bootstrap.channels) {
       seen.add(channel.id);
-      store.upsertChannel(channel, { isMember: true });
+      // §10: the server's read position is authoritative here (no max merge); marks this device could
+      // not send are applied again below and sent once online.
+      store.upsertChannel(channel, channel.read_state ? { isMember: true, lastReadSeq: channel.read_state.last_read_seq } : { isMember: true });
     }
     for (const channel of [...store.channels.values()]) {
       if (channel.isMember && !seen.has(channel.id)) store.removeChannel(channel.id); // no longer a member
     }
+    this.reapplyUnsentReads();
     if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
     if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
     store.replacePresence(bootstrap.presence ?? []);
@@ -549,8 +625,16 @@ export class SyncEngine {
     const message = frame.data["message"] as MessageOut;
     const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
+    if (isNew) {
+      store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
+      this.noteLastMessage(channel.id, message);
+    }
 
     if (channel.syncedSeq === null) {
+      // No timeline here: the channel list moves, and rows this device already holds take the event
+      // (a thread opened from the threads view shows its new replies, §7.4).
+      if (this.holds(channel.id, message)) store.upsertMessage(message);
+      if (thread) store.applyParentThread(channel.id, thread); // only when the parent is held
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
       if (isNew) {
         this.countUnread(message);
@@ -558,7 +642,6 @@ export class SyncEngine {
       }
       return;
     }
-    if (isNew) store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
     if (seq === channel.syncedSeq + 1) {
       store.upsertMessage(message);
       if (thread) store.applyParentThread(channel.id, thread);
@@ -580,18 +663,38 @@ export class SyncEngine {
     // seq <= syncedSeq: already applied.
   }
 
-  /** §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise. */
+  /** Rows this device already holds, or a reply in a thread it opened: kept current without a timeline (§7.4). */
+  private holds(channelId: string, message: MessageOut): boolean {
+    const store = this.deps.store;
+    if (store.message(channelId, message.id)) return true;
+    const parentId = message.parent_id;
+    return !!parentId && (this.loadedThreads.has(parentId) || store.message(channelId, parentId) !== undefined);
+  }
+
+  /** §7.4: a new message in the timeline (top-level, or a reply also sent to the channel) moves the conversation up the DM list. */
+  private noteLastMessage(channelId: string, message: MessageOut): void {
+    if (message.parent_id && !message.also_in_channel) return;
+    const channel = this.deps.store.getChannel(channelId);
+    if (!channel || (channel.last_message_at && Date.parse(channel.last_message_at) >= Date.parse(message.created_at))) return;
+    this.deps.store.updateChannel(channelId, { last_message_at: message.created_at });
+  }
+
+  /** §7.4 / §10: someone else's timeline message is unread until read.updated says otherwise; my own post reads the channel. */
   private countUnread(message: MessageOut): void {
     const store = this.deps.store;
     const me = store.me;
     const channel = store.getChannel(message.channel_id);
     if (!me || !channel) return;
+    if (message.parent_id && !message.also_in_channel) return; // replies are not unread items unless also in the channel (M15c)
     if (message.sender_id === me.id) {
-      this.unreadHold.delete(channel.id); // sending reads the conversation (server does the same)
-      store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
+      // A top-level post reads the conversation (the server does the same); my replies, even those also
+      // sent to the channel, leave the channel's read position alone (§10).
+      if (!message.parent_id) {
+        this.unreadHold.delete(channel.id);
+        store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
+      }
       return;
     }
-    if (message.parent_id && !message.also_in_channel) return; // replies are not unread items unless also in the channel (M15c)
     if (message.seq <= channel.lastReadSeq) return;
     const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
     store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
@@ -602,10 +705,12 @@ export class SyncEngine {
     if (!channel) return;
     // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
     // a mark-as-unread (reason "set") moves the position down as well.
+    const reached = channel.pendingReadSeq !== null && state.last_read_seq >= channel.pendingReadSeq;
     this.deps.store.updateChannel(channelId, {
       lastReadSeq: allowDecrease ? state.last_read_seq : Math.max(channel.lastReadSeq, state.last_read_seq),
       unreadCount: state.unread_count,
       mentionCount: state.mention_count,
+      ...(reached ? { pendingReadSeq: null } : {}),
     });
     if (state.unread_count === 0) this.deps.onRead?.(channelId);
   }
@@ -656,25 +761,26 @@ export class SyncEngine {
     const me = store.me?.id;
     const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && m.sender_id !== me);
     store.updateChannel(channelId, {
+      pendingReadSeq: null, // an unsent advance must not undo this
       lastReadSeq: target,
       unreadCount: later.length,
       mentionCount: later.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(me ?? "")).length,
     });
-    const pending = (async () => {
+    this.trackRead(channelId, (async () => {
       try {
         const state = await this.deps.api.markRead(channelId, target, "set");
         await this.enqueue(async () => this.applyReadState(channelId, state, true));
-      } catch {
-        // the position moved locally; bootstrap or the next mark reconciles
+      } catch (err) {
+        console.warn("mark as unread not sent; the next bootstrap restores the server's position", err);
       }
-    })();
-    this.pendingReads.set(channelId, pending);
-    void pending.finally(() => {
-      if (this.pendingReads.get(channelId) === pending) this.pendingReads.delete(channelId);
-    });
+    })());
   }
 
-  /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
+  /**
+   * §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer
+   * wins. Until the server confirms it the mark stays in `pendingReadSeq` (persisted), so a failed PUT
+   * or quitting during the debounce is sent again after reconnecting.
+   */
   markRead(channelId: string, seq: number, options: { force?: boolean } = {}): void {
     if (this.status !== "online" || this.deps.isActive?.() === false) return;
     if (options.force) this.unreadHold.delete(channelId);
@@ -682,28 +788,68 @@ export class SyncEngine {
     const store = this.deps.store;
     const channel = store.getChannel(channelId);
     if (!channel || !channel.isMember || seq <= channel.lastReadSeq) return;
-    store.updateChannel(channelId, seq >= channel.lastSeq ? { lastReadSeq: seq, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: seq });
-    this.readCancels.get(channelId)?.(); // a newer mark supersedes the pending one
+    store.updateChannel(channelId, seq >= channel.lastSeq ? { lastReadSeq: seq, pendingReadSeq: seq, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: seq, pendingReadSeq: seq });
+    this.debounceRead(channelId, () => this.sendRead(channelId));
+  }
+
+  /** One PUT per key after the debounce; a newer mark supersedes the waiting one. */
+  private debounceRead(key: string, send: () => Promise<void>): void {
+    this.readCancels.get(key)?.();
     let cancelled = false;
-    this.readCancels.set(channelId, () => {
+    this.readCancels.set(key, () => {
       cancelled = true;
     });
-    const pending = (async () => {
+    this.trackRead(key, (async () => {
       await (this.deps.sleep ?? defaultSleep)(this.opts.readDebounceMs);
       if (cancelled) return;
-      this.readCancels.delete(channelId);
-      const target = store.getChannel(channelId)?.lastReadSeq ?? seq;
-      try {
-        const state = await this.deps.api.markRead(channelId, target);
-        await this.enqueue(async () => this.applyReadState(channelId, state));
-      } catch {
-        // the next mark (or bootstrap) retries; the local position already moved
-      }
-    })();
-    this.pendingReads.set(channelId, pending);
+      this.readCancels.delete(key);
+      await send();
+    })());
+  }
+
+  /** Read PUTs in flight, so flushReads() can wait for them. */
+  private trackRead(key: string, pending: Promise<void>): void {
+    this.pendingReads.set(key, pending);
     void pending.finally(() => {
-      if (this.pendingReads.get(channelId) === pending) this.pendingReads.delete(channelId);
+      if (this.pendingReads.get(key) === pending) this.pendingReads.delete(key);
     });
+  }
+
+  /** PUT the channel's unsent mark. Kept for after reconnecting when it does not go through; dropped when refused for good. */
+  private async sendRead(channelId: string): Promise<void> {
+    const store = this.deps.store;
+    const target = store.getChannel(channelId)?.pendingReadSeq ?? null;
+    if (target === null || this.status !== "online") return;
+    try {
+      const state = await this.deps.api.markRead(channelId, target);
+      await this.enqueue(async () => {
+        if (store.getChannel(channelId)?.pendingReadSeq === target) store.updateChannel(channelId, { pendingReadSeq: null });
+        this.applyReadState(channelId, state);
+      });
+    } catch (err) {
+      if (isRetryable(err) || (err instanceof ApiError && err.isAuth)) {
+        console.warn("read mark not sent; retried after reconnecting", err);
+        return;
+      }
+      if (store.getChannel(channelId)?.pendingReadSeq === target) store.updateChannel(channelId, { pendingReadSeq: null }); // e.g. no longer a member
+    }
+  }
+
+  /** After bootstrap (authoritative): marks the server has not taken move the local position again (§10). */
+  private reapplyUnsentReads(): void {
+    const store = this.deps.store;
+    for (const channel of [...store.channels.values()]) {
+      const pending = channel.pendingReadSeq;
+      if (pending === null) continue;
+      if (!channel.isMember || pending <= channel.lastReadSeq) store.updateChannel(channel.id, { pendingReadSeq: null });
+      else store.updateChannel(channel.id, pending >= channel.lastSeq ? { lastReadSeq: pending, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: pending });
+    }
+  }
+
+  /** Once online again: every read mark (channel or thread) that did not reach the server goes out now. */
+  private resendReads(): void {
+    for (const channel of [...this.deps.store.channels.values()]) if (channel.pendingReadSeq !== null) this.trackRead(channel.id, this.sendRead(channel.id));
+    for (const parentId of [...this.unsentThreadReads.keys()]) this.trackRead("thread:" + parentId, this.sendThreadRead(parentId));
   }
 
   /** Waits for debounced read marks (tests). */
@@ -742,35 +888,38 @@ export class SyncEngine {
     if (this.status !== "online" || this.deps.isActive?.() === false) return;
     const store = this.deps.store;
     const entry = store.threads.get(parentId);
-    const current = Math.max(entry?.state.last_read_seq ?? 0, this.threadReadFloor.get(parentId) ?? 0);
-    if (seq <= current) return;
-    this.threadReadFloor.set(parentId, seq);
-    if (entry) {
+    const floor = this.threadReadFloor.get(parentId) ?? 0;
+    // A mark the server has not taken is sent again when the thread is read again (§10).
+    if (seq <= Math.max(entry?.state.last_read_seq ?? 0, floor) && !this.unsentThreadReads.has(parentId)) return;
+    const target = Math.max(seq, floor);
+    this.threadReadFloor.set(parentId, target);
+    if (entry && target > entry.state.last_read_seq) {
       const newest = Math.max(0, ...store.replies(entry.state.channel_id, parentId).map((r) => r.seq ?? 0));
-      store.applyThreadState(seq >= newest ? { ...entry.state, last_read_seq: seq, unread_count: 0, mention_count: 0 } : { ...entry.state, last_read_seq: seq });
+      store.applyThreadState(target >= newest ? { ...entry.state, last_read_seq: target, unread_count: 0, mention_count: 0 } : { ...entry.state, last_read_seq: target });
     }
-    const key = "thread:" + parentId;
-    this.readCancels.get(key)?.();
-    let cancelled = false;
-    this.readCancels.set(key, () => {
-      cancelled = true;
-    });
-    const pending = (async () => {
-      await (this.deps.sleep ?? defaultSleep)(this.opts.readDebounceMs);
-      if (cancelled) return;
-      this.readCancels.delete(key);
-      const target = this.threadReadFloor.get(parentId) ?? seq;
-      try {
-        const state = await this.deps.api.markThreadRead(parentId, target);
-        await this.enqueue(async () => store.applyThreadState(state));
-      } catch {
-        // the next mark (or the refresh) retries; the local position already moved
+    this.debounceRead("thread:" + parentId, () => this.sendThreadRead(parentId));
+  }
+
+  /** PUT the thread's newest mark; remembered for after reconnecting when it does not go through (§10). */
+  private async sendThreadRead(parentId: string): Promise<void> {
+    const target = this.threadReadFloor.get(parentId);
+    if (target === undefined) return;
+    if (this.status !== "online") {
+      this.unsentThreadReads.set(parentId, target);
+      return;
+    }
+    try {
+      const state = await this.deps.api.markThreadRead(parentId, target);
+      if ((this.unsentThreadReads.get(parentId) ?? 0) <= target) this.unsentThreadReads.delete(parentId);
+      await this.enqueue(async () => this.deps.store.applyThreadState(state));
+    } catch (err) {
+      if (isRetryable(err) || (err instanceof ApiError && err.isAuth)) {
+        console.warn("thread read mark not sent; retried after reconnecting", err);
+        this.unsentThreadReads.set(parentId, target);
+      } else {
+        this.unsentThreadReads.delete(parentId); // refused for good (the thread is gone …)
       }
-    })();
-    this.pendingReads.set(key, pending);
-    void pending.finally(() => {
-      if (this.pendingReads.get(key) === pending) this.pendingReads.delete(key);
-    });
+    }
   }
 
   setThreadFollow(parentId: string, following: boolean): Promise<void> {
@@ -823,7 +972,7 @@ export class SyncEngine {
     if (!channel) return;
     if (channel.syncedSeq !== null && channel.lastSeq - channel.syncedSeq > this.opts.gapLimit) {
       store.clearMessages(channelId);
-      channel = store.updateChannel(channelId, { syncedSeq: null, hasOlder: true }) ?? channel;
+      channel = store.updateChannel(channelId, { syncedSeq: null, oldestLoadedSeq: null, hasOlder: true }) ?? channel;
       this.stats.reloads += 1;
     }
     if (channel.syncedSeq === null) {
@@ -832,7 +981,7 @@ export class SyncEngine {
       store.updateChannel(channelId, {
         syncedSeq: page.channel_last_seq,
         lastSeq: Math.max(channel.lastSeq, page.channel_last_seq),
-        hasOlder: page.has_more,
+        ...loadedRange(page),
       });
       return;
     }
@@ -847,18 +996,19 @@ export class SyncEngine {
     }
   }
 
-  /** Scroll-up pagination: older messages by seq cursor. */
+  /**
+   * Scroll-up pagination (§7.3): the page before the loaded range. Never from the lowest seq present:
+   * an old row that arrived on its own (a reaction, a thread parent) would leave a gap no page fills.
+   */
   loadOlder(channelId: string): Promise<void> {
     return this.enqueue(async () => {
       if (this.status !== "online") return;
       const store = this.deps.store;
       const channel = store.getChannel(channelId);
-      if (!channel || !channel.hasOlder) return;
-      const confirmed = store.messages(channelId).filter((m) => m.seq !== null);
-      const oldest = confirmed[0]?.seq ?? null;
-      const page = await this.deps.api.history(channelId, oldest, this.opts.pageSize);
+      if (!channel || channel.syncedSeq === null || !channel.oldestLoadedSeq) return; // nothing loaded yet, or all of it
+      const page = await this.deps.api.history(channelId, channel.oldestLoadedSeq, this.opts.pageSize);
       for (const message of page.messages) store.upsertMessage(message);
-      store.updateChannel(channelId, { hasOlder: page.has_more });
+      store.updateChannel(channelId, loadedRange(page));
     });
   }
 
@@ -896,8 +1046,9 @@ export class SyncEngine {
     return this.flushOutbox();
   }
 
-  /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
+  /** Opening a thread: fetch its replies (live ones keep arriving as timeline events, §7.4). */
   loadReplies(_channelId: string, parentId: string): Promise<void> {
+    this.loadedThreads.add(parentId);
     return this.enqueue(async () => {
       if (this.status !== "online") return;
       for (const reply of await this.deps.api.replies(parentId)) this.deps.store.upsertMessage(reply);
@@ -905,13 +1056,7 @@ export class SyncEngine {
   }
 
   retryFailed(): Promise<void> {
-    for (const item of this.deps.store.outbox) {
-      if (item.failed) {
-        delete item.failed;
-        const placeholder = this.deps.store.getMessage(item.channel_id, LOCAL_PREFIX + item.client_msg_id);
-        if (placeholder) placeholder.failed = false;
-      }
-    }
+    for (const item of this.deps.store.outbox) if (item.failed) this.deps.store.clearOutboxFailed(item.client_msg_id);
     return this.flushOutbox();
   }
 
@@ -922,31 +1067,83 @@ export class SyncEngine {
     store.removeOutbox(clientMsgId);
   }
 
-  /** Sends queued messages one at a time, in order (§9). Stops on temporary failures. */
-  async flushOutbox(): Promise<void> {
-    if (this.flushing || this.status !== "online") return;
-    this.flushing = true;
-    try {
-      for (const item of [...this.deps.store.outbox]) {
-        if (item.failed) continue;
-        try {
-          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? [], {
-            alsoInChannel: item.also_in_channel ?? false,
-            priority: item.priority ?? null,
-            ackRequested: item.ack_requested ?? false,
-          });
-          this.deps.store.upsertMessage(result.message);
-          this.deps.store.removeOutbox(item.client_msg_id);
-        } catch (err) {
-          if (isRetryable(err)) return; // resume after reconnect / next send
-          const reason = err instanceof ApiError ? err.code : "failed";
-          this.deps.store.markOutboxFailed(item.client_msg_id, reason);
-        }
+  /**
+   * §9: sends queued messages one at a time, in order. Each round reads the next unsent item again, so
+   * a message queued while another is in flight goes out in the same run ("again" covers one queued
+   * after the loop's last look). A refusal (4xx) marks the item failed and moves on; a temporary
+   * failure stops the run and, while online, retries after 2 s, 4 s … 30 s (reconnecting also resumes).
+   */
+  flushOutbox(): Promise<void> {
+    if (this.flushRun) {
+      this.flushAgain = true;
+      return this.flushRun;
+    }
+    if (this.status !== "online") return Promise.resolve();
+    const run = (async () => {
+      try {
+        do {
+          this.flushAgain = false;
+          await this.flushPass();
+        } while (this.flushAgain && this.status === "online");
+      } finally {
+        this.flushRun = null;
       }
-    } finally {
-      this.flushing = false;
+    })();
+    this.flushRun = run;
+    return run;
+  }
+
+  private async flushPass(): Promise<void> {
+    this.cancelSendRetry();
+    const store = this.deps.store;
+    for (;;) {
+      if (this.status !== "online") return; // resumed after reconnecting
+      const item = store.outbox.find((i) => !i.failed);
+      if (!item) {
+        this.sendAttempt = 0;
+        return;
+      }
+      try {
+        const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? [], {
+          alsoInChannel: item.also_in_channel ?? false,
+          priority: item.priority ?? null,
+          ackRequested: item.ack_requested ?? false,
+        });
+        store.upsertMessage(result.message);
+        store.removeOutbox(item.client_msg_id);
+        this.sendAttempt = 0;
+      } catch (err) {
+        if (isRetryable(err)) {
+          this.scheduleSendRetry();
+          return;
+        }
+        // The client already refreshed an expired token once; sign-out or the next connection follows.
+        if (err instanceof ApiError && err.isAuth) return;
+        store.markOutboxFailed(item.client_msg_id, err instanceof ApiError ? err.code : "failed");
+      }
     }
   }
+
+  private scheduleSendRetry(): void {
+    if (this.stopped || this.status !== "online") return; // reconnecting flushes again
+    this.sendAttempt += 1;
+    const delay = Math.min(this.opts.sendRetryMinMs * 2 ** (this.sendAttempt - 1), this.opts.sendRetryMaxMs);
+    this.sendRetry = setTimeout(() => {
+      this.sendRetry = null;
+      void this.flushOutbox();
+    }, delay);
+  }
+
+  private cancelSendRetry(): void {
+    if (this.sendRetry) clearTimeout(this.sendRetry);
+    this.sendRetry = null;
+  }
+}
+
+/** §7.3: the loaded range after a history page: its oldest seq, or 0 once the start is reached. */
+function loadedRange(page: HistoryOut): Pick<ChannelState, "oldestLoadedSeq" | "hasOlder"> {
+  if (!page.has_more || page.messages.length === 0) return { oldestLoadedSeq: 0, hasOlder: false };
+  return { oldestLoadedSeq: Math.min(...page.messages.map((m) => m.seq)), hasOlder: true };
 }
 
 function defaultSleep(ms: number): Promise<void> {

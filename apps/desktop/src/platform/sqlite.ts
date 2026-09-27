@@ -32,10 +32,10 @@ export class SqlitePersistence implements Persistence {
     for (const row of await this.db.select<{ key: string; value: string }[]>("SELECT key, value FROM meta")) {
       snapshot.meta[row.key] = row.value;
     }
-    snapshot.users = (await this.db.select<{ json: string }[]>("SELECT json FROM users")).map((r) => JSON.parse(r.json) as UserPublic);
-    snapshot.channels = (await this.db.select<{ json: string }[]>("SELECT json FROM channels")).map((r) => JSON.parse(r.json) as ChannelState);
-    snapshot.messages = (await this.db.select<{ json: string }[]>("SELECT json FROM messages")).map((r) => JSON.parse(r.json) as MessageState);
-    snapshot.outbox = (await this.db.select<{ json: string }[]>("SELECT json FROM outbox ORDER BY created_at")).map((r) => JSON.parse(r.json) as OutboxItem);
+    snapshot.users = parseRows<UserPublic>(await this.db.select<{ json: string }[]>("SELECT json FROM users"), "users");
+    snapshot.channels = parseRows<ChannelState>(await this.db.select<{ json: string }[]>("SELECT json FROM channels"), "channels");
+    snapshot.messages = parseRows<MessageState>(await this.db.select<{ json: string }[]>("SELECT json FROM messages"), "messages");
+    snapshot.outbox = parseRows<OutboxItem>(await this.db.select<{ json: string }[]>("SELECT json FROM outbox ORDER BY created_at"), "outbox");
     return snapshot;
   }
 
@@ -81,4 +81,25 @@ export class SqlitePersistence implements Persistence {
   async deleteOutbox(clientMsgId: string): Promise<void> {
     await this.db.execute("DELETE FROM outbox WHERE client_msg_id = $1", [clientMsgId]);
   }
+
+  async deleteOlderMessages(channelId: string, beforeSeq: number): Promise<void> {
+    await this.db.execute("DELETE FROM messages WHERE channel_id = $1 AND seq IS NOT NULL AND seq < $2", [channelId, beforeSeq]);
+  }
+
+  async clearAll(): Promise<void> {
+    for (const table of ["meta", "users", "channels", "messages", "outbox"]) await this.db.execute(`DELETE FROM ${table}`);
+  }
+}
+
+/** A row that no longer parses is skipped (the next sync writes it again) instead of failing the start. */
+function parseRows<T>(rows: { json: string }[], table: string): T[] {
+  const parsed: T[] = [];
+  for (const row of rows) {
+    try {
+      parsed.push(JSON.parse(row.json) as T);
+    } catch {
+      console.warn(`skipping a corrupt row in ${table}`);
+    }
+  }
+  return parsed;
 }

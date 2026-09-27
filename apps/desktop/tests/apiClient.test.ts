@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiClient, COOKIE_SESSION } from "../src/api/client";
-import { ApiError, NetworkError } from "../src/api/errors";
+import { ApiError, describeError, isRetryable, NetworkError } from "../src/api/errors";
+import { ERROR_MESSAGES, NETWORK_ERROR_MESSAGE, STATUS_MESSAGES, UNKNOWN_ERROR_MESSAGE } from "../src/api/errorMessages";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -332,5 +333,68 @@ describe("sidebar sections (M14f)", () => {
       "DELETE /api/v1/sidebar/channels/c1",
       "DELETE /api/v1/sidebar/sections/s1",
     ]);
+  });
+});
+
+describe("sign-out and error bodies (SYNC_PROTOCOL.md §11, ARCHITECTURE.md §9)", () => {
+  it("refreshes an expired access token so the logout really ends the session, then signs out", async () => {
+    const calls: string[] = [];
+    let signedOut = 0;
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        const path = String(input).replace("http://server", "");
+        const auth = (init?.headers as Record<string, string>)["Authorization"] ?? "-";
+        calls.push(`${path} ${auth}`);
+        if (path === "/api/v1/auth/refresh") return jsonResponse(200, tokens(2));
+        if (auth === "Bearer access-1") return jsonResponse(401, { error: { code: "token_expired", message: "expired", details: {} } });
+        return new Response(null, { status: 204 });
+      },
+      onSignedOut: () => { signedOut += 1; },
+    });
+    client.accessToken = "access-1";
+    client.refreshToken = "refresh-1";
+    await client.logout();
+    expect(calls).toEqual(["/api/v1/auth/logout Bearer access-1", "/api/v1/auth/refresh -", "/api/v1/auth/logout Bearer access-2"]);
+    expect([client.accessToken, client.refreshToken, signedOut]).toEqual([null, null, 1]);
+  });
+
+  it("classifies a non-JSON error page by its status and a non-JSON success as a network failure", async () => {
+    const proxy = new ApiClient("http://server", { fetchImpl: async () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502, headers: { "Content-Type": "text/html" } }) });
+    proxy.accessToken = "a";
+    const err = await proxy.postMessage("c1", "k1", "hi").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect([(err as ApiError).status, (err as ApiError).code, (err as ApiError).isRetryable]).toEqual([502, "http_502", true]);
+    expect(describeError(err)).toBe(STATUS_MESSAGES["5xx"]);
+
+    const portal = new ApiClient("http://server", { fetchImpl: async () => new Response("<html>Wi-Fi login</html>", { status: 200, headers: { "Content-Type": "text/html" } }) });
+    portal.accessToken = "a";
+    const err2 = await portal.bootstrap().catch((e: unknown) => e);
+    expect(err2).toBeInstanceOf(NetworkError);
+    expect(isRetryable(err2)).toBe(true);
+
+    const offline = new ApiClient("http://server", { fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
+    offline.accessToken = "a";
+    const err3 = await offline.uploadAttachment(new Blob(["x"]), "x.txt").catch((e: unknown) => e);
+    expect(err3).toBeInstanceOf(NetworkError);
+    expect(describeError(err3)).toBe(NETWORK_ERROR_MESSAGE);
+  });
+
+  it("knows when the access token is about to expire (§7.2)", async () => {
+    const client = new ApiClient("http://server", { fetchImpl: async () => jsonResponse(200, tokens(1)) });
+    expect(client.accessTokenExpiresWithin(60_000)).toBe(true); // none yet
+    await client.login("alice", "pw", { platform: "desktop" }); // expires_in 900 s
+    expect(client.accessTokenExpiresWithin(60_000)).toBe(false);
+    expect(client.accessTokenExpiresWithin(901_000)).toBe(true);
+  });
+
+  it("puts every error into Japanese: by code, by status, network, never the server's English text", () => {
+    expect(describeError(new ApiError(403, "not_a_member", "You are not a member of this channel"))).toBe(ERROR_MESSAGES["not_a_member"]);
+    expect(describeError(new ApiError(404, "some_new_code", "Something English"))).toBe(STATUS_MESSAGES["404"]);
+    expect(describeError(new ApiError(504, "http_504", "Request failed"))).toBe(STATUS_MESSAGES["5xx"]);
+    expect(describeError(new ApiError(418, "teapot", "I'm a teapot"))).toBe(UNKNOWN_ERROR_MESSAGE);
+    expect(describeError(new NetworkError(new TypeError("Failed to fetch")))).toBe(NETWORK_ERROR_MESSAGE);
+    expect(describeError(new TypeError("Load failed"))).toBe(NETWORK_ERROR_MESSAGE);
+    expect(describeError(new SyntaxError("Unexpected token '<'"))).toBe(UNKNOWN_ERROR_MESSAGE);
+    expect(describeError("/dm @名前")).toBe("/dm @名前"); // already written for the reader
   });
 });

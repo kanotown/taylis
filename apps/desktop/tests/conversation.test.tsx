@@ -18,8 +18,9 @@ function world() {
   const other = server.createChannel("other", me.id);
   const store = new Store();
   store.upsertUser(me);
-  store.upsertChannel(channel, { isMember: true });
-  store.upsertChannel(other, { isMember: true });
+  // Both timelines count as loaded from the start (§7.3: only the loaded range is shown).
+  store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
+  store.upsertChannel(other, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
   const send = vi.fn(async () => {});
   const markRead = vi.fn();
   const controller = { store, engine: { send, markRead, sendTyping: vi.fn(), status: "online", unreadHold: new Map<string, number>() }, api: { uploadAttachment: vi.fn() }, setError: vi.fn(), messageFocus: null, sendKey: "shift-enter" } as unknown as AppController;

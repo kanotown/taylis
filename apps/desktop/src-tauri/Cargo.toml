@@ -17,6 +17,9 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+# External links open in the system browser. 2.5.x matches the tauri 2.11 line (2.6 needs tauri 2.12);
+# keep it in step with @tauri-apps/plugin-opener in package.json.
+tauri-plugin-opener = "~2.5.5"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

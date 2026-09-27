@@ -1,17 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, NetworkError } from "../src/api/errors";
-import { SyncEngine } from "../src/sync/engine";
+import { type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { FakeServer } from "./fakeServer";
+import { FakeServer, MemoryPersistence } from "./fakeServer";
 
-async function setup(options: { hold?: boolean; active?: boolean; prepare?: () => Promise<void> } = {}) {
+async function setup(options: { hold?: boolean; active?: boolean; prepare?: (options: { refresh: boolean }) => Promise<void>; sleep?: (ms: number) => Promise<void>; store?: Store } = {}) {
   const server = new FakeServer();
   const alice = server.addUser("alice");
   const bob = server.addUser("bob");
   const channel = server.createChannel("general", alice.id);
   server.join(channel.id, bob.id);
-  const store = new Store();
+  const store = options.store ?? new Store();
   const notifications: string[] = [];
   const engine = new SyncEngine(
     {
@@ -20,7 +20,7 @@ async function setup(options: { hold?: boolean; active?: boolean; prepare?: () =
       store,
       getAccessToken: () => "token",
       prepareConnection: options.prepare,
-      sleep: async () => {},
+      sleep: options.sleep ?? (async () => {}),
       random: () => 0.5,
       onNotify: (message) => notifications.push(message.body),
       isActive: () => options.active ?? false,
@@ -30,6 +30,21 @@ async function setup(options: { hold?: boolean; active?: boolean; prepare?: () =
   if (options.hold) server.holdEvents = true;
   return { server, alice, bob, channel, store, engine, notifications };
 }
+
+/** Swap the engine's API (a wrapped or failing one) after it was built. */
+function useApi(engine: SyncEngine, api: SyncApi): void {
+  (engine as unknown as { deps: { api: SyncApi } }).deps.api = api;
+}
+
+/** Let reconnects, bootstraps and sends run until `done` (or give up after a while). */
+async function settle(engine: SyncEngine, done: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !done(); i++) await engine.idle();
+  await engine.idle();
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("SyncEngine", () => {
   it("bootstraps and loads the latest page of the opened channel", async () => {
@@ -738,6 +753,375 @@ describe("pins and bookmarks (M11c)", () => {
     server.setBookmark(bob.id, message.id, true);
     await engine.idle();
     expect(store.isBookmarked(message.id)).toBe(true);
+    engine.stop();
+  });
+});
+
+describe("send queue (§9)", () => {
+  it("sends a message queued while another is in flight in the same run", async () => {
+    const { server, bob, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const api = server.apiFor(bob.id);
+    const post = api.postMessage;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    api.postMessage = async (...args: Parameters<SyncApi["postMessage"]>) => {
+      if (++calls === 1) await gate; // "one" stays in flight until released
+      return post(...args);
+    };
+    useApi(engine, api);
+    const first = engine.send(channel.id, "one");
+    const second = engine.send(channel.id, "two"); // queued while "one" is on the wire
+    release();
+    await Promise.all([first, second]);
+    await engine.idle();
+    expect(store.outbox).toHaveLength(0);
+    expect(store.messages(channel.id).map((m) => [m.body, m.pending ?? false])).toEqual([["one", false], ["two", false]]);
+    expect(server.channels.get(channel.id)!.messages.map((m) => m.body)).toEqual(["one", "two"]);
+    engine.stop();
+  });
+
+  it("retries a temporary failure (a proxy's 502 page) after 2 s, then 4 s, while online", async () => {
+    vi.useFakeTimers();
+    const { server, bob, channel, store, engine } = await setup();
+    await engine.start();
+    const api = server.apiFor(bob.id);
+    const post = api.postMessage;
+    let attempts = 0;
+    api.postMessage = async (...args: Parameters<SyncApi["postMessage"]>) => {
+      if (++attempts <= 2) throw new ApiError(502, "http_502", "Request failed");
+      return post(...args);
+    };
+    useApi(engine, api);
+    await engine.send(channel.id, "eventually");
+    expect([attempts, store.outbox.length]).toEqual([1, 1]);
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(attempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attempts).toBe(3);
+    await engine.idle();
+    expect(store.outbox).toHaveLength(0);
+    expect(server.channels.get(channel.id)!.messages.map((m) => m.body)).toEqual(["eventually"]);
+    engine.stop();
+  });
+
+  it("marks a refused send failed, goes on with the next one, and keeps the failure across a restart", async () => {
+    const persistence = new MemoryPersistence();
+    const { server, bob, channel, store, engine } = await setup({ store: new Store(persistence) });
+    await engine.start();
+    await engine.openChannel(channel.id);
+    engine.stop(); // both are queued while offline
+    await engine.send(channel.id, "refused");
+    await engine.send(channel.id, "fine");
+    const api = server.apiFor(bob.id);
+    const post = api.postMessage;
+    api.postMessage = async (...args: Parameters<SyncApi["postMessage"]>) => {
+      if (args[2] === "refused") throw new ApiError(422, "validation_error", "bad");
+      return post(...args);
+    };
+    useApi(engine, api);
+    await engine.start();
+    await engine.idle();
+    expect(store.outbox.map((i) => [i.body, i.failed])).toEqual([["refused", "validation_error"]]);
+    expect(store.messages(channel.id).map((m) => [m.body, m.failed ?? false])).toEqual([["fine", false], ["refused", true]]);
+    engine.stop();
+
+    await store.flushPersistence();
+    const restarted = new Store(persistence);
+    await restarted.load();
+    expect(restarted.messages(channel.id).map((m) => [m.body, m.failed ?? false])).toEqual([["fine", false], ["refused", true]]);
+    const second = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: restarted, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 3 });
+    await second.start();
+    await second.idle();
+    expect(restarted.outbox.map((i) => i.body)).toEqual(["refused"]); // not sent again until 再送
+    await second.retryFailed();
+    await second.idle();
+    expect(restarted.outbox).toEqual([]);
+    expect(server.channels.get(channel.id)!.messages.map((m) => m.body)).toEqual(["fine", "refused"]);
+    second.stop();
+  });
+});
+
+describe("connection lifecycle (§5.3)", () => {
+  it("never reports online for a connection that closed during bootstrap, and reconnects once", async () => {
+    const sleeping: Array<() => void> = [];
+    const { server, alice, bob, channel, store, engine } = await setup({ sleep: () => new Promise<void>((resolve) => { sleeping.push(resolve); }) });
+    const api = server.apiFor(bob.id);
+    const bootstrap = api.bootstrap;
+    let first = true;
+    api.bootstrap = async () => {
+      if (first) {
+        first = false;
+        server.disconnect(bob.id); // the socket dies while bootstrap is on its way
+      }
+      return bootstrap();
+    };
+    useApi(engine, api);
+    await engine.openChannel(channel.id);
+    await engine.start();
+    await engine.idle();
+    expect(engine.status).toBe("offline"); // not "online" without a socket
+    expect(sleeping).toHaveLength(1); // one reconnect waiting for its backoff
+    sleeping.shift()!();
+    await settle(engine, () => engine.status === "online");
+    expect(engine.status).toBe("online");
+    expect(server.socketsOf(bob.id)).toHaveLength(1);
+    server.post(channel.id, alice.id, "over the new socket");
+    await engine.idle();
+    expect(store.messages(channel.id).map((m) => m.body)).toEqual(["over the new socket"]);
+    engine.stop();
+  });
+
+  it("drops a silent connection 60 s after the last frame (not after the first unanswered ping) and reconnects", async () => {
+    vi.useFakeTimers();
+    const { server, bob, engine } = await setup();
+    await engine.start();
+    const first = server.socketsOf(bob.id)[0]!;
+    first.pongDelayMs = 1_000;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000); // pings every 30 s, pongs a second later: nothing happens
+    expect(first.closed).toBe(false);
+    first.silent = true; // half-open from here on (the last frame was the pong just now): pings go out, nothing comes back
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect([first.closed, engine.status]).toEqual([false, "online"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(first.closed).toBe(true);
+    await settle(engine, () => engine.status === "online");
+    const sockets = server.socketsOf(bob.id);
+    expect(engine.status).toBe("online");
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]).not.toBe(first);
+    engine.stop();
+  });
+
+  it("keeps a slow connection whose pongs arrive after the next ping", async () => {
+    vi.useFakeTimers();
+    const { server, bob, engine } = await setup();
+    await engine.start();
+    const first = server.socketsOf(bob.id)[0]!;
+    first.pongDelayMs = 1_000;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
+    first.pongDelayMs = 30_500; // each pong lands after the next ping, yet something arrives within every 60 s
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect([first.closed, engine.status, engine.stats.reconnects]).toEqual([false, "online", 0]);
+    engine.stop();
+  });
+
+  it("gets a new access token and reconnects after close 4001; only a refused refresh signs out", async () => {
+    const refreshes: boolean[] = [];
+    let refuse = false;
+    let signedOut = false;
+    const { server, bob, engine } = await setup({
+      prepare: async ({ refresh }) => {
+        refreshes.push(refresh);
+        if (refresh && refuse) throw new ApiError(401, "session_revoked", "revoked");
+      },
+    });
+    (engine as unknown as { deps: { onSignedOut: () => void } }).deps.onSignedOut = () => {
+      signedOut = true;
+    };
+    await engine.start();
+    expect(refreshes).toEqual([false]);
+    server.disconnect(bob.id, 4001);
+    await settle(engine, () => engine.status === "online");
+    expect([engine.status, signedOut]).toEqual(["online", false]);
+    expect(refreshes).toEqual([false, true]);
+    refuse = true;
+    server.disconnect(bob.id, 4001);
+    await settle(engine, () => engine.status === "signed_out");
+    expect([engine.status, signedOut]).toEqual(["signed_out", true]);
+  });
+});
+
+describe("timeline range (§7.3)", () => {
+  it("keeps old rows that arrive on their own out of the timeline and pages back from the loaded range", async () => {
+    const { server, alice, channel, store, engine } = await setup(); // pages of 3
+    const posted = Array.from({ length: 10 }, (_, i) => server.post(channel.id, alice.id, `m${i + 1}`).message);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const bodies = () => store.messages(channel.id).map((m) => m.body);
+    expect(bodies()).toEqual(["m8", "m9", "m10"]);
+    expect(store.getChannel(channel.id)).toMatchObject({ oldestLoadedSeq: 8, hasOlder: true });
+
+    // Old rows arrive by themselves: a reaction event, a reply under an old parent, an API response.
+    server.react(channel.id, alice.id, posted[1]!.id, "👍", true);
+    server.post(channel.id, alice.id, "late reply", undefined, posted[0]!.id);
+    await engine.idle();
+    store.upsertMessage(server.messageByBody(channel.id, "m4")); // e.g. reacting in a search result
+    expect(bodies()).toEqual(["m8", "m9", "m10"]); // stored, but no gap in the timeline
+    expect(store.message(channel.id, posted[1]!.id)?.reactions?.map((r) => r.emoji)).toEqual(["👍"]);
+
+    await engine.loadOlder(channel.id); // before_seq = 8, not 2
+    expect(bodies()).toEqual(["m5", "m6", "m7", "m8", "m9", "m10"]);
+    expect(Store.fromSnapshot(store.snapshot()).messages(channel.id).map((m) => m.body)).toEqual(bodies()); // the range is persisted
+    await engine.loadOlder(channel.id);
+    expect(bodies()).toEqual(["m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10"]);
+    await engine.loadOlder(channel.id);
+    expect(bodies()).toEqual(posted.map((m) => m.body));
+    expect(store.getChannel(channel.id)).toMatchObject({ oldestLoadedSeq: 0, hasOlder: false });
+    expect(store.message(channel.id, posted[0]!.id)?.reply_count).toBe(1);
+    engine.stop();
+  });
+
+  it("keeps the newest 500 messages per channel when loading and moves the range start past the pruned ones", async () => {
+    const persistence = new MemoryPersistence();
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const channel = server.createChannel("general", alice.id);
+    for (let i = 1; i <= 520; i++) server.post(channel.id, alice.id, `m${i}`);
+    const writer = new Store(persistence);
+    writer.upsertChannel(channel, { isMember: true, syncedSeq: 520, oldestLoadedSeq: 0, hasOlder: false });
+    for (const message of server.channels.get(channel.id)!.messages) writer.upsertMessage(message);
+    writer.putPlaceholder({ id: "local:c1", channel_id: channel.id, sender_id: alice.id, seq: null, updated_seq: -1, client_msg_id: "c1", body: "unsent", created_at: "9999", edited_at: null, deleted: false, pending: true });
+    await writer.flushPersistence();
+
+    const reader = new Store(persistence);
+    await reader.load();
+    const timeline = reader.messages(channel.id);
+    expect(timeline).toHaveLength(501);
+    expect([timeline[0]!.body, timeline[499]!.body, timeline[500]!.body]).toEqual(["m21", "m520", "unsent"]);
+    expect(reader.getChannel(channel.id)).toMatchObject({ oldestLoadedSeq: 21, hasOlder: true });
+    await reader.flushPersistence();
+    expect(persistence.messages.size).toBe(501); // pruned on disk too
+  });
+});
+
+describe("threads without a loaded timeline (§7.4)", () => {
+  it("shows new replies in a thread opened from the threads view although the channel was never opened", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const { message: parent } = server.post(channel.id, alice.id, `question for <@${bob.id}>`);
+    server.post(channel.id, alice.id, "first answer", undefined, parent.id);
+    await engine.start();
+    await engine.loadThreads("all");
+    expect(store.getChannel(channel.id)?.syncedSeq).toBeNull();
+    await engine.loadReplies(channel.id, parent.id); // the thread pane opens
+    const { message: second } = server.post(channel.id, alice.id, "second answer", undefined, parent.id);
+    await engine.idle();
+    expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["first answer", "second answer"]);
+    server.edit(channel.id, alice.id, second.id, "second answer (edited)");
+    await engine.idle();
+    expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["first answer", "second answer (edited)"]);
+    expect(store.messages(channel.id)).toEqual([]); // still no timeline
+    engine.stop();
+  });
+});
+
+describe("read positions (§10)", () => {
+  it("takes the server's position at bootstrap and sends a mark that failed again after reconnecting", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
+    for (const body of ["m1", "m2", "m3"]) server.post(channel.id, alice.id, body);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const api = server.apiFor(bob.id);
+    api.failNext(new NetworkError("offline"));
+    useApi(engine, api);
+    engine.markRead(channel.id, 3);
+    await engine.flushReads();
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(0);
+    expect(store.getChannel(channel.id)).toMatchObject({ lastReadSeq: 3, unreadCount: 0, pendingReadSeq: 3 });
+
+    server.disconnect(bob.id);
+    await settle(engine, () => engine.status === "online");
+    await engine.flushReads();
+    expect(server.readState(bob.id, channel.id)).toMatchObject({ last_read_seq: 3, unread_count: 0 });
+    expect(store.getChannel(channel.id)).toMatchObject({ lastReadSeq: 3, unreadCount: 0, pendingReadSeq: null });
+    engine.stop();
+  });
+
+  it("does not keep a local position the server never got, so the channel can be read again", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
+    for (const body of ["m1", "m2", "m3"]) server.post(channel.id, alice.id, body);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    store.updateChannel(channel.id, { lastReadSeq: 3 }); // ahead of the server, nothing left to send
+    server.disconnect(bob.id);
+    await settle(engine, () => engine.status === "online");
+    expect(store.getChannel(channel.id)).toMatchObject({ lastReadSeq: 0, unreadCount: 3 }); // bootstrap is authoritative
+    engine.markRead(channel.id, 3);
+    await engine.flushReads();
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(3);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(0);
+    engine.stop();
+  });
+
+  it("sends a mark made just before the app closed (during the debounce) after the restart", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true, sleep: () => new Promise<void>(() => {}) }); // the debounce never ends
+    for (const body of ["m1", "m2"]) server.post(channel.id, alice.id, body);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    engine.markRead(channel.id, 2);
+    engine.stop(); // the app quits during the debounce
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(0);
+
+    const restarted = Store.fromSnapshot(store.snapshot());
+    const second = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store: restarted, getAccessToken: () => "t", sleep: async () => {} }, { pageSize: 3 });
+    await second.start();
+    await second.flushReads();
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(2);
+    expect(restarted.getChannel(channel.id)).toMatchObject({ lastReadSeq: 2, unreadCount: 0, pendingReadSeq: null });
+    second.stop();
+  });
+
+  it("sends a thread read mark that failed again after reconnecting", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true });
+    const { message: parent } = server.post(channel.id, alice.id, `topic <@${bob.id}>`);
+    const { message: reply } = server.post(channel.id, alice.id, "reply", undefined, parent.id);
+    await engine.start();
+    await engine.loadThreads("all");
+    await engine.loadReplies(channel.id, parent.id);
+    const api = server.apiFor(bob.id);
+    api.failNext(new NetworkError("offline"));
+    useApi(engine, api);
+    engine.markThreadRead(parent.id, reply.seq);
+    await engine.flushReads();
+    expect(server.threadState(bob.id, parent.id).last_read_seq).toBe(0);
+    expect(store.threads.get(parent.id)?.state.unread_count).toBe(0); // shown as read meanwhile
+
+    server.disconnect(bob.id);
+    await settle(engine, () => engine.status === "online");
+    await engine.flushReads();
+    expect(server.threadState(bob.id, parent.id)).toMatchObject({ last_read_seq: reply.seq, unread_count: 0 });
+    engine.stop();
+  });
+
+  it("leaves the channel's unread count and read position alone when I reply in a thread", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const { message: topic } = server.post(channel.id, alice.id, "topic");
+    await engine.idle();
+    expect(store.getChannel(channel.id)).toMatchObject({ unreadCount: 1, lastReadSeq: 0 });
+    await engine.send(channel.id, "my reply", undefined, topic.id);
+    await engine.send(channel.id, "shared reply", undefined, topic.id, [], { alsoInChannel: true });
+    await engine.idle();
+    expect(store.getChannel(channel.id)).toMatchObject({ unreadCount: 1, lastReadSeq: 0 });
+    expect(server.readState(bob.id, channel.id)).toMatchObject({ last_read_seq: 0, unread_count: 1 });
+    await engine.send(channel.id, "top-level"); // posting in the channel reads it
+    await engine.idle();
+    expect(store.getChannel(channel.id)).toMatchObject({ unreadCount: 0, lastReadSeq: 4 });
+    expect(server.readState(bob.id, channel.id)).toMatchObject({ last_read_seq: 4, unread_count: 0 });
+    engine.stop();
+  });
+});
+
+describe("DM list order (§7.4)", () => {
+  it("moves a conversation's last_message_at with each new timeline message", async () => {
+    const { server, alice, bob, store, engine } = await setup();
+    const dm = server.createChannel("", alice.id, "dm");
+    server.join(dm.id, bob.id);
+    await engine.start();
+    expect(store.getChannel(dm.id)?.last_message_at).toBeNull();
+    const { message } = server.post(dm.id, alice.id, "hi");
+    await engine.idle();
+    expect(store.getChannel(dm.id)?.last_message_at).toBe(message.created_at);
+    server.post(dm.id, alice.id, "in a thread", undefined, message.id);
+    await engine.idle();
+    expect(store.getChannel(dm.id)?.last_message_at).toBe(message.created_at); // a plain reply does not move it
     engine.stop();
   });
 });

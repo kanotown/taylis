@@ -1,5 +1,8 @@
 import { isTauri } from "./env";
 
+/** Browser notifications still on screen, closed at sign-out (§11). */
+const shown = new Set<Notification>();
+
 /** OS notification (tauri-plugin-notification; the Notification API in browser dev). */
 export async function notify(title: string, body: string): Promise<void> {
   if (isTauri()) {
@@ -11,5 +14,17 @@ export async function notify(title: string, body: string): Promise<void> {
   }
   if (typeof Notification === "undefined") return;
   if (Notification.permission === "default") await Notification.requestPermission();
-  if (Notification.permission === "granted") new Notification(title, { body });
+  if (Notification.permission !== "granted") return;
+  const notification = new Notification(title, { body });
+  shown.add(notification);
+  notification.onclose = () => shown.delete(notification);
+}
+
+/**
+ * Sign-out (§11): take our notifications off the screen. Only possible in a browser: the desktop
+ * notification plugin cannot remove delivered notifications (its removeAllActive is mobile only).
+ */
+export function clearNotifications(): void {
+  for (const notification of shown) notification.close();
+  shown.clear();
 }

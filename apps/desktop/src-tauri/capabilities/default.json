@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: local SQLite store, OS notifications, the unread badge and the credential-store commands.",
+  "description": "Main window: local SQLite store, OS notifications, the unread badge, external links in the system browser, saving a download where the user picked in the save dialog, and the credential-store commands.",
   "windows": [
     "main"
   ],
@@ -14,23 +14,15 @@
     "sql:allow-select",
     "notification:default",
     "dialog:default",
+    "fs:allow-write-file",
     {
-      "identifier": "fs:allow-write-file",
+      "identifier": "opener:allow-open-url",
       "allow": [
         {
-          "path": "$HOME/**"
+          "url": "https://*"
         },
         {
-          "path": "$DOWNLOAD/**"
-        },
-        {
-          "path": "$DESKTOP/**"
-        },
-        {
-          "path": "$DOCUMENT/**"
-        },
-        {
-          "path": "$TEMP/**"
+          "url": "http://*"
         }
       ]
     }

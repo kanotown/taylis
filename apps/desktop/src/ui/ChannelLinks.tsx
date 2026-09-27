@@ -3,6 +3,7 @@ import { Link2, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { ChannelLinkOut } from "../api/types";
+import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canPostTopLevel } from "./channels";
@@ -45,6 +46,7 @@ export function ChannelLinksBar({ controller, channel, onAdd, onEdit }: {
             target="_blank"
             rel="noreferrer noopener"
             title={link.url}
+            onClick={(event) => openExternalLink(event, link.url)}
             className="inline-flex max-w-[240px] shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink hover:bg-panel"
           >
             <Link2 size={13} className="shrink-0 text-muted" />

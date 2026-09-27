@@ -18,7 +18,17 @@ export interface ChannelState extends ChannelOut {
   lastReadSeq: number;
   unreadCount: number;
   mentionCount: number;
+  /**
+   * A read position shown here that the server has not confirmed yet (a failed PUT, or the app closed
+   * during the debounce); sent again after reconnecting (§10). null when there is none.
+   */
+  pendingReadSeq: number | null;
   hasOlder: boolean;
+  /**
+   * §7.3: the oldest seq of the contiguous range loaded by the latest page and 「以前を読み込む」 (0 once
+   * the start is reached; null while no timeline is loaded). Only rows at or after it are shown.
+   */
+  oldestLoadedSeq: number | null;
   /** Per-user notification preference (PUSH_NOTIFICATIONS.md §4); null = the channel type's default. */
   notificationLevel: NotificationLevel | null;
   mutedUntil: string | null;

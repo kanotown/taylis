@@ -61,12 +61,14 @@ export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmoji
   return pending;
 }
 
+/** The image of `emoji`: a component reused for another emoji never shows the previous one (state is keyed by id). */
 export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): string | null {
-  const [url, setUrl] = useState<string | null>(urls.get(emoji.id) ?? null);
+  const [loaded, setLoaded] = useState<{ id: string; url: string | null } | null>(null);
+  const url = urls.get(emoji.id) ?? (loaded?.id === emoji.id ? loaded.url : null);
   useEffect(() => {
-    if (url || !controller.api) return;
+    if (urls.has(emoji.id) || !controller.api) return;
     let live = true;
-    void loadCustomEmojiUrl(controller, emoji).then((next) => { if (live) setUrl(next); });
+    void loadCustomEmojiUrl(controller, emoji).then((next) => { if (live) setLoaded({ id: emoji.id, url: next }); });
     return () => { live = false; };
   }, [emoji.id, controller.api]);
   return url;

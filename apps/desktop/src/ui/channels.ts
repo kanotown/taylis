@@ -1,8 +1,16 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
-import type { ChannelState, SidebarSectionOut } from "../sync/types";
+import type { ChannelState, SidebarSectionOut, UserPublic } from "../sync/types";
 
 export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
+}
+
+/** A conversation's name: `#name` for channels, the other members for DMs (also the notification title). */
+export function conversationTitle(channel: ChannelState, users: ReadonlyMap<string, UserPublic>, meId: string | null): string {
+  if (channel.type === "public" || channel.type === "private") return `#${channel.name ?? ""}`;
+  const others = (channel.dm_user_ids ?? []).filter((id) => id !== meId);
+  if (others.length === 0) return "自分へのメモ";
+  return others.map((id) => users.get(id)?.display_name ?? "…").join(", ");
 }
 
 /** M15a: whether I may start top-level posts here; thread replies stay open to every member. */
