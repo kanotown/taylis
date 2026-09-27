@@ -11,6 +11,7 @@ import type {
   ChannelOut,
   ChannelReadStateOut,
   FavoriteStateOut,
+  CustomEmojiOut,
   FileListOut,
   ReminderCreate,
   ReminderOut,
@@ -218,6 +219,37 @@ export class ApiClient {
       { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
     );
     return { message: data, created: status === 201 };
+  }
+
+  // --- custom emoji (M12f) ---------------------------------------------------------------
+
+  listEmoji(): Promise<CustomEmojiOut[]> {
+    return this.request("GET", "/api/v1/emoji");
+  }
+
+  /** POST /emoji (multipart): a name and a small image; any member may add one. */
+  async uploadEmoji(name: string, file: Blob, filename: string): Promise<CustomEmojiOut> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const form = new FormData();
+    form.append("name", name);
+    form.append("file", file, filename);
+    const send = async (): Promise<Response> =>
+      this.fetchImpl(`${this.baseUrl}/api/v1/emoji`, {
+        method: "POST",
+        headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
+        body: form,
+      });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return (await response.json()) as CustomEmojiOut;
+  }
+
+  deleteEmoji(emojiId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/emoji/${emojiId}`);
   }
 
   // --- reminders (M12e) ------------------------------------------------------------------

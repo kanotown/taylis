@@ -15,6 +15,7 @@ import { channelTitle } from "./MainScreen";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { firstLink } from "./links";
+import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 
@@ -326,7 +327,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         ) : (
           <>
             {message.body && (
-              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} />
+              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
@@ -360,7 +361,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
                     reacted ? "border-accent bg-accent-soft text-ink" : "border-line bg-panel text-ink hover:border-accent/50",
                   )}
                 >
-                  <span>{reaction.emoji}</span>
+                  <span>{(() => { const name = customEmojiName(reaction.emoji); const custom = name ? store.customEmoji.get(name) : undefined; return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={16} /> : reaction.emoji; })()}</span>
                   <span className="font-medium">{reaction.count}</span>
                 </button>
               );
@@ -384,6 +385,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             <PopoverContent align="end" className="w-auto p-3">
               <EmojiPicker
                 recent={readRecentEmoji()}
+                custom={[...store.customEmoji.values()]}
+                controller={controller}
                 onPick={(entry) => {
                   setPickerOpen(false);
                   rememberEmoji(entry.glyph);

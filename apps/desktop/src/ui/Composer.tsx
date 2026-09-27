@@ -7,7 +7,8 @@ import type { ChannelState } from "../sync/types";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
-import { completeEmoji, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
+import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
+import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
@@ -59,7 +60,8 @@ export function Composer({
   const candidates = query ? mentionCandidates(query.query, [...store.users.values()]) : [];
   // `:tada` completes to an emoji (M11f) when no mention is being typed.
   const emojiAt = query ? null : emojiQuery(text, caret);
-  const emojiHits = emojiAt ? emojiCandidates(emojiAt.query) : [];
+  const emojiHits = emojiAt ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
+  const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   const listLength = candidates.length > 0 ? candidates.length : emojiHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -261,6 +263,7 @@ export function Composer({
         void pickFiles(event.dataTransfer.files);
       }}
     >
+      {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       {emojiHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
           {emojiHits.map((entry, index) => (
@@ -272,7 +275,12 @@ export function Composer({
                 pickEmoji(entry);
               }}
             >
-              <span className="text-lg leading-none">{entry.glyph}</span> <span className="text-muted">:{entry.shortcode}:</span>
+              {entry.category === "custom" && store.customEmoji.get(entry.shortcode) ? (
+                <CustomEmojiImage controller={controller} emoji={store.customEmoji.get(entry.shortcode)!} size={20} />
+              ) : (
+                <span className="text-lg leading-none">{entry.glyph}</span>
+              )}{" "}
+              <span className="text-muted">:{entry.shortcode}:</span>
             </li>
           ))}
         </ul>
@@ -356,7 +364,7 @@ export function Composer({
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3">
-                <EmojiPicker recent={readRecentEmoji()} onPick={insertEmoji} />
+                <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
               </PopoverContent>
             </PopoverRoot>
             <span className="mx-1 h-4 w-px bg-line" />

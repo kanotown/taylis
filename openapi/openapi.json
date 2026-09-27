@@ -233,6 +233,25 @@
         "title": "AttachmentOut",
         "type": "object"
       },
+      "Body_add_emoji_api_v1_emoji_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "file"
+        ],
+        "title": "Body_add_emoji_api_v1_emoji_post",
+        "type": "object"
+      },
       "Body_upload_api_v1_attachments_post": {
         "properties": {
           "file": {
@@ -329,6 +348,14 @@
               "$ref": "#/components/schemas/ChannelOut"
             },
             "title": "Channels",
+            "type": "array"
+          },
+          "custom_emoji": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CustomEmojiOut"
+            },
+            "title": "Custom Emoji",
             "type": "array"
           },
           "favorites": {
@@ -672,6 +699,52 @@
           }
         },
         "title": "ChannelUpdate",
+        "type": "object"
+      },
+      "CustomEmojiOut": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "content_type",
+          "width",
+          "height",
+          "created_by",
+          "created_at"
+        ],
+        "title": "CustomEmojiOut",
         "type": "object"
       },
       "DeltaOut": {
@@ -4732,6 +4805,170 @@
         "summary": "Get Or Create Dm",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/api/v1/emoji": {
+      "get": {
+        "description": "Every custom emoji, by name (also part of bootstrap).",
+        "operationId": "list_emoji_api_v1_emoji_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomEmojiOut"
+                  },
+                  "title": "Response List Emoji Api V1 Emoji Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Emoji",
+        "tags": [
+          "emoji"
+        ]
+      },
+      "post": {
+        "description": "M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image.",
+        "operationId": "add_emoji_api_v1_emoji_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_emoji_api_v1_emoji_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomEmojiOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Emoji",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/{emoji_id}": {
+      "delete": {
+        "description": "The creator or an admin removes it; bodies keep the text `:name:`.",
+        "operationId": "delete_emoji_api_v1_emoji__emoji_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "emoji_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Emoji Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Emoji",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/{emoji_id}/image": {
+      "get": {
+        "operationId": "emoji_image_api_v1_emoji__emoji_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "emoji_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Emoji Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Emoji Image",
+        "tags": [
+          "emoji"
         ]
       }
     },

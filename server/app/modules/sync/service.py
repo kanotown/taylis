@@ -10,6 +10,7 @@ from app.core.time import utcnow
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.bookmarks import service as bookmarks
 from app.modules.channels import service as channels
+from app.modules.emoji import service as emoji
 from app.modules.favorites import service as favorites
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
@@ -49,6 +50,7 @@ async def bootstrap(
         threads=await threads.summary_for(db, actor.id),
         bookmarks=await bookmarks.ids_for(db, actor.id),
         favorites=await favorites.ids_for(db, actor.id),
+        custom_emoji=await emoji.list_all(db),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

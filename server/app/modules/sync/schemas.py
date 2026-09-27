@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.modules.channels.schemas import ChannelOut
+from app.modules.emoji.schemas import CustomEmojiOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
 
@@ -34,3 +35,5 @@ class BootstrapOut(BaseModel):
     bookmarks: list[UUID] = []
     # My starred channels (M12a) among the channels above, oldest star first.
     favorites: list[UUID] = []
+    # Custom emoji (M12f): the whole table, by name; changes arrive as emoji.updated.
+    custom_emoji: list[CustomEmojiOut] = []

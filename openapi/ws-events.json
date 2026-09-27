@@ -654,6 +654,75 @@
         "type": "object"
       }
     },
+    "emoji.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CustomEmojiOut": {
+            "properties": {
+              "content_type": {
+                "title": "Content Type",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "height": {
+                "title": "Height",
+                "type": "integer"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "width": {
+                "title": "Width",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "content_type",
+              "width",
+              "height",
+              "created_by",
+              "created_at"
+            ],
+            "title": "CustomEmojiOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "emoji": {
+            "$ref": "#/$defs/CustomEmojiOut"
+          }
+        },
+        "required": [
+          "emoji",
+          "deleted"
+        ],
+        "title": "EmojiUpdatedData",
+        "type": "object"
+      }
+    },
     "favorite.updated": {
       "audience": "user",
       "consumes_seq": false,

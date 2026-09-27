@@ -1,4 +1,4 @@
-import type { AttachmentOut, ChannelOut, ChannelState, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelOut, ChannelState, CustomEmojiOut, MessageOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -54,6 +54,8 @@ export class Store {
   readonly scheduled = new Map<string, ScheduledOut>();
   /** My open reminders (M12e): fired ones wait for 完了, pending ones for their time. */
   readonly reminders = new Map<string, ReminderOut>();
+  /** Custom emoji by name (M12f); from bootstrap and emoji.updated, not persisted. */
+  readonly customEmoji = new Map<string, CustomEmojiOut>();
   version = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
@@ -293,6 +295,20 @@ export class Store {
         mention_count: Math.max(0, this.threadSummary.mention_count + mention),
       };
     }
+    this.emit();
+  }
+
+  // --- custom emoji (M12f) -----------------------------------------------------------------
+
+  replaceCustomEmoji(rows: CustomEmojiOut[]): void {
+    this.customEmoji.clear();
+    for (const row of rows) this.customEmoji.set(row.name, row);
+    this.emit();
+  }
+
+  applyCustomEmoji(row: CustomEmojiOut, deleted: boolean): void {
+    if (deleted) this.customEmoji.delete(row.name);
+    else this.customEmoji.set(row.name, row);
     this.emit();
   }
 

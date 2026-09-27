@@ -298,6 +298,27 @@ CREATE INDEX scheduled_messages_user_idx ON scheduled_messages (user_id, send_at
 - 添付は予約時に `attachments.status = 'scheduled'` に予約し、未送信アップロードの GC から外す。取消 / 失敗で
   `deleted` に戻し、GC が実体を消す。
 
+### custom_emoji (カスタム絵文字、M12f)
+
+```sql
+CREATE TABLE custom_emoji (
+  id            uuid PRIMARY KEY,
+  name          varchar(32) NOT NULL UNIQUE,   -- a-z 0-9 _ + - の 2〜32 文字、本文では :name:
+  created_by    uuid NOT NULL REFERENCES users(id),
+  content_type  text NOT NULL,                 -- png / gif / jpeg / webp、512px 以下、256 KB 以下
+  size_bytes    integer NOT NULL,
+  width         integer NOT NULL,
+  height        integer NOT NULL,
+  storage_key   text NOT NULL,                 -- versitygw の emoji/<id>
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- 画像は添付と同じオブジェクトストアに置き、`GET /emoji/{id}/image` (要ログイン、1 日キャッシュ) で配る。
+- 誰でも追加でき、作成者か admin が削除できる。削除しても本文の `:name:` は文字のまま残る (クライアントは
+  未知の名前を文字で表示する)。一覧は bootstrap の `custom_emoji` と `emoji.updated` (audience=all) で揃える。
+- リアクションの `emoji` 列は `:name:` 形式も受け付ける (DATA_MODEL.md `message_reactions` の注記どおり)。
+
 ### reminders (リマインダー、M12e)
 
 ```sql
