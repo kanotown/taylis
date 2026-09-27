@@ -68,7 +68,8 @@ async def list_attached(
     """Files attached to messages in the user's channels, newest first (M11i).
 
     Each row carries the message's parent_id so a client can reveal a thread reply.
-    Keyset paging on (attached_at, id): attachments of one message share an attached_at.
+    Keyset paging on (attached_at DESC, id ASC): the files of one message share an attached_at
+    and keep their upload order (UUIDv7 ids), the order the message itself shows them in.
     """
     stmt = (
         select(Attachment, Message.parent_id)
@@ -81,7 +82,7 @@ async def list_attached(
             ),
         )
         .where(Attachment.status == "attached", Attachment.deleted_at.is_(None))
-        .order_by(Attachment.attached_at.desc(), Attachment.id.desc())
+        .order_by(Attachment.attached_at.desc(), Attachment.id.asc())
         .limit(limit)
     )
     if channel_id is not None:
@@ -94,7 +95,7 @@ async def list_attached(
         stmt = stmt.where(
             or_(
                 Attachment.attached_at < at,
-                and_(Attachment.attached_at == at, Attachment.id < last_id),
+                and_(Attachment.attached_at == at, Attachment.id > last_id),
             )
         )
     return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
