@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Lock
@@ -91,6 +93,9 @@ fun MainScreen(controller: AppController) {
     var threadId by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MainDialog?>(null) }
+    // M14f: the conversation whose long-press menu is open, and the section whose 「…」 is.
+    var channelMenuFor by remember { mutableStateOf<String?>(null) }
+    var sectionMenuFor by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut, Int>?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var unreadOnly by rememberSaveable { mutableStateOf(false) }
@@ -354,6 +359,8 @@ fun MainScreen(controller: AppController) {
                         onReminders = { showReminders = true },
                         onBrowse = { dialog = MainDialog.BROWSE },
                         isGuest = controller.isGuest,
+                        onChannelMenu = { channelMenuFor = it },
+                        onSectionMenu = { section, index -> sectionMenuFor = section to index },
                     )
                 }
             }
@@ -374,6 +381,8 @@ fun MainScreen(controller: AppController) {
         )
         null -> Unit
     }
+    channelMenuFor?.let { id -> ChannelSectionDialog(controller, id, onDismiss = { channelMenuFor = null }) }
+    sectionMenuFor?.let { (section, index) -> SectionActionsDialog(controller, section, index, controller.store.sidebarSections.size, onDismiss = { sectionMenuFor = null }) }
 }
 
 @Composable
@@ -411,8 +420,11 @@ private fun ChannelList(
     isGuest: Boolean = false,
     onFiles: () -> Unit,
     onReminders: () -> Unit,
+    /** M14f: long-press on a conversation, and the 「…」 of one of my sections. */
+    onChannelMenu: (String) -> Unit = {},
+    onSectionMenu: (jp.chikuwachat.android.api.SidebarSectionOut, Int) -> Unit = { _, _ -> },
 ) {
-    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites) }
+    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites, sidebar = store.sidebarSections) }
     val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
     val channels = sections.channels
     val dms = sections.dms
@@ -434,14 +446,19 @@ private fun ChannelList(
         item { SavedRow(store, onClick = onSaved) }
         if (sections.favorites.isNotEmpty()) {
             item { SectionHeader("お気に入り") }
-            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
+            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        }
+        sections.custom.forEachIndexed { index, (section, members) ->
+            item(key = "section:" + section.id) { CustomSectionHeader(section.name, onMenu = { onSectionMenu(section, index) }) }
+            items(members, key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            if (members.isEmpty() && !unreadOnly) item(key = "section-empty:" + section.id) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") }
         }
         item { SectionHeader("チャンネル") }
-        items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
+        items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
         if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
         item { SectionHeader("ダイレクトメッセージ") }
-        items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }) }
+        items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
         if (browsable.isNotEmpty()) {
             item { SectionHeader("参加できるチャンネル") }
@@ -526,6 +543,15 @@ private fun SavedRow(store: Store, onClick: () -> Unit) {
     }
 }
 
+/** A custom section's title with its 「…」 (M14f). */
+@Composable
+private fun CustomSectionHeader(title: String, onMenu: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = "$title のメニュー") }
+    }
+}
+
 @Composable
 private fun SectionHeader(title: String) {
     Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
@@ -552,14 +578,15 @@ private fun ChannelGlyph(channel: ChannelState) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit) {
+private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val title = channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") }
     val muted = Channels.isMuted(channel)
     val unread = Channels.hasUnread(channel)
     val badge = Channels.badgeCount(channel)
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (channel.channel.isDm) {

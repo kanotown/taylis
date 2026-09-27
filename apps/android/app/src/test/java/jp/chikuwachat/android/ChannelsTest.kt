@@ -51,4 +51,20 @@ class ChannelsTest {
         assertEquals(emptyList<ChannelState>(), filtered.browse)
         assertEquals(listOf("public"), Channels.sections(all, now = now).browse.map { it.id })
     }
+
+    @Test fun customSectionsTakeTheirConversationsFavoritesFirst() {
+        val all = listOf(
+            channel("alpha"), channel("beta"), channel("gamma", type = "private"),
+            channel("d1", type = "dm", lastMessageAt = "2026-09-26T01:00:00Z"), channel("d2", type = "dm", lastMessageAt = "2026-09-26T02:00:00Z"),
+        )
+        val sidebar = listOf(
+            jp.chikuwachat.android.api.SidebarSectionOut("s1", "プロジェクト", 0, listOf("gamma", "d1", "beta")),
+            jp.chikuwachat.android.api.SidebarSectionOut("s2", "空", 1, emptyList()),
+        )
+        val sections = Channels.sections(all, now = now, favorites = setOf("beta"), sidebar = sidebar)
+        assertEquals(listOf("beta"), sections.favorites.map { it.id })
+        assertEquals(listOf("プロジェクト" to listOf("gamma", "d1"), "空" to emptyList<String>()), sections.custom.map { (section, rows) -> section.name to rows.map { it.id } })
+        assertEquals(listOf("alpha"), sections.channels.map { it.id })
+        assertEquals(listOf("d2"), sections.dms.map { it.id })
+    }
 }
