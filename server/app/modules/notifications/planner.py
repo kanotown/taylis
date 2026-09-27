@@ -14,8 +14,9 @@ from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
+from app.modules.groups import service as groups
 from app.modules.messages.events import MESSAGE_CREATED
-from app.modules.messages.mentions import notification_text
+from app.modules.messages.mentions import extract_group_mentions, notification_text
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
@@ -65,6 +66,7 @@ class PushPlanner:
             mentioned_user = await users.get_user(db, uuid.UUID(str(raw)))
             if mentioned_user is not None:
                 names[mentioned_user.id] = mentioned_user.display_name
+        names.update(await groups.names_for(db, extract_group_mentions(message.get("body") or "")))
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
         planned = 0
         payloads: dict[uuid.UUID, dict[str, Any]] = {}

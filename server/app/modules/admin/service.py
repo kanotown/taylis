@@ -14,6 +14,7 @@ from app.modules.admin.schemas import AdminUserCreate, AdminUserUpdate
 from app.modules.audit import service as audit
 from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
+from app.modules.groups import service as groups
 from app.modules.users.events import (
     USER_CREATED,
     USER_DEACTIVATED,
@@ -34,6 +35,8 @@ async def _ensure_unique(db: AsyncSession, username: str, email: str | None) -> 
     taken = await db.execute(select(User.id).where(User.username == username))
     if taken.scalar_one_or_none() is not None:
         raise conflict("username_taken", "Username is already in use")
+    if await groups.name_in_use(db, username):  # `@name` must stay unambiguous (M12k)
+        raise conflict("username_taken", "A group has that name")
     if email is not None:
         taken = await db.execute(select(User.id).where(User.email == email))
         if taken.scalar_one_or_none() is not None:

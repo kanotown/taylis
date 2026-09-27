@@ -4,7 +4,7 @@
  * escapes everything.
  *
  * Inline: **bold** / *bold*, _italic_, ~~strike~~, `code`, [label](url), bare https?:// links,
- * <@user-id>, <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
+ * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
  * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level).
  */
 export type Token =
@@ -16,6 +16,7 @@ export type Token =
   | { kind: "codeblock"; text: string; lang?: string | null }
   | { kind: "link"; url: string; label?: string }
   | { kind: "mention"; userId: string }
+  | { kind: "mention_group"; groupId: string }
   | { kind: "mention_all"; target: string }
   | { kind: "newline" };
 
@@ -27,7 +28,7 @@ export type Block =
   | { kind: "codeblock"; text: string; lang: string | null };
 
 const INLINE =
-  /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)/g;
+  /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)/g;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "g");
 
 /** Whole-body tokens (inline markup, fenced code and newlines); kept for highlighting and old callers. */
@@ -57,9 +58,10 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
     else if (g(7) !== undefined) tokens.push({ kind: "italic", text: g(8) ?? "" });
     else if (g(9) !== undefined) tokens.push({ kind: "strike", text: g(10) ?? "" });
     else if (g(11) !== undefined) tokens.push({ kind: "link", url: g(13) ?? "", label: g(12) ?? "" });
-    else if (g(14) !== undefined) tokens.push({ kind: "mention", userId: g(15) ?? "" });
-    else if (g(16) !== undefined) tokens.push({ kind: "mention_all", target: g(17) ?? "" });
-    else if (g(18) !== undefined) tokens.push({ kind: "link", url: g(18) ?? "" });
+    else if (g(14) !== undefined) tokens.push({ kind: "mention_group", groupId: g(15) ?? "" });
+    else if (g(16) !== undefined) tokens.push({ kind: "mention", userId: g(17) ?? "" });
+    else if (g(18) !== undefined) tokens.push({ kind: "mention_all", target: g(19) ?? "" });
+    else if (g(20) !== undefined) tokens.push({ kind: "link", url: g(20) ?? "" });
     else tokens.push({ kind: "newline" });
     last = index + match[0].length;
   }

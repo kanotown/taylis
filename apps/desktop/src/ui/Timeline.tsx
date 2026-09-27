@@ -327,7 +327,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         ) : (
           <>
             {message.body && (
-              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} />
+              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
@@ -473,14 +473,14 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
 /** Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
   const store = controller.store;
-  const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users));
+  const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users, store.groups));
   const composing = useRef(false);
   const finish = () => {
     controller.setEditing(null);
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   };
   const save = () => {
-    const body = encodeMentions(draft.trim(), store.users.values());
+    const body = encodeMentions(draft.trim(), store.users.values(), store.groups.values());
     finish();
     if (body && body !== message.body) void controller.editMessage(message.id, body);
   };

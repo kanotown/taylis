@@ -35,7 +35,7 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
                         <span>· {scheduleLabel(row.send_at)} に送信</span>
                         {row.attachments.length > 0 && <span>· 添付 {row.attachments.length}</span>}
                       </div>
-                      <div className="mt-0.5 line-clamp-2 text-sm text-ink">{plainText(mentionsToNames(row.body, store.users), 200) || "(本文なし)"}</div>
+                      <div className="mt-0.5 line-clamp-2 text-sm text-ink">{plainText(mentionsToNames(row.body, store.users, store.groups), 200) || "(本文なし)"}</div>
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <Button size="sm" variant="secondary" onClick={() => void controller.sendScheduledNow(row)}>今すぐ送信</Button>

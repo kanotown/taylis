@@ -5,6 +5,9 @@ import uuid
 
 MENTION_USER = re.compile(r"<@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>")
 MENTION_ALL = re.compile(r"<!(channel|here)>")
+MENTION_GROUP = re.compile(
+    r"<@group:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>"
+)  # M12k
 MAX_MENTIONS = 50
 
 
@@ -18,6 +21,16 @@ def extract_mentions(body: str) -> tuple[list[uuid.UUID], bool]:
         if len(ids) >= MAX_MENTIONS:
             break
     return ids, MENTION_ALL.search(body) is not None
+
+
+def extract_group_mentions(body: str) -> list[uuid.UUID]:
+    """Group ids in order of first appearance (M12k); the members are resolved by `groups`."""
+    ids: list[uuid.UUID] = []
+    for raw in MENTION_GROUP.findall(body):
+        group_id = uuid.UUID(raw)
+        if group_id not in ids:
+            ids.append(group_id)
+    return ids
 
 
 _FENCE_LINE = re.compile(r"^```[A-Za-z0-9_+#.-]*\s*$", re.MULTILINE)
@@ -37,7 +50,8 @@ _WHITESPACE = re.compile(r"\s*\n+\s*")
 
 def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 200) -> str:
     """One-line plain text for push and local notifications: mention tokens become display
-    names (never raw ids), light markdown markers are dropped, newlines collapse."""
+    names (never raw ids; `names` maps user and group ids), light markdown markers are dropped,
+    newlines collapse."""
 
     def user_name(match: re.Match[str]) -> str:
         try:
@@ -47,6 +61,7 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
         return "@" + (name or "メンバー")
 
     text = MENTION_USER.sub(user_name, body)
+    text = MENTION_GROUP.sub(user_name, text)  # group ids share the names map (M12k)
     text = MENTION_ALL.sub(lambda m: "@" + m.group(1), text)
     text = _FENCE_LINE.sub("", text)
     text = _HEADING.sub("", text)

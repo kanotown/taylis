@@ -13,6 +13,9 @@ import type {
   FavoriteStateOut,
   CustomEmojiOut,
   FileListOut,
+  GroupCreate,
+  GroupOut,
+  GroupUpdate,
   InviteAccept,
   InviteCreate,
   InviteCreated,
@@ -401,6 +404,24 @@ export class ApiClient {
 
   adminResetTotp(userId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/users/${userId}/totp`);
+  }
+
+  // --- user groups (M12k) -------------------------------------------------------------------
+
+  listGroups(): Promise<GroupOut[]> {
+    return this.request("GET", "/api/v1/groups");
+  }
+
+  adminCreateGroup(body: GroupCreate): Promise<GroupOut> {
+    return this.request("POST", "/api/v1/admin/groups", body);
+  }
+
+  adminUpdateGroup(groupId: string, patch: GroupUpdate): Promise<GroupOut> {
+    return this.request("PATCH", `/api/v1/admin/groups/${groupId}`, patch);
+  }
+
+  adminDeleteGroup(groupId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/groups/${groupId}`);
   }
 
   // --- invite links (M12h) ------------------------------------------------------------------

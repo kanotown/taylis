@@ -160,6 +160,7 @@ server/
       users/             # プロフィール, 一覧
       admin/             # ユーザー作成 / リセット / ロール / 無効化, 監査ログ
       invites/           # 招待リンク (発行 / 取消 / 公開の確認と受諾) (M12h)
+      groups/            # ユーザーグループ (@group メンションの展開先、admin が管理) (M12k)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync
@@ -188,7 +189,7 @@ server/
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。
    同一トランザクション内での付随更新も service 呼び出しでよい。例: `messages` → `reads.advance_in_tx()`。
 4. 依存方向は一方向に保つ:
-   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
+   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`notifications → groups` (通知文の名前)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。

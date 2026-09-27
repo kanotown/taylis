@@ -746,6 +746,87 @@
         "type": "object"
       }
     },
+    "group.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "GroupOut": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "member_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Member Ids",
+                "type": "array"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "description",
+              "member_ids",
+              "created_by",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "GroupOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "group": {
+            "$ref": "#/$defs/GroupOut"
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "title": "GroupUpdatedData",
+        "type": "object"
+      }
+    },
     "message.created": {
       "audience": "channel",
       "consumes_seq": true,

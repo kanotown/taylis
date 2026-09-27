@@ -57,7 +57,7 @@ export function Composer({
     if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
   }, [text, preview]);
   const query = mentionQuery(text, caret);
-  const candidates = query ? mentionCandidates(query.query, [...store.users.values()]) : [];
+  const candidates = query ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
   // `:tada` completes to an emoji (M11f) when no mention is being typed.
   const emojiAt = query ? null : emojiQuery(text, caret);
   const emojiHits = emojiAt ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
@@ -67,7 +67,7 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   const send = () => {
-    const body = encodeMentions(text.trim(), store.users.values());
+    const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
     if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError("添付は10件、本文は20,000文字までです"); return; }
     const ids = pending.map((a) => a.id);
@@ -80,7 +80,7 @@ export function Composer({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [customAt, setCustomAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   const schedule = async (sendAt: Date) => {
-    const body = encodeMentions(text.trim(), store.users.values());
+    const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || uploading > 0) return;
     if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; }
     const ids = pending.map((a) => a.id);
@@ -296,7 +296,7 @@ export function Composer({
                 pick(candidate);
               }}
             >
-              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>
+              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">グループ</span>}
             </li>
           ))}
         </ul>

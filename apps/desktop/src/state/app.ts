@@ -684,7 +684,7 @@ export class AppController {
         if (dndActive(this.store.me ? this.store.users.get(this.store.me.id) ?? this.store.me : null)) return; // M12c: paused / quiet hours
         const sender = this.store.users.get(message.sender_id)?.display_name ?? "Someone";
         const title = channel.type === "dm" ? sender : `${sender} (group DM)`;
-        void notify(title, plainText(mentionsToNames(message.body, this.store.users)) || "新しいメッセージ");
+        void notify(title, plainText(mentionsToNames(message.body, this.store.users, this.store.groups)) || "新しいメッセージ");
       },
       isActive: () => document.hasFocus(),
     });

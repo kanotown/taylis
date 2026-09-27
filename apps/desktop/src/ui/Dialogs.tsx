@@ -18,7 +18,7 @@ interface DialogProps {
 }
 
 /** Selectable user rows shared by the DM and add-member dialogs. */
-function UserPicker({ users, selected, onToggle, empty }: { users: UserPublic[]; selected: string[]; onToggle: (id: string) => void; empty: string }) {
+export function UserPicker({ users, selected, onToggle, empty }: { users: UserPublic[]; selected: string[]; onToggle: (id: string) => void; empty: string }) {
   if (users.length === 0) return <p className="py-6 text-center text-sm text-muted">{empty}</p>;
   return (
     <ul className="max-h-72 overflow-y-auto rounded-xl border border-line">

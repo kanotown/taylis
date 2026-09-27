@@ -97,3 +97,8 @@ export type InviteAccept = components["schemas"]["InviteAccept"];
 export type TotpStatusOut = components["schemas"]["TotpStatusOut"];
 export type TotpSetupOut = components["schemas"]["TotpSetupOut"];
 export type TotpEnabledOut = components["schemas"]["TotpEnabledOut"];
+
+/** User groups (M12k). */
+export type GroupOut = components["schemas"]["GroupOut"];
+export type GroupCreate = components["schemas"]["GroupCreate"];
+export type GroupUpdate = components["schemas"]["GroupUpdate"];

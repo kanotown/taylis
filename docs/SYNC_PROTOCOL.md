@@ -70,7 +70,8 @@
   "presence": [ { "user_id": "...", "status": "online" } ],
   "bookmarks": [ "<message_id>", "..." ],
   "favorites": [ "<channel_id>", "..." ],
-  "custom_emoji": [ { "id": "...", "name": "party_parrot", "content_type": "image/gif", "width": 64, "height": 64, "created_by": "...", "created_at": "..." } ]
+  "custom_emoji": [ { "id": "...", "name": "party_parrot", "content_type": "image/gif", "width": 64, "height": 64, "created_by": "...", "created_at": "..." } ],
+  "groups": [ { "id": "...", "name": "design", "description": "デザイン担当", "member_ids": ["..."], "created_by": "...", "created_at": "...", "updated_at": "..." } ]
 }
 ```
 
@@ -201,6 +202,7 @@
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (pending 以外は一覧から外す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える |
+| `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
