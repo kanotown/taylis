@@ -73,6 +73,7 @@ def to_channel_out(
         updated_at=channel.updated_at,
         membership=_membership_out(membership),
         dm_user_ids=dm_user_ids,
+        posting_policy=channel.posting_policy,  # type: ignore[arg-type]
         member_count=member_count
         if member_count is not None
         else (len(dm_user_ids) if dm_user_ids else None),
@@ -93,7 +94,8 @@ def dm_key_for(user_ids: list[uuid.UUID]) -> str:
 async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audience:
     """Injected into the OutboxRelay: turns an outbox row's audience into user / session ids."""
     if event.audience_type == "all":
-        if event.event_type == events.CHANNEL_CREATED:  # a public channel: not for guests (M13e)
+        # A public channel appearing or changing visibility (M15b): not for guests (M13e).
+        if event.event_type in (events.CHANNEL_CREATED, events.CHANNEL_UPDATED):
             return Audience(kind="users", ids=tuple(await repo.non_guest_user_ids(db)))
         return Audience(kind="all")
     if event.audience_type == "user" and event.audience_id is not None:
@@ -291,10 +293,30 @@ async def update_channel(
         channel.topic = data.topic
     if data.purpose is not None:
         channel.purpose = data.purpose
+    if data.posting_policy is not None:
+        channel.posting_policy = data.posting_policy
+    converted = data.type is not None and data.type != channel.type
+    if converted:
+        # Making a private channel public exposes its whole history: administrators only.
+        if data.type == "public" and not actor.is_admin:
+            raise forbidden("admin_required", "Only an administrator can make a channel public")
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="channel.converted",
+            target_type="channel",
+            target_id=channel.id,
+            details={"from": channel.type, "to": data.type},
+        )
+        channel.type = data.type  # type: ignore[assignment]
     channel.updated_at = utcnow()
     try:
         await db.flush()
-        await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
+        # A visibility change reaches everyone (non-members drop or gain the channel in their
+        # browser); other changes only the members.
+        await _emit_channel(
+            db, events.CHANNEL_UPDATED, channel, audience_type="all" if converted else "channel"
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

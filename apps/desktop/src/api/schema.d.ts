@@ -1867,6 +1867,12 @@ export interface components {
             /** Name */
             name: string | null;
             notification?: components["schemas"]["NotificationPreferenceOut"] | null;
+            /**
+             * Posting Policy
+             * @default everyone
+             * @enum {string}
+             */
+            posting_policy: "everyone" | "owners";
             /** Purpose */
             purpose: string | null;
             read_state?: components["schemas"]["ReadStateOut"] | null;
@@ -1904,10 +1910,14 @@ export interface components {
         ChannelUpdate: {
             /** Name */
             name?: string | null;
+            /** Posting Policy */
+            posting_policy?: ("everyone" | "owners") | null;
             /** Purpose */
             purpose?: string | null;
             /** Topic */
             topic?: string | null;
+            /** Type */
+            type?: ("public" | "private") | null;
         };
         /** CustomEmojiOut */
         CustomEmojiOut: {

@@ -41,6 +41,10 @@ class Channel(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M15a: "owners" = only owners, administrators (and webhook bots) start top-level posts.
+    posting_policy: Mapped[str] = mapped_column(
+        String(16), default="everyone", server_default="everyone"
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -49,6 +53,7 @@ class Channel(Base):
         CheckConstraint(
             "(type IN ('dm', 'group_dm')) = (dm_key IS NOT NULL)", name="dm_key_by_type"
         ),
+        CheckConstraint("posting_policy IN ('everyone', 'owners')", name="posting_policy_values"),
         Index("channels_name_uniq", "name", unique=True, postgresql_where=text("name IS NOT NULL")),
         Index(
             "channels_dm_key_uniq",

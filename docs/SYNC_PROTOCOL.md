@@ -209,7 +209,7 @@
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
-| `channel.updated` | channel | — | `{ channel, member_ids }` |
+| `channel.updated` | channel。公開 ↔ 非公開の変換 (M15b) だけは all (guest を除く) | — | `{ channel, member_ids }`。`channel.posting_policy` (M15a) を含む。メンバーでない受信者は、public ならブラウズ用に保持し、public でなくなった (非公開に変換された) 会話は手元から消す |
 | `channel.archived` | channel | — | `{ channel_id }` |
 | `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る。クライアントは保持している `member_count` を +1 (`member_removed` は −1) して、次の一覧取得までの表示に使う (M11h) |
 | `channel.member_removed` | channel + 本人 (outbox 行を 2 つ書く) | — | `{ channel_id, user_id }` |

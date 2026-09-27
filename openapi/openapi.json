@@ -598,6 +598,15 @@
               }
             ]
           },
+          "posting_policy": {
+            "default": "everyone",
+            "enum": [
+              "everyone",
+              "owners"
+            ],
+            "title": "Posting Policy",
+            "type": "string"
+          },
           "purpose": {
             "anyOf": [
               {
@@ -710,6 +719,21 @@
             ],
             "title": "Name"
           },
+          "posting_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "everyone",
+                  "owners"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posting Policy"
+          },
           "purpose": {
             "anyOf": [
               {
@@ -733,6 +757,21 @@
               }
             ],
             "title": "Topic"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "private"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
           }
         },
         "title": "ChannelUpdate",

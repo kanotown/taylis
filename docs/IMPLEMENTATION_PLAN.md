@@ -362,9 +362,25 @@ M13 と同じ進め方。目に見える差が大きいものから。
 | M14a | アバター画像 | `users.avatar_key` / `avatar_updated_at` (マイグレーション 0024)、葉モジュール `avatars`: `POST /users/me/avatar` (multipart、5 MB まで、PNG / JPEG / GIF / WebP → 正方形に切って 256px の PNG、`avatars/<user_id>/<uuid>`、古い画像は削除)、`DELETE /users/me/avatar`、`GET /users/{id}/avatar` (要ログイン、1 日キャッシュ、`?v=` で版を分ける)。`UserPublic.avatar_updated_at` が版なので `user.updated` で全端末が新しい画像を取り直す。3 端末: Avatar が画像 (キャッシュ) か従来のイニシャル、設定に「写真を選ぶ / 削除」 | **実装済み (2026-09-27)**: サーバ pytest 180、Desktop vitest 122 (実サーバで目視)、iOS XCTest 79、Android ビルド |
 | M14b | 投票 | メッセージに付く投票: `messages.poll` (jsonb) + `poll_votes` (マイグレーション 0025)。`POST /channels/{id}/messages` の `poll {question, options (2〜10), multiple}` (本文が空なら `📊 質問`)、`PUT/DELETE /messages/{id}/poll/votes/{index}` (単一選択は票を動かす、変化時に seq を消費して `message.updated` `change = poll`)、`POST /messages/{id}/poll/close` (投稿者か admin、以後 `409 poll_closed`)。3 端末で本文の下に選択肢・票数・割合のバー、タップで投票 / 取消、締め切りボタン、`/poll 質問 | 選択肢 | 選択肢 …` | **実装済み (2026-09-27)**: サーバ pytest 181、Desktop vitest 122 (実サーバで目視: 作成 → 投票 → 移動 → 締切)、iOS XCTest 79、Android JUnit 80 + ビルド |
 | M14c | メッセージの編集履歴 | `message_revisions` (マイグレーション 0026): 本文が変わる編集ごとに置き換えられた本文と時刻を残す。`GET /messages/{id}/revisions` (古い順) は**投稿者本人だけ** (誤って貼った秘密を編集で消したとき他人に残さないため、Mattermost と同じ)。メッセージ削除で履歴も消す。3 端末: 自分のメッセージの「(編集済み)」から「編集履歴」(以前の版と現在の版) | **実装済み (2026-09-27)**: サーバ pytest 182、Desktop vitest 123 (実サーバで目視)、iOS XCTest 80、Android JUnit 81 + ビルド |
-| M14d | OIDC ログイン | 外部 IdP (Google / Microsoft / Keycloak など) の authorization code + PKCE。メールでアカウントを紐付け、初回は招待相当の扱い。Desktop はループバック、モバイルはシステムブラウザ | 未着手 |
-| M14e | 添付の直接配信 | `BlobStore` の presigned URL で大きな添付のダウンロード / アップロードを API プロセスから外す | 未着手 |
+| M14d | OIDC ログイン | 外部 IdP (Google / Microsoft / Keycloak など) の authorization code + PKCE。メールでアカウントを紐付け、初回は招待相当の扱い。Desktop はループバック、モバイルはシステムブラウザ | 保留: 検証に外部 IdP が要る。必要になった時点で M15 以降に組み込む |
+| M14e | 添付の直接配信 | `BlobStore` の presigned URL で大きな添付のダウンロード / アップロードを API プロセスから外す | 保留: オブジェクトストアを外に公開する構成が要り、目標規模 (数十人) では API 経由で足りる |
 | M14f | サイドバーの節 | `sidebar_sections` / `sidebar_section_channels` (マイグレーション 0027、葉モジュール `sidebar`): 1 人 20 セクションまで、会話 (チャンネルと DM) は自分のセクションのどれか 1 つに入る。作成 / 名前・位置の変更 / 削除 / 会話の出し入れの各 API はセクション一覧全体を返し、同じ一覧が `sidebar.updated` (audience=user) と bootstrap の `sidebar_sections` で全端末に届く。お気に入りが優先。3 端末: お気に入りとチャンネルの間に自分のセクション、会話の右クリック (Desktop) / 長押し (iOS / Android) で「セクションに移動 / 新しいセクション… / セクションから外す」、セクション見出しの「…」で名前変更・上下・作成・削除。Desktop の Alt+↑/↓ も表示順どおり | **実装済み (2026-09-27)**: サーバ pytest 184、Desktop vitest 125 (実サーバで目視)、iOS XCTest 81、Android JUnit 82 + ビルド |
+
+### M15: Slack / Mattermost 相当の続き 4 (2026-09-27〜)
+
+M14d (OIDC) と M14e (presigned URL) は外部の IdP や公開したオブジェクトストアが無いと検証できないため保留し、
+ここで閉じて確かめられる小さめの機能を順に足す。
+
+| # | 機能 | 内容 | 状況 |
+| --- | --- | --- | --- |
+| M15a | 投稿制限チャンネル (アナウンス) | `channels.posting_policy` (`everyone` / `owners`、マイグレーション 0028)。`PATCH /channels/{id}` の `posting_policy` はオーナーか admin が変える。`owners` のチャンネルでは新しいトップレベルの投稿をオーナー・admin・BOT (受信 Webhook) だけに許し、他は `403 posting_restricted`。スレッドの返信とリアクションは誰でもできる。3 端末: 権限の無い人には入力欄の代わりに案内、チャンネルのメニュー / 情報に切り替え | 実装中 |
+| M15b | 公開 ↔ 非公開の変換 | `PATCH /channels/{id}` の `type`: 公開 → 非公開はオーナーか admin、非公開 → 公開は過去ログを全員に見せることになるので admin だけ (`403 admin_required`)。DM は不可。監査ログ `channel.converted`、`channel.updated` はゲスト以外の全員に配り、メンバーでない端末は非公開になった会話を一覧から消す。3 端末: 確認ダイアログ付きのメニュー | 実装中 |
+| M15c | スレッドの返信をチャンネルにも投稿 | 返信の「チャンネルにも送信」: 返信のままチャンネルのタイムラインにも並べる | 未着手 |
+| M15d | 下書きの端末間同期 | 会話ごとの書きかけをサーバに置き、別の端末で続きを書ける | 未着手 |
+| M15e | 優先度と確認 | 投稿に「重要 / 緊急」の印、受け取った人の「確認しました」 | 未着手 |
+| M15f | チャンネルのリンク集 | チャンネルの上部に固定するブックマーク (URL と名前) | 未着手 |
+| M15g | Markdown の表 | 本文の `|` 区切りの表を 3 端末で表として描く | 未着手 |
+| M15h | 検索の絞り込み追加 | 添付あり / リンクあり / スレッド内などの条件 | 未着手 |
 
 ### バックログ (未スケジュール)
 

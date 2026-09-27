@@ -18,12 +18,19 @@ class ChannelCreate(BaseModel):
     purpose: str | None = Field(default=None, max_length=250)
 
 
+PostingPolicy = Literal["everyone", "owners"]
+
+
 class ChannelUpdate(BaseModel):
     name: str | None = Field(
         default=None, min_length=1, max_length=80, pattern=CHANNEL_NAME_PATTERN
     )
     topic: str | None = Field(default=None, max_length=250)
     purpose: str | None = Field(default=None, max_length=250)
+    # M15a: who may start top-level posts (thread replies stay open to every member).
+    posting_policy: PostingPolicy | None = None
+    # M15b: public → private (owner or admin), private → public (admin only).
+    type: Literal["public", "private"] | None = None
 
 
 class MembershipOut(BaseModel):
@@ -50,6 +57,8 @@ class ChannelOut(BaseModel):
     read_state: ReadStateOut | None = None
     # M11h: how many people are in the channel (browser, intro); None where not computed.
     member_count: int | None = None
+    # M15a: "owners" = an announcement channel (only owners / admins start top-level posts).
+    posting_policy: PostingPolicy = "everyone"
 
 
 class MemberOut(BaseModel):
