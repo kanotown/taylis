@@ -167,6 +167,12 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
     val isAdmin = store.me?.role == "admin"
     val canManage = channel.channel.membership?.role == "owner" || isAdmin
     val toPrivate = channel.channel.type == "public"
+    // M15f: add a link from channel info (the bar itself only shows once there is one).
+    var addingLink by remember { mutableStateOf(false) }
+    if (addingLink) {
+        ChannelLinkDialog(controller, channel.id, null, onDismiss = { addingLink = false })
+        return
+    }
     LaunchedEffect(channel.id) { controller.memberList(channel.id).onSuccess { members = it } }
     val level = channel.channel.notification?.level ?: if (isChannel) "mentions" else "all"
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
@@ -292,6 +298,9 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                                     onCheckedChange = { on -> scope.launch { controller.setPostingPolicy(channel.id, if (on) "owners" else "everyone") } },
                                 )
                             }
+                        }
+                        if (ChannelLinks.canEdit(channel, store.me?.role)) {
+                            TextButton(onClick = { addingLink = true }, contentPadding = PaddingValues(0.dp)) { Text("リンクを追加") }
                         }
                         if ((toPrivate && canManage) || (channel.channel.type == "private" && isAdmin)) {
                             TextButton(onClick = { confirm = "convert" }, contentPadding = PaddingValues(0.dp)) {

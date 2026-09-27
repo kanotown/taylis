@@ -19,6 +19,7 @@ import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.isRetryable
 import kotlinx.coroutines.CompletableDeferred
@@ -130,6 +131,12 @@ class SyncEngine(
 
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
+    }
+
+    /** M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap). */
+    suspend fun loadLinks(channelId: String) {
+        val linksApi = api as? ChannelLinksApi ?: return
+        runCatching { linksApi.channelLinks(channelId) }.onSuccess { store.setChannelLinks(channelId, it) }
     }
 
     /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
@@ -275,6 +282,7 @@ class SyncEngine(
         if (_status.value == EngineStatus.ONLINE) {
             scope.launch { flushOutbox() }
             scope.launch { drafts.flush() } // edited while offline (M15d)
+            currentChannelId?.let { current -> scope.launch { loadLinks(current) } } // changed while away (M15f)
         }
     }
 
@@ -440,6 +448,10 @@ class SyncEngine(
                 val row = Codec.snake.decodeFromJsonElement(CustomEmojiOut.serializer(), frame.data["emoji"] ?: return)
                 store.applyCustomEmoji(row, frame.data.bool("deleted") ?: false)
             }
+            "channel.links_updated" -> {
+                val id = frame.data.str("channel_id") ?: return
+                store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
+            }
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
@@ -593,6 +605,7 @@ class SyncEngine(
         currentChannelId = channelId
         unreadHold.keys.filter { it != channelId }.forEach { unreadHold.remove(it) }
         if (_status.value != EngineStatus.ONLINE) return
+        scope.launch { loadLinks(channelId) }
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)

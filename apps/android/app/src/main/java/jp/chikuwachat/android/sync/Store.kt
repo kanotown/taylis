@@ -10,6 +10,7 @@ import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AckOut
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MessageOut
@@ -217,6 +218,13 @@ class Store(private val persistence: Persistence? = null) {
     /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
     var sidebarSections: List<SidebarSectionOut> = emptyList()
         private set
+    /** M15f: link bars of the conversations opened so far (not persisted). */
+    private val channelLinks = HashMap<String, List<ChannelLinkOut>>()
+    fun setChannelLinks(channelId: String, links: List<ChannelLinkOut>) {
+        channelLinks[channelId] = links
+        emit()
+    }
+    fun linksOf(channelId: String): List<ChannelLinkOut> = channelLinks[channelId] ?: emptyList()
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
