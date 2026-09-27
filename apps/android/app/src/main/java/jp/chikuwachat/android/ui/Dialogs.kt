@@ -260,6 +260,9 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                                 TextButton(onClick = { newName = channel.channel.name ?: ""; renaming = true }, contentPadding = PaddingValues(0.dp)) { Text("名前を変更") }
                                 TextButton(onClick = { confirm = "archive" }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブ") }
                             }
+                            if (canManage && channel.channel.archived) {
+                                TextButton(onClick = { scope.launch { if (controller.unarchiveChannel(channel.id)) onDismiss() } }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブを解除") }
+                            }
                             TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text("退出", color = MaterialTheme.colorScheme.error) }
                         }
                     }

@@ -1,4 +1,4 @@
-import { Archive, Copy, KeyRound, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, KeyRound, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import type { AdminUserOut } from "../api/types";
@@ -239,6 +239,11 @@ function ChannelsTab({ controller }: { controller: AppController }) {
               </div>
               {channel.topic && <div className="truncate text-xs text-muted">{channel.topic}</div>}
             </div>
+            {channel.archived && (
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setBusy(true); void controller.unarchiveChannel(channel.id).then(() => setBusy(false)); }}>
+                <ArchiveRestore size={14} /> アーカイブを解除
+              </Button>
+            )}
             {!channel.archived && (
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setRenaming(channel); setName(channel.name ?? ""); }}>

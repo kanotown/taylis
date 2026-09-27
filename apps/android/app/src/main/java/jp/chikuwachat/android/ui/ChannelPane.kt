@@ -240,6 +240,7 @@ fun MessageRow(
     var showTime by remember { mutableStateOf(false) }
     var showingProfile by remember { mutableStateOf(false) }
     var pickingReaction by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
@@ -312,9 +313,11 @@ fun MessageRow(
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
             onCopyLink = { controller.copyPermalink(message.id) },
             onRemind = { reminding = true },
+            onShare = { sharing = true },
             onMoreReactions = { pickingReaction = true },
         )
     }
+    if (sharing) ShareDialog(controller, message, onDismiss = { sharing = false })
     if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })

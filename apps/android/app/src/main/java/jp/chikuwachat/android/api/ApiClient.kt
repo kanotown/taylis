@@ -128,6 +128,8 @@ class ApiClient(
     }
 
     suspend fun archiveChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/archive", buildJsonObject {})
+    /** M13d: owner or administrator; the channel becomes writable again. */
+    suspend fun unarchiveChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/unarchive", buildJsonObject {})
 
     suspend fun updateChannel(channelId: String, topic: String? = null, name: String? = null, purpose: String? = null): ChannelOut =
         request("PATCH", "/api/v1/channels/$channelId", buildJsonObject {

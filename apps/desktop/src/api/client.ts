@@ -352,6 +352,11 @@ export class ApiClient {
     return this.request("POST", `/api/v1/channels/${channelId}/archive`);
   }
 
+  /** M13d: owner or administrator; the channel becomes writable again. */
+  unarchiveChannel(channelId: string): Promise<ChannelOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/unarchive`);
+  }
+
   leaveChannel(channelId: string): Promise<void> {
     return this.request("POST", `/api/v1/channels/${channelId}/leave`);
   }

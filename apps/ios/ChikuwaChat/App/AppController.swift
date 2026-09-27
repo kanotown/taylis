@@ -470,6 +470,22 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    func unarchiveChannel(_ channelId: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.unarchiveChannel(id: channelId))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// M13c: post a quote of `message` and its permalink into another conversation.
+    func shareMessage(_ message: MessageState, to channelId: String, comment: String) async -> Bool {
+        guard let engine, let link = permalink(message.id) else { return false }
+        await engine.send(channelId, body: Share.body(original: message.body, permalink: link, comment: comment))
+        notice = "共有しました"
+        return true
+    }
+
     /// Leaving drops the channel locally at once; the server's member_removed confirms it.
     func leaveChannel(_ channelId: String) async -> Bool {
         guard let api else { return false }

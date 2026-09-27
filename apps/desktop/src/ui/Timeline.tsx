@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { buildTimeline, fullTimestamp, timeLabel } from "./format";
 import { decodeMentions, encodeMentions } from "./mentions";
 import { MessageBody } from "./MessageBody";
+import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
@@ -256,6 +257,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const [remindOpen, setRemindOpen] = useState(false);
   const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const editing = controller.editing === message.id;
 
   const sender = store.users.get(message.sender_id);
@@ -404,6 +406,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           <IconButton label="リンクをコピー" className="h-7 w-7 text-muted hover:text-ink" onClick={() => void controller.copyPermalink(message.id)}>
             <Link size={15} />
           </IconButton>
+          <IconButton label="別のチャンネルに共有" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setShareOpen(true)}>
+            <Forward size={15} />
+          </IconButton>
           <PopoverRoot open={remindOpen} onOpenChange={setRemindOpen}>
             <PopoverTrigger asChild>
               <button type="button" title="リマインド" aria-label="リマインド" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
@@ -467,6 +472,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           )}
         </div>
       )}
+      {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
     </article>
   );
 }

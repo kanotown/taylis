@@ -6073,6 +6073,55 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/unarchive": {
+      "post": {
+        "description": "M13d: owner or administrator; posting works again afterwards.",
+        "operationId": "unarchive_channel_api_v1_channels__channel_id__unarchive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unarchive Channel",
+        "tags": [
+          "channels"
+        ]
+      }
+    },
     "/api/v1/devices/current": {
       "put": {
         "operationId": "update_device_api_v1_devices_current_put",

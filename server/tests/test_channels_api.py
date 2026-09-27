@@ -98,3 +98,35 @@ async def test_private_membership_and_dm_over_http(
 
     mine = await client.get("/api/v1/channels")
     assert [c["id"] for c in mine.json()] == [first.json()["id"]]
+
+
+async def test_archive_and_unarchive(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    channel = (await client.post("/api/v1/channels", json={"name": "old-project"})).json()
+    await client.post(f"/api/v1/channels/{channel['id']}/members", json={"user_id": str(bob.id)})
+    archived = await client.post(f"/api/v1/channels/{channel['id']}/archive")
+    assert archived.status_code == 200 and archived.json()["archived"] is True
+    blocked = await client.post(
+        f"/api/v1/channels/{channel['id']}/messages",
+        json={"client_msg_id": str(uuid.uuid4()), "body": "still here?"},
+    )
+    assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "channel_archived"
+
+    as_user(bob)
+    denied = await client.post(f"/api/v1/channels/{channel['id']}/unarchive")
+    assert denied.status_code == 403
+
+    as_user(alice)
+    restored = await client.post(f"/api/v1/channels/{channel['id']}/unarchive")
+    assert restored.status_code == 200 and restored.json()["archived"] is False
+    again = await client.post(f"/api/v1/channels/{channel['id']}/unarchive")
+    assert again.status_code == 200
+    posted = await client.post(
+        f"/api/v1/channels/{channel['id']}/messages",
+        json={"client_msg_id": str(uuid.uuid4()), "body": "back in business"},
+    )
+    assert posted.status_code == 201

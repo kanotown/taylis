@@ -4,6 +4,7 @@ import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
+import { shareBody } from "../ui/share";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
@@ -539,6 +540,17 @@ export class AppController {
     }
   }
 
+  async unarchiveChannel(channelId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.unarchiveChannel(channelId));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   async leaveChannel(channelId: string): Promise<boolean> {
     if (!this.api) return false;
     try {
@@ -702,6 +714,20 @@ export class AppController {
       });
     }
     return true;
+  }
+
+  /** M13c: post a quote of `message` and its permalink into another conversation. */
+  async shareMessage(message: MessageState, channelId: string, comment: string): Promise<boolean> {
+    if (!this.api || !this.engine) return false;
+    const body = shareBody(message.body, messagePermalink(this.api.baseUrl, message.id), comment);
+    try {
+      await this.engine.send(channelId, body, undefined, null, []);
+      this.setNotice("共有しました");
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
   }
 
   // --- slash commands (M13b) ---------------------------------------------------------------

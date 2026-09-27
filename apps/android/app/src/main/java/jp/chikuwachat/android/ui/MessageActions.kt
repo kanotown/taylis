@@ -50,6 +50,7 @@ fun MessageMenu(
     onMoreReactions: (() -> Unit)? = null,
     onCopyLink: (() -> Unit)? = null,
     onRemind: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -62,6 +63,7 @@ fun MessageMenu(
         if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
         if (onBookmark != null) DropdownMenuItem(text = { Text(if (bookmarked) "保存を解除" else "あとで見る (保存)") }, onClick = { onDismiss(); onBookmark() })
         if (onCopyLink != null) DropdownMenuItem(text = { Text("リンクをコピー") }, onClick = { onDismiss(); onCopyLink() })
+        if (onShare != null) DropdownMenuItem(text = { Text("別のチャンネルに共有…") }, onClick = { onDismiss(); onShare() })
         if (onRemind != null) DropdownMenuItem(text = { Text("リマインド…") }, onClick = { onDismiss(); onRemind() })
         if (onPin != null) DropdownMenuItem(text = { Text(if (pinned) "ピン留めを外す" else "チャンネルにピン留め") }, onClick = { onDismiss(); onPin() })
         if (onMarkUnread != null) DropdownMenuItem(text = { Text("ここから未読にする") }, onClick = { onDismiss(); onMarkUnread() })

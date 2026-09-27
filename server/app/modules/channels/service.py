@@ -310,6 +310,26 @@ async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
     return await _out_with_count(db, channel, membership)
 
 
+async def unarchive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
+    """M13d: the reverse of archive (owner or admin); members learn through channel.updated."""
+    channel, membership = await _load_for_manage(db, actor, channel_id)
+    _require_not_dm(channel)
+    if channel.is_archived:
+        channel.archived_at = None
+        channel.updated_at = utcnow()
+        await db.flush()
+        await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="channel.unarchived",
+            target_type="channel",
+            target_id=channel.id,
+        )
+        await db.commit()
+    return await _out_with_count(db, channel, membership)
+
+
 async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
     channel = await require_channel(db, channel_id)
     if channel.type != "public":
