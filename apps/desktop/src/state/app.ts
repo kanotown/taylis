@@ -859,6 +859,11 @@ export class AppController {
     return isTauri();
   }
 
+  /** The workspace rail down the left edge: two or more workspaces in the desktop app. */
+  get showsRail(): boolean {
+    return this.multiWorkspace && this.workspaces.length >= 2;
+  }
+
   get activeEntry(): WorkspaceEntry | null {
     return this.workspaces.find((e) => e.serverUrl === this.activeServer) ?? null;
   }

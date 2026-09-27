@@ -9,7 +9,8 @@ export function Avatar({ id, name, size = 36, className, presence }: { id: strin
   const dot = Math.max(8, Math.round(size * 0.3));
   const picture = useAvatarUrl(id);
   return (
-    <span className={cn("relative inline-flex shrink-0", className)} style={{ width: size, height: size }} aria-hidden="true">
+    // A rounded square (Slack) unless the caller sets its own radius; the picture and initials inherit it.
+    <span className={cn("relative inline-flex shrink-0 rounded-[22%]", className)} style={{ width: size, height: size }} aria-hidden="true">
       {picture ? (
         <img src={picture} alt="" className={cn("h-full w-full rounded-[inherit] object-cover", className)} style={{ width: size, height: size }} draggable={false} />
       ) : (

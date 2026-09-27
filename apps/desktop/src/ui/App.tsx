@@ -8,6 +8,7 @@ import { InviteScreen } from "./InviteScreen";
 import { LoginScreen } from "./LoginScreen";
 import { MainScreen } from "./MainScreen";
 import { WorkspaceRail } from "./WorkspaceRail";
+import { overlayTitleBar } from "../platform/env";
 
 export function App({ controller }: { controller: AppController }) {
   useAppVersion(controller);
@@ -37,10 +38,21 @@ export function App({ controller }: { controller: AppController }) {
     }
   })();
 
+  // macOS: the window has no title bar of its own (overlay); screens without the top bar get a strip to drag it by.
+  const dragStrip = overlayTitleBar() && controller.screen !== "main" ? <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-50 h-8" /> : null;
+
   // M16c: with two or more workspaces the rail runs down the left edge (WORKSPACES.md §5).
-  if (!controller.multiWorkspace || controller.workspaces.length < 2) return screen;
+  if (!controller.showsRail) {
+    return (
+      <>
+        {dragStrip}
+        {screen}
+      </>
+    );
+  }
   return (
     <div className="flex h-full min-h-0">
+      {dragStrip}
       <WorkspaceRail controller={controller} />
       <div className="min-w-0 flex-1">{screen}</div>
     </div>

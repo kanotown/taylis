@@ -82,7 +82,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const firstUnread = state ? replies.find((r) => r.seq !== null && r.seq > state.last_read_seq && r.sender_id !== me)?.id : undefined;
 
   return (
-    <aside className="flex min-h-0 w-[380px] min-w-[320px] flex-col border-l border-line bg-canvas">
+    <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">スレッド</div>
