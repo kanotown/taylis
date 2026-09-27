@@ -207,6 +207,9 @@ struct ChannelInfoView: View {
                 Button("名前を変更", systemImage: "pencil") { newName = channel.channel.name ?? ""; renaming = true }
                 Button("アーカイブ", systemImage: "archivebox", role: .destructive) { confirmArchive = true }
             }
+            if canManage && channel.channel.archived {
+                Button("アーカイブを解除", systemImage: "archivebox") { Task { _ = await controller.unarchiveChannel(channelId) } }
+            }
             Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
         }
     }

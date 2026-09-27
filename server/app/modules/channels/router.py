@@ -51,6 +51,12 @@ async def archive_channel(channel_id: UUID, user: CurrentUser, db: Db) -> Channe
     return await service.archive_channel(db, user, channel_id)
 
 
+@router.post("/channels/{channel_id}/unarchive", response_model=ChannelOut)
+async def unarchive_channel(channel_id: UUID, user: CurrentUser, db: Db) -> ChannelOut:
+    """M13d: owner or administrator; posting works again afterwards."""
+    return await service.unarchive_channel(db, user, channel_id)
+
+
 @router.post("/channels/{channel_id}/join", response_model=ChannelOut)
 async def join_channel(channel_id: UUID, user: CurrentUser, db: Db) -> ChannelOut:
     return await service.join_channel(db, user, channel_id)

@@ -350,6 +350,7 @@ struct MessageRow: View {
     @State private var showTime = false
     @State private var showingProfile = false
     @State private var pickingReaction = false
+    @State private var sharing = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -461,6 +462,7 @@ struct MessageRow: View {
                     Task { await controller.togglePin(message) }
                 }
                 Button("リンクをコピー", systemImage: "link") { controller.copyPermalink(message.id) }
+                Button("別のチャンネルに共有…", systemImage: "arrowshape.turn.up.right") { sharing = true }
                 Menu("リマインド", systemImage: "alarm") {
                     ForEach(Schedule.reminderPresets()) { preset in
                         Button("\(preset.label) (\(Schedule.label(preset.at)))") { Task { _ = await controller.setReminder(messageId: message.id, at: preset.at) } }
@@ -474,6 +476,7 @@ struct MessageRow: View {
         .sheet(isPresented: $pickingReaction) {
             EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
         }
+        .sheet(isPresented: $sharing) { ShareMessageSheet(controller: controller, message: message) }
         .sheet(isPresented: $showingProfile) {
             ProfileSheet(controller: controller, userId: message.senderId) { id in
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])

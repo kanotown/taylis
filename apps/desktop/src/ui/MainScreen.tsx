@@ -460,6 +460,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                       <MenuSeparator />
                       <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
                       {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
+                      {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>アーカイブを解除</MenuItem>}
                     </MenuContent>
                   </Menu>
                 )}

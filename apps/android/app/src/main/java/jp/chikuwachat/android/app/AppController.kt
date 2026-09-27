@@ -26,6 +26,7 @@ import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
 import jp.chikuwachat.android.ui.SlashCommands
+import jp.chikuwachat.android.ui.Share
 import jp.chikuwachat.android.ui.Totp
 import jp.chikuwachat.android.api.TotpEnabledOut
 import jp.chikuwachat.android.api.TotpSetupOut
@@ -611,6 +612,20 @@ class AppController(private val app: Application) {
         store.upsertChannel(api!!.archiveChannel(channelId))
         true
     }.getOrElse { error = describe(it); false }
+
+    suspend fun unarchiveChannel(channelId: String): Boolean = runCatching {
+        store.upsertChannel(api!!.unarchiveChannel(channelId))
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** M13c: post a quote of `message` and its permalink into another conversation. */
+    suspend fun shareMessage(message: MessageState, channelId: String, comment: String): Boolean {
+        val base = serverBase ?: return false
+        val engine = engine ?: return false
+        engine.send(channelId, Share.body(message.body, Permalink.url(base, message.id), comment))
+        notice = "共有しました"
+        return true
+    }
 
     /** Leaving drops the channel locally at once; the server's member_removed confirms it. */
     suspend fun leaveChannel(channelId: String): Boolean = runCatching {

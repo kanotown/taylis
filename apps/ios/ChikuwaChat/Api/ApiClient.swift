@@ -143,6 +143,8 @@ final class ApiClient: SyncApi {
     }
 
     func archiveChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/archive", body: .object([:])) }
+    /// M13d: owner or administrator; the channel becomes writable again.
+    func unarchiveChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/unarchive", body: .object([:])) }
 
     func updateChannel(id: String, topic: String? = nil, name: String? = nil, purpose: String? = nil) async throws -> ChannelOut {
         var body: [String: JSONValue] = [:]
