@@ -92,6 +92,9 @@ data class MessageState(
     val acks: List<AckOut> = emptyList(),
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
+
+    /** A row's key in lists: the client_msg_id, which a pending message keeps when the server confirms it. */
+    val rowKey: String get() = clientMsgId ?: id
     val isReply: Boolean get() = parentId != null
     /** The channel timeline shows top-level messages and replies also sent to the channel (M15c). */
     val inTimeline: Boolean get() = parentId == null || alsoInChannel

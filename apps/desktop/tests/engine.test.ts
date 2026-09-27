@@ -47,6 +47,34 @@ afterEach(() => {
 });
 
 describe("SyncEngine", () => {
+  it("catches up a conversation opened while the connection was still starting", async () => {
+    // Start-up: the connection catches up the conversation open at that moment; the reader taps another one before
+    // the engine is online. That one used to stay empty ("まだメッセージはありません") until something else synced it.
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const other = server.createChannel("random", alice.id);
+    server.join(other.id, bob.id);
+    server.post(other.id, alice.id, "r1");
+    server.post(other.id, alice.id, "r2");
+    await engine.openChannel(channel.id);
+    const api = server.apiFor(bob.id);
+    let tapped = false;
+    useApi(engine, {
+      ...api,
+      history: async (channelId, beforeSeq, limit) => {
+        const out = await api.history(channelId, beforeSeq, limit);
+        if (!tapped) {
+          tapped = true; // the tap lands after the start-up catch-up of #general, before "online"
+          void engine.openChannel(other.id);
+        }
+        return out;
+      },
+    });
+    await engine.start();
+    await settle(engine, () => store.messages(other.id).length === 2);
+    expect(engine.status).toBe("online");
+    expect(store.messages(other.id).map((m) => m.body)).toEqual(["r1", "r2"]);
+  });
+
   it("bootstraps and loads the latest page of the opened channel", async () => {
     const { server, alice, channel, store, engine } = await setup();
     for (let i = 1; i <= 5; i++) server.post(channel.id, alice.id, `m${i}`);

@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { AttachmentList } from "./Attachments";
 import { Avatar } from "./Avatar";
-import { buildTimeline, fullTimestamp, timeLabel } from "./format";
+import { buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
@@ -49,7 +49,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   }
   const heldUnread = engine?.unreadHold.get(channel.id);
   const items = buildTimeline(messages, { firstUnreadAfterSeq: heldUnread ?? unreadMark.current.seq, meId: me?.id ?? null });
-  const lastId = messages[messages.length - 1]?.id;
+  const last = messages[messages.length - 1];
+  const lastId = last ? rowKey(last) : undefined;
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
   const unseenBelow = focus ? 0 : messages.filter((m) => m.seq !== null && m.seq > seenSeq && m.sender_id !== me?.id).length;
   const markSeen = () => {
@@ -199,7 +200,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
               </div>
             );
           }
-          return <MessageRow key={item.message.id} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread} />;
+          return <MessageRow key={rowKey(item.message)} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread} />;
         })}
         <div ref={bottom} />
         </div>
@@ -280,7 +281,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const threadId = message.parent_id ?? message.id;
   return (
     <article
-      key={message.id}
+      key={rowKey(message)}
       id={`${thread ? "thread" : "timeline"}-${message.id}`}
       data-seq={message.seq ?? undefined}
       tabIndex={0}

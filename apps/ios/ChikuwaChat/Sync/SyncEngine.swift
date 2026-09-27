@@ -261,7 +261,9 @@ final class SyncEngine {
         Task { await flushOutbox() }
         Task { await resendReads() } // §10: marks that could not be sent before
         Task { await drafts.flush() } // edited while offline (M15d)
-        if let current = currentChannelId { Task { await loadLinks(current) } } // changed while away (M15f)
+        // Open the conversation again: its links may have changed while away (M15f), and one opened while this
+        // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
+        if let current = currentChannelId { Task { await openChannel(current) } }
     }
 
     private func waitForHello() async -> Bool {

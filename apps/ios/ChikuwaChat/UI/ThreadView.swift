@@ -40,10 +40,10 @@ struct ThreadView: View {
                                     Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
                                         .font(.caption).foregroundStyle(.secondary)
                                     Divider()
-                                    ForEach(replies) { reply in
+                                    ForEach(replies, id: \.rowKey) { reply in
                                         if reply.id == firstUnreadId { NewRepliesDivider() }
                                         MessageRow(message: reply, controller: controller)
-                                            .id(reply.id)
+                                            .id(reply.rowKey)
                                             .background(GeometryReader { geometry in
                                                 Color.clear.preference(key: VisibleReplyFrames.self,
                                                                        value: [reply.id: geometry.frame(in: .named("threadViewport"))])
@@ -67,7 +67,7 @@ struct ThreadView: View {
                     }
                     .defaultScrollAnchor(.bottom)
                     .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: replies.last?.id) { _, _ in
+                    .onChange(of: replies.last?.rowKey) { _, _ in
                         let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
                         if positioned && (atBottom || mine) && controller.messageFocus?.parentId != parentId {
                             withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -79,7 +79,7 @@ struct ThreadView: View {
                         guard !positioned, !replies.isEmpty else { return }
                         await Task.yield()
                         if let focus = controller.messageFocus, focus.parentId == parentId {
-                            proxy.scrollTo(focus.messageId, anchor: .center)
+                            proxy.scrollTo(replies.first(where: { $0.id == focus.messageId })?.rowKey ?? focus.messageId, anchor: .center)
                         } else { proxy.scrollTo("bottom", anchor: .bottom) }
                         positioned = true
                     }

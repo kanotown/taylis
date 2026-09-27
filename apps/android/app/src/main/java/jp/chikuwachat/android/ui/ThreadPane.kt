@@ -100,7 +100,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             } else {
                 item { Text("メッセージが見つかりません", modifier = Modifier.padding(16.dp)) }
             }
-            items(replies, key = { it.id }) { reply ->
+            items(replies, key = { it.rowKey }) { reply ->
                 Column {
                     if (reply.id == firstUnreadId) NewRepliesDivider()
                     ThreadMessage(reply, store, controller, version)
