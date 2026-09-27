@@ -1,3 +1,6 @@
+import ImageIO
+import UIKit
+import UniformTypeIdentifiers
 import XCTest
 @testable import ChikuwaChat
 
@@ -10,6 +13,10 @@ final class StubProtocol: URLProtocol {
 
     override func startLoading() {
         let (status, data) = Self.handler?(request) ?? (500, Data())
+        if status < 0 { // no answer at all (the connection dropped)
+            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+            return
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
@@ -216,5 +223,123 @@ final class ApiClientTests: XCTestCase {
             "POST /api/v1/sidebar/sections", "PATCH /api/v1/sidebar/sections/s1", "PUT /api/v1/sidebar/sections/s1/channels/c1",
             "DELETE /api/v1/sidebar/channels/c1", "DELETE /api/v1/sidebar/sections/s1",
         ])
+    }
+
+    // MARK: release fixes
+
+    func testQueryStringsEncodePlus() async throws {  // "C++" must not reach the server as "C  "
+        var queries: [String] = []
+        StubProtocol.handler = { request in
+            queries.append(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.percentEncodedQuery ?? "")
+            if request.url!.path.hasSuffix("/link-previews") {
+                return (200, Data(#"{"url":"u","status":"failed","title":null,"description":null,"image_url":null,"site_name":null,"fetched_at":""}"#.utf8))
+            }
+            return (200, Data(#"{"hits":[],"keywords":[],"limit":20,"offset":0,"has_more":false}"#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        _ = try await client.searchMessages("C++ a&b")
+        _ = try await client.linkPreview(url: "https://example.com/?q=1+1")
+        XCTAssertTrue(queries[0].contains("q=C%2B%2B%20a%26b"), queries[0])
+        XCTAssertTrue(queries[1].contains("url=https://example.com/?q%3D1%2B1") || queries[1].contains("url=https://example.com/?q=1%2B1"), queries[1])
+        XCTAssertFalse(queries[1].contains("+"), queries[1])
+        XCTAssertEqual(ApiClient.pathWithQuery("/api/v1/files", [URLQueryItem(name: "q", value: "a+b")]), "/api/v1/files?q=a%2Bb")
+    }
+
+    func testRefreshOnlyWhenNeededAndRetriedQuicklyAfterANetworkFailure() async throws {  // SYNC_PROTOCOL.md §7.2
+        var attempts = 0
+        StubProtocol.handler = { [self] _ in
+            attempts += 1
+            return attempts == 1 ? (-1, Data()) : (200, tokens(2)) // the first answer is lost
+        }
+        let client = makeClient()
+        client.refreshRetryDelays = [0.01]
+        client.refreshToken = "refresh-1"
+        XCTAssertTrue(client.needsRefresh())
+        let refreshed = try await client.refresh()
+        XCTAssertEqual(refreshed.refreshToken, "refresh-2")
+        XCTAssertEqual(attempts, 2)
+        XCTAssertFalse(client.needsRefresh()) // 900 s left: the next connection keeps this token
+        XCTAssertTrue(client.needsRefresh(margin: 1000))
+
+        // Still no answer after the retries: the error comes back and the session is kept for the next attempt.
+        StubProtocol.handler = { _ in (-1, Data()) }
+        attempts = 0
+        do {
+            _ = try await client.refresh()
+            XCTFail("expected a network error")
+        } catch ApiError.network {}
+        XCTAssertEqual(client.refreshToken, "refresh-2")
+    }
+
+    func testLogoutRefreshesAnExpiredTokenSoTheServerSessionEnds() async throws {  // SYNC_PROTOCOL.md §11
+        var calls: [String] = []
+        StubProtocol.handler = { [self] request in
+            calls.append("\(request.url!.path) \(request.value(forHTTPHeaderField: "Authorization") ?? "-")")
+            if request.url!.path.hasSuffix("/auth/refresh") { return (200, tokens(2)) }
+            if request.value(forHTTPHeaderField: "Authorization") == "Bearer access-1" {
+                return (401, Data(#"{"error":{"code":"token_expired","message":"expired","details":{}}}"#.utf8))
+            }
+            return (204, Data())
+        }
+        let client = makeClient()
+        var signedOut = false
+        client.onSignedOut = { signedOut = true }
+        client.accessToken = "access-1"
+        client.refreshToken = "refresh-1"
+        await client.logout()
+        XCTAssertEqual(calls, ["/api/v1/auth/logout Bearer access-1", "/api/v1/auth/refresh -", "/api/v1/auth/logout Bearer access-2"])
+        XCTAssertTrue(signedOut)
+        XCTAssertNil(client.refreshToken)
+    }
+
+    func testErrorTextComesFromTheSharedJapaneseTable() {  // ARCHITECTURE.md §9
+        XCTAssertEqual(ErrorMessages.text(for: ApiError.api(status: 403, code: "not_a_member", message: "You are not a member of this channel")),
+                       "このチャンネルのメンバーではありません")
+        XCTAssertEqual(ErrorMessages.text(for: ApiError.api(status: 502, code: "http_502", message: "Request failed")), ErrorMessages.byStatus["5xx"])
+        XCTAssertEqual(ErrorMessages.text(for: ApiError.api(status: 409, code: "brand_new_code", message: "English text")), ErrorMessages.byStatus["409"])
+        XCTAssertEqual(ErrorMessages.text(for: ApiError.network(URLError(.notConnectedToInternet))), ErrorMessages.network)
+        XCTAssertEqual(ErrorMessages.text(for: ApiError.api(status: 0, code: "decode_error", message: "Unexpected response: keyNotFound(…)")), ErrorMessages.unknown)
+        XCTAssertEqual(AppController().describe(ApiError.api(status: 401, code: "invalid_credentials", message: "Invalid credentials")),
+                       "ユーザー名またはパスワードが違います")
+    }
+
+    func testLargeFilesStreamFromDiskAndPhotosGoInServerFormats() throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("source-\(UUID().uuidString)")
+        try Data(repeating: 7, count: 3 << 20).write(to: source) // 3 MB: several 1 MB chunks
+        defer { try? FileManager.default.removeItem(at: source) }
+        let body = try Multipart.write(head: Multipart.head(boundary: "b", filename: "a\"b.bin", contentType: "application/octet-stream"),
+                                       file: source, tail: Multipart.tail(boundary: "b"))
+        defer { try? FileManager.default.removeItem(at: body) }
+        let written = try Data(contentsOf: body)
+        let head = String(decoding: written.prefix(120), as: UTF8.self)
+        XCTAssertTrue(head.hasPrefix("--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a_b.bin\""), head)
+        XCTAssertEqual(String(decoding: written.suffix(9), as: UTF8.self), "\r\n--b--\r\n")
+        XCTAssertEqual(written.count, Multipart.head(boundary: "b", filename: "a\"b.bin", contentType: "application/octet-stream").count + (3 << 20) + 9)
+
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let png = try XCTUnwrap(image.pngData())
+        XCTAssertEqual(ImageUpload.prepare(png)?.mime, "image/png") // PNG / JPEG / GIF / WebP go as they are
+        XCTAssertEqual(ImageUpload.prepare(png)?.data, png)
+        var others = [try XCTUnwrap(encode(image, as: .tiff))]
+        if let heic = image.heicData() { others.append(heic) } // the simulator may lack an HEIC encoder
+        for data in others {
+            let converted = try XCTUnwrap(ImageUpload.prepare(data))
+            XCTAssertEqual(converted.mime, "image/jpeg")
+            XCTAssertEqual(converted.ext, "jpg")
+            XCTAssertEqual(ImageUpload.kind(of: converted.data)?.mime, "image/jpeg")
+        }
+        XCTAssertNil(ImageUpload.prepare(Data("not an image".utf8)))
+    }
+
+    private func encode(_ image: UIImage, as type: UTType) -> Data? {
+        guard let cgImage = image.cgImage else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, cgImage, nil)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 }

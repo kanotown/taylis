@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SQLite3
 
@@ -15,7 +16,14 @@ final class SQLiteDatabase {
         try exec("PRAGMA journal_mode = WAL")
     }
 
-    deinit { sqlite3_close(handle) }
+    deinit { close() }
+
+    /// Later statements fail instead of writing (sign-out deletes the files next).
+    func close() {
+        guard let handle else { return }
+        sqlite3_close_v2(handle)
+        self.handle = nil
+    }
 
     func exec(_ sql: String, _ params: [Any?] = []) throws {
         _ = try query(sql, params)
@@ -23,6 +31,7 @@ final class SQLiteDatabase {
 
     /// Runs a statement; rows come back as dictionaries keyed by column name.
     func query(_ sql: String, _ params: [Any?] = []) throws -> [[String: Any]] {
+        guard let handle else { throw SQLiteError(message: "database is closed") }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             throw SQLiteError(message: String(cString: sqlite3_errmsg(handle)))
@@ -77,12 +86,39 @@ final class SQLitePersistence: Persistence {
         for statement in Self.schema { try db.exec(statement) }
     }
 
+    /// `profile` is "server|username"; each account gets its own file.
     static func open(profile: String) throws -> SQLitePersistence {
-        let safe = profile.replacingOccurrences(of: "[^a-zA-Z0-9]+", with: "-", options: .regularExpression).prefix(80)
-        let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let path = directory.appendingPathComponent("chikuwa-\(safe).db").path
-        return try SQLitePersistence(db: SQLiteDatabase(path: path))
+        let url = try location(profile: profile)
+        moveLegacyFile(profile: profile, to: url)
+        return try SQLitePersistence(db: SQLiteDatabase(path: url.path))
     }
+
+    /// Sign-out (SYNC_PROTOCOL.md §11): the account's database goes, with its -wal / -shm files. Close it first.
+    static func destroy(profile: String) {
+        guard let url = try? location(profile: profile) else { return }
+        for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: url.path + suffix) }
+    }
+
+    /// Named by a hash of the server URL and the username (§11): accounts whose names differ only in
+    /// punctuation or length never share a file.
+    static func location(profile: String) throws -> URL {
+        let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let digest = SHA256.hash(data: Data(profile.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("chikuwa-\(digest).db")
+    }
+
+    /// Earlier builds named the file after the sanitised profile; its cache and unsent messages move over once.
+    private static func moveLegacyFile(profile: String, to url: URL) {
+        let safe = profile.replacingOccurrences(of: "[^a-zA-Z0-9]+", with: "-", options: .regularExpression).prefix(80)
+        let legacy = url.deletingLastPathComponent().appendingPathComponent("chikuwa-\(safe).db")
+        let files = FileManager.default
+        guard legacy != url, !files.fileExists(atPath: url.path), files.fileExists(atPath: legacy.path) else { return }
+        for suffix in ["", "-wal", "-shm"] where files.fileExists(atPath: legacy.path + suffix) {
+            try? files.moveItem(atPath: legacy.path + suffix, toPath: url.path + suffix)
+        }
+    }
+
+    func close() { db.close() }
 
     private func encode<T: Encodable>(_ value: T) -> String {
         (try? String(data: JSON.plainEncoder.encode(value), encoding: .utf8)) ?? "{}"

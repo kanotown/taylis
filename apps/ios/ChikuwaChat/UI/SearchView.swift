@@ -86,7 +86,7 @@ struct SearchView: View {
             filters = result.filters
             searched = true
         } catch {
-            controller.error = String(describing: error)
+            controller.error = controller.describe(error)
         }
     }
 }

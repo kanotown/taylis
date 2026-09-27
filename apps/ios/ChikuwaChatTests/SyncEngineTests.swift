@@ -15,7 +15,7 @@ final class SyncEngineTests: XCTestCase {
 
     private var notifications: [String] = []
 
-    private func makeWorld(hold: Bool = false) -> World {
+    private func makeWorld(hold: Bool = false, heartbeat: TimeInterval? = nil, outboxRetry: TimeInterval = 2) -> World {
         let server = FakeServer()
         let alice = server.addUser("alice")
         let bob = server.addUser("bob")
@@ -28,6 +28,9 @@ final class SyncEngineTests: XCTestCase {
         options.reconnectMin = 0
         options.sleep = { _ in }
         options.random = { 0.5 }
+        options.heartbeatInterval = heartbeat
+        options.outboxRetryMin = outboxRetry
+        options.outboxRetryMax = outboxRetry * 8
         let api = server.api(for: bob.id)
         let engine = SyncEngine(api: api, connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
                                 getAccessToken: { "token" }, options: options)
@@ -42,6 +45,13 @@ final class SyncEngineTests: XCTestCase {
             await engine.idle()
             await Task.yield()
         }
+    }
+
+    /// Waits until the engine is connected again (after a drop), then for what the connection started.
+    private func waitOnline(_ engine: SyncEngine) async {
+        for _ in 0..<50 where engine.status != .online { await settle(engine) }
+        await engine.flushReads()
+        await settle(engine)
     }
 
     func testConversationDraftsPersistSeparatelyIncludingAttachments() {
@@ -89,7 +99,7 @@ final class SyncEngineTests: XCTestCase {
         let w = makeWorld()
         var attempts = 0
         w.store.setDraft("c1") { $0.text = "offline draft" }
-        w.engine.prepareConnection = {
+        w.engine.prepareConnection = { _ in
             attempts += 1
             if attempts == 1 { throw ApiError.network(URLError(.notConnectedToInternet)) }
         }
@@ -103,7 +113,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testRevokedSessionDuringRestorationSignsOut() async {
         let w = makeWorld()
-        w.engine.prepareConnection = { throw ApiError.api(status: 401, code: "session_revoked", message: "revoked") }
+        w.engine.prepareConnection = { _ in throw ApiError.api(status: 401, code: "session_revoked", message: "revoked") }
         await w.engine.start()
         XCTAssertEqual(w.engine.status, .signedOut)
         w.engine.stop()
@@ -773,5 +783,358 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(store.channel(general.id)?.isMember, true)
         XCTAssertEqual(store.channel(general.id)?.channel.memberCount, 2) // member_added keeps the count current
         engine.stop()
+    }
+
+    // MARK: release fixes (SYNC_PROTOCOL.md §5.3, §7.2–§7.4, §9, §10, §11)
+
+    func testOutboxSendsWhatIsQueuedMeanwhileAndBacksOffOnTemporaryFailures() async throws {  // §9
+        let w = makeWorld(outboxRetry: 0.02)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+
+        // A send queued while another one is in flight goes out in the same run, in order.
+        var release: CheckedContinuation<Void, Never>?
+        w.api.beforePost = {
+            if w.api.calls.filter({ $0 == "post" }).count == 1 { await withCheckedContinuation { release = $0 } }
+        }
+        let first = Task { await w.engine.send(w.channel.id, body: "first") }
+        for _ in 0..<100 where release == nil { await Task.yield() }
+        XCTAssertNotNil(release)
+        await w.engine.send(w.channel.id, body: "second")
+        XCTAssertEqual(w.store.outbox.map(\.body), ["first", "second"])
+        release?.resume()
+        await first.value
+        await settle(w.engine)
+        XCTAssertTrue(w.store.outbox.isEmpty)
+        XCTAssertEqual(w.server.channels[w.channel.id]?.messages.map(\.body), ["first", "second"])
+        w.api.beforePost = nil
+
+        // Temporary failures (503, no network) pause the queue; the backoff timer resumes it while connected.
+        w.api.failures["post"] = [ApiError.api(status: 503, code: "unavailable", message: ""), ApiError.network(URLError(.timedOut))]
+        await w.engine.send(w.channel.id, body: "third")
+        XCTAssertEqual(w.store.outbox.map(\.body), ["third"])
+        for _ in 0..<100 where !w.store.outbox.isEmpty {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            await settle(w.engine)
+        }
+        XCTAssertTrue(w.store.outbox.isEmpty)
+        XCTAssertEqual(w.api.calls.filter { $0 == "post" }.count, 5) // first, second, and third three times
+        XCTAssertEqual(w.server.channels[w.channel.id]?.messages.map(\.body), ["first", "second", "third"])
+
+        // A refused message stays failed (after a restart too) and the ones behind it still go out.
+        w.engine.stop()
+        await w.engine.send(w.channel.id, body: "refused")
+        await w.engine.send(w.channel.id, body: "fourth")
+        w.api.failures["post"] = [ApiError.api(status: 403, code: "posting_restricted", message: "")]
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.outbox.map(\.body), ["refused"])
+        XCTAssertEqual(w.store.outbox.first?.failed, "posting_restricted")
+        XCTAssertEqual(w.store.messages(w.channel.id).first { $0.body == "refused" }?.failed, true)
+        XCTAssertEqual(Store.fromSnapshot(w.store.snapshot()).outbox.first?.failed, "posting_restricted")
+        XCTAssertEqual(w.server.channels[w.channel.id]?.messages.last?.body, "fourth")
+        w.engine.stop()
+    }
+
+    func testHalfOpenConnectionIsDroppedTwoIntervalsAfterTheLastFrame() async throws {  // §5.3
+        let w = makeWorld(heartbeat: 0.2) // ping every 0.2 s, dead after 0.4 s of silence
+        await w.engine.start()
+        await settle(w.engine)
+        let first = try XCTUnwrap(w.server.sockets(of: w.bob.id).first)
+        first.silent = true // pings still go out, nothing comes back
+        for _ in 0..<100 where w.engine.reconnects == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertTrue(first.closed)
+        XCTAssertEqual(w.engine.reconnects, 1)
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.engine.status, .online)
+
+        // Answered pings keep a healthy connection up across many intervals.
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        await settle(w.engine)
+        XCTAssertEqual(w.engine.reconnects, 1)
+        XCTAssertEqual(w.engine.status, .online)
+        w.engine.stop()
+    }
+
+    func testAuthRefusalRenewsTheTokenAndReconnectsInsteadOfSigningOut() async throws {  // §5.3, §7.2
+        let w = makeWorld()
+        var refreshes: [Bool] = []
+        var signedOut = false
+        w.engine.onSignedOut = { signedOut = true }
+        w.engine.prepareConnection = { refresh in refreshes.append(refresh) }
+        w.server.refuseAuths = ["auth_required"] // the auth frame reached the server after its 5 s window
+        await w.engine.start()
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.engine.status, .online)
+        XCTAssertEqual(refreshes, [false, true])
+        XCTAssertFalse(signedOut)
+
+        // A live connection closed with 4001 does the same.
+        w.server.disconnect(w.bob.id, code: closeAuthFailed)
+        await waitOnline(w.engine)
+        XCTAssertEqual(refreshes, [false, true, true])
+
+        // An ordinary drop keeps a token that is still valid.
+        w.server.disconnect(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(refreshes, [false, true, true, false])
+        XCTAssertFalse(signedOut)
+
+        // Only a refresh the server rejects signs out.
+        w.engine.prepareConnection = { refresh in
+            refreshes.append(refresh)
+            if refresh { throw ApiError.api(status: 401, code: "session_revoked", message: "revoked") }
+        }
+        w.server.refuseAuths = ["session_revoked"]
+        w.server.disconnect(w.bob.id)
+        for _ in 0..<50 where w.engine.status != .signedOut { await settle(w.engine) }
+        XCTAssertEqual(w.engine.status, .signedOut)
+        XCTAssertEqual(refreshes.suffix(2), [false, true])
+        XCTAssertTrue(signedOut)
+    }
+
+    func testTimelineWindowKeepsOldRowsOutAndPagesFromItsStart() async throws {  // §7.3
+        let w = makeWorld() // pages of 3
+        for i in 1...6 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m4", "m5", "m6"])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.oldestLoadedSeq, 4)
+
+        // Older rows arrive on their own: a live reaction on m2, and (while away) a reply that bumps m1 into the delta.
+        let m1 = try w.server.messageByBody(w.channel.id, "m1")
+        let m2 = try w.server.messageByBody(w.channel.id, "m2")
+        try w.server.react(channelId: w.channel.id, userId: w.alice.id, messageId: m2.id, emoji: "👍", present: true)
+        await settle(w.engine)
+        w.server.disconnect(w.bob.id)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "reply", parentId: m1.id)
+        await waitOnline(w.engine)
+        XCTAssertNotNil(w.store.message(w.channel.id, id: m2.id)) // kept …
+        XCTAssertEqual(w.store.message(w.channel.id, id: m1.id)?.replyCount, 1)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m4", "m5", "m6"]) // … but outside the window: no hole
+
+        await w.engine.loadOlder(w.channel.id) // before seq 4, not before m1
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m1", "m2", "m3", "m4", "m5", "m6"])
+        XCTAssertEqual(w.store.messages(w.channel.id).first { $0.body == "m2" }?.reactions.map(\.emoji), ["👍"])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.oldestLoadedSeq, 0)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.hasOlder, false)
+        XCTAssertEqual(Store.fromSnapshot(w.store.snapshot()).channel(w.channel.id)?.oldestLoadedSeq, 0) // persisted with the channel
+
+        // A timeline stored before the window existed is read again from the newest page when it is caught up;
+        // a message still waiting to be sent survives that.
+        w.engine.stop()
+        w.store.updateChannel(w.channel.id) { $0.oldestLoadedSeq = nil }
+        await w.engine.send(w.channel.id, body: "unsent")
+        w.api.failures["post"] = [ApiError.network(URLError(.notConnectedToInternet))]
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.engine.reloads, 1)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.oldestLoadedSeq, 4)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m4", "m5", "m6", "unsent"])
+        XCTAssertEqual(w.store.messages(w.channel.id).last?.pending, true)
+        w.engine.stop()
+    }
+
+    func testBootstrapReadStateIsTheServersAndUnsentMarksAreSentAgain() async throws {  // §10
+        let w = makeWorld()
+        w.engine.isActive = { true }
+        for body in ["m1", "m2", "m3"] { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: body) }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+
+        // A mark whose PUT fails is remembered (persisted with the store) …
+        w.api.failures["markRead"] = [ApiError.network(URLError(.notConnectedToInternet))]
+        w.engine.markRead(w.channel.id, seq: 3)
+        await w.engine.flushReads()
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).lastReadSeq, 0)
+        XCTAssertEqual(Store.fromSnapshot(w.store.snapshot()).unsentReads[w.channel.id], 3)
+        // … and sent after reconnecting: bootstrap's position is taken as it is, then the mark goes on top again.
+        w.server.disconnect(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).lastReadSeq, 3)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [3, 0])
+        XCTAssertTrue(w.store.unsentReads.isEmpty)
+
+        // No max merge: another device moved the position back while this one was away …
+        w.server.disconnect(w.bob.id)
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 1, mode: "set")
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [1, 2])
+        // … so the rows on screen can be read again.
+        w.engine.markRead(w.channel.id, seq: 3)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).lastReadSeq, 3)
+        w.engine.stop()
+    }
+
+    func testUnsentThreadReadsAndMarksMadeBeforeQuittingAreSentLater() async throws {  // §10
+        let w = makeWorld()
+        w.engine.isActive = { true }
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.send(w.channel.id, body: "topic") // bob's own post: he follows its thread
+        await settle(w.engine)
+        let topic = try w.server.messageByBody(w.channel.id, "topic")
+        let (answer, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "answer", parentId: topic.id)
+        await settle(w.engine)
+
+        w.api.failures["markThreadRead"] = [ApiError.network(URLError(.timedOut))]
+        w.engine.markThreadRead(topic.id, seq: answer.seq)
+        await w.engine.flushReads()
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: topic.id).lastReadSeq, 0)
+        w.server.disconnect(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(try w.server.threadState(userId: w.bob.id, parentId: topic.id).lastReadSeq, answer.seq)
+        XCTAssertTrue(w.store.unsentReads.isEmpty)
+
+        // The app quits while a mark is still debouncing: the next launch sends it.
+        let (late, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "late")
+        await settle(w.engine)
+        w.api.failures["markRead"] = [ApiError.network(URLError(.timedOut))]
+        w.engine.markRead(w.channel.id, seq: late.seq)
+        let saved = w.store.snapshot()
+        w.engine.stop()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let restored = Store.fromSnapshot(saved)
+        let next = SyncEngine(api: w.server.api(for: w.bob.id), connect: w.server.connector(for: w.bob.id), wsUrl: URL(string: "ws://fake")!,
+                              store: restored, getAccessToken: { "t" }, options: options)
+        await next.start()
+        await waitOnline(next)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).lastReadSeq, late.seq)
+        XCTAssertEqual(restored.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [late.seq, 0])
+        XCTAssertTrue(restored.unsentReads.isEmpty)
+        next.stop()
+    }
+
+    func testThreadOpenedWithoutItsTimelineStaysLive() async throws {  // §7.4
+        let w = makeWorld()
+        let (parent, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "r1", parentId: parent.id)
+        await w.engine.start() // no conversation open: the channel's timeline is not loaded
+        await settle(w.engine)
+        XCTAssertNil(w.store.channel(w.channel.id)?.syncedSeq)
+        await w.engine.loadReplies(w.channel.id, parentId: parent.id) // the thread opens from 「スレッド」
+        XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["r1"])
+
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "r2", parentId: parent.id)
+        let r1 = try w.server.messageByBody(w.channel.id, "r1")
+        try w.server.edit(channelId: w.channel.id, userId: w.alice.id, messageId: r1.id, body: "r1 edited")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["r1 edited", "r2"])
+
+        // Rows nobody holds stay out, and the timeline is still not loaded.
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "elsewhere")
+        await settle(w.engine)
+        XCTAssertNil(w.store.message(w.channel.id, id: try w.server.messageByBody(w.channel.id, "elsewhere").id))
+        XCTAssertNil(w.store.channel(w.channel.id)?.syncedSeq)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.lastSeq, 5)
+        w.engine.stop()
+    }
+
+    func testMyThreadReplyLeavesTheChannelUnread() async throws {  // §10
+        let w = makeWorld()
+        let (parent, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "later")
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [0, 2])
+
+        await w.engine.send(w.channel.id, body: "my reply", parentId: parent.id)
+        await w.engine.send(w.channel.id, body: "shared reply", parentId: parent.id, options: SendOptions(alsoInChannel: true))
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [0, 2])
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).unreadCount, 2)
+
+        await w.engine.send(w.channel.id, body: "top-level") // a post in the channel reads it
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.lastReadSeq, $0.unreadCount] }, [5, 0])
+        w.engine.stop()
+    }
+
+    func testLosingTheOpenChannelDoesNotBreakReconnecting() async throws {  // §7.3, §7.6
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+
+        // Removed while this device was away: bootstrap drops the channel and the browse list brings it back as a
+        // public channel to join; the connection does not try to catch it up (403 not_a_member) and stays up.
+        w.server.disconnect(w.bob.id)
+        w.server.channels[w.channel.id]?.members.remove(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.engine.status, .online)
+        XCTAssertEqual(w.engine.reconnects, 1)
+        XCTAssertNil(w.engine.currentChannelId)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.isMember, false)
+        w.server.disconnect(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.engine.reconnects, 2) // one reconnect per drop, no loop
+
+        // Re-joined, then removed live: member_removed forgets it as the open conversation as well.
+        w.server.join(w.channel.id, w.bob.id)
+        w.server.emitMembership(w.channel.id, w.bob.id)
+        await settle(w.engine)
+        await w.engine.openChannel(w.channel.id)
+        XCTAssertEqual(w.engine.currentChannelId, w.channel.id)
+        w.server.removeMember(w.channel.id, w.bob.id)
+        await settle(w.engine)
+        XCTAssertNil(w.engine.currentChannelId)
+        XCTAssertNil(w.store.channel(w.channel.id))
+
+        // One conversation refusing its catch-up (403 / 404) does not fail the whole connection either.
+        w.server.join(w.channel.id, w.bob.id)
+        w.server.emitMembership(w.channel.id, w.bob.id)
+        await settle(w.engine)
+        await w.engine.openChannel(w.channel.id)
+        XCTAssertNotNil(w.store.channel(w.channel.id)?.syncedSeq)
+        w.api.failures["delta"] = [ApiError.api(status: 403, code: "not_a_member", message: "")]
+        w.server.disconnect(w.bob.id)
+        await waitOnline(w.engine)
+        XCTAssertEqual(w.engine.status, .online)
+        XCTAssertEqual(w.engine.reconnects, 3)
+        XCTAssertEqual(w.api.failures["delta"]?.count, 0) // it was asked, and refused
+        w.engine.stop()
+    }
+
+    func testNewTopLevelMessagesMoveTheConversationUp() async throws {  // §7.4
+        let w = makeWorld()
+        let dm = w.server.createChannel("", ownerId: w.alice.id, type: "dm")
+        w.server.join(dm.id, w.bob.id)
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertNil(w.store.channel(dm.id)?.channel.lastMessageAt)
+        let (first, _) = try w.server.post(channelId: dm.id, senderId: w.alice.id, body: "hi")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(dm.id)?.channel.lastMessageAt, first.createdAt)
+        try w.server.post(channelId: dm.id, senderId: w.alice.id, body: "in a thread", parentId: first.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(dm.id)?.channel.lastMessageAt, first.createdAt) // a plain reply does not
+        let (shared, _) = try w.server.post(channelId: dm.id, senderId: w.alice.id, body: "shared", parentId: first.id, options: SendOptions(alsoInChannel: true))
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(dm.id)?.channel.lastMessageAt, shared.createdAt)
+        w.engine.stop()
+    }
+
+    func testAccountStoreFileIsPerAccountAndGoesAtSignOut() throws {  // §11
+        let a = try SQLitePersistence.location(profile: "https://chat.example.com|toru.k")
+        let b = try SQLitePersistence.location(profile: "https://chat.example.com|toru-k")
+        XCTAssertNotEqual(a, b) // the old sanitised names were both "…-toru-k"
+        let profile = "https://test.invalid|" + UUID().uuidString
+        let persistence = try SQLitePersistence.open(profile: profile)
+        let store = Store(persistence: persistence)
+        store.setDraft("c1") { $0.text = "secret draft" }
+        let url = try SQLitePersistence.location(profile: profile)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        store.close()
+        SQLitePersistence.destroy(profile: profile)
+        for suffix in ["", "-wal", "-shm"] { XCTAssertFalse(FileManager.default.fileExists(atPath: url.path + suffix), suffix) }
+        store.setDraft("c1") { $0.text = "after sign-out" } // a closed store fails quietly, it does not recreate the file
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 }

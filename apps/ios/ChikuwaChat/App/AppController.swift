@@ -216,18 +216,26 @@ final class AppController {
         engine.onReminder = { [weak self] reminder in
             self?.notice = "⏰ " + ((reminder.note?.isEmpty == false ? reminder.note! + " — " : "") + reminder.preview)
         }
-        engine.onBadge = { count in PushCenter.shared.setBadge(count) }
+        engine.onBadge = { [weak self, weak engine] count in
+            guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
+            PushCenter.shared.setBadge(count)
+        }
         self.engine = engine
-        engine.prepareConnection = { [weak self, weak engine] in
-            let tokens = try await api.refresh()
-            guard let self, self.api === api, self.engine === engine else { return }
-            self.me = tokens.user
-            self.store.setMe(tokens.user)
-            if tokens.user.mustChangePassword {
-                engine?.stop()
-                self.screen = .changePassword
-                throw ApiError.api(status: 403, code: "password_change_required", message: "Password change required")
+        engine.prepareConnection = { [weak self, weak engine] refresh in
+            // §7.2: renew the access token only when it is missing, about to expire, or was refused (close 4001);
+            // every refresh rotates the refresh token, and a lost answer must not turn into a forced logout.
+            if refresh || api.needsRefresh() {
+                let tokens = try await api.refresh()
+                guard let self, self.api === api, self.engine === engine else { return }
+                self.me = tokens.user
+                self.store.setMe(tokens.user)
+                if tokens.user.mustChangePassword {
+                    engine?.stop()
+                    self.screen = .changePassword
+                    throw ApiError.api(status: 403, code: "password_change_required", message: "Password change required")
+                }
             }
+            guard let self, self.api === api, self.engine === engine else { return }
             PushCenter.shared.attach(controller: self)
         }
         screen = .main
@@ -250,6 +258,18 @@ final class AppController {
     func uploadAttachment(data: Data, filename: String, contentType: String) async -> AttachmentOut? {
         guard let api else { return nil }
         do { return try await api.uploadAttachment(data: data, filename: filename, contentType: contentType) } catch { self.error = describe(error); return nil }
+    }
+
+    /// A picked file, streamed from disk (large files never sit in memory).
+    func uploadAttachment(fileAt url: URL, filename: String, contentType: String) async -> AttachmentOut? {
+        guard let api else { return nil }
+        do { return try await api.uploadAttachment(fileAt: url, filename: filename, contentType: contentType) } catch { self.error = describe(error); return nil }
+    }
+
+    /// The refusal text when `bytes` exceed the server's attachment limit (from bootstrap); nil while it fits or is not known yet.
+    func attachmentTooLarge(_ bytes: Int) -> String? {
+        guard let limit = store.limits?.maxAttachmentBytes, bytes > limit else { return nil }
+        return "\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown) (上限 \(formatSize(Int64(limit))))"
     }
 
     /// Fetch the bytes with the bearer token into a temporary file (shared through the system sheet).
@@ -356,13 +376,19 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    /// Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost.
+    /// Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost: as typed
+    /// (`@name`, not the wire tokens), after whatever is being written there already.
     func cancelScheduled(_ row: ScheduledOut) async {
         guard let api else { return }
         do {
             try await api.cancelScheduled(id: row.id)
             store.scheduled.removeValue(forKey: row.id)
-            if !row.body.isEmpty { store.setDraft(row.channelId, parentId: row.parentId) { $0.text = row.body } }
+            if !row.body.isEmpty {
+                let text = Mentions.decode(row.body, users: store.users, groups: store.groups)
+                store.setDraft(row.channelId, parentId: row.parentId) { draft in
+                    draft.text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : draft.text + "\n" + text
+                }
+            }
         } catch { self.error = describe(error) }
     }
 
@@ -805,27 +831,24 @@ final class AppController {
         await api?.logout()
     }
 
+    /// Logout, a revoked session or a refused refresh: nothing of the account stays on the device (SYNC_PROTOCOL.md §11):
+    /// its local store (messages, drafts, outbox), the badge and the delivered notifications go with the token.
     private func handleSignedOut(account: String) {
         AvatarCache.shared.reset()
         engine?.stop()
         engine = nil
         api = nil
         me = nil
+        messageFocus = nil
         Keychain.delete(account: account)
+        let previous = store
+        store = Store()
+        previous.close()
+        SQLitePersistence.destroy(profile: account)
+        PushCenter.shared.clearAll()
         screen = .login
     }
 
-    func describe(_ error: Error) -> String {
-        if case ApiError.api(_, let code, let message) = error {
-            switch code {
-            case "invalid_credentials": return "ユーザー名またはパスワードが違います"
-            case "rate_limited": return "しばらく待ってからやり直してください"
-            case "password_too_short": return "パスワードが短すぎます"
-            case "invalid_password": return "現在のパスワードが違います"
-            default: return message.isEmpty ? code : message
-            }
-        }
-        if case ApiError.network = error { return "サーバに接続できません" }
-        return error.localizedDescription
-    }
+    /// The Japanese text for a failure (ARCHITECTURE.md §9); never the server's English message.
+    func describe(_ error: Error) -> String { ErrorMessages.text(for: error) }
 }

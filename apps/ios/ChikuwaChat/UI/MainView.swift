@@ -12,6 +12,12 @@ struct MainView: View {
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
+    /// A tapped notification's conversation once the store knows it; a new DM or channel only arrives with the
+    /// bootstrap after the tap, so this is watched rather than checked once.
+    private var pendingChannelReady: String? {
+        guard let id = PushCenter.shared.pendingChannelId, controller.store.channel(id) != nil else { return nil }
+        return id
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -127,9 +133,9 @@ struct MainView: View {
                 if let parentId = note.userInfo?["parentId"] as? String { pendingThreadId = parentId }
             }
         }
-        .onChange(of: PushCenter.shared.pendingChannelId, initial: true) { _, id in
+        .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
-            if let id, controller.store.channel(id) != nil {
+            if let id {
                 selection = id
                 PushCenter.shared.pendingChannelId = nil
             }

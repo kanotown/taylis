@@ -43,6 +43,12 @@ struct EngineOptions {
     var helloTimeout: TimeInterval = 10
     var reconnectMin: TimeInterval = 1
     var reconnectMax: TimeInterval = 30
+    /// §5.3: ping interval; nil = what the server's hello says. The connection counts as dead once nothing has
+    /// arrived for two intervals.
+    var heartbeatInterval: TimeInterval? = nil
+    /// §9: a send that failed for a temporary reason is retried after 2 s, 4 s … 30 s while connected.
+    var outboxRetryMin: TimeInterval = 2
+    var outboxRetryMax: TimeInterval = 30
     /// §10: read marks are debounced so scrolling does not spam the server.
     var readDebounce: TimeInterval = 1
     var threadPageSize = 50
@@ -86,7 +92,9 @@ final class SyncEngine {
     /// "channel[:parent]" → when the last typing frame went out.
     private var typingSent: [String: Date] = [:]
     var isActive: () -> Bool = { true }
-    var prepareConnection: (() async throws -> Void)?
+    /// Runs before every connection (§7.2). `refresh` is true when the server refused the access token (close 4001),
+    /// so it has to be renewed even if it looks valid; an auth error thrown here signs out.
+    var prepareConnection: ((_ refresh: Bool) async throws -> Void)?
 
     private let api: SyncApi
     private let connect: WsConnector
@@ -97,13 +105,29 @@ final class SyncEngine {
     private var chain: Task<Void, Never>?
     private var helloContinuation: CheckedContinuation<Bool, Never>?
     private var helloReceived = false
+    /// Numbers the hello waits, so a stale timeout never cancels a later connection's wait.
+    private var helloWait = 0
     private var heartbeatTask: Task<Void, Never>?
-    private var pongTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+    /// When the current connection last delivered any frame (§5.3).
+    private var lastHeard = Date()
+    /// The server refused the access token: renew it before the next connection (§5.3).
+    private var refreshBeforeConnect = false
+    private var reconnectPending = false
     private var stopped = false
     private var flushing = false
+    private var flushAgain = false
+    private var outboxRetryTask: Task<Void, Never>?
+    private var outboxRetryAttempt = 0
     private var reconnectAttempt = 0
     /// M15d: my drafts across devices.
     @ObservationIgnored private(set) var drafts: DraftSync!
+
+    /// error frame codes that mean the auth frame was refused (a close 4001 follows).
+    private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
+                                                    "password_change_required"]
+    /// Key prefix of a thread's unsent read position in `Store.unsentReads` (and of its debounce task).
+    private static let threadReadPrefix = "thread:"
 
     init(api: SyncApi, connect: @escaping WsConnector, wsUrl: URL, store: Store,
          getAccessToken: @escaping () -> String?, options: EngineOptions = EngineOptions()) {
@@ -115,6 +139,7 @@ final class SyncEngine {
         self.options = options
         drafts = DraftSync(api: api as? DraftApi, store: store, isOnline: { [weak self] in self?.status == .online }, delay: options.draftSave)
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
+        store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
     }
 
     /// M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap).
@@ -161,18 +186,19 @@ final class SyncEngine {
     }
 
     private func connectSocket() async {
-        if stopped || status == .connecting || status == .online { return }
+        if stopped || status == .connecting || status == .online || status == .signedOut { return }
         status = .connecting
-        do { try await prepareConnection?() } catch {
+        let refresh = refreshBeforeConnect
+        do { try await prepareConnection?(refresh) } catch {
             if let error = error as? ApiError, error.isAuth { signOut() } else { await scheduleReconnect() }
             return
         }
+        if refresh { refreshBeforeConnect = false }
         if stopped { return }
         guard let token = getAccessToken() else {
             signOut()
             return
         }
-        status = .connecting
         let socket: WsTransport
         do {
             socket = try await connect(wsUrl, token)
@@ -180,22 +206,39 @@ final class SyncEngine {
             await scheduleReconnect()
             return
         }
+        if stopped {
+            socket.close()
+            return
+        }
         ws = socket
         helloReceived = false
-        socket.onMessage = { [weak self] text in self?.onRaw(text) }
-        socket.onClose = { [weak self] code in self?.handleClose(socket, code: code) }
+        socket.onMessage = { [weak self, weak socket] text in
+            guard let self, let socket, self.ws === socket else { return } // a discarded connection says nothing
+            self.onRaw(text)
+        }
+        socket.onClose = { [weak self, weak socket] code in
+            guard let self, let socket else { return }
+            self.handleClose(socket, code: code)
+        }
         try? await socket.send(ClientFrame.auth(token: token))
 
+        // §5.3: every await below may find this connection closed or replaced; it then gives up without
+        // touching the status, and the close handler has already booked the one reconnect.
         let step = enqueue { [self] in
-            guard await waitForHello() else {
-                socket.close()
-                throw ApiError.network(URLError(.timedOut))
-            }
+            guard ws === socket, await waitForHello(), ws === socket else { throw ApiError.network(URLError(.networkConnectionLost)) }
             // Frames that arrive from here on are queued behind this step (= buffered, §7.2).
             let bootstrap = try await api.bootstrap()
+            guard ws === socket else { throw ApiError.network(URLError(.networkConnectionLost)) }
             applyBootstrap(bootstrap)
             await loadBrowsableChannels()
-            if let current = currentChannelId { try await catchUp(current) }
+            if let current = currentChannelId, store.channel(current)?.isMember == true {
+                do {
+                    try await catchUp(current)
+                } catch let error as ApiError where error.isRefused {
+                    // Left or removed in the meantime (403 / 404): one conversation does not fail the connection.
+                }
+            }
+            guard ws === socket else { throw ApiError.network(URLError(.networkConnectionLost)) }
             reconnectAttempt = 0
             status = .online
         }
@@ -206,26 +249,33 @@ final class SyncEngine {
                 signOut()
                 return
             }
+            guard ws === socket else { return } // already closed: its close handler reconnects
+            ws = nil
+            clearTimers()
             socket.close()
             await scheduleReconnect()
             return
         }
-        if status == .online {
-            Task { await flushOutbox() }
-            Task { await drafts.flush() } // edited while offline (M15d)
-            if let current = currentChannelId { Task { await loadLinks(current) } } // changed while away (M15f)
-        }
+        guard status == .online, ws === socket else { return }
+        outboxRetryAttempt = 0
+        Task { await flushOutbox() }
+        Task { await resendReads() } // §10: marks that could not be sent before
+        Task { await drafts.flush() } // edited while offline (M15d)
+        if let current = currentChannelId { Task { await loadLinks(current) } } // changed while away (M15f)
     }
 
     private func waitForHello() async -> Bool {
         if helloReceived { return true } // the fake server answers auth synchronously
+        helloWait += 1
+        let wait = helloWait
         return await withCheckedContinuation { continuation in
             helloContinuation = continuation
             let timeout = options.helloTimeout
             Task { [weak self] in
                 // A real clock on purpose: the injectable `sleep` (stubbed in tests) only paces reconnects.
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                self?.resumeHello(false)
+                guard let self, self.helloWait == wait else { return } // a later connection is waiting now
+                self.resumeHello(false)
             }
         }
     }
@@ -236,13 +286,17 @@ final class SyncEngine {
         continuation.resume(returning: ok)
     }
 
+    /// Exactly one reconnect at a time (§5.3): a failure while one is already booked only marks the status.
     private func scheduleReconnect() async {
         if stopped || status == .signedOut { return }
         status = .offline
+        if reconnectPending { return }
+        reconnectPending = true
         reconnectAttempt += 1
         reconnects += 1
         let base = min(options.reconnectMin * pow(2, Double(reconnectAttempt - 1)), options.reconnectMax)
         await options.sleep(base * (0.5 + options.random()))
+        reconnectPending = false
         await connectSocket()
     }
 
@@ -250,14 +304,20 @@ final class SyncEngine {
         guard ws === socket else { return }
         ws = nil
         clearTimers()
-        if code == closeSessionRevoked || code == closeAuthFailed {
+        resumeHello(false) // a connection still waiting for hello gives up now
+        if code == closeSessionRevoked {
             signOut()
             return
         }
+        // §5.3: 4001 (auth frame too late, token refused) is no sign-out: renew the token, then reconnect.
+        // Only a refresh the server rejects with 401 signs out (prepareConnection throws it).
+        if code == closeAuthFailed { refreshBeforeConnect = true }
         if !stopped { Task { await scheduleReconnect() } }
     }
 
     private func signOut() {
+        guard status != .signedOut else { return }
+        stopped = true
         clearTimers()
         ws?.close()
         ws = nil
@@ -268,12 +328,15 @@ final class SyncEngine {
     /// Foreground / network change: skip the backoff.
     func reconnectNow() {
         if status == .offline, ws == nil { Task { await connectSocket() } }
-        if status == .online, let current = currentChannelId { enqueue { [self] in try await catchUp(current) } }
+        if status == .online, let current = currentChannelId, store.channel(current)?.isMember == true {
+            enqueue { [self] in try await catchUp(current) }
+        }
     }
 
     // MARK: frames
 
     private func onRaw(_ text: String) {
+        lastHeard = Date() // §5.3: any frame shows the connection is alive
         guard let frame = ServerFrame.parse(text) else { return }
         switch frame {
         case .typing(let channelId, let parentId, let userId):
@@ -284,28 +347,42 @@ final class SyncEngine {
         case .hello(_, let interval):
             helloReceived = true
             resumeHello(true)
-            startHeartbeat(interval: TimeInterval(interval))
+            startHeartbeat(interval: options.heartbeatInterval ?? TimeInterval(max(interval, 1)))
         case .pong:
-            pongTask?.cancel()
-            pongTask = nil
+            break // counted above
         case .error(let code, _):
-            if ["invalid_token", "session_revoked", "session_expired", "password_change_required"].contains(code) { signOut() }
+            // An auth failure is followed by close 4001; the reconnect renews the token first and only a refused
+            // refresh signs out (§5.3). Nothing is decided on the frame alone.
+            if Self.authRefusals.contains(code) { refreshBeforeConnect = true }
         case .event(let event):
             enqueue { [self] in try await applyEvent(event) }
         }
     }
 
+    /// §5.3: a ping every interval, and the connection counts as dead once nothing (pong or any other frame) has
+    /// arrived for two intervals. The deadline runs from the last frame received; pings never extend it, or a
+    /// half-open socket would stay "online" for ever.
     private func startHeartbeat(interval: TimeInterval) {
-        clearTimers()
+        heartbeatTask?.cancel()
+        watchdogTask?.cancel()
+        lastHeard = Date()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard let self, let ws = self.ws, !Task.isCancelled else { return }
                 try? await ws.send(ClientFrame.ping(active: self.isActive()))
-                self.pongTask?.cancel()
-                self.pongTask = Task {
-                    try? await Task.sleep(nanoseconds: UInt64(interval * 2 * 1_000_000_000))
-                    if !Task.isCancelled { ws.close() }
+            }
+        }
+        let timeout = interval * 2
+        watchdogTask = Task { [weak self] in
+            var wait = timeout
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(max(wait, 0.001) * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                wait = self.lastHeard.addingTimeInterval(timeout).timeIntervalSinceNow
+                if wait <= 0 {
+                    self.ws?.close() // its close handler reconnects
+                    return
                 }
             }
         }
@@ -313,15 +390,18 @@ final class SyncEngine {
 
     private func clearTimers() {
         heartbeatTask?.cancel()
-        pongTask?.cancel()
+        watchdogTask?.cancel()
         threadRefreshTask?.cancel()
+        outboxRetryTask?.cancel()
         heartbeatTask = nil
-        pongTask = nil
+        watchdogTask = nil
         threadRefreshTask = nil
+        outboxRetryTask = nil
     }
 
     private func applyBootstrap(_ bootstrap: BootstrapOut) {
         store.setMe(bootstrap.me)
+        store.limits = bootstrap.limits
         for user in bootstrap.users { store.upsertUser(user) }
         var seen = Set<String>()
         for channel in bootstrap.channels {
@@ -331,6 +411,7 @@ final class SyncEngine {
         for channel in Array(store.channels.values) where channel.isMember && !seen.contains(channel.id) {
             store.removeChannel(channel.id) // no longer a member
         }
+        reapplyUnsentReads()
         if let summary = bootstrap.threads { store.setThreadSummary(summary) }
         if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
         store.replacePresence(bootstrap.presence ?? [])
@@ -343,6 +424,16 @@ final class SyncEngine {
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
         onBadge?(store.badgeCount)
+    }
+
+    /// The store dropped a conversation (left, removed, made private): it is no longer the open one, so the next
+    /// connection does not try to catch it up (§7.6).
+    private func channelRemoved(_ channelId: String) {
+        if currentChannelId == channelId { currentChannelId = nil }
+        unreadHold[channelId] = nil
+        pendingReads[channelId]?.cancel()
+        pendingReads[channelId] = nil
+        store.setUnsentRead(channelId, nil)
     }
 
     /// The composer changed: tell the other members, at most once per typingInterval per conversation.
@@ -463,8 +554,13 @@ final class SyncEngine {
         let message = payload.message
         let thread = payload.parentThread
         let isNew = frame.event == "message.created"
+        if isNew { noteActivity(message) }
 
         guard let synced = channel.syncedSeq else {
+            // No timeline here: the list's numbers move, and rows already held (a thread opened from 「スレッド」,
+            // its parent) take the change so that thread stays live (§7.4).
+            if isHeld(message) { store.upsertMessage(message) }
+            if let thread { store.applyParentThread(channelId, thread) }
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
             return
@@ -482,11 +578,27 @@ final class SyncEngine {
         // seq <= synced: already applied.
     }
 
-    /// §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise.
+    /// The message itself is stored here, or it is a reply to a thread whose parent or replies are.
+    private func isHeld(_ message: MessageOut) -> Bool {
+        if store.message(message.channelId, id: message.id) != nil { return true }
+        guard let parentId = message.parentId else { return false }
+        return store.message(message.channelId, id: parentId) != nil || !store.replies(message.channelId, parentId: parentId).isEmpty
+    }
+
+    /// §7.4: a new message in the conversation (top-level, or a reply also sent there) moves it up the DM list.
+    private func noteActivity(_ message: MessageOut) {
+        guard message.parentId == nil || message.alsoInChannel,
+              let current = store.channel(message.channelId), (current.channel.lastMessageAt ?? "") < message.createdAt else { return }
+        store.updateChannel(message.channelId) { $0.channel.lastMessageAt = message.createdAt }
+    }
+
+    /// §7.4 / §10: my own top-level post reads the conversation; someone else's message is unread until read.updated says otherwise.
     private func countUnread(_ message: MessageOut) {
         store.clearTyping(message.channelId, parentId: message.parentId, userId: message.senderId) // their message arrived
         guard let me = store.me else { return }
         if message.senderId == me.id {
+            // A thread reply, even one also sent to the channel, moves only the thread's position (the server does the same).
+            guard !message.isReply else { return }
             unreadHold[message.channelId] = nil // sending reads the conversation (the server does the same)
             store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
         } else if message.isReply && !message.alsoInChannel {
@@ -525,7 +637,8 @@ final class SyncEngine {
     private func applyReadState(_ channelId: String, _ state: ReadStateOut, allowDecrease: Bool = false) {
         guard store.channel(channelId) != nil else { return }
         // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
-        // a mark-as-unread (reason "set") moves the position down as well.
+        // a mark-as-unread (reason "set") moves the position down as well, and wins over a mark not sent yet.
+        if allowDecrease || (store.unsentReads[channelId] ?? .max) <= state.lastReadSeq { store.setUnsentRead(channelId, nil) }
         store.updateChannel(channelId) {
             $0.lastReadSeq = allowDecrease ? state.lastReadSeq : max($0.lastReadSeq, state.lastReadSeq)
             $0.unreadCount = state.unreadCount
@@ -560,11 +673,12 @@ final class SyncEngine {
     func openChannel(_ channelId: String) async {
         currentChannelId = channelId
         for held in unreadHold.keys where held != channelId { unreadHold[held] = nil }
-        guard status == .online else { return }
+        // A public channel I only browse has no timeline to catch up (its content needs membership).
+        guard status == .online, store.channel(channelId)?.isMember == true else { return }
         Task { await loadLinks(channelId) }
         _ = try? await enqueue { [self] in
-            guard let channel = store.channel(channelId) else { return }
-            if channel.syncedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }
+            guard let channel = store.channel(channelId), channel.isMember else { return }
+            if channel.syncedSeq == nil || channel.oldestLoadedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }
             // Only the visible timeline advances read state.
         }.value
     }
@@ -576,6 +690,7 @@ final class SyncEngine {
         let target = seq - 1
         unreadHold[channelId] = target
         pendingReads[channelId]?.cancel()
+        store.setUnsentRead(channelId, nil) // an advance not sent yet must not undo this
         let me = store.me?.id
         let later = store.messages(channelId).filter { ($0.seq ?? 0) > target && $0.senderId != me }
         store.updateChannel(channelId) { state in
@@ -600,6 +715,7 @@ final class SyncEngine {
             state.lastReadSeq = seq
             if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0 }
         }
+        store.setUnsentRead(channelId, seq) // kept until the server has it (§10)
         onBadge?(store.badgeCount)
         pendingReads[channelId]?.cancel()
         let options = self.options
@@ -607,9 +723,50 @@ final class SyncEngine {
             await options.sleep(options.readDebounce)
             guard let self, !Task.isCancelled else { return }
             self.pendingReads[channelId] = nil
-            let target = self.store.channel(channelId)?.lastReadSeq ?? seq
-            guard let state = try? await self.api.markRead(channelId: channelId, lastReadSeq: target) else { return }
-            _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state) }.value
+            await self.sendRead(channelId)
+        }
+    }
+
+    /// PUT the remembered position. A temporary failure keeps it for the next connection (§10); a refusal
+    /// (left the conversation) drops it.
+    private func sendRead(_ channelId: String) async {
+        guard let target = store.unsentReads[channelId] else { return }
+        let state: ReadStateOut
+        do {
+            state = try await api.markRead(channelId: channelId, lastReadSeq: target)
+        } catch {
+            if let apiError = error as? ApiError, apiError.isRefused { store.setUnsentRead(channelId, nil) }
+            return
+        }
+        if (store.unsentReads[channelId] ?? 0) <= target { store.setUnsentRead(channelId, nil) }
+        _ = try? await enqueue { [self] in self.applyReadState(channelId, state) }.value
+    }
+
+    /// §10: bootstrap's read state is the server's; a position this device reached but could not send yet goes on
+    /// top of it again (optimistically, as when it was marked) and is resent once connected.
+    private func reapplyUnsentReads() {
+        for (key, seq) in store.unsentReads where !key.hasPrefix(Self.threadReadPrefix) {
+            guard let channel = store.channel(key), channel.isMember, seq > channel.lastReadSeq else {
+                store.setUnsentRead(key, nil) // gone, or the server is already there
+                continue
+            }
+            store.updateChannel(key) { state in
+                state.lastReadSeq = seq
+                if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0 }
+            }
+        }
+    }
+
+    /// After connecting: the read marks (channels and threads) that could not be sent before.
+    private func resendReads() async {
+        for (key, seq) in store.unsentReads where pendingReads[key] == nil {
+            if key.hasPrefix(Self.threadReadPrefix) {
+                let parentId = String(key.dropFirst(Self.threadReadPrefix.count))
+                threadReadFloor[parentId] = max(threadReadFloor[parentId] ?? 0, seq)
+                await sendThreadRead(parentId)
+            } else {
+                await sendRead(key)
+            }
         }
     }
 
@@ -657,20 +814,35 @@ final class SyncEngine {
             store.applyThreadState(state)
             onBadge?(store.badgeCount)
         }
-        let key = "thread:" + parentId
+        let key = Self.threadReadPrefix + parentId
+        store.setUnsentRead(key, seq) // kept until the server has it (§10)
         pendingReads[key]?.cancel()
         let options = self.options
         pendingReads[key] = Task { [weak self] in
             await options.sleep(options.readDebounce)
             guard let self, !Task.isCancelled else { return }
             self.pendingReads[key] = nil
-            let target = self.threadReadFloor[parentId] ?? seq
-            guard let state = try? await self.api.markThreadRead(messageId: parentId, lastReadSeq: target) else { return }
-            _ = try? await self.enqueue { [self] in
-                self.store.applyThreadState(state)
-                self.onBadge?(self.store.badgeCount)
-            }.value
+            await self.sendThreadRead(parentId)
         }
+    }
+
+    private func sendThreadRead(_ parentId: String) async {
+        let key = Self.threadReadPrefix + parentId
+        guard let target = store.unsentReads[key] else { return }
+        var state: ThreadState
+        do {
+            state = try await api.markThreadRead(messageId: parentId, lastReadSeq: target)
+        } catch {
+            if let apiError = error as? ApiError, apiError.isRefused { store.setUnsentRead(key, nil) }
+            return
+        }
+        if (store.unsentReads[key] ?? 0) <= target { store.setUnsentRead(key, nil) }
+        _ = try? await enqueue { [self] in
+            // The position reached here stays even when the server keeps none (a thread I do not follow).
+            if let floor = self.threadReadFloor[parentId], floor > state.lastReadSeq { state.lastReadSeq = floor }
+            self.store.applyThreadState(state)
+            self.onBadge?(self.store.badgeCount)
+        }.value
     }
 
     func setThreadFollow(_ parentId: String, following: Bool) async {
@@ -710,9 +882,10 @@ final class SyncEngine {
     func catchUp(_ channelId: String) async throws {
         catchUps += 1
         guard var channel = store.channel(channelId) else { return }
-        if let synced = channel.syncedSeq, channel.lastSeq - synced > options.gapLimit {
+        // Far behind, or a timeline stored before its window was tracked: read the newest page again (§7.3).
+        if let synced = channel.syncedSeq, channel.lastSeq - synced > options.gapLimit || channel.oldestLoadedSeq == nil {
             store.clearMessages(channelId)
-            store.updateChannel(channelId) { $0.syncedSeq = nil; $0.hasOlder = true }
+            store.updateChannel(channelId) { $0.syncedSeq = nil; $0.oldestLoadedSeq = nil; $0.hasOlder = true }
             channel = store.channel(channelId) ?? channel
             reloads += 1
         }
@@ -722,7 +895,8 @@ final class SyncEngine {
             store.updateChannel(channelId) { state in
                 state.syncedSeq = page.channelLastSeq
                 state.lastSeq = max(state.lastSeq, page.channelLastSeq)
-                state.hasOlder = page.hasMore
+                state.hasOlder = page.hasMore && !page.messages.isEmpty
+                state.oldestLoadedSeq = state.hasOlder ? page.messages.map(\.seq).min() : 0 // the window starts with this page
             }
             return
         }
@@ -735,15 +909,18 @@ final class SyncEngine {
         }
     }
 
-    /// Scroll-up pagination: older messages by seq cursor.
+    /// Scroll-up pagination (§7.3): the page before the window's first seq, which then grows by that page.
+    /// Rows stored outside the window (older ones that arrived on their own) never serve as the cursor.
     func loadOlder(_ channelId: String) async {
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
-            guard let channel = store.channel(channelId), channel.hasOlder else { return }
-            let oldest = store.messages(channelId).compactMap(\.seq).first
+            guard let channel = store.channel(channelId), channel.isMember, channel.hasOlder, let oldest = channel.oldestLoadedSeq, oldest > 0 else { return }
             let page = try await api.history(channelId: channelId, beforeSeq: oldest, limit: options.pageSize)
             for message in page.messages { store.upsertMessage(message) }
-            store.updateChannel(channelId) { $0.hasOlder = page.hasMore }
+            store.updateChannel(channelId) { state in
+                state.hasOlder = page.hasMore && !page.messages.isEmpty
+                state.oldestLoadedSeq = state.hasOlder ? min(oldest, page.messages.map(\.seq).min() ?? oldest) : 0
+            }
         }.value
     }
 
@@ -779,12 +956,20 @@ final class SyncEngine {
         store.removeOutbox(clientMsgId)
     }
 
-    /// Sends queued messages one at a time, in order (§9). Stops on temporary failures.
+    /// Sends queued messages one at a time, in order (§9). The queue is read again for every item, so whatever is
+    /// added meanwhile goes out in the same run. A refused item (4xx) stays as failed and the next one is tried;
+    /// a temporary failure (429 / 5xx / network) pauses the queue until the backoff timer, while connected, or the
+    /// next connection.
     func flushOutbox() async {
-        if flushing || status != .online { return }
+        if flushing {
+            flushAgain = true
+            return
+        }
+        guard status == .online else { return }
         flushing = true
-        defer { flushing = false }
-        for item in store.outbox where item.failed == nil {
+        flushAgain = false
+        var paused = false
+        while status == .online, let item = store.outbox.first(where: { $0.failed == nil }) {
             do {
                 let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId,
                                                              attachmentIds: item.attachmentIds,
@@ -792,13 +977,33 @@ final class SyncEngine {
                                                                                   ackRequested: item.ackRequested ?? false))
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
+                outboxRetryAttempt = 0
+            } catch let error as ApiError where error.isRefused {
+                store.markOutboxFailed(item.clientMsgId, reason: error.code) // persisted: still 「送信に失敗」 after a restart
             } catch {
-                if let apiError = error as? ApiError, !apiError.isRetryable {
-                    store.markOutboxFailed(item.clientMsgId, reason: apiError.code)
-                    continue
-                }
-                return // resume after reconnect / next send
+                paused = true
+                break
             }
+        }
+        flushing = false
+        if paused {
+            scheduleOutboxRetry()
+        } else if flushAgain {
+            await flushOutbox()
+        }
+    }
+
+    /// §9: 2 s, 4 s … 30 s between attempts while connected; a new connection flushes the queue anyway.
+    private func scheduleOutboxRetry() {
+        guard status == .online, outboxRetryTask == nil else { return }
+        outboxRetryAttempt += 1
+        let delay = min(options.outboxRetryMin * pow(2, Double(outboxRetryAttempt - 1)), options.outboxRetryMax)
+        outboxRetryTask = Task { [weak self] in
+            // A real clock: the injectable `sleep` is stubbed in tests, and a stubbed timer would spin.
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.outboxRetryTask = nil
+            await self.flushOutbox()
         }
     }
 }

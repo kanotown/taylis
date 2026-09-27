@@ -104,7 +104,8 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     var archived: Bool
     let createdBy: String?
     let lastSeq: Int
-    let lastMessageAt: String?
+    /// Moved locally by top-level message.created events (SYNC_PROTOCOL.md §7.4) so the DM list reorders at once.
+    var lastMessageAt: String?
     let createdAt: String
     let updatedAt: String
     var membership: MembershipOut?

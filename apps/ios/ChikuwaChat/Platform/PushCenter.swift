@@ -61,6 +61,13 @@ final class PushCenter {
         UNUserNotificationCenter.current().setBadgeCount(count) { _ in }
     }
 
+    /// Sign-out (SYNC_PROTOCOL.md §11): no badge, no delivered notification and no pending tap of the account stay behind.
+    func clearAll() {
+        pendingChannelId = nil
+        setBadge(0)
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
     func pushReceived() {
         controller?.engine?.reconnectNow()
     }

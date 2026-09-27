@@ -11,6 +11,8 @@ final class FakeServer {
         let userId: String
         var dropNext = 0
         var closed = false
+        /// A half-open connection: nothing reaches the client any more (pongs included) and no close is seen.
+        var silent = false
         private unowned let server: FakeServer
 
         init(server: FakeServer, userId: String) {
@@ -24,6 +26,12 @@ final class FakeServer {
             guard let data = text.data(using: .utf8), let frame = try? JSON.plainDecoder.decode([String: JSONValue].self, from: data) else { return }
             switch frame["type"]?.stringValue {
             case "auth":
+                if !server.refuseAuths.isEmpty {
+                    // SYNC_PROTOCOL.md §5.1: an error frame, then close 4001 (a late auth frame, a refused token).
+                    deliver(.object(["type": .string("error"), "code": .string(server.refuseAuths.removeFirst()), "message": .string("refused")]))
+                    closeRemote(closeAuthFailed)
+                    return
+                }
                 authed = true
                 deliver(.object(["type": .string("hello"), "session_id": .string("s-" + userId), "server_time": .string(now()), "heartbeat_interval_sec": .number(30)]))
                 server.announcePresence(userId)
@@ -47,7 +55,7 @@ final class FakeServer {
         }
 
         func deliver(_ frame: JSONValue) {
-            guard !closed else { return }
+            guard !closed, !silent else { return }
             if frame["type"]?.stringValue == "event", dropNext > 0 {
                 dropNext -= 1 // simulated loss
                 return
@@ -60,7 +68,7 @@ final class FakeServer {
     @MainActor
     final class Api: SyncApi, DraftApi, ChannelLinksApi {
         func channelLinks(channelId: String) async throws -> [ChannelLinkOut] {
-            try maybeFail()
+            try maybeFail("channelLinks")
             guard server.channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
             return server.links[channelId] ?? []
         }
@@ -68,6 +76,11 @@ final class FakeServer {
         unowned let server: FakeServer
         let userId: String
         var pendingFailure: Error?
+        /// One-shot failures of particular endpoints ("post", "delta", "markRead", "markThreadRead" …), in order.
+        var failures: [String: [Error]] = [:]
+        /// Runs inside every POST /messages before it is stored (a test holds a send in flight with it).
+        var beforePost: (() async -> Void)?
+        private(set) var calls: [String] = []
 
         init(server: FakeServer, userId: String) {
             self.server = server
@@ -75,45 +88,52 @@ final class FakeServer {
         }
 
         func saveDraft(channelId: String, parentId: String?, body: String) async throws -> DraftOut {
-            try maybeFail()
+            try maybeFail("saveDraft")
             return try server.saveDraft(userId, channelId: channelId, parentId: parentId, body: body)
         }
 
         func deleteDraft(channelId: String, parentId: String?) async throws {
-            try maybeFail()
+            try maybeFail("deleteDraft")
             server.deleteDraft(userId, channelId: channelId, parentId: parentId)
         }
 
-        private func maybeFail() throws {
+        private func maybeFail(_ endpoint: String) throws {
+            calls.append(endpoint)
             if let error = pendingFailure {
                 pendingFailure = nil
+                throw error
+            }
+            if var queued = failures[endpoint], !queued.isEmpty {
+                let error = queued.removeFirst()
+                failures[endpoint] = queued
                 throw error
             }
         }
 
         func bootstrap() async throws -> BootstrapOut {
-            try maybeFail()
+            try maybeFail("bootstrap")
             return server.bootstrap(for: userId)
         }
 
         func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut {
-            try maybeFail()
+            try maybeFail("history")
             return try server.history(userId: userId, channelId: channelId, beforeSeq: beforeSeq, limit: limit)
         }
 
         func delta(channelId: String, sinceSeq: Int, limit: Int) async throws -> DeltaOut {
-            try maybeFail()
+            try maybeFail("delta")
             return try server.delta(userId: userId, channelId: channelId, sinceSeq: sinceSeq, limit: limit)
         }
 
         func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], options: SendOptions) async throws -> (MessageOut, Bool) {
-            try maybeFail()
+            try maybeFail("post")
+            if let beforePost { await beforePost() }
             return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds,
                                    options: options)
         }
 
         func replies(messageId: String) async throws -> [MessageOut] {
-            try maybeFail()
+            try maybeFail("replies")
             return try server.replies(userId: userId, messageId: messageId)
         }
 
@@ -126,39 +146,39 @@ final class FakeServer {
         }
 
         func listReminders() async throws -> [ReminderOut] {
-            try maybeFail()
+            try maybeFail("listReminders")
             return server.reminders[userId] ?? []
         }
         func listScheduled() async throws -> [ScheduledOut] {
-            try maybeFail()
+            try maybeFail("listScheduled")
             return server.scheduled[userId] ?? []
         }
         func readAll() async throws -> [ChannelReadStateOut] {
-            try maybeFail()
+            try maybeFail("readAll")
             return try server.readAll(userId)
         }
         func markRead(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
-            try maybeFail()
+            try maybeFail("markRead")
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq)
         }
         func threads(filter: String, cursor: String?, limit: Int) async throws -> ThreadListOut {
-            try maybeFail()
+            try maybeFail("threads")
             return server.threads(userId: userId, filter: filter, cursor: cursor, limit: limit)
         }
         func threadState(messageId: String) async throws -> ThreadState {
-            try maybeFail()
+            try maybeFail("threadState")
             return try server.threadState(userId: userId, parentId: messageId)
         }
         func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState {
-            try maybeFail()
+            try maybeFail("markThreadRead")
             return try server.markThreadRead(userId: userId, messageId: messageId, seq: lastReadSeq)
         }
         func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState {
-            try maybeFail()
+            try maybeFail("setThreadFollow")
             return try server.setThreadFollow(userId: userId, messageId: messageId, following: following)
         }
         func setReadPosition(channelId: String, lastReadSeq: Int) async throws -> ReadStateOut {
-            try maybeFail()
+            try maybeFail("setReadPosition")
             return try server.markRead(userId: userId, channelId: channelId, seq: lastReadSeq, mode: "set")
         }
     }
@@ -175,6 +195,8 @@ final class FakeServer {
     var readPositions: [String: Int] = [:]
     var sockets: [Socket] = []
     var holdEvents = false
+    /// Error codes for the next auth frames to refuse (each followed by close 4001).
+    var refuseAuths: [String] = []
     private var held: [(Set<String>, JSONValue)] = []
     private var byClientKey: [String: MessageOut] = [:]
     private var counter = 0
@@ -225,7 +247,7 @@ final class FakeServer {
     func readState(userId: String, channelId: String) -> ReadStateOut {
         let record = channels[channelId]!
         let position = readPositions["\(userId):\(channelId)"] ?? 0
-        let unread = record.messages.filter { $0.seq > position && !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) }
+        let unread = record.messages.filter { $0.seq > position && !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) && $0.senderId != userId }
         return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count)
     }
 
@@ -510,7 +532,8 @@ final class FakeServer {
         let newest = found.record.messages.filter { $0.parentId == found.parent.id && !$0.deleted }.map(\.seq).max() ?? 0
         let target = min(seq, newest)
         let key = "\(found.parent.id):\(userId)"
-        autoFollow(found.parent.id, [userId])
+        // Reading is not following: a thread I have no row for keeps no position either.
+        guard threadFollows[key] != nil else { return try threadState(userId: userId, parentId: found.parent.id) }
         if target > threadFollows[key]!.lastReadSeq {
             threadFollows[key]!.lastReadSeq = target
             emitThread(found.parent.id, to: [userId], reason: "read")
@@ -586,7 +609,8 @@ final class FakeServer {
         let payload: JSONValue = .object(payloadFields)
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
-        _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) // the sender has read their own message (§10)
+        // §10: a top-level post reads the channel for its sender; a thread reply (even one also sent to the channel) does not.
+        if parentId == nil { _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) }
         if let parentId { emitThread(parentId, to: followers(parentId), reason: "reply") }
         return (message, true)
     }
@@ -726,6 +750,17 @@ final class FakeServer {
         emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.created"), "ts": .string(now()),
                                "channel_id": .string(channelId), "seq": .null,
                                "data": .object(["channel": try! JSONValue.from(out), "member_ids": .array(record.members.map(JSONValue.string))])]))
+    }
+
+    /// DELETE /channels/{id}/members/{user} (or leaving): member_removed to the members and to that user.
+    func removeMember(_ channelId: String, _ userId: String) {
+        guard var record = channels[channelId] else { return }
+        let audience = record.members
+        record.members.remove(userId)
+        channels[channelId] = record
+        eventId += 1
+        emit(audience, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.member_removed"), "ts": .string(now()),
+                                "channel_id": .string(channelId), "seq": .null, "data": .object(["channel_id": .string(channelId), "user_id": .string(userId)])]))
     }
 
     func revokeSession(_ userId: String) {

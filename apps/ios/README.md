@@ -40,5 +40,8 @@ project.yml   xcodegen の定義 (deployment target iOS 17、Swift 5 言語モ�
 
 Desktop と同じアルゴリズム (`server/tests/contract_client.py` が仕様): WS → hello → bootstrap → catch_up、
 チャンネルごとの `syncedSeq` と連番検証、欠落時は差分 API、5000 件超の遅れは最新ページの読み直し、
-`client_msg_id` 付きの楽観的送信と再送キュー。バックグラウンドで iOS がソケットを止めた後は、
+`client_msg_id` 付きの楽観的送信と再送キュー (一時的な失敗は 2〜30 秒のバックオフで再開、4xx は「送信に失敗」として残す)。
+タイムラインは最新ページから連続して読んだ範囲 (`oldestLoadedSeq` 以降) だけを並べる (§7.3)。
+最後のフレームから 60 秒で切断扱い、close 4001 は access token を更新して再接続 (§5.3)。バックグラウンドで iOS がソケットを止めた後は、
 フォアグラウンド復帰 (`scenePhase == .active`) で再接続と catch_up を行う。プッシュ通知は M5 で追加する。
+ローカルストアはサーバ URL とユーザー名のハッシュ名のファイルで、サインアウトで削除する (§11)。
