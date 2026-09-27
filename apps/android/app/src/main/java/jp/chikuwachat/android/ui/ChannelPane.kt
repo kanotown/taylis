@@ -124,7 +124,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     var editingLink by remember(channelId) { mutableStateOf<Pair<Boolean, jp.chikuwachat.android.api.ChannelLinkOut?>>(false to null) }
     if (editingLink.first) ChannelLinkDialog(controller, channelId, editingLink.second, onDismiss = { editingLink = false to null })
     Column(Modifier.fillMaxSize().imePadding()) {
-        ChannelLinksRow(controller, channel, onAdd = { editingLink = true to null }, onEdit = { editingLink = true to it })
+        ChannelLinksRow(controller, channel, version, onAdd = { editingLink = true to null }, onEdit = { editingLink = true to it })
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
@@ -140,7 +140,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                         is TimelineItem.Message -> {
                             val message = item.message
                             MessageRow(
-                                message, store, controller, compact = item.compact,
+                                message, store, controller, version, compact = item.compact,
                                 canEdit = !message.pending && message.senderId == store.me?.id,
                                 canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
                                 onRetry = { scope.launch { controller.engine?.retryFailed() } },
@@ -160,7 +160,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                             if (controller.engineStatus != jp.chikuwachat.android.sync.EngineStatus.ONLINE || loadingOlder) return@LaunchedEffect
                             loadingOlder = true
                             try { controller.engine?.loadOlder(channelId) }
-                            catch (e: Exception) { controller.error = controller.describe(e) }
+                            catch (e: Exception) { controller.report(e) }
                             finally { loadingOlder = false }
                         }
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
@@ -235,11 +235,11 @@ private fun UnreadSeparator() {
 
 /** M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared. */
 @Composable
-private fun ReplyLine(message: MessageState, store: Store, onOpenThread: (() -> Unit)?) {
+private fun ReplyLine(message: MessageState, store: Store, version: Int, onOpenThread: (() -> Unit)?) {
     val style = MaterialTheme.typography.labelSmall
     val color = MaterialTheme.colorScheme.onSurfaceVariant
     if (onOpenThread != null) {
-        val parent = message.parentId?.let { store.message(message.channelId, it) }
+        val parent = remember(version, message.parentId) { message.parentId?.let { store.message(message.channelId, it) } }
         val excerpt = parent?.let { p -> plainText(Mentions.toNames(p.body, store.users, store.groups), 80).ifEmpty { if (p.attachments.isEmpty()) "" else "(添付ファイル)" } }
         Text(
             "スレッドに返信: " + (excerpt ?: "元のメッセージ"), style = style, color = color, maxLines = 1,
@@ -250,12 +250,17 @@ private fun ReplyLine(message: MessageState, store: Store, onOpenThread: (() -> 
     }
 }
 
+/**
+ * One message. `version` (the Store's) makes the row re-read what lives in the Store rather than in
+ * `message` — names, status emoji, 「保存済み」, custom emoji images — which strong skipping would keep stale.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageRow(
     message: MessageState,
     store: Store,
     controller: AppController,
+    version: Int,
     compact: Boolean = false,
     canEdit: Boolean,
     canDelete: Boolean,
@@ -281,7 +286,7 @@ fun MessageRow(
             if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                if (message.isReply) ReplyLine(message, store, onOpenThread)  // M15c
+                if (message.isReply) ReplyLine(message, store, version, onOpenThread)  // M15c
                 message.priority?.let { PriorityLabel(it, Modifier.padding(bottom = 2.dp)) }  // M15e
                 val saved = store.isBookmarked(message.id)
                 val pinnedBy = message.pinnedAt?.let { store.users[message.pinnedBy ?: ""]?.displayName ?: "?" }
@@ -327,14 +332,14 @@ fun MessageRow(
                 if (message.body.isNotEmpty()) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
-                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) },
+                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller) }  // M14b
-                if (message.ackRequested && !message.pending) AckBar(message, store, controller)  // M15e
+                if (message.ackRequested && !message.pending) AckBar(message, store, controller, version)  // M15e
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
-                ReactionChips(message, store, onToggle = onReact)
+                ReactionChips(message, store, onToggle = onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version)
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
                         Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -389,8 +394,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         store.setDraft(channelId, parentId) { it.copy(text = value) }
         if (value.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
     }
+    val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (pendingUploads.size + uploading + uris.size > 10) controller.error = "添付は10件までです"
+        if (pendingUploads.size + uploading + uris.size > maxAttachments) controller.error = "添付は${maxAttachments}件までです"
         else {
             store.trackUpload(channelId, parentId, uris.size)
             uris.forEach { uri -> controller.scope.launch {
@@ -527,7 +533,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
                     val ids = pendingUploads.map { it.id }
                     if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
-                    if (body.length > 20_000) { controller.error = "本文は20,000文字までです"; return@IconButton }
+                    val maxLength = store.limits?.maxMessageLength ?: 20_000
+                    if (body.length > maxLength) { controller.error = "本文は%,d文字までです".format(maxLength); return@IconButton }
                     store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
                     val options = SendOptions(
                         alsoInChannel = canShare && alsoInChannel,

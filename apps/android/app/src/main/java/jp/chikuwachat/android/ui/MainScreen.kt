@@ -116,6 +116,21 @@ fun MainScreen(controller: AppController) {
     val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false; showFiles = false; showReminders = false }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    /**
+     * Opens a conversation (and optionally one of its threads) from anywhere: a notification, a profile's
+     * 「メッセージを送る」, /dm, /join, the dialogs, a list row. Whatever belonged to the previous one closes,
+     * or its open thread would take replies for the wrong conversation.
+     */
+    fun openConversation(channelId: String, parentId: String? = null, fromThreadList: Boolean = false) {
+        searching = false
+        pinsOpen = false
+        showFiles = false
+        showSaved = false
+        showMentions = false
+        threadFromList = fromThreadList
+        selection = channelId
+        threadId = parentId
+    }
 
     // Errors from actions on this screen (edit, upload, settings…) surface as a snackbar.
     LaunchedEffect(controller.error) {
@@ -128,12 +143,13 @@ fun MainScreen(controller: AppController) {
         snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
         if (controller.notice == message) controller.notice = null
     }
-    // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
+    // A tapped notification (or /dm, /join, a profile's DM button) opens its channel once the store knows it.
     LaunchedEffect(controller.pendingChannelId, version) {
         val id = controller.pendingChannelId ?: return@LaunchedEffect
         if (store.channel(id) != null) {
-            selection = id
             controller.pendingChannelId = null
+            controller.messageFocus = null
+            openConversation(id)
         }
     }
     LaunchedEffect(selection) {
@@ -157,15 +173,7 @@ fun MainScreen(controller: AppController) {
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
         scope.launch {
-            if (controller.revealMessage(message)) {
-                pinsOpen = false
-                showSaved = false
-                showMentions = false
-                showFiles = false
-                threadFromList = false
-                selection = message.channelId
-                threadId = message.parentId
-            }
+            if (controller.revealMessage(message)) openConversation(message.channelId, message.parentId)
         }
     }
 
@@ -176,11 +184,7 @@ fun MainScreen(controller: AppController) {
     LaunchedEffect(controller.pendingReveal) {
         val message = controller.pendingReveal ?: return@LaunchedEffect
         controller.pendingReveal = null
-        pinsOpen = false
-        showFiles = false
-        threadFromList = false
-        selection = message.channelId
-        threadId = message.parentId
+        openConversation(message.channelId, message.parentId)
     }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -300,11 +304,7 @@ fun MainScreen(controller: AppController) {
                 if (searching) {
                     SearchPane(controller) { message ->
                         scope.launch {
-                            if (controller.revealMessage(message)) {
-                                selection = message.channelId
-                                threadId = message.parentId
-                                searching = false
-                            }
+                            if (controller.revealMessage(message)) openConversation(message.channelId, message.parentId)
                         }
                     }
                 } else if (selectedChannel != null && pinsOpen) {
@@ -312,12 +312,7 @@ fun MainScreen(controller: AppController) {
                 } else if (showFiles) {
                     FilesPane(controller, version, channelId = filesChannelId, onScopeChange = { filesChannelId = it }) { messageId, channelId, parentId ->
                         scope.launch {
-                            if (controller.revealMessage(messageId, channelId, parentId)) {
-                                showFiles = false
-                                threadFromList = false
-                                selection = channelId
-                                threadId = parentId
-                            }
+                            if (controller.revealMessage(messageId, channelId, parentId)) openConversation(channelId, parentId)
                         }
                     }
                 } else if (selectedChannel != null && openThread != null) {
@@ -334,23 +329,19 @@ fun MainScreen(controller: AppController) {
                     // A draft row opens its conversation (the composer restores the text); back returns to the list.
                     DraftsPane(controller, version) { channelId, parentId ->
                         controller.messageFocus = null
-                        threadFromList = false
                         showDrafts = false
-                        selection = channelId
-                        threadId = parentId
+                        openConversation(channelId, parentId)
                     }
                 } else if (showThreads) {
                     ThreadsPane(controller, version) { entry ->
                         controller.messageFocus = null
-                        threadFromList = true
-                        selection = entry.state.channelId
-                        threadId = entry.parent.id
+                        openConversation(entry.state.channelId, entry.parent.id, fromThreadList = true)
                     }
                 } else {
                     ChannelList(
                         store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly },
-                        onSelect = { controller.messageFocus = null; threadFromList = false; selection = it },
-                        onJoin = { id -> scope.launch { if (controller.joinChannel(id)) selection = id } },
+                        onSelect = { controller.messageFocus = null; openConversation(it) },
+                        onJoin = { id -> scope.launch { if (controller.joinChannel(id)) openConversation(id) } },
                         onThreads = { showThreads = true },
                         onSaved = { showSaved = true },
                         onMentions = { showMentions = true },
@@ -368,15 +359,15 @@ fun MainScreen(controller: AppController) {
     }
 
     when (dialog) {
-        MainDialog.NEW_DM -> NewDmDialog(controller, onDismiss = { dialog = null }, onOpened = { selection = it })
-        MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { selection = it })
-        MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { selection = it })
+        MainDialog.NEW_DM -> NewDmDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
+        MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
+        MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
         MainDialog.CHANNEL_INFO -> selectedChannel?.let { ChannelInfoDialog(controller, it, onDismiss = { dialog = null }, onAddMember = { dialog = MainDialog.ADD_MEMBER }) }
         MainDialog.SETTINGS -> SettingsDialog(controller, onDismiss = { dialog = null })
         MainDialog.BROWSE -> ChannelBrowserDialog(
             controller, version, onDismiss = { dialog = null },
-            onOpen = { controller.messageFocus = null; threadFromList = false; selection = it },
+            onOpen = { controller.messageFocus = null; openConversation(it) },
             onCreate = { dialog = MainDialog.NEW_CHANNEL },
         )
         null -> Unit
@@ -436,29 +427,29 @@ private fun ChannelList(
                 FilterChip(selected = unreadOnly, onClick = onToggleUnreadOnly, label = { Text("未読のみ") })
             }
         }
-        item { ThreadsRow(store, onClick = onThreads) }
+        item { ThreadsRow(store, version, onClick = onThreads) }
         item { ListRow(Icons.Default.AlternateEmail, "メンション", onClick = onMentions) }
         if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
         val reminderCount = store.reminders.size
         val firedCount = store.firedReminderCount()
         if (reminderCount > 0) item { ListRow(Icons.Default.Alarm, "リマインダー", trailing = if (firedCount > 0) "$firedCount 件" else reminderCount.toString(), onClick = onReminders) }
         item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
-        item { SavedRow(store, onClick = onSaved) }
+        item { SavedRow(store, version, onClick = onSaved) }
         if (sections.favorites.isNotEmpty()) {
             item { SectionHeader("お気に入り") }
-            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         }
         sections.custom.forEachIndexed { index, (section, members) ->
             item(key = "section:" + section.id) { CustomSectionHeader(section.name, onMenu = { onSectionMenu(section, index) }) }
-            items(members, key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            items(members, key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
             if (members.isEmpty() && !unreadOnly) item(key = "section-empty:" + section.id) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") }
         }
         item { SectionHeader("チャンネル") }
-        items(channels, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        items(channels, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
         if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
         item { SectionHeader("ダイレクトメッセージ") }
-        items(dms, key = { it.id }) { ChannelRow(it, store, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        items(dms, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
         if (browsable.isNotEmpty()) {
             item { SectionHeader("参加できるチャンネル") }
@@ -475,10 +466,13 @@ private fun ChannelList(
     }
 }
 
-/** 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me. */
+/**
+ * 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
+ * `version`: the summary lives in the Store, so without it strong skipping would keep the first badge.
+ */
 @Composable
-private fun ThreadsRow(store: Store, onClick: () -> Unit) {
-    val summary = store.threadSummary
+private fun ThreadsRow(store: Store, version: Int, onClick: () -> Unit) {
+    val summary = remember(version) { store.threadSummary }
     val unread = summary.unreadCount > 0
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -524,9 +518,10 @@ private fun ListRow(icon: ImageVector, label: String, trailing: String? = null, 
     }
 }
 
-/** 「保存済み」 (M11c): my bookmarked messages. */
+/** 「保存済み」 (M11c): my bookmarked messages (`version` keeps the count current). */
 @Composable
-private fun SavedRow(store: Store, onClick: () -> Unit) {
+private fun SavedRow(store: Store, version: Int, onClick: () -> Unit) {
+    val saved = remember(version) { store.bookmarks.size }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -539,7 +534,7 @@ private fun SavedRow(store: Store, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(12.dp))
         Text("保存済み", modifier = Modifier.weight(1f))
-        if (store.bookmarks.isNotEmpty()) Text(store.bookmarks.size.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (saved > 0) Text(saved.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -578,10 +573,11 @@ private fun ChannelGlyph(channel: ChannelState) {
     }
 }
 
+/** `version`: the partner's name, presence dot and status emoji come from the Store, not from `channel`. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChannelRow(channel: ChannelState, store: Store, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
-    val title = channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") }
+private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+    val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
     val muted = Channels.isMuted(channel)
     val unread = Channels.hasUnread(channel)
     val badge = Channels.badgeCount(channel)

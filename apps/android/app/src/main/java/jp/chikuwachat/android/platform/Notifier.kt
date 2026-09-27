@@ -26,13 +26,18 @@ class Notifier(private val context: Context) {
         get() = Build.VERSION.SDK_INT < 33 ||
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun notifyMessage(channelId: String, title: String, body: String) {
+    /**
+     * `key` names the notification: the channel id for messages (the newest message replaces the previous
+     * one; a read clears it), "reminder:<id>" for a reminder so it stands on its own. The socket and FCM may
+     * both post the same message: the replacement does not ring a second time.
+     */
+    fun notifyMessage(channelId: String, title: String, body: String, key: String = channelId) {
         if (!permitted) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(EXTRA_CHANNEL_ID, channelId)
         }
-        val pending = PendingIntent.getActivity(context, channelId.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pending = PendingIntent.getActivity(context, key.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -40,15 +45,21 @@ class Notifier(private val context: Context) {
             .setStyle(Notification.BigTextStyle().bigText(body))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .build()
-        // One notification per channel: the newest message replaces the previous one.
-        manager.notify(channelId.hashCode(), notification)
+        manager.notify(key, NOTIFICATION_ID, notification)
     }
 
-    fun clear(channelId: String) = manager.cancel(channelId.hashCode())
+    /** The conversation was read (here or elsewhere): its message notification goes; reminders stay. */
+    fun clear(channelId: String) = manager.cancel(channelId, NOTIFICATION_ID)
+
+    /** Signed out (SYNC_PROTOCOL.md §11): nothing of the old account stays on screen. */
+    fun clearAll() = manager.cancelAll()
 
     companion object {
         const val CHANNEL_ID = "messages"
         const val EXTRA_CHANNEL_ID = "channel_id"
+        /** Notifications are told apart by their tag (the key); the id is the same for all. */
+        private const val NOTIFICATION_ID = 1
     }
 }

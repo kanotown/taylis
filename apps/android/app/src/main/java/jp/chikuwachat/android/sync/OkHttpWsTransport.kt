@@ -25,6 +25,12 @@ class OkHttpWsTransport private constructor() : WsTransport {
         fireClose(1000)
     }
 
+    /** Half-open (§5.3): a closing handshake would only wait for a peer that is gone. */
+    override fun abort() {
+        socket?.cancel()
+        fireClose(1006)
+    }
+
     private fun fireClose(code: Int) {
         if (closed) return
         closed = true

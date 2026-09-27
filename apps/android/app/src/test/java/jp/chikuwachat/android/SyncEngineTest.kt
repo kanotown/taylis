@@ -2,14 +2,17 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ThreadSummary
+import jp.chikuwachat.android.sync.CLOSE_AUTH_FAILED
 import jp.chikuwachat.android.sync.ClientFrame
 import jp.chikuwachat.android.sync.EngineOptions
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Snapshot
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.sync.SyncApi
 import jp.chikuwachat.android.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.SupervisorJob
@@ -17,17 +20,32 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 
 class SyncEngineTest {
-    class World(val server: FakeServer, val alice: String, val bob: String, val channelId: String, val store: Store, val engine: SyncEngine, val api: FakeServer.Api, val scope: CoroutineScope, val notifications: MutableList<String>)
+    class World(
+        val server: FakeServer, val alice: String, val bob: String, val channelId: String, val store: Store, val engine: SyncEngine, private val syncApi: SyncApi,
+        val scope: CoroutineScope, val notifications: MutableList<String>, val time: ManualTime,
+    ) {
+        // Held as the interface: a field of the inner class type makes the Compose compiler read
+        // FakeServer$Api.$stable, which an incremental rebuild of FakeServer.kt alone leaves out.
+        val api: FakeServer.Api get() = syncApi as FakeServer.Api
+    }
 
-    /** A single-threaded scope: the engine's work queue and the fake server never race. */
-    private fun world(hold: Boolean = false, pageSize: Int = 3, gapLimit: Int = 5): World {
+    /**
+     * A single-threaded scope: the engine's work queue and the fake server never race. The heartbeat and the
+     * outbox retry run on `time` (they only fire when a test advances it); with `manualBackoff` the reconnect
+     * backoff (1 s ± jitter) waits for it too, otherwise reconnects and debounces are immediate.
+     */
+    private fun world(hold: Boolean = false, pageSize: Int = 3, gapLimit: Int = 5, manualBackoff: Boolean = false): World {
         val server = FakeServer()
         val alice = server.addUser("alice")
         val bob = server.addUser("bob")
@@ -37,12 +55,17 @@ class SyncEngineTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val notifications = ArrayList<String>()
         val api = server.api(bob.id)
+        val time = ManualTime()
+        val instant: suspend (Long) -> Unit = {}
         val engine = SyncEngine(api, server.connector(bob.id), "ws://fake", store, { "token" }, scope,
-            EngineOptions(pageSize = pageSize, gapLimit = gapLimit, reconnectMinMs = 0, sleep = {}, random = { 0.5 }))
+            EngineOptions(
+                pageSize = pageSize, gapLimit = gapLimit, reconnectMinMs = if (manualBackoff) 1_000 else 0, sleep = if (manualBackoff) time.timer else instant,
+                random = { 0.5 }, clock = time.clock, timer = time.timer,
+            ))
         engine.isActive = { false }
         engine.onNotify = { message, _ -> notifications.add(message.body) }
         server.holdEvents = hold
-        return World(server, alice.id, bob.id, channel.id, store, engine, api, scope, notifications)
+        return World(server, alice.id, bob.id, channel.id, store, engine, api, scope, notifications, time)
     }
 
     private suspend fun settle(engine: SyncEngine) { repeat(20) { engine.idle(); yield() } }
@@ -624,5 +647,226 @@ class SyncEngineTest {
         assertEquals(true, store.channel(general.id)?.isMember)
         assertEquals(2, store.channel(general.id)?.channel?.memberCount) // member_added keeps the count current
         engine.stop(); scope.cancel()
+    }
+
+    // --- SYNC_PROTOCOL.md §5.3 / §7.3 / §7.4 / §9 / §10 rules (release review) ------------------------
+
+    @Test fun halfOpenSocketIsDroppedTwoIntervalsAfterTheLastFrame() = runBlocking { // §5.3
+        val w = world()
+        w.engine.start(); settle(w.engine)
+        val first = w.server.socketsOf(w.bob).single()
+        w.time.advance(30_000) // ping → pong
+        assertEquals(1, first.pings)
+        first.halfOpen = true // the network path dies without a close
+        w.time.advance(30_000) // this ping goes nowhere; pinging must not push the deadline back
+        w.time.advance(29_999)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(0, w.engine.reconnects)
+        w.time.advance(1) // 60 s since the last pong: dropped and reconnected
+        settle(w.engine)
+        assertTrue(first.closed)
+        assertEquals(1, w.engine.reconnects)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(1, w.server.socketsOf(w.bob).size)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun refusedTokenIsRenewedAndReconnectedInsteadOfSigningOut() = runBlocking { // §5.3 close 4001
+        val w = world()
+        val prepared = ArrayList<Boolean>()
+        var signedOut = false
+        w.engine.onSignedOut = { signedOut = true }
+        w.engine.prepareConnection = { refresh -> prepared.add(refresh) }
+        w.engine.start(); settle(w.engine)
+        // The server refuses the token: an error frame, then close 4001.
+        val socket = w.server.socketsOf(w.bob).single()
+        socket.deliver(buildJsonObject { put("type", "error"); put("code", "invalid_token"); put("message", "Invalid access token") })
+        socket.closeRemote(CLOSE_AUTH_FAILED); settle(w.engine)
+        assertEquals(listOf(false, true), prepared)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertFalse(signedOut)
+        // Only a renewal the server refuses (401) signs out.
+        w.engine.prepareConnection = { refresh -> if (refresh) throw ApiException.Api(401, "session_revoked", "revoked") }
+        w.server.socketsOf(w.bob).single().closeRemote(CLOSE_AUTH_FAILED); settle(w.engine)
+        assertEquals(EngineStatus.SIGNED_OUT, w.engine.status.value)
+        assertTrue(signedOut)
+        w.scope.cancel()
+    }
+
+    @Test fun failedBootstrapLeavesOneReconnectAndOneSocket() = runBlocking { // §5.3
+        val w = world()
+        w.api.pendingFailure = ApiException.Network(IOException("bootstrap lost")) // the socket is up, bootstrap fails
+        w.engine.start(); settle(w.engine)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(1, w.engine.reconnects)
+        assertEquals(1, w.server.socketsOf(w.bob).size)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun socketLostBeforeBootstrapFinishesIsNeverReportedOnline() = runBlocking { // §5.3
+        val w = world(manualBackoff = true)
+        w.server.dropAfterHello = 1 // closes right after hello, while the client bootstraps
+        w.engine.start(); settle(w.engine)
+        assertEquals(EngineStatus.OFFLINE, w.engine.status.value) // no socket: not "connected"
+        assertEquals(1, w.engine.reconnects)
+        w.time.advance(1_000) // the one pending reconnect (1 s with this jitter)
+        settle(w.engine)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(1, w.engine.reconnects)
+        assertEquals(1, w.server.socketsOf(w.bob).size)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun outboxSendsWhatWasQueuedMeanwhileAndRetriesWithBackoff() = runBlocking { // §9
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        // A send made while another one is in flight returns at once; the running loop sends it next.
+        val gate = CompletableDeferred<Unit>()
+        w.api.postGate = gate
+        val first = async(start = CoroutineStart.UNDISPATCHED) { w.engine.send(w.channelId, "one") }
+        w.engine.send(w.channelId, "two")
+        assertEquals(2, w.store.outbox.size)
+        gate.complete(Unit); first.await(); settle(w.engine)
+        assertEquals(0, w.store.outbox.size)
+        assertEquals(listOf("one", "two"), w.server.channels.getValue(w.channelId).messages.map { it.body })
+
+        // Temporary failures retry on a timer while online (2 s, then 4 s …) instead of staying pending.
+        w.api.postFailures.addAll(listOf(ApiException.Network(IOException("lost")), ApiException.Api(503, "unavailable", "down")))
+        w.engine.send(w.channelId, "three")
+        w.time.advance(1_999)
+        assertEquals(1, w.store.outbox.size)
+        w.time.advance(1) // 503 this time: the next wait doubles
+        w.time.advance(3_999)
+        assertEquals(1, w.store.outbox.size)
+        w.time.advance(1); settle(w.engine)
+        assertEquals(0, w.store.outbox.size)
+        assertEquals("three", w.server.channels.getValue(w.channelId).messages.last().body)
+
+        // A refusal is kept as failed (再送 / 破棄) and the queue goes on.
+        w.api.postFailures.add(ApiException.Api(409, "channel_archived", "archived"))
+        w.engine.send(w.channelId, "four")
+        w.engine.send(w.channelId, "five"); settle(w.engine)
+        assertEquals(listOf("four" to "channel_archived"), w.store.outbox.map { it.body to it.failed })
+        assertEquals("five", w.server.channels.getValue(w.channelId).messages.last().body)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun scrollBackPagesFromTheLoadedRangeNotFromOldRowsThatArrivedLater() = runBlocking { // §7.3
+        val w = world(pageSize = 3)
+        val sent = (1..6).map { w.server.post(w.channelId, w.alice, "m$it").first }
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        assertEquals(listOf("m4", "m5", "m6"), w.store.messages(w.channelId).map { it.body })
+        assertEquals(4, w.store.channel(w.channelId)?.oldestLoadedSeq)
+        // Old rows arrive from outside the range: a reaction on m1 (live) and a reply bumping m2 (in the delta after a restart).
+        w.server.react(w.channelId, w.alice, sent[0].id, "👍", present = true); settle(w.engine)
+        w.engine.stop()
+        w.server.post(w.channelId, w.alice, "reply", parentId = sent[1].id)
+        w.engine.start(); settle(w.engine)
+        assertNotNull(w.store.message(w.channelId, sent[0].id)) // stored…
+        assertNotNull(w.store.message(w.channelId, sent[1].id))
+        assertEquals(listOf("m4", "m5", "m6"), w.store.messages(w.channelId).map { it.body }) // …but not shown (m3 would be missing in between)
+        w.engine.loadOlder(w.channelId) // pages from seq 4, not from m1
+        assertEquals(listOf("m1", "m2", "m3", "m4", "m5", "m6"), w.store.messages(w.channelId).map { it.body })
+        assertEquals(0, w.store.channel(w.channelId)?.oldestLoadedSeq)
+        assertEquals(false, w.store.channel(w.channelId)?.hasOlder)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun bootstrapReadStateWinsAndUnsentReadMarksAreSentAgain() = runBlocking { // §10
+        val w = world()
+        w.engine.isActive = { true }
+        listOf("m1", "m2", "m3").forEach { w.server.post(w.channelId, w.alice, it) }
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        // The PUT is lost: the position moved here only. It is kept and sent again after reconnecting.
+        w.api.pendingFailure = ApiException.Network(IOException("lost"))
+        w.engine.markRead(w.channelId, 3); w.engine.flushReads(); settle(w.engine)
+        assertEquals(Triple(3, 0, 3), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.unsentReadSeq) })
+        assertEquals(0, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        w.server.disconnect(w.bob); settle(w.engine); w.engine.flushReads(); settle(w.engine)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(3, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        assertEquals(Triple(3, 0, null), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.unsentReadSeq) })
+        // Another device marks m2 unread while this one is away: bootstrap moves the position back (no max merge).
+        w.engine.stop()
+        w.server.markRead(w.bob, w.channelId, 1, mode = "set")
+        w.engine.start(); settle(w.engine)
+        assertEquals(1 to 2, w.store.channel(w.channelId)!!.let { it.lastReadSeq to it.unreadCount })
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun unsentThreadReadMarkIsSentAgainAfterReconnecting() = runBlocking { // §10 / THREADS.md §5
+        val w = world()
+        w.engine.isActive = { true }
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        w.engine.send(w.channelId, "topic"); settle(w.engine)
+        val parent = w.server.messageByBody(w.channelId, "topic")
+        val (reply, _) = w.server.post(w.channelId, w.alice, "reply", parentId = parent.id)
+        w.engine.flushThreads(); settle(w.engine)
+        w.engine.loadThreadState(parent.id)
+        w.api.pendingFailure = ApiException.Network(IOException("lost"))
+        w.engine.markThreadRead(parent.id, reply.seq); w.engine.flushReads(); settle(w.engine)
+        assertEquals(0, w.server.threadState(w.bob, parent.id).lastReadSeq)
+        assertEquals(reply.seq, w.store.threads[parent.id]?.state?.lastReadSeq) // shown read meanwhile
+        w.server.disconnect(w.bob); settle(w.engine); w.engine.flushReads(); settle(w.engine)
+        assertEquals(reply.seq, w.server.threadState(w.bob, parent.id).lastReadSeq)
+        assertEquals(reply.seq, w.store.threads[parent.id]?.state?.lastReadSeq)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun ownThreadReplyLeavesTheChannelUnread() = runBlocking { // §10
+        val w = world()
+        val (parent, _) = w.server.post(w.channelId, w.alice, "topic")
+        w.server.post(w.channelId, w.alice, "later")
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        assertEquals(0 to 2, w.store.channel(w.channelId)!!.let { it.lastReadSeq to it.unreadCount })
+        w.engine.send(w.channelId, "my reply", parentId = parent.id); settle(w.engine)
+        assertEquals(0 to 2, w.store.channel(w.channelId)!!.let { it.lastReadSeq to it.unreadCount }) // the thread's position moved, not the channel's
+        assertEquals(0, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        w.engine.send(w.channelId, "my post"); settle(w.engine) // a top-level post reads the channel
+        assertEquals(4 to 0, w.store.channel(w.channelId)!!.let { it.lastReadSeq to it.unreadCount })
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun openThreadFollowsLiveRepliesWithoutTheChannelTimeline() = runBlocking { // §7.4
+        val w = world()
+        val (parent, _) = w.server.post(w.channelId, w.alice, "topic")
+        w.server.post(w.channelId, w.alice, "<@${w.bob}> first", parentId = parent.id) // bob now follows the thread
+        w.engine.start(); settle(w.engine) // the channel itself is never opened: no timeline
+        w.engine.loadThreads("all")
+        w.engine.loadReplies(w.channelId, parent.id) // opened from the threads list
+        w.server.post(w.channelId, w.alice, "second", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("<@${w.bob}> first", "second"), w.store.replies(w.channelId, parent.id).map { it.body })
+        assertEquals(2, w.store.message(w.channelId, parent.id)?.replyCount)
+        assertNull(w.store.channel(w.channelId)?.syncedSeq)
+        assertTrue(w.store.messages(w.channelId).isEmpty()) // still no timeline
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun threadListIsRefreshedOnceTheReconnectIsOnline() = runBlocking { // THREADS.md §6
+        val w = world()
+        w.engine.start(); w.engine.openChannel(w.channelId)
+        w.engine.send(w.channelId, "topic"); settle(w.engine)
+        val parent = w.server.messageByBody(w.channelId, "topic")
+        w.server.post(w.channelId, w.alice, "reply 1", parentId = parent.id); w.engine.flushThreads(); settle(w.engine)
+        w.engine.loadThreads("all")
+        assertEquals(1, w.store.threads[parent.id]?.state?.unreadCount)
+        w.engine.stop()
+        w.server.post(w.channelId, w.alice, "reply 2", parentId = parent.id) // missed while away
+        w.engine.start(); w.engine.flushThreads(); settle(w.engine)
+        assertEquals(2, w.store.threads[parent.id]?.state?.unreadCount)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun newTopLevelPostsMoveTheConversationUpTheList() = runBlocking { // §7.4 (DM order)
+        val w = world()
+        val dm = w.server.createChannel("", w.alice, "dm")
+        w.server.join(dm.id, w.bob)
+        w.engine.start(); settle(w.engine)
+        assertNull(w.store.channel(dm.id)?.channel?.lastMessageAt)
+        val (message, _) = w.server.post(dm.id, w.alice, "hi"); settle(w.engine)
+        assertEquals(message.createdAt, w.store.channel(dm.id)?.channel?.lastMessageAt)
+        w.server.post(dm.id, w.alice, "in a thread", parentId = message.id); settle(w.engine)
+        assertEquals(message.createdAt, w.store.channel(dm.id)?.channel?.lastMessageAt) // replies do not reorder
+        w.engine.stop(); w.scope.cancel()
     }
 }

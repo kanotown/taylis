@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.app.AppController
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Joining with an invite link (M12h): paste the link, see who invites, choose a name and a password. */
@@ -65,6 +66,8 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
             try {
                 preview = controller.previewInvite(parsed.server, parsed.token)
                 target = parsed
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error = (e as? ApiException.Api)?.let { Invite.errorText(it.code) } ?: controller.describe(e)
             } finally { busy = false }

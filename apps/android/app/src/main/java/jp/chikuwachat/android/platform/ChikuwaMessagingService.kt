@@ -33,6 +33,12 @@ suspend fun fetchFcmToken(context: Context): String? {
     return FirebaseMessaging.getInstance().token.await()
 }
 
+/** Invalidates the install's token (FCM answers UNREGISTERED to the server from then on). */
+suspend fun deleteFcmToken(context: Context) {
+    if (!firebaseConfigured(context)) return
+    FirebaseMessaging.getInstance().deleteToken().await()
+}
+
 private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { continuation ->
     addOnCompleteListener { task ->
         if (task.isSuccessful) continuation.resume(task.result) else continuation.resumeWithException(task.exception ?: IllegalStateException("task failed"))

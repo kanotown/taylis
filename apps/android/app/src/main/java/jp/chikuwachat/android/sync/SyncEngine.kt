@@ -21,9 +21,11 @@ import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.DraftUpdated
-import jp.chikuwachat.android.api.isRetryable
+import jp.chikuwachat.android.api.isRefusal
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -71,6 +73,8 @@ interface WsTransport {
     var onClose: ((Int) -> Unit)?
     fun send(text: String)
     fun close()
+    /** A dead connection (§5.3 heartbeat deadline): drop it without waiting for a closing handshake. */
+    fun abort() = close()
 }
 
 typealias WsConnector = suspend (url: String, token: String) -> WsTransport
@@ -103,8 +107,17 @@ data class EngineOptions(
     val typingTtlMs: Long = 5_000,
     /** M15d: a draft is saved on the server this long after typing pauses. */
     val draftSaveMs: Long = 1_000,
+    /** §9: after a temporary send failure the outbox retries after 2 s, 4 s … at most 30 s while connected. */
+    val outboxRetryMinMs: Long = 2_000,
+    val outboxRetryMaxMs: Long = 30_000,
     /** Injectable so tests can skip reconnect pacing. */
     val sleep: suspend (Long) -> Unit = { delay(it) },
+    /**
+     * The §5.3 heartbeat deadline and the §9 outbox retry run on this monotonic clock (ms) and wait with
+     * `timer`; tests drive both by hand (skipping them like `sleep` would spin).
+     */
+    val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    val timer: suspend (Long) -> Unit = { delay(it) },
     val random: () -> Double = { Random.nextDouble() },
     val newId: () -> String = { UUID.randomUUID().toString() },
     val now: () -> String = { java.time.Instant.now().toString() },
@@ -148,7 +161,11 @@ class SyncEngine(
     /** A channel became fully read (here or on another device): dismiss its notification. */
     var onRead: ((String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
-    var prepareConnection: (suspend () -> Unit)? = null
+    /**
+     * Runs before every connection (§7.2) to make sure a usable access token exists. `refresh` is true after
+     * the server refused the token (close 4001, §5.3): then it is renewed even if it still looks valid.
+     */
+    var prepareConnection: (suspend (refresh: Boolean) -> Unit)? = null
     var catchUps = 0
         private set
     var reloads = 0
@@ -159,12 +176,18 @@ class SyncEngine(
     private val queue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private var worker: Job? = null
     private var ws: WsTransport? = null
-    private var helloReceived = false
-    private var helloWaiter: CompletableDeferred<Unit>? = null
     private var heartbeat: Job? = null
-    private var pongTimeout: Job? = null
+    /** §5.3: the one pending reconnect (it sleeps the backoff first); null while connecting or connected. */
+    private var reconnectJob: Job? = null
+    /** §5.3: the last socket was closed with 4001, so the next connection renews the access token first. */
+    private var refreshBeforeConnect = false
     private var stopped = false
     private var flushing = false
+    /** §9: something was queued while the outbox loop ran; it goes round once more before stopping. */
+    private var flushAgain = false
+    /** §9: the timer that resumes the outbox after a temporary failure, and the failures in a row (backoff). */
+    private var outboxRetry: Job? = null
+    private var outboxFailures = 0
     private var reconnectAttempt = 0
     private val pendingReads = HashMap<String, Job>()
     /** Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10). */
@@ -172,6 +195,8 @@ class SyncEngine(
     fun heldUnread(channelId: String): Int? = unreadHold[channelId]
     /** Thread read positions sent (or about to be) while the thread's state is not loaded yet. */
     private val threadReadFloor = HashMap<String, Int>()
+    /** §10: thread read marks the server has not confirmed (PUT failed or still debouncing); resent after reconnecting. */
+    private val unsentThreadReads = HashMap<String, Int>()
     private var threadRefresh: Job? = null
     /** "channel[:parent]" → when the last typing frame went out. */
     private val typingSent = HashMap<String, Long>()
@@ -208,6 +233,11 @@ class SyncEngine(
 
     // --- §7.2 start, §7.5 reconnect ----------------------------------------------------------
 
+    /** One socket (§5.3): when a frame last arrived (the heartbeat deadline counts from it) and how it closed. */
+    private class Connection(val socket: WsTransport, @Volatile var lastFrameAt: Long) {
+        @Volatile var closeCode: Int? = null
+    }
+
     suspend fun start() {
         stopped = false
         connectSocket()
@@ -215,16 +245,32 @@ class SyncEngine(
 
     fun stop() {
         stopped = true
-        clearTimers()
-        ws?.close()
-        ws = null
+        cancelReconnect()
+        stopHeartbeat()
+        threadRefresh?.cancel()
+        threadRefresh = null
+        outboxRetry?.cancel()
+        outboxRetry = null
+        closeSocket()
         _status.value = EngineStatus.IDLE
+    }
+
+    /** Forgets the socket before closing it, so its close callback finds nothing left to act on. */
+    private fun closeSocket() {
+        val socket = ws ?: return
+        ws = null
+        socket.close()
     }
 
     private suspend fun connectSocket() {
         if (stopped || _status.value == EngineStatus.CONNECTING || _status.value == EngineStatus.ONLINE) return
         _status.value = EngineStatus.CONNECTING
-        try { prepareConnection?.invoke() } catch (e: Exception) {
+        try {
+            prepareConnection?.invoke(refreshBeforeConnect)
+            refreshBeforeConnect = false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
             if (e is ApiException.Api && e.isAuth) signOut() else scheduleReconnect()
             return
         }
@@ -234,113 +280,143 @@ class SyncEngine(
             signOut()
             return
         }
-        _status.value = EngineStatus.CONNECTING
         val socket = try {
             connect(wsUrl, token)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             scheduleReconnect()
             return
         }
+        if (stopped) {
+            socket.close()
+            return
+        }
+        val connection = Connection(socket, options.clock())
         ws = socket
-        helloReceived = false
-        val waiter = CompletableDeferred<Unit>()
-        helloWaiter = waiter
+        val hello = CompletableDeferred<Boolean>()
         socket.onMessage = { text ->
+            connection.lastFrameAt = options.clock() // §5.3: any frame proves the socket alive
             val frame = ServerFrame.parse(text)
             // hello is awaited *inside* the queued bootstrap step, so it must be signalled here, on the
             // transport thread; everything else is applied in order on the work queue.
-            if (frame is ServerFrame.Hello) waiter.complete(Unit)
-            if (frame != null) post { onFrame(frame) }
+            if (frame is ServerFrame.Hello) hello.complete(true)
+            if (frame != null) post { onFrame(frame, connection) }
         }
-        socket.onClose = { code -> post { handleClose(socket, code) } }
+        socket.onClose = { code ->
+            connection.closeCode = code
+            hello.complete(false) // no hello is coming: stop waiting for it
+            post { handleClose(connection) }
+        }
         socket.send(ClientFrame.auth(token))
 
-        val result = runCatching {
+        try {
             enqueue {
-                if (!waitForHello()) {
-                    socket.close()
-                    throw ApiException.Network(IllegalStateException("hello timeout"))
+                if (withTimeoutOrNull(options.helloTimeoutMs) { hello.await() } != true) {
+                    throw ApiException.Network(IllegalStateException("no hello"))
                 }
                 // Frames that arrive from here on are queued behind this step (= buffered, §7.2).
                 val bootstrap = api.bootstrap()
                 applyBootstrap(bootstrap)
                 loadBrowsableChannels()
                 currentChannelId?.let { catchUp(it) }
+                // §5.3: a socket that went away meanwhile must not leave us "connected" without one.
+                if (ws !== socket || connection.closeCode != null) throw ApiException.Network(IllegalStateException("socket closed while connecting"))
                 reconnectAttempt = 0
                 _status.value = EngineStatus.ONLINE
             }
-        }
-        result.onFailure { error ->
-            if (error is ApiException.Api && error.isAuth) {
-                signOut()
-                return
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // §5.3: drop this connection *before* closing it, so its close callback cannot start a second
+            // reconnect loop; if the callback got here first, it has already decided what comes next.
+            val code = connection.closeCode
+            val ours = ws === socket
+            if (ours) {
+                ws = null
+                stopHeartbeat()
             }
             socket.close()
-            scheduleReconnect()
+            if (e is ApiException.Api && e.isAuth) signOut() else if (ours) reconnectAfter(code)
             return
         }
-        if (_status.value == EngineStatus.ONLINE) {
-            scope.launch { flushOutbox() }
-            scope.launch { drafts.flush() } // edited while offline (M15d)
-            currentChannelId?.let { current -> scope.launch { loadLinks(current) } } // changed while away (M15f)
-        }
+        if (_status.value != EngineStatus.ONLINE) return
+        scope.launch { flushOutbox() }
+        scope.launch { drafts.flush() } // edited while offline (M15d)
+        currentChannelId?.let { current -> scope.launch { loadLinks(current) } } // changed while away (M15f)
+        resendReads() // §10: marks that never reached the server
+        if (store.threadsLoaded) scheduleThreadRefresh() // the open list may have moved while we were away
     }
 
-    private suspend fun waitForHello(): Boolean {
-        if (helloReceived) return true
-        val waiter = helloWaiter ?: return helloReceived
-        return withTimeoutOrNull(options.helloTimeoutMs) { waiter.await(); true } ?: false
-    }
-
-    private suspend fun scheduleReconnect() {
+    /** §5.3: jittered backoff (1 s, 2 s … 30 s); never more than one reconnect pending. */
+    private fun scheduleReconnect() {
         if (stopped || _status.value == EngineStatus.SIGNED_OUT) return
         _status.value = EngineStatus.OFFLINE
+        if (reconnectJob != null) return
         reconnectAttempt += 1
         reconnects += 1
         val base = min(options.reconnectMinMs * (1L shl (reconnectAttempt - 1).coerceAtMost(20)), options.reconnectMaxMs)
-        options.sleep((base * (0.5 + options.random())).toLong())
-        connectSocket()
+        val wait = (base * (0.5 + options.random())).toLong()
+        // Started only once assigned, so a failure inside connectSocket (which schedules the next attempt) sees it cleared.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            options.sleep(wait)
+            reconnectJob = null
+            connectSocket()
+        }
+        reconnectJob = job
+        job.start()
     }
 
-    private fun handleClose(socket: WsTransport, code: Int) {
-        if (ws !== socket) return
-        ws = null
-        clearTimers()
-        if (code == CLOSE_SESSION_REVOKED || code == CLOSE_AUTH_FAILED) {
-            signOut()
-            return
+    private fun cancelReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+    }
+
+    /** A connection is gone (§5.3): 4003 signs out, 4001 renews the access token before reconnecting, the rest back off. */
+    private fun reconnectAfter(code: Int?) {
+        when (code) {
+            CLOSE_SESSION_REVOKED -> signOut()
+            CLOSE_AUTH_FAILED -> {
+                refreshBeforeConnect = true
+                scheduleReconnect()
+            }
+            else -> scheduleReconnect()
         }
-        if (!stopped) scope.launch { scheduleReconnect() }
+    }
+
+    private fun handleClose(connection: Connection) {
+        if (ws !== connection.socket) return
+        ws = null
+        stopHeartbeat()
+        reconnectAfter(connection.closeCode)
     }
 
     private fun signOut() {
-        clearTimers()
-        ws?.close()
-        ws = null
+        cancelReconnect()
+        stopHeartbeat()
+        closeSocket()
         _status.value = EngineStatus.SIGNED_OUT
         onSignedOut?.invoke()
     }
 
     /** Foreground / network change: skip the backoff and catch up the open channel. */
     fun reconnectNow() {
-        if (_status.value == EngineStatus.OFFLINE && ws == null) scope.launch { connectSocket() }
-        if (_status.value == EngineStatus.ONLINE) currentChannelId?.let { id -> post { catchUp(id) } }
+        if (_status.value == EngineStatus.OFFLINE && ws == null) {
+            cancelReconnect()
+            scope.launch { connectSocket() }
+        } else if (_status.value == EngineStatus.ONLINE) {
+            currentChannelId?.let { id -> post { catchUp(id) } }
+        }
     }
 
     // --- frames -----------------------------------------------------------------------------
 
-    private suspend fun onFrame(frame: ServerFrame) {
+    private suspend fun onFrame(frame: ServerFrame, connection: Connection) {
         when (frame) {
-            is ServerFrame.Hello -> {
-                helloReceived = true
-                helloWaiter?.complete(Unit)
-                startHeartbeat(frame.heartbeatIntervalSec * 1000L)
-            }
-            ServerFrame.Pong -> {
-                pongTimeout?.cancel()
-                pongTimeout = null
-            }
-            is ServerFrame.Error -> if (frame.code in setOf("invalid_token", "session_revoked", "session_expired", "password_change_required")) signOut()
+            is ServerFrame.Hello -> if (ws === connection.socket) startHeartbeat(connection, frame.heartbeatIntervalSec * 1000L)
+            ServerFrame.Pong -> Unit // its arrival time is all the heartbeat needs (§5.3)
+            // An auth refusal is followed by close 4001 (renew the token) or 4003 (signed out): the close code decides.
+            is ServerFrame.Error -> Unit
             is ServerFrame.Event -> applyEvent(frame.frame)
             is ServerFrame.Typing -> {
                 // Volatile (SYNC_PROTOCOL.md §5.2): shown for a few seconds, never stored.
@@ -350,29 +426,37 @@ class SyncEngine(
         }
     }
 
-    private fun startHeartbeat(intervalMs: Long) {
-        clearTimers()
+    /**
+     * §5.3: a ping every interval; a socket that has sent nothing (not even a pong) for two intervals is
+     * half-open and gets dropped. The deadline counts from the last frame received, never from the last
+     * ping, or a dead socket would look alive for ever (and suppress pushes).
+     */
+    private fun startHeartbeat(connection: Connection, intervalMs: Long) {
+        stopHeartbeat()
         heartbeat = scope.launch {
+            val started = options.clock()
+            var nextPing = started + intervalMs
+            // Silence before the first ping (a slow bootstrap) says nothing about the socket.
+            fun lastHeard() = maxOf(connection.lastFrameAt, started)
             while (true) {
-                delay(intervalMs)
-                val socket = ws ?: return@launch
-                runCatching { socket.send(ClientFrame.ping(isActive())) }
-                pongTimeout?.cancel()
-                pongTimeout = scope.launch {
-                    delay(intervalMs * 2)
-                    socket.close()
+                options.timer(maxOf(0L, minOf(nextPing, lastHeard() + intervalMs * 2) - options.clock()))
+                if (ws !== connection.socket) return@launch
+                val now = options.clock()
+                if (now - lastHeard() >= intervalMs * 2) {
+                    connection.socket.abort() // the close callback reconnects
+                    return@launch
+                }
+                if (now >= nextPing) {
+                    runCatching { connection.socket.send(ClientFrame.ping(isActive())) }
+                    nextPing = now + intervalMs
                 }
             }
         }
     }
 
-    private fun clearTimers() {
+    private fun stopHeartbeat() {
         heartbeat?.cancel()
-        pongTimeout?.cancel()
-        threadRefresh?.cancel()
         heartbeat = null
-        pongTimeout = null
-        threadRefresh = null
     }
 
     private fun applyBootstrap(bootstrap: BootstrapOut) {
@@ -385,7 +469,7 @@ class SyncEngine(
         }
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { store.removeChannel(it.id) }
         bootstrap.threads?.let { store.setThreadSummary(it) }
-        if (store.threadsLoaded) scheduleThreadRefresh() // the list may have moved while we were away
+        store.setLimits(bootstrap.limits)
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
@@ -478,7 +562,7 @@ class SyncEngine(
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
                 // refreshed from the server shortly after, which also covers threads we do not hold.
-                store.applyThreadState(Codec.snake.decodeFromJsonElement(ThreadState.serializer(), frame.data))
+                store.applyThreadState(withFloor(Codec.snake.decodeFromJsonElement(ThreadState.serializer(), frame.data)))
                 scheduleThreadRefresh()
             }
             "channel.created", "channel.updated" -> {
@@ -532,17 +616,22 @@ class SyncEngine(
         val synced = channel.syncedSeq
         when {
             synced == null -> {
-                store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
+                // §7.4: no timeline here, but rows already held (an open thread's parent and replies) follow the event.
+                if (holds(channelId, message)) {
+                    store.upsertMessage(message)
+                    if (thread != null) store.applyParentThread(channelId, thread)
+                }
+                store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
             seq == synced + 1 -> {
                 store.upsertMessage(message)
                 if (thread != null) store.applyParentThread(channelId, thread)
-                store.updateChannel(channelId) { it.copy(syncedSeq = seq, lastSeq = maxOf(it.lastSeq, seq)) }
+                store.updateChannel(channelId) { it.advancedTo(seq, message, isNew).copy(syncedSeq = seq) }
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
             seq > synced + 1 -> {
-                store.updateChannel(channelId) { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
+                store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
                 catchUp(channelId)
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
             }
@@ -550,13 +639,40 @@ class SyncEngine(
         }
     }
 
-    /** §7.4 / §10: my own message is read; someone else's is unread until read.updated says otherwise. */
+    /** Whether the store holds rows this message goes with: the row itself, or its thread's parent or replies (§7.4). */
+    private fun holds(channelId: String, message: MessageOut): Boolean {
+        if (store.message(channelId, message.id) != null) return true
+        val parentId = message.parentId ?: return false
+        return store.message(channelId, parentId) != null || store.replies(channelId, parentId).isNotEmpty()
+    }
+
+    /** lastSeq moves up; a new top-level post also moves lastMessageAt, which orders the DM list (§7.4). */
+    private fun ChannelState.advancedTo(seq: Int, message: MessageOut, isNew: Boolean): ChannelState {
+        val moved = copy(lastSeq = maxOf(lastSeq, seq))
+        if (!isNew || message.parentId != null || !isLater(message.createdAt, channel.lastMessageAt)) return moved
+        return moved.copy(channel = channel.copy(lastMessageAt = message.createdAt))
+    }
+
+    private fun isLater(time: String, than: String?): Boolean {
+        if (than == null) return true
+        val a = runCatching { java.time.Instant.parse(time) }.getOrNull()
+        val b = runCatching { java.time.Instant.parse(than) }.getOrNull()
+        return if (a != null && b != null) a.isAfter(b) else time > than
+    }
+
+    /** §7.4 / §10: my own top-level post reads the channel; someone else's message is unread until read.updated says otherwise. */
     private fun countUnread(message: MessageOut) {
         store.clearTyping(message.channelId, message.parentId, message.senderId) // their message arrived: no longer typing
         val me = store.me ?: return
         if (message.senderId == me.id) {
-            unreadHold.remove(message.channelId) // sending reads the conversation (the server does the same)
-            store.updateChannel(message.channelId) { it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0) }
+            // Only a top-level post reads the conversation (the server does the same); a thread reply moves
+            // the thread's read position, never the channel's.
+            if (message.parentId == null) {
+                unreadHold.remove(message.channelId)
+                store.updateChannel(message.channelId) {
+                    it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0, unsentReadSeq = it.unsentReadSeq?.takeIf { s -> s > message.seq })
+                }
+            }
             return
         }
         if (message.isReply && !message.alsoInChannel) return // replies are not unread items unless also sent to the channel (M15c)
@@ -568,12 +684,13 @@ class SyncEngine(
 
     private fun applyReadState(channelId: String, state: ReadStateOut, allowDecrease: Boolean = false) {
         // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
-        // a mark-as-unread (reason "set") moves the position down as well.
+        // a mark-as-unread (reason "set") moves the position down as well and replaces any mark not sent yet.
         val updated = store.updateChannel(channelId) {
             it.copy(
                 lastReadSeq = if (allowDecrease) state.lastReadSeq else maxOf(it.lastReadSeq, state.lastReadSeq),
                 unreadCount = state.unreadCount,
                 mentionCount = state.mentionCount,
+                unsentReadSeq = if (allowDecrease) null else it.unsentReadSeq?.takeIf { s -> s > state.lastReadSeq },
             )
         } ?: return
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
@@ -593,9 +710,13 @@ class SyncEngine(
         onNotify?.invoke(message, channel)
     }
 
-    /** Opening a thread: fetch its replies (live ones keep arriving as timeline events). */
+    /**
+     * Opening a thread: fetch its replies. Live ones keep arriving as timeline events, also in a channel
+     * whose timeline is not loaded (§7.4), because the parent (from the threads list) and the replies are held.
+     */
     suspend fun loadReplies(channelId: String, parentId: String) = enqueue {
         if (_status.value != EngineStatus.ONLINE) return@enqueue
+        store.threads[parentId]?.parent?.let { store.upsertMessage(it) }
         api.replies(parentId).forEach { store.upsertMessage(it) }
     }
 
@@ -613,7 +734,6 @@ class SyncEngine(
         }
     }
 
-    /** §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins. */
     /** 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once. */
     fun markUnread(channelId: String, seq: Int) {
         if (_status.value != EngineStatus.ONLINE || seq < 1) return
@@ -629,30 +749,58 @@ class SyncEngine(
                 lastReadSeq = target,
                 unreadCount = later.size,
                 mentionCount = later.count { m -> me != null && (m.mentionAll || me in m.mentionedUserIds) },
+                unsentReadSeq = null, // the set replaces a mark not sent yet
             )
         }
         pendingReads[channelId] = scope.launch {
-            val state = runCatching { api.setReadPosition(channelId, target) }.getOrNull()
-            pendingReads.remove(channelId)
+            val state = try { api.setReadPosition(channelId, target) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
             if (state != null) post { applyReadState(channelId, state, allowDecrease = true) }
         }
     }
 
+    /**
+     * §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins.
+     * Until the server confirms it the mark stays in the channel state (persisted), and is sent again after
+     * reconnecting, so a lost PUT never leaves a channel that cannot be read.
+     */
     fun markRead(channelId: String, seq: Int, force: Boolean = false) {
         if (_status.value != EngineStatus.ONLINE || !isActive()) return
         if (force) unreadHold.remove(channelId) else if (unreadHold.containsKey(channelId)) return
         val channel = store.channel(channelId) ?: return
         if (!channel.isMember || seq <= channel.lastReadSeq) return
         store.updateChannel(channelId) {
-            if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else it.copy(lastReadSeq = seq)
+            val moved = if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else it.copy(lastReadSeq = seq)
+            moved.copy(unsentReadSeq = maxOf(it.unsentReadSeq ?: 0, seq))
         }
+        sendRead(channelId, debounce = true)
+    }
+
+    /** PUT the channel's unconfirmed read mark; a temporary failure keeps it for the next reconnect. */
+    private fun sendRead(channelId: String, debounce: Boolean) {
         pendingReads.remove(channelId)?.cancel()
         pendingReads[channelId] = scope.launch {
-            options.sleep(options.readDebounceMs)
-            val target = store.channel(channelId)?.lastReadSeq ?: return@launch
-            pendingReads.remove(channelId)
-            runCatching { api.markRead(channelId, target) }.onSuccess { post { applyReadState(channelId, it) } }
+            if (debounce) options.sleep(options.readDebounceMs)
+            val target = store.channel(channelId)?.unsentReadSeq ?: return@launch
+            val state = try {
+                api.markRead(channelId, target)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Refused for good (no longer a member …): forget it. Otherwise it waits for the reconnect.
+                if (e.isRefusal()) store.updateChannel(channelId) { it.copy(unsentReadSeq = null) }
+                return@launch
+            }
+            post {
+                store.updateChannel(channelId) { if ((it.unsentReadSeq ?: 0) <= target) it.copy(unsentReadSeq = null) else it }
+                applyReadState(channelId, state)
+            }
         }
+    }
+
+    /** §10: read marks that never reached the server (PUT failed, or the connection dropped first) go out again. */
+    private fun resendReads() {
+        store.channels.values.filter { it.unsentReadSeq != null }.forEach { sendRead(it.id, debounce = false) }
+        unsentThreadReads.keys.toList().forEach { sendThreadRead(it, debounce = false) }
     }
 
     /** Waits for debounced read marks (tests). */
@@ -676,9 +824,13 @@ class SyncEngine(
     /** A thread opened from a channel: fetch my relation to it (follow flag, read position). */
     suspend fun loadThreadState(parentId: String, parent: MessageOut? = null) = enqueue {
         if (_status.value != EngineStatus.ONLINE) return@enqueue
-        var state = api.threadState(parentId)
-        threadReadFloor[parentId]?.let { floor -> if (floor > state.lastReadSeq) state = state.copy(lastReadSeq = floor) }
-        store.applyThreadState(state, parent)
+        store.applyThreadState(withFloor(api.threadState(parentId)), parent)
+    }
+
+    /** A server state, but never behind what this device has read (its PUT may still be on the way, or waiting to be resent). */
+    private fun withFloor(state: ThreadState): ThreadState {
+        val floor = threadReadFloor[state.parentId] ?: return state
+        return if (floor > state.lastReadSeq) state.copy(lastReadSeq = floor) else state
     }
 
     /** The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce. */
@@ -687,23 +839,37 @@ class SyncEngine(
         val current = maxOf(store.threads[parentId]?.state?.lastReadSeq ?: 0, threadReadFloor[parentId] ?: 0)
         if (seq <= current) return
         threadReadFloor[parentId] = seq
+        unsentThreadReads[parentId] = seq
         store.threads[parentId]?.state?.let { state ->
             val newest = store.replies(state.channelId, parentId).mapNotNull { it.seq }.maxOrNull() ?: 0
             store.applyThreadState(if (seq >= newest) state.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else state.copy(lastReadSeq = seq))
         }
+        sendThreadRead(parentId, debounce = true)
+    }
+
+    /** PUT the thread's unconfirmed read mark; like [sendRead], a temporary failure keeps it for the reconnect (§10). */
+    private fun sendThreadRead(parentId: String, debounce: Boolean) {
         val key = "thread:$parentId"
         pendingReads.remove(key)?.cancel()
         pendingReads[key] = scope.launch {
-            options.sleep(options.readDebounceMs)
-            val target = threadReadFloor[parentId] ?: seq
-            pendingReads.remove(key)
-            runCatching { api.markThreadRead(parentId, target) }.onSuccess { post { store.applyThreadState(it) } }
+            if (debounce) options.sleep(options.readDebounceMs)
+            val target = unsentThreadReads[parentId] ?: return@launch
+            val state = try {
+                api.markThreadRead(parentId, target)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e.isRefusal()) unsentThreadReads.remove(parentId)
+                return@launch
+            }
+            if ((unsentThreadReads[parentId] ?: 0) <= target) unsentThreadReads.remove(parentId)
+            post { store.applyThreadState(withFloor(state)) }
         }
     }
 
     suspend fun setThreadFollow(parentId: String, following: Boolean) = enqueue {
         if (_status.value != EngineStatus.ONLINE) return@enqueue
-        store.applyThreadState(api.setThreadFollow(parentId, following))
+        store.applyThreadState(withFloor(api.setThreadFollow(parentId, following)))
     }
 
     private fun scheduleThreadRefresh() {
@@ -732,14 +898,19 @@ class SyncEngine(
         val synced = channel.syncedSeq
         if (synced != null && channel.lastSeq - synced > options.gapLimit) {
             store.clearMessages(channelId)
-            channel = store.updateChannel(channelId) { it.copy(syncedSeq = null, hasOlder = true) } ?: channel
+            channel = store.updateChannel(channelId) { it.copy(syncedSeq = null, hasOlder = true, oldestLoadedSeq = null) } ?: channel
             reloads += 1
         }
         var since = channel.syncedSeq
         if (since == null) {
             val page = api.history(channelId, null, options.pageSize)
             page.messages.forEach { store.upsertMessage(it) }
-            store.updateChannel(channelId) { it.copy(syncedSeq = page.channelLastSeq, lastSeq = maxOf(it.lastSeq, page.channelLastSeq), hasOlder = page.hasMore) }
+            store.updateChannel(channelId) {
+                it.copy(
+                    syncedSeq = page.channelLastSeq, lastSeq = maxOf(it.lastSeq, page.channelLastSeq), hasOlder = page.hasMore,
+                    oldestLoadedSeq = oldestOf(page), // §7.3: the timeline starts here
+                )
+            }
             return
         }
         while (true) {
@@ -751,16 +922,23 @@ class SyncEngine(
         }
     }
 
-    /** Scroll-up pagination: older messages by seq cursor. */
+    /**
+     * Scroll-up pagination (§7.3): the page before `oldestLoadedSeq`. Older rows that arrived from outside
+     * the loaded range (a thread parent bumped by a reply, a reaction on an old message) are stored but never
+     * used as the cursor, or the messages in between would never be loaded.
+     */
     suspend fun loadOlder(channelId: String) = enqueue {
         if (_status.value != EngineStatus.ONLINE) return@enqueue
         val channel = store.channel(channelId) ?: return@enqueue
-        if (!channel.hasOlder) return@enqueue
-        val oldest = store.messages(channelId).firstNotNullOfOrNull { it.seq }
-        val page = api.history(channelId, oldest, options.pageSize)
+        val before = channel.oldestLoadedSeq ?: return@enqueue // the latest page comes first (catch_up)
+        if (!channel.hasOlder || before == 0) return@enqueue
+        val page = api.history(channelId, before, options.pageSize)
         page.messages.forEach { store.upsertMessage(it) }
-        store.updateChannel(channelId) { it.copy(hasOlder = page.hasMore) }
+        store.updateChannel(channelId) { it.copy(hasOlder = page.hasMore, oldestLoadedSeq = oldestOf(page)) }
     }
+
+    /** The oldest seq a history page reaches; 0 once nothing older is left. */
+    private fun oldestOf(page: HistoryOut): Int = if (page.hasMore) page.messages.minOfOrNull { it.seq } ?: 0 else 0
 
     // --- §9 optimistic send -------------------------------------------------------------------
 
@@ -791,25 +969,64 @@ class SyncEngine(
         store.removeOutbox(clientMsgId)
     }
 
-    /** Sends queued messages one at a time, in order (§9). Stops on temporary failures. */
+    /**
+     * Sends queued messages one at a time, in order (§9). A send queued while this runs is picked up by the
+     * running loop (the next unsent item is read again every pass). A refusal (4xx other than 429) marks the
+     * item failed and the queue moves on; anything else (429, 5xx, network, an HTML error page) stops the
+     * loop and retries on a 2 s, 4 s … 30 s timer while connected, and again after reconnecting.
+     */
     suspend fun flushOutbox() {
-        if (flushing || _status.value != EngineStatus.ONLINE) return
+        if (_status.value != EngineStatus.ONLINE) return
+        if (flushing) {
+            flushAgain = true
+            return
+        }
         flushing = true
         try {
-            for (item in store.outbox.toList()) {
-                if (item.failed != null) continue
-                try {
-                    val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds,
-                        SendOptions(item.alsoInChannel, item.priority, item.ackRequested))
-                    store.upsertMessage(message)
-                    store.removeOutbox(item.clientMsgId)
-                } catch (e: Exception) {
-                    if (e.isRetryable()) return
-                    store.markOutboxFailed(item.clientMsgId, (e as? ApiException.Api)?.code ?: "failed")
-                }
-            }
+            do {
+                flushAgain = false
+                if (!sendQueued()) return
+            } while (flushAgain)
         } finally {
             flushing = false
         }
+    }
+
+    /** True when nothing sendable is left; false when a temporary failure stopped it (the retry is scheduled). */
+    private suspend fun sendQueued(): Boolean {
+        while (_status.value == EngineStatus.ONLINE) {
+            val item = store.outbox.firstOrNull { it.failed == null } ?: return true
+            try {
+                val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds,
+                    SendOptions(item.alsoInChannel, item.priority, item.ackRequested))
+                store.upsertMessage(message)
+                store.removeOutbox(item.clientMsgId)
+                outboxFailures = 0
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e.isRefusal()) {
+                    // Kept as failed (also across restarts) for 再送 / 破棄; the rest of the queue goes on.
+                    store.markOutboxFailed(item.clientMsgId, (e as ApiException.Api).code)
+                    continue
+                }
+                scheduleOutboxRetry()
+                return false
+            }
+        }
+        return true // offline: the reconnect flushes again
+    }
+
+    private fun scheduleOutboxRetry() {
+        if (outboxRetry != null) return
+        outboxFailures += 1
+        val wait = min(options.outboxRetryMinMs * (1L shl (outboxFailures - 1).coerceAtMost(10)), options.outboxRetryMaxMs)
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            options.timer(wait)
+            outboxRetry = null
+            flushOutbox()
+        }
+        outboxRetry = job
+        job.start()
     }
 }

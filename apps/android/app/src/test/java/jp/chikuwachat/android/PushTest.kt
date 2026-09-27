@@ -33,6 +33,17 @@ class PushTest {
         assertNull(PushMessage.parse(mapOf("title" to "no kind")))
     }
 
+    @Test fun titlesNameTheSenderAndRemindersStandApart() {
+        val channel = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "title" to "#general", "subtitle" to "Alice", "body" to "hi", "collapse_key" to "c1"))!!
+        assertEquals("#general · Alice", channel.displayTitle)
+        assertEquals("c1", channel.notificationKey) // replaced by the conversation's next message, cleared by a read
+        val dm = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c2", "title" to "Alice", "body" to "hi"))!!
+        assertEquals("Alice", dm.displayTitle)
+        val reminder = PushMessage.parse(mapOf("kind" to "reminder", "channel_id" to "c1", "message_id" to "m1", "title" to "リマインダー", "body" to "x", "collapse_key" to "reminder:r1"))!!
+        assertEquals("reminder:r1", reminder.notificationKey)
+        assertEquals("リマインダー", reminder.displayTitle)
+    }
+
     private fun recordingClient(bodies: MutableList<String>, fail: () -> Boolean = { false }): OkHttpClient =
         OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
             val buffer = Buffer().also { chain.request().body?.writeTo(it) }

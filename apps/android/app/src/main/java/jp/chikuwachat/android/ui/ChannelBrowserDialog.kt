@@ -48,7 +48,11 @@ import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
 
-/** 「チャンネルを探す」 (M11h): every public channel plus my private ones, with member counts; join, leave or create. */
+/**
+ * 「チャンネルを探す」 (M11h): every public channel plus my private ones, with member counts; join, leave or
+ * create. Archived channels are left out of the sidebar, so this is where they are opened (read-only; an
+ * owner or admin can unarchive from its channel info).
+ */
 @Composable
 fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () -> Unit, onOpen: (String) -> Unit, onCreate: () -> Unit) {
     val store = controller.store
@@ -57,7 +61,7 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     suspend fun load() {
-        controller.browseChannels().onSuccess { listed = it }.onFailure { controller.error = controller.describe(it) }
+        controller.browseChannels().onSuccess { listed = it }.onFailure(controller::report)
     }
     LaunchedEffect(Unit) { load() }
     val rows = remember(listed, query) {
@@ -92,7 +96,7 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
                             val mine = remember(version, channel.id) { store.channel(channel.id)?.isMember ?: (channel.membership != null) }
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .clickable(enabled = mine && !channel.archived) { onOpen(channel.id); onDismiss() }
+                                    .clickable(enabled = mine) { onOpen(channel.id); onDismiss() }
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
                                     .alpha(if (channel.archived) 0.6f else 1f),
                                 verticalAlignment = Alignment.CenterVertically,

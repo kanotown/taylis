@@ -14,6 +14,8 @@ class PushCenter(
     private val scope: CoroutineScope,
     private val tokenSource: suspend () -> String?,
     private val api: () -> ApiClient?,
+    /** Invalidates this install's token at the provider (FirebaseMessaging.deleteToken in the app). */
+    private val tokenDeleter: suspend () -> Unit = {},
 ) {
     var token: String? = null
         private set
@@ -41,6 +43,18 @@ class PushCenter(
     fun tokenReceived(value: String) {
         token = value
         scope.launch { uploadIfNeeded() }
+    }
+
+    /**
+     * Signed out without reaching the server (SYNC_PROTOCOL.md §11): the old session may still hold this
+     * token, so it is deleted at FCM; the next session registers a fresh one.
+     */
+    fun forget() {
+        token = null
+        uploadedToken = null
+        scope.launch {
+            runCatching { tokenDeleter() }.onFailure { Log.w("PushCenter", "push token delete failed: $it") }
+        }
     }
 
     suspend fun uploadIfNeeded() {

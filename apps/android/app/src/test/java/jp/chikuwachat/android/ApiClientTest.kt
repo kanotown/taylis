@@ -101,6 +101,61 @@ class ApiClientTest {
         assertEquals(false, saved)
     }
 
+    @Test fun lostRefreshAnswerIsRetriedWithinTheGraceWithTheSameToken() = runBlocking { // §7.2
+        val sent = ArrayList<String>()
+        var attempts = 0
+        val sleeps = ArrayList<Long>()
+        var now = 0L
+        val client = ApiClient("http://server", stubbed { request ->
+            val buffer = okio.Buffer(); request.body?.writeTo(buffer); sent.add(buffer.readUtf8())
+            attempts += 1
+            if (attempts == 1) throw java.io.IOException("connection reset") // the server may have rotated already
+            200 to tokens(2)
+        }, clock = { now }, sleep = { sleeps.add(it); now += it })
+        client.refreshToken = "refresh-1"
+        assertFalse(client.hasFreshAccessToken())
+        client.refresh()
+        assertEquals(listOf(1_000L), sleeps)
+        assertEquals(2, sent.size)
+        assertTrue(sent.all { it.contains("refresh-1") }) // the old token again, inside the 30 s grace
+        assertEquals("refresh-2", client.refreshToken)
+        assertTrue(client.hasFreshAccessToken()) // expires_in 900: no rotation needed on the next connect
+        now += 841_000
+        assertFalse(client.hasFreshAccessToken()) // under 60 s left
+    }
+
+    @Test fun refreshGivesUpOnceTheGraceWouldBeOver() = runBlocking {
+        var now = 0L
+        val client = ApiClient("http://server", stubbed { throw java.io.IOException("offline") }, clock = { now }, sleep = { now += it })
+        client.refreshToken = "refresh-1"
+        try { client.refresh(); fail("expected a network error") } catch (e: ApiException.Network) { assertTrue(now < 25_000) }
+        assertEquals("refresh-1", client.refreshToken) // kept: the session is not over
+    }
+
+    @Test fun logoutRenewsAnExpiredTokenAndSaysWhetherTheServerKnows() = runBlocking { // §11
+        val paths = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            paths.add(request.url.encodedPath + " " + request.header("Authorization"))
+            when {
+                request.url.encodedPath.endsWith("/auth/refresh") -> 200 to tokens(2)
+                request.header("Authorization") == "Bearer access-1" -> 401 to """{"error":{"code":"token_expired","message":"expired","details":{}}}"""
+                else -> 204 to ""
+            }
+        })
+        var signedOut = false
+        client.onSignedOut = { signedOut = true }
+        client.accessToken = "access-1"; client.refreshToken = "refresh-1"
+        assertTrue(client.logout())
+        assertEquals(listOf("/api/v1/auth/logout Bearer access-1", "/api/v1/auth/refresh null", "/api/v1/auth/logout Bearer access-2"), paths)
+        assertTrue(signedOut)
+        assertNull(client.refreshToken)
+
+        val offline = ApiClient("http://server", stubbed { throw java.io.IOException("offline") }, sleep = {})
+        offline.accessToken = "a"; offline.refreshToken = "r"
+        assertFalse(offline.logout()) // not revoked on the server: the caller drops the push token
+        assertNull(offline.refreshToken)
+    }
+
     @Test fun errorClassificationAndWsUrl() {
         assertTrue(ApiException.Api(503, "unavailable", "").isRetryable)
         assertTrue(!ApiException.Api(422, "validation_error", "").isRetryable)

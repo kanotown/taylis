@@ -19,14 +19,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID)?.let { controller.pendingChannelId = it }
+        // A tapped notification opens its conversation once: a rotation or a restore after process death
+        // re-delivers the same intent, and a launch from Recents replays the old one.
+        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromHistory) takeConversation(intent)
         setContent { ChikuwaTheme { AppRoot(controller) } }
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra(Notifier.EXTRA_CHANNEL_ID)?.let { controller.pendingChannelId = it }
+        setIntent(intent)
+        takeConversation(intent)
+    }
+
+    private fun takeConversation(intent: Intent?) {
+        val channelId = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID) ?: return
+        intent.removeExtra(Notifier.EXTRA_CHANNEL_ID)
+        controller.pendingChannelId = channelId
     }
 
     override fun onStart() {
