@@ -2327,6 +2327,11 @@ export interface components {
         };
         /** MessageCreate */
         MessageCreate: {
+            /**
+             * Also In Channel
+             * @default false
+             */
+            also_in_channel: boolean;
             /** Attachment Ids */
             attachment_ids?: string[];
             /**
@@ -2350,6 +2355,11 @@ export interface components {
         };
         /** MessageOut */
         MessageOut: {
+            /**
+             * Also In Channel
+             * @default false
+             */
+            also_in_channel: boolean;
             /**
              * Attachments
              * @default []

@@ -87,7 +87,7 @@
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
 履歴を新しい順に返す (上スクロール用)。カーソルは `seq` (offset は使わない)。
-トゥームストーンは含まない。スレッド返信は含まない。
+トゥームストーンは含まない。スレッド返信は含まない (「チャンネルにも送信」した返信 `also_in_channel` は含む、M15c)。
 
 ```json
 {
@@ -124,6 +124,10 @@
 { "client_msg_id": "6f1c...-uuid4", "body": "hello <@u1>", "attachment_ids": [], "parent_id": null }
 ```
 
+- `also_in_channel: true` (M15c) は返信 (`parent_id` あり) にだけ付けられ (他は 422)、その返信はスレッドに加えて
+  チャンネルのタイムラインにも並び、チャンネルの未読に数える。1 通のメッセージなので編集・削除・リアクションは
+  両方の表示に効く。投稿制限チャンネル (M15a) では新規投稿と同じ権限が要る (`403 posting_restricted`)。
+  クライアントのタイムラインの規則は「`parent_id` が無い、または `also_in_channel`」。
 - 応答は `201 { message }`。同じ `(sender, client_msg_id)` が既にあれば `200 { message }` で既存を返す。
 - 既存のメッセージの `channel_id` がリクエストと異なる場合は `409 idempotency_conflict`
   (クライアントのバグ。同じキーを別チャンネルで再利用した)。

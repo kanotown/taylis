@@ -88,7 +88,7 @@ async def create_message(
     channels.require_writable(channel)
     if (
         channel.posting_policy == "owners"  # M15a: an announcement channel
-        and data.parent_id is None
+        and (data.parent_id is None or data.also_in_channel)  # M15c: that posts to the channel too
         and not actor.is_admin
         and actor.role != "bot"
         and membership.role != "owner"
@@ -121,6 +121,7 @@ async def create_message(
                 channel_id=channel_id,
                 sender_id=actor.id,
                 parent_id=data.parent_id,
+                also_in_channel=data.also_in_channel,
                 seq=seq,
                 updated_seq=seq,
                 client_msg_id=data.client_msg_id,
