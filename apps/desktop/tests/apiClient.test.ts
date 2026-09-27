@@ -272,3 +272,23 @@ describe("browser session (M12j)", () => {
     expect(client.refreshToken).toBe(COOKIE_SESSION);
   });
 });
+
+describe("incoming webhooks (M13a)", () => {
+  it("calls the admin webhook endpoints", async () => {
+    const calls: string[] = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        calls.push(`${init?.method ?? "GET"} ${String(input).replace("http://server", "")}`);
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        if (init?.method === "POST") return jsonResponse(201, { webhook: { id: "w1", name: "CI" }, token: "tok" });
+        return jsonResponse(200, init?.method === "PATCH" ? { id: "w1", enabled: false } : []);
+      },
+    });
+    client.accessToken = "a";
+    expect(await client.adminListWebhooks()).toEqual([]);
+    expect((await client.adminCreateWebhook({ name: "CI", channel_id: "c1" })).token).toBe("tok");
+    expect((await client.adminUpdateWebhook("w1", { enabled: false })).enabled).toBe(false);
+    await client.adminDeleteWebhook("w1");
+    expect(calls).toEqual(["GET /api/v1/admin/webhooks", "POST /api/v1/admin/webhooks", "PATCH /api/v1/admin/webhooks/w1", "DELETE /api/v1/admin/webhooks/w1"]);
+  });
+});

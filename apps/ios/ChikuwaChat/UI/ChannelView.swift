@@ -377,6 +377,10 @@ struct MessageRow: View {
                 if !compact {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(senderName).bold().onTapGesture { if !message.pending { showingProfile = true } }
+                        if store.users[message.senderId]?.role == "bot" {
+                            Text("BOT").font(.caption2).bold().foregroundStyle(.secondary)
+                                .padding(.horizontal, 4).padding(.vertical, 1).background(Color.secondary.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 3))
+                        }
                         StatusEmojiView(user: store.users[message.senderId])
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if message.editedAt != nil { Text("(編集済み)").font(.caption).foregroundStyle(.secondary) }

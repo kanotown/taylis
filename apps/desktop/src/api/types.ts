@@ -102,3 +102,9 @@ export type TotpEnabledOut = components["schemas"]["TotpEnabledOut"];
 export type GroupOut = components["schemas"]["GroupOut"];
 export type GroupCreate = components["schemas"]["GroupCreate"];
 export type GroupUpdate = components["schemas"]["GroupUpdate"];
+
+/** Incoming webhooks (M13a). */
+export type WebhookOut = components["schemas"]["WebhookOut"];
+export type WebhookCreate = components["schemas"]["WebhookCreate"];
+export type WebhookUpdate = components["schemas"]["WebhookUpdate"];
+export type WebhookCreated = components["schemas"]["WebhookCreated"];

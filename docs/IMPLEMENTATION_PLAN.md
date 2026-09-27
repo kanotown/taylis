@@ -338,6 +338,21 @@ M11 と同じ進め方 (サーバ → Desktop → iOS → Android、機能ごと
 | M12j | Web クライアント | Desktop と同じ React バンドルを `infra/web.Dockerfile` (node で `vite build` → `caddy:2` の `/srv/web`) に焼き、Caddy が `/api/*` 以外を SPA として配信 (CSP、`Referrer-Policy`、assets は immutable)。`/m/<id>` と `/invite/<token>` も SPA が受けて、ログイン後にメッセージを表示 / 招待画面を開く。ブラウザ (`platform = web`) のセッション: refresh token は応答本文に載せず `chikuwa_refresh` cookie (HttpOnly / SameSite=Strict / Path=/api/v1/auth / TLS で Secure)、`POST /auth/refresh` は本文が無ければ cookie + `X-Requested-With` ヘッダ (無ければ 403 `csrf_required`)、ログアウトと 401 で cookie を消す。WS は `Origin` を検証 (自ホストか `CORS_ALLOW_ORIGINS`、それ以外は 403)。アプリ側: `isWeb()` でサーバ URL を自オリジンに固定、cookie セッション (localStorage には「セッションあり」の印だけ)、永続化なし (メモリ)、通知は Notification API、ダウンロードは `<a download>`。開発は `npm run dev` の Vite が `/api` を中継。iOS / Android は無変更 (Origin を送らない) | **実装済み (2026-09-27)**: サーバ pytest 170、Desktop vitest 110 + Caddy イメージのビルドと配信を確認、ブラウザで目視 (cookie ログイン → リロードで復元 → `/m/<id>` → `/invite/<token>` から参加) |
 | M12k | ユーザーグループ | `user_groups` / `user_group_members` (マイグレーション 0022、葉モジュール `groups`)。admin が `POST/PATCH/DELETE /admin/groups` で作成・メンバー管理、全員が `GET /groups` と bootstrap の `groups`、`group.updated` (audience=all) で一覧を持つ。名前はユーザー名と同じ形式で互いに衝突を拒否 (`@name` が一意)。本文の `<@group:id>` は投稿 / 編集時に有効なメンバー (送信者を除く) へ展開して `mentioned_user_ids` に足す → 未読メンション数・`GET /mentions`・プッシュはそのまま、通知文はグループ名。3 端末: 入力欄の `@` 候補にグループ (Desktop は「グループ」バッジ)、本文の表示は `@name`、編集・プレビュー・通知も名前に戻す。Desktop の管理画面に「グループ」タブ (作成 / メンバー編集 / 削除) | **実装済み (2026-09-27)**: サーバ pytest 173、Desktop vitest 113 (実サーバで目視: 作成 → 候補 → 表示)、iOS XCTest 74、Android JUnit 75 + ビルド |
 
+### M13: Slack / Mattermost 相当の続き 2 (2026-09-27〜)
+
+M12 と同じ進め方。チームで実際に困る順に並べる。ARCHITECTURE.md の非目標のうち「受信 Webhook」だけは
+CI / 監視の通知がチームチャットの主用途のひとつなので最小構成で作る (Bot API / OAuth アプリは引き続き非目標)。
+
+| # | 機能 | 内容 | 状況 |
+| --- | --- | --- | --- |
+| M13a | 受信 Webhook | admin が「名前 + 投稿先チャンネル」で発行する URL (`<server>/hooks/<token>`) に `{"text": "..."}` を POST すると、その Webhook 専用の bot ユーザー (role = bot、ログイン不可) として投稿する。Slack 互換の `payload=` フォームも受ける。トークンごとにレートリミット。3 端末で bot の名前に BOT バッジ。Desktop の管理画面に「Webhook」タブ (発行 / チャンネル変更 / 無効化 / 削除) | 未着手 |
+| M13b | スラッシュコマンド | 入力欄の `/status`, `/dnd`, `/remind`, `/topic`, `/leave`, `/invite @name`, `/me` を既存 API に対応づける (クライアントのみ) | 未着手 |
+| M13c | メッセージの共有 | メッセージ操作の「別のチャンネルに共有」: 引用 + パーマリンクを付けて投稿 (既存 API のみ) | 未着手 |
+| M13d | アーカイブの解除 | `POST /channels/{id}/unarchive` (owner / admin)。3 端末のチャンネル情報 / 管理画面から | 未着手 |
+| M13e | ゲスト | system role `guest`: 参加中のチャンネルしか見えず、公開チャンネルの一覧 / 参加、チャンネル作成、招待ができない。DM は同じチャンネルのメンバーとだけ。admin がロールを付け、招待リンクにも指定できる | 未着手 |
+| M13f | Desktop の未読バッジ | Dock / タスクバーのバッジとウィンドウタイトルの未読数、通知音 | 未着手 |
+| M13g | メンバーディレクトリ | 全メンバーの一覧 (肩書・ステータス・在席) から DM を始める。3 端末 | 未着手 |
+
 ### バックログ (未スケジュール)
 
 OIDC、presigned URL、Redis による複数プロセス化、Mattermost からのインポート (`mmctl export` の bulk-import JSONL を

@@ -46,6 +46,10 @@ import type {
   UserMe,
   UserUpdate,
   UserPublic,
+  WebhookCreate,
+  WebhookCreated,
+  WebhookOut,
+  WebhookUpdate,
 } from "./types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -422,6 +426,25 @@ export class ApiClient {
 
   adminDeleteGroup(groupId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/groups/${groupId}`);
+  }
+
+  // --- incoming webhooks (M13a) --------------------------------------------------------------
+
+  adminListWebhooks(): Promise<WebhookOut[]> {
+    return this.request("GET", "/api/v1/admin/webhooks");
+  }
+
+  /** The token comes back once; the URL is `webhookUrl(baseUrl, token)`. */
+  adminCreateWebhook(body: WebhookCreate): Promise<WebhookCreated> {
+    return this.request("POST", "/api/v1/admin/webhooks", body);
+  }
+
+  adminUpdateWebhook(webhookId: string, patch: WebhookUpdate): Promise<WebhookOut> {
+    return this.request("PATCH", `/api/v1/admin/webhooks/${webhookId}`, patch);
+  }
+
+  adminDeleteWebhook(webhookId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/webhooks/${webhookId}`);
   }
 
   // --- invite links (M12h) ------------------------------------------------------------------
