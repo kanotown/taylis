@@ -209,7 +209,20 @@ struct MessageOut: Codable, Identifiable, Equatable {
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
+    /// Addressed to me (SYNC_PROTOCOL.md §7.4): @channel, my name or group, or one of my notification keywords (M12g).
+    /// The server keeps keyword hits to itself (they would show my keywords to everyone), so they are found here.
+    func mentionsMe(_ me: UserMe) -> Bool { mentions(me.id) || NotifyKeywords.matches(body, me.notifyKeywords) }
     var isReply: Bool { parentId != nil }
+}
+
+/// M12g: the server's keyword rule, case-insensitive and anywhere in the body (the sender's own posts are left out
+/// by the callers).
+enum NotifyKeywords {
+    static func matches(_ body: String, _ keywords: [String]?) -> Bool {
+        guard let keywords, !keywords.isEmpty else { return false }
+        let text = body.lowercased()
+        return keywords.contains { !$0.isEmpty && text.contains($0.lowercased()) }
+    }
 }
 
 /// The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6).
@@ -553,7 +566,8 @@ struct SearchFilters: Codable, Equatable {
     let inChannel: String?
     let after: String?
     let before: String?
-    var unresolved: [String] = []
+    /// Typed modifiers that named nothing the caller can see; the server then returns no hits.
+    var unresolved: [String]? = nil
     /// M15h: the has: flags (file, link, pin, reaction, poll) and is:thread the server understood.
     var has: [String]? = nil
     var isThread: Bool? = nil
@@ -566,6 +580,23 @@ struct SearchOut: Codable {
     let limit: Int
     let offset: Int
     let hasMore: Bool
+    /// M16b: how many messages match; the server stops counting at 1,000 (`totalCapped`).
+    var total: Int? = nil
+    var totalCapped: Bool? = nil
+}
+
+/// GET /server (M16c): what the address serves; `product` is "chikuwachat" for a ChikuwaChat server.
+struct ServerInfoOut: Codable, Equatable {
+    var product: String? = nil
+    let workspaceId: String
+    let name: String
+    var apiVersion: String? = nil
+}
+
+/// GET /sync/summary (M16c): the badge and unread flag of a workspace that is not open.
+struct UnreadSummaryOut: Codable, Equatable {
+    let badge: Int
+    let hasUnread: Bool
 }
 
 /// Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable.

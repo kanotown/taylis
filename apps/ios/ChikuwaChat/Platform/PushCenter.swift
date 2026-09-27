@@ -3,22 +3,29 @@ import Observation
 import UIKit
 import UserNotifications
 
-/// Owns the APNs token and the pending "open this channel" request from a tapped notification.
+/// Owns the APNs token, the notification badge and the pending "open this conversation" request from a tap. Which
+/// workspace a notification belongs to is the controller's business (WORKSPACES.md §7).
 @MainActor
 @Observable
 final class PushCenter {
     static let shared = PushCenter()
 
     private(set) var token: String?
-    private var uploadedToken: String?
+    /// A tapped notification's conversation in the workspace on screen; MainView opens it once the store knows it.
     var pendingChannelId: String?
-    private weak var controller: AppController?
+    @ObservationIgnored private weak var controller: AppController?
+    /// A tap that arrived before the app finished starting; routed after startup.
+    @ObservationIgnored private var pendingTap: PushPayload?
 
-    func attach(controller: AppController) {
+    func bind(_ controller: AppController) {
         self.controller = controller
-        uploadedToken = nil // a new session: the server device row is new, so register again
+    }
+
+    /// The workspace on screen (re)connected: register the token with it again (a new login has a new device row) and
+    /// ask iOS for the token (PUSH_NOTIFICATIONS.md §3).
+    func sessionConnected() {
+        controller?.pushSessionStarted()
         requestAuthorizationAndRegister()
-        uploadTokenIfNeeded()
     }
 
     func requestAuthorizationAndRegister() {
@@ -28,23 +35,10 @@ final class PushCenter {
         }
     }
 
+    /// A new or changed token goes to every signed-in workspace (WORKSPACES.md §8).
     func tokenReceived(_ hex: String) {
         token = hex
-        uploadTokenIfNeeded()
-    }
-
-    /// `PUT /devices/current` whenever the token changed or a new session started (§3).
-    func uploadTokenIfNeeded() {
-        guard let token, token != uploadedToken, let api = controller?.api else { return }
-        let environment = PushEnvironment.current()
-        Task { @MainActor in
-            do {
-                _ = try await api.updateDevice(pushProvider: "apns", pushToken: token, pushEnvironment: environment)
-                uploadedToken = token
-            } catch {
-                print("push token upload failed: \(error)")
-            }
-        }
+        Task { await controller?.uploadPushTokens() }
     }
 
     /// read.updated said the channel is fully read: drop its delivered notifications (thread-id = channel).
@@ -56,25 +50,50 @@ final class PushCenter {
         }
     }
 
-    /// Bootstrap / read updates overwrite whatever the last push set (PUSH_NOTIFICATIONS.md §9).
+    /// One workspace signed out while others stay (SYNC_PROTOCOL.md §11): only its delivered notifications go. A server
+    /// that sends no workspace_id belongs to a workspace whose id is not known yet.
+    func clearNotifications(workspaceId: String?) {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let delivered = await center.deliveredNotifications()
+            let ids = delivered.filter { PushPayload(userInfo: $0.request.content.userInfo).workspaceId == workspaceId }.map(\.request.identifier)
+            if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
+        }
+    }
+
+    /// The app icon number: the controller adds up the workspaces (WORKSPACES.md §6).
     func setBadge(_ count: Int) {
         UNUserNotificationCenter.current().setBadgeCount(count) { _ in }
     }
 
-    /// Sign-out (SYNC_PROTOCOL.md §11): no badge, no delivered notification and no pending tap of the account stay behind.
+    /// The last workspace signed out (SYNC_PROTOCOL.md §11): no badge, no delivered notification and no pending tap stay.
     func clearAll() {
         pendingChannelId = nil
+        pendingTap = nil
         setBadge(0)
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
     }
 
-    func pushReceived() {
-        controller?.engine?.reconnectNow()
+    /// willPresent: whether a notification that arrived with the app on screen is shown.
+    func shouldPresent(_ payload: PushPayload) -> Bool {
+        controller?.foregroundNotification(payload) ?? false
     }
 
-    func notificationTapped(channelId: String?) {
-        pendingChannelId = channelId
-        controller?.engine?.reconnectNow()
+    func notificationTapped(_ payload: PushPayload) {
+        guard let controller, controller.booted else {
+            pendingTap = payload
+            return
+        }
+        Task { await controller.openNotification(payload) }
+    }
+
+    func queueTap(_ payload: PushPayload) {
+        pendingTap = payload
+    }
+
+    func takePendingTap() -> PushPayload? {
+        defer { pendingTap = nil }
+        return pendingTap
     }
 }
 

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import UIKit
 
-/// Application controller: login, session restore and the sync engine lifecycle.
+/// Application controller: the workspaces (M16c), login, session restore and the sync engine of the workspace on screen.
 @MainActor
 @Observable
 final class AppController {
@@ -12,8 +12,6 @@ final class AppController {
     var error: String?
     /// A short confirmation (「リンクをコピーしました」); nil when nothing to say.
     var notice: String?
-    /// M12i: the last login was refused for lack of an authenticator code; the form asks for one.
-    var totpRequired = false
     var me: UserMe?
     struct MessageFocus {
         var channelId: String
@@ -42,82 +40,251 @@ final class AppController {
     private(set) var store = Store()
     private(set) var engine: SyncEngine?
 
-    private let defaults = UserDefaults.standard
-    private static let serverKey = "chikuwa.server"
-    private static let usernameKey = "chikuwa.username"
+    private let defaults: UserDefaults
     private static let appVersion = "0.1.0"
 
-    var serverUrl: String { defaults.string(forKey: Self.serverKey) ?? "http://127.0.0.1:8000" }
-    var username: String { defaults.string(forKey: Self.usernameKey) ?? "" }
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
-    private func account(_ server: String, _ username: String) -> String { "\(server)|\(username)" }
+    // MARK: workspaces (M16c, WORKSPACES.md)
 
-    private func makeApi(server: URL, username: String) -> ApiClient {
-        let account = account(server.absoluteString, username)
-        let api = ApiClient(baseUrl: server)
+    /// The registered workspaces in the order added. Only the active one is connected and on screen (§6); the others
+    /// hear of new messages by push and show their last known badge.
+    private(set) var workspaces: [Workspace] = []
+    private(set) var activeServerUrl: String?
+    var activeWorkspace: Workspace? { workspaces.first { $0.serverUrl == activeServerUrl } }
+    /// The name over the channel list (GET /server); ChikuwaChat before any workspace.
+    var workspaceName: String { activeWorkspace?.name ?? "ChikuwaChat" }
+    /// Another workspace has something unread: the switcher shows a dot.
+    var otherWorkspacesUnread: Bool { workspaces.contains { $0.serverUrl != activeServerUrl && $0.hasNews } }
+    /// Where the login form starts once no workspace is left: the last one signed out of in this run.
+    private var lastSignIn: (server: String, username: String)?
+    /// One API client per workspace for the life of the app: every refresh of a workspace goes through it, one at a
+    /// time (a refresh token used twice revokes the session: SECURITY.md §2.3, WORKSPACES.md §8).
+    @ObservationIgnored private var clients: [String: ApiClient] = [:]
+    /// The APNs token each workspace got in this run; a new session registers it again.
+    @ObservationIgnored private var pushTokens: [String: String] = [:]
+    @ObservationIgnored private var pushUploads: Set<String> = []
+    /// The open workspace's own badge (unread DMs + mentions, PUSH_NOTIFICATIONS.md §4.2).
+    @ObservationIgnored private var activeBadge = 0
+    /// Startup is over: a tapped notification can be routed.
+    @ObservationIgnored private(set) var booted = false
+
+    /// The login form starts from the workspace to sign back in to, else the last one used on this device.
+    var loginServer: String {
+        activeWorkspace?.serverUrl ?? lastSignIn?.server ?? defaults.string(forKey: Workspaces.legacyServerKey) ?? "http://127.0.0.1:8000"
+    }
+
+    var loginUsername: String {
+        activeWorkspace?.username ?? lastSignIn?.username ?? defaults.string(forKey: Workspaces.legacyUsernameKey) ?? ""
+    }
+
+    /// M16b: where the open account's recent searches are kept on this device.
+    var recentSearchKey: String { RecentSearches.key(account: activeWorkspace?.account ?? "") }
+
+    /// The API client of a workspace, made from its saved refresh token the first time.
+    private func client(for workspace: Workspace) -> ApiClient {
+        if let api = clients[workspace.serverUrl] { return api }
+        let api = makeClient(serverUrl: workspace.serverUrl, username: workspace.username)
+        api.refreshToken = Keychain.get(account: workspace.account)
+        clients[workspace.serverUrl] = api
+        return api
+    }
+
+    /// Rotated refresh tokens go to the Keychain; a session the server ended signs out that workspace only.
+    private func makeClient(serverUrl: String, username: String) -> ApiClient {
+        let account = "\(serverUrl)|\(username)"
+        let api = ApiClient(baseUrl: URL(string: serverUrl) ?? URL(string: "https://invalid.invalid")!)
         api.onTokens = { tokens in Keychain.set(account: account, value: tokens.refreshToken) }
-        AvatarCache.shared.fetcher = { [weak api] path in
-            guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
-            return try await api.fetchData(path)
-        }
         api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
-            guard let self, self.api === api else { return }
-            self.handleSignedOut(account: account)
+            guard let self, let api, self.clients[serverUrl] === api else { return }
+            self.sessionEnded(serverUrl)
         } }
         return api
     }
 
-    /// Startup: restore the previous session from the Keychain (SYNC_PROTOCOL.md §7.2).
+    private func persistWorkspaces() {
+        Workspaces.save(Workspaces.Saved(list: workspaces, active: activeServerUrl), to: defaults)
+    }
+
+    /// Changes one entry and saves the list when something changed.
+    private func patch(_ serverUrl: String, _ change: (inout Workspace) -> Void) {
+        guard let index = workspaces.firstIndex(where: { $0.serverUrl == serverUrl }) else { return }
+        var entry = workspaces[index]
+        change(&entry)
+        guard entry != workspaces[index] else { return }
+        workspaces[index] = entry
+        persistWorkspaces()
+    }
+
+    // MARK: startup and switching (SYNC_PROTOCOL.md §7.2, WORKSPACES.md §5.2)
+
+    /// Startup: the workspace list (built once from the single server of an older install), then the active
+    /// workspace's session from its saved refresh token.
     func boot() async {
-        let username = username
-        guard !username.isEmpty, let server = URL(string: serverUrl),
-              let refreshToken = Keychain.get(account: account(server.absoluteString, username)) else {
+        PushCenter.shared.bind(self)
+        let saved = Workspaces.load(defaults) { Keychain.get(account: $0) != nil }
+        workspaces = saved.list
+        activeServerUrl = saved.active
+        // Launched by tapping a notification: open its workspace right away (§7).
+        let tap = PushCenter.shared.takePendingTap()
+        if let tap, let target = Workspaces.route(tap, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel) {
+            activeServerUrl = target.serverUrl
+        }
+        if let active = activeWorkspace {
+            await open(active)
+        } else {
+            screen = .login
+        }
+        booted = true
+        if let tap { PushCenter.shared.pendingChannelId = tap.channelId }
+        Task { await refreshServerInfo() }
+        Task { await refreshSummaries() }
+        if let late = PushCenter.shared.takePendingTap() { await openNotification(late) }
+    }
+
+    /// Puts another workspace on screen: this one's engine stops (its store keeps the open state and drafts), the
+    /// other's session starts from its saved refresh token.
+    func switchTo(_ serverUrl: String) async {
+        guard let target = workspaces.first(where: { $0.serverUrl == serverUrl }) else { return }
+        if serverUrl == activeServerUrl && screen == .main { return }
+        await open(target)
+    }
+
+    /// The session of `workspace` on screen, restored from the Keychain: the local store first, then the engine
+    /// (which refreshes the access token when needed). A refused refresh signs out that workspace only.
+    private func open(_ workspace: Workspace) async {
+        closeSession()
+        activeServerUrl = workspace.serverUrl
+        activeBadge = workspace.badge ?? 0 // until its bootstrap says (the app icon follows then)
+        error = nil
+        persistWorkspaces()
+        guard workspace.isSignedIn else {
             screen = .login
             return
         }
-        let api = makeApi(server: server, username: username)
-        api.refreshToken = refreshToken
+        let api = client(for: workspace)
+        guard api.refreshToken != nil || api.accessToken != nil else {
+            forget(workspace, remove: false) // nothing saved to sign in with
+            return
+        }
         self.api = api
-        if await startEngine(restoring: true) { return }
+        if await startEngine(restoring: true) {
+            opened(workspace.serverUrl)
+            return
+        }
+        screen = .boot
         do {
             let tokens = try await api.refresh()
-            await enterSession(api: api, username: username, me: tokens.user)
+            guard self.api === api else { return }
+            await enterSession(api: api, me: tokens.user)
+            opened(workspace.serverUrl)
         } catch {
+            guard self.api === api else { return }
             screen = .login
             if case ApiError.api(let status, _, _) = error, status == 401 { self.error = nil } else { self.error = describe(error) }
         }
     }
 
-    func login(server: String, username: String, password: String, totpCode: String? = nil) async {
-        let trimmed = server.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        guard let url = URL(string: trimmed), url.scheme != nil else {
-            error = "サーバ URL が正しくありません"
-            return
+    /// A workspace is open: its account id, and its name from GET /server (read again whenever it opens, §4).
+    private func opened(_ serverUrl: String) {
+        if let id = me?.id ?? store.me?.id { patch(serverUrl) { $0.userId = id } }
+        Task { await refreshServerInfo(serverUrl) }
+    }
+
+    /// The workspace on screen goes: its engine stops and its store closes. Nothing of it may show in the next one.
+    private func closeSession() {
+        engine?.stop()
+        engine = nil
+        api = nil
+        me = nil
+        messageFocus = nil
+        linkPreviews = [:]
+        previewLoads = []
+        emojiLoads = []
+        AvatarCache.shared.reset()
+        PushCenter.shared.pendingChannelId = nil
+        let previous = store
+        store = Store()
+        previous.close()
+    }
+
+    // MARK: signing in (WORKSPACES.md §5.1)
+
+    enum SignInOutcome: Equatable {
+        case signedIn
+        /// The server is a workspace already signed in here: it was opened instead.
+        case switched
+        /// The account asks for an authenticator code (M12i); the text says what was wrong with the last one.
+        case needsCode(String?)
+        case failed(String)
+    }
+
+    /// The login form: the address is normalized and asked for GET /server. Adding a workspace needs a ChikuwaChat
+    /// answer, and a workspace registered already (same workspace_id or address) is opened instead: one account per
+    /// server. The new session joins the list (or renews its entry) and comes on screen.
+    func signIn(server input: String, username: String, password: String, totpCode: String? = nil, adding: Bool = false) async -> SignInOutcome {
+        guard let normalized = Workspaces.normalize(input) else { return .failed("サーバ URL が正しくありません") }
+        // A registered address keeps its spelling: it names the Keychain item and the local store.
+        var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        guard let url = URL(string: serverUrl) else { return .failed("サーバ URL が正しくありません") }
+        var info: ServerInfoOut?
+        do {
+            let answer = try await ApiClient(baseUrl: url).serverInfo()
+            info = answer.product == "chikuwachat" ? answer : nil
+        } catch let error as ApiError where error.isRetryable {
+            return .failed(describe(error)) // no answer, or a server error: not a verdict on the address
+        } catch {
+            info = nil
         }
-        let api = makeApi(server: url, username: username)
+        if adding {
+            guard let info else { return .failed("ChikuwaChat のサーバーではありません") }
+            if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
+                if known.isSignedIn {
+                    await switchTo(known.serverUrl)
+                    notice = "\(known.name) は登録済みです"
+                    return .switched
+                }
+                serverUrl = known.serverUrl // registered but signed out: sign in to it again
+            }
+        }
+        let api = makeClient(serverUrl: serverUrl, username: username)
         do {
             let tokens = try await api.login(username: username, password: password,
                                              device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion),
                                              totpCode: totpCode.map(Totp.normalize))
-            defaults.set(trimmed, forKey: Self.serverKey)
-            defaults.set(username, forKey: Self.usernameKey)
-            error = nil
-            totpRequired = false
-            await enterSession(api: api, username: username, me: tokens.user)
+            await adopt(api, serverUrl: serverUrl, username: username, me: tokens.user, info: info)
+            return .signedIn
         } catch {
-            if case ApiError.api(_, let code, _) = error, code == "totp_required" {
-                totpRequired = true
-                self.error = nil
-                return
-            }
-            if case ApiError.api(_, let code, _) = error, code == "invalid_totp" {
-                totpRequired = true
-                self.error = Totp.errorText(error)
-                return
-            }
-            totpRequired = false
-            self.error = describe(error)
+            if case ApiError.api(_, let code, _) = error, code == "totp_required" { return .needsCode(nil) }
+            if case ApiError.api(_, let code, _) = error, code == "invalid_totp" { return .needsCode(Totp.errorText(error)) }
+            return .failed(describe(error))
         }
+    }
+
+    /// A new sign-in (login form or invite link): the workspace joins the list, or its entry is renewed, and opens.
+    private func adopt(_ api: ApiClient, serverUrl: String, username: String, me: UserMe, info: ServerInfoOut?) async {
+        let known = workspaces.first { $0.serverUrl == serverUrl }
+        closeSession()
+        if let known, known.username != username {
+            // Another account of this server leaves this device (one account per server).
+            Keychain.delete(account: known.account)
+            SQLitePersistence.destroy(profile: known.account)
+            RecentSearches.clear(key: RecentSearches.key(account: known.account))
+        }
+        if let previous = clients[serverUrl], previous !== api { previous.signOut() }
+        clients[serverUrl] = api
+        pushTokens[serverUrl] = nil
+        let entry = Workspace(serverUrl: serverUrl, workspaceId: info?.workspaceId ?? known?.workspaceId, name: info?.name ?? known?.name,
+                              username: username, userId: me.id)
+        if let index = workspaces.firstIndex(where: { $0.serverUrl == serverUrl }) { workspaces[index] = entry } else { workspaces.append(entry) }
+        activeServerUrl = serverUrl
+        activeBadge = 0
+        error = nil
+        persistWorkspaces()
+        await enterSession(api: api, me: me)
+        if info == nil { Task { await refreshServerInfo(serverUrl) } }
     }
 
     // MARK: two-factor authentication (M12i): the settings sheet drives these
@@ -147,16 +314,21 @@ final class AppController {
         try await ApiClient(baseUrl: server).invitePreview(token: token)
     }
 
-    /// M12h: create the account the link allows and enter the session; returns the failure text, if any.
+    /// M12h: create the account the link allows and enter the session; returns the failure text, if any. The server
+    /// becomes a workspace like any other (one account per server).
     func acceptInvite(server: URL, token: String, username: String, displayName: String, password: String) async -> String? {
-        let api = makeApi(server: server, username: username)
+        guard let normalized = Workspaces.normalize(server.absoluteString) else { return "サーバ URL が正しくありません" }
+        let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        let answer = try? await ApiClient(baseUrl: URL(string: serverUrl) ?? server).serverInfo()
+        let info = answer?.product == "chikuwachat" ? answer : nil
+        if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info?.workspaceId, in: workspaces), known.isSignedIn {
+            return "\(known.name) にはすでにログインしています (1 つのサーバーに 1 アカウント)"
+        }
+        let api = makeClient(serverUrl: serverUrl, username: username)
         do {
             let tokens = try await api.acceptInvite(token: token, username: username, displayName: displayName, password: password,
                                                     device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion))
-            defaults.set(server.absoluteString, forKey: Self.serverKey)
-            defaults.set(username, forKey: Self.usernameKey)
-            error = nil
-            await enterSession(api: api, username: username, me: tokens.user)
+            await adopt(api, serverUrl: serverUrl, username: username, me: tokens.user, info: info)
             return nil
         } catch {
             return Invite.errorText(error) ?? describe(error)
@@ -175,7 +347,7 @@ final class AppController {
         }
     }
 
-    private func enterSession(api: ApiClient, username: String, me: UserMe) async {
+    private func enterSession(api: ApiClient, me: UserMe) async {
         self.api = api
         self.me = me
         if me.mustChangePassword {
@@ -187,10 +359,11 @@ final class AppController {
 
     @discardableResult
     private func startEngine(restoring: Bool = false) async -> Bool {
-        guard let api else { return false }
+        guard let api, let workspace = activeWorkspace else { return false }
         engine?.stop()
         messageFocus = nil
-        let account = account(api.baseUrl.absoluteString, username)
+        let account = workspace.account
+        let serverUrl = workspace.serverUrl
         let persistence = try? SQLitePersistence.open(profile: account)
         let store = Store(persistence: persistence)
         store.load()
@@ -199,6 +372,10 @@ final class AppController {
             guard let cached = store.me, !cached.mustChangePassword else { return false }
             me = cached
         } else if let me { store.setMe(me) }
+        AvatarCache.shared.fetcher = { [weak api] path in
+            guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
+            return try await api.fetchData(path)
+        }
         let engine = SyncEngine(
             api: api,
             connect: { url, _ in try await WebSocketTransport.connect(url: url) },
@@ -209,7 +386,7 @@ final class AppController {
         )
         engine.onSignedOut = { [weak self, weak engine] in
             guard let self, self.engine === engine else { return }
-            self.handleSignedOut(account: account)
+            self.sessionEnded(serverUrl)
         }
         engine.isActive = { UIApplication.shared.applicationState == .active }
         engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
@@ -218,7 +395,7 @@ final class AppController {
         }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
-            PushCenter.shared.setBadge(count)
+            self.activeBadgeChanged(count)
         }
         self.engine = engine
         engine.prepareConnection = { [weak self, weak engine] refresh in
@@ -236,17 +413,142 @@ final class AppController {
                 }
             }
             guard let self, self.api === api, self.engine === engine else { return }
-            PushCenter.shared.attach(controller: self)
+            PushCenter.shared.bind(self)
+            PushCenter.shared.sessionConnected()
         }
         screen = .main
         Task { await engine.start() }
         return true
     }
 
-    /// Foreground: iOS suspends sockets in the background, so reconnect and catch up (SYNC_PROTOCOL.md §7.5).
+    /// Foreground: iOS suspends sockets in the background, so reconnect and catch up (SYNC_PROTOCOL.md §7.5); the
+    /// push token goes to every workspace and the other workspaces' badges are read again (WORKSPACES.md §6, §8).
     func didBecomeActive() {
         engine?.reconnectNow()
-        PushCenter.shared.uploadTokenIfNeeded()
+        guard booted else { return }
+        Task {
+            await uploadPushTokens()
+            await refreshSummaries()
+        }
+    }
+
+    // MARK: workspaces that are not open (WORKSPACES.md §6, §7, §8)
+
+    /// The open workspace's count changed (bootstrap, reads, events): its entry and the app icon follow.
+    private func activeBadgeChanged(_ count: Int) {
+        activeBadge = count
+        if let serverUrl = activeServerUrl {
+            let unread = store.channels.values.contains { $0.showsUnread && !$0.channel.archived } || store.threadSummary.unreadCount > 0
+            patch(serverUrl) { entry in
+                entry.badge = count
+                entry.hasUnread = unread
+            }
+        }
+        updateAppBadge()
+    }
+
+    /// App icon = the open workspace's count + the last known counts of the others.
+    private func updateAppBadge() {
+        PushCenter.shared.setBadge(Workspaces.appBadge(activeBadge: activeBadge, active: activeServerUrl, list: workspaces))
+    }
+
+    /// GET /sync/summary for every signed-in workspace that is not open: when the app comes to the foreground and when
+    /// the switcher opens. A failure keeps the last known values; a refused session signs that workspace out.
+    func refreshSummaries() async {
+        for workspace in workspaces where workspace.serverUrl != activeServerUrl && workspace.isSignedIn {
+            let api = client(for: workspace)
+            guard api.refreshToken != nil || api.accessToken != nil, let summary = try? await api.syncSummary() else { continue }
+            guard clients[workspace.serverUrl] === api, workspace.serverUrl != activeServerUrl else { continue }
+            patch(workspace.serverUrl) { entry in
+                entry.badge = summary.badge
+                entry.hasUnread = summary.hasUnread
+            }
+        }
+        updateAppBadge()
+    }
+
+    /// GET /server (no login) for one workspace or all: the name for the switcher, and a workspace_id that changed
+    /// with a restore (§3.1). A failure keeps what is known.
+    func refreshServerInfo(_ only: String? = nil) async {
+        for workspace in workspaces where only == nil || workspace.serverUrl == only {
+            guard let url = URL(string: workspace.serverUrl), let info = try? await ApiClient(baseUrl: url).serverInfo(),
+                  info.product == "chikuwachat" else { continue }
+            patch(workspace.serverUrl) { entry in
+                entry.name = info.name
+                entry.workspaceId = info.workspaceId
+            }
+        }
+    }
+
+    /// The workspace on screen (re)connected: register the APNs token with it again (a new login has a new device row).
+    func pushSessionStarted() {
+        if let serverUrl = activeServerUrl { pushTokens[serverUrl] = nil }
+        Task { await uploadPushTokens() }
+    }
+
+    /// PUT /devices/current with this device's APNs token on every signed-in workspace that does not have it yet
+    /// (PUSH_NOTIFICATIONS.md §3). One that is not open renews its access token with its saved refresh token first,
+    /// through its own client (so its refreshes never overlap), and keeps the rotated token.
+    func uploadPushTokens() async {
+        guard let token = PushCenter.shared.token else { return }
+        let environment = PushEnvironment.current()
+        for workspace in workspaces where workspace.isSignedIn && pushTokens[workspace.serverUrl] != token && !pushUploads.contains(workspace.serverUrl) {
+            let serverUrl = workspace.serverUrl
+            let api: ApiClient
+            if serverUrl == activeServerUrl {
+                guard let active = self.api, engine != nil else { continue }
+                api = active
+            } else {
+                api = client(for: workspace)
+                guard api.refreshToken != nil || api.accessToken != nil else { continue }
+            }
+            pushUploads.insert(serverUrl)
+            do {
+                _ = try await api.updateDevice(pushProvider: "apns", pushToken: token, pushEnvironment: environment)
+                if clients[serverUrl] === api { pushTokens[serverUrl] = token }
+            } catch {
+                print("push token upload failed (\(workspace.host)): \(error)")
+            }
+            pushUploads.remove(serverUrl)
+        }
+    }
+
+    /// willPresent (WORKSPACES.md §7): the workspace on screen syncs and only the conversation open there stays quiet;
+    /// another workspace's notification always shows and marks that workspace unread.
+    func foregroundNotification(_ payload: PushPayload) -> Bool {
+        let target = Workspaces.route(payload, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel)
+        if let target, target.serverUrl != activeServerUrl {
+            patch(target.serverUrl) { entry in
+                entry.hasUnread = true
+                if let badge = payload.badge { entry.badge = badge }
+            }
+            updateAppBadge()
+        } else {
+            engine?.reconnectNow() // new data may exist: sync (PUSH_NOTIFICATIONS.md §9)
+        }
+        return Workspaces.shouldPresent(payload, target: target, active: activeServerUrl,
+                                        openChannelId: screen == .main ? engine?.currentChannelId : nil)
+    }
+
+    /// A tapped notification: its workspace comes on screen (switching if needed), then the conversation opens after
+    /// the usual sync (MainView watches pendingChannelId).
+    func openNotification(_ payload: PushPayload) async {
+        guard booted else {
+            PushCenter.shared.queueTap(payload)
+            return
+        }
+        if let target = Workspaces.route(payload, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel),
+           target.serverUrl != activeServerUrl || screen != .main {
+            await switchTo(target.serverUrl)
+        }
+        PushCenter.shared.pendingChannelId = payload.channelId
+        engine?.reconnectNow()
+    }
+
+    /// Whether a workspace's local store knows the channel: the open one in memory, the others on disk.
+    private func workspaceHasChannel(_ workspace: Workspace, _ channelId: String) -> Bool {
+        if workspace.serverUrl == activeServerUrl && store.channel(channelId) != nil { return true }
+        return SQLitePersistence.hasChannel(profile: workspace.account, channelId: channelId)
     }
 
     var isAdmin: Bool { me?.role == "admin" }
@@ -825,28 +1127,77 @@ final class AppController {
         }
     }
 
+    // MARK: signing out (WORKSPACES.md §5.3, SYNC_PROTOCOL.md §11)
+
+    /// 「ログアウト」: sign out of the workspace on screen; the next one opens (or the login form).
     func logout() async {
-        engine?.stop()
-        engine = nil
-        await api?.logout()
+        guard let serverUrl = activeServerUrl else { return }
+        await signOutWorkspace(serverUrl)
     }
 
-    /// Logout, a revoked session or a refused refresh: nothing of the account stays on the device (SYNC_PROTOCOL.md §11):
-    /// its local store (messages, drafts, outbox), the badge and the delivered notifications go with the token.
-    private func handleSignedOut(account: String) {
-        AvatarCache.shared.reset()
-        engine?.stop()
-        engine = nil
-        api = nil
-        me = nil
-        messageFocus = nil
-        Keychain.delete(account: account)
-        let previous = store
-        store = Store()
-        previous.close()
-        SQLitePersistence.destroy(profile: account)
-        PushCenter.shared.clearAll()
-        screen = .login
+    /// Sign out of a workspace, on screen or not, and forget it: the server session ends (so the device stops getting
+    /// its pushes), then nothing of the account stays here. One already signed out just leaves the list.
+    func signOutWorkspace(_ serverUrl: String) async {
+        guard let workspace = workspaces.first(where: { $0.serverUrl == serverUrl }) else { return }
+        if serverUrl == activeServerUrl { engine?.stop() }
+        // Out of the clients first: its own signed-out callback must not mark the entry instead of removing it.
+        var api = clients.removeValue(forKey: serverUrl)
+        if api == nil, workspace.isSignedIn, let token = Keychain.get(account: workspace.account) {
+            api = makeClient(serverUrl: serverUrl, username: workspace.username)
+            api?.refreshToken = token
+        }
+        if let api, api.refreshToken != nil || api.accessToken != nil { await api.logout() }
+        forget(workspace, remove: true)
+    }
+
+    /// The server ended the session (revoked, refresh refused): only this workspace signs out, and it stays in the
+    /// list to sign back in (WORKSPACES.md §5.2).
+    private func sessionEnded(_ serverUrl: String) {
+        guard let workspace = workspaces.first(where: { $0.serverUrl == serverUrl }) else { return }
+        forget(workspace, remove: false)
+    }
+
+    /// SYNC_PROTOCOL.md §11 for one workspace: its refresh token, local store (messages, drafts, send queue), recent
+    /// searches and delivered notifications go. `remove` takes it off the list, else it stays there signed out. When
+    /// it was on screen, the first signed-in workspace left takes its place (or the login form).
+    private func forget(_ workspace: Workspace, remove: Bool) {
+        let serverUrl = workspace.serverUrl
+        let wasActive = serverUrl == activeServerUrl
+        if let api = clients.removeValue(forKey: serverUrl), api.refreshToken != nil || api.accessToken != nil { api.signOut() }
+        pushTokens[serverUrl] = nil
+        if wasActive {
+            closeSession()
+            activeBadge = 0
+        }
+        Keychain.delete(account: workspace.account)
+        SQLitePersistence.destroy(profile: workspace.account)
+        RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
+        if remove {
+            workspaces.removeAll { $0.serverUrl == serverUrl }
+            if workspaces.isEmpty { lastSignIn = (serverUrl, workspace.username) }
+        } else {
+            patch(serverUrl) { entry in
+                entry.signedOut = true
+                entry.badge = nil
+                entry.hasUnread = nil
+            }
+        }
+        if workspaces.contains(where: { $0.serverUrl != serverUrl && $0.isSignedIn }) {
+            PushCenter.shared.clearNotifications(workspaceId: workspace.workspaceId)
+        } else {
+            PushCenter.shared.clearAll() // no other account here: nothing may stay (as with a single server)
+        }
+        let next = wasActive && remove ? (workspaces.first(where: \.isSignedIn) ?? workspaces.first) : nil
+        if wasActive && remove { activeServerUrl = next?.serverUrl }
+        persistWorkspaces()
+        updateAppBadge()
+        guard wasActive else { return }
+        if let next {
+            screen = .boot // not an empty channel list while the next workspace opens
+            Task { await open(next) }
+        } else {
+            screen = .login
+        }
     }
 
     /// The Japanese text for a failure (ARCHITECTURE.md §9); never the server's English message.

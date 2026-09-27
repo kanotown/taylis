@@ -238,7 +238,7 @@ final class ApiClientTests: XCTestCase {
         }
         let client = makeClient()
         client.accessToken = "a"
-        _ = try await client.searchMessages("C++ a&b")
+        _ = try await client.searchMessages(SearchLogic.request(SearchParams(q: "C++ a&b")))
         _ = try await client.linkPreview(url: "https://example.com/?q=1+1")
         XCTAssertTrue(queries[0].contains("q=C%2B%2B%20a%26b"), queries[0])
         XCTAssertTrue(queries[1].contains("url=https://example.com/?q%3D1%2B1") || queries[1].contains("url=https://example.com/?q=1%2B1"), queries[1])

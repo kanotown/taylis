@@ -25,11 +25,13 @@ xcodebuild -project ChikuwaChat.xcodeproj -scheme ChikuwaChat \
 
 ```
 ChikuwaChat/
-  App/        ChikuwaChatApp (入口、scenePhase で復帰時に再接続)、AppController (セッション復元、ログイン、強制パスワード変更、エンジン)
+  App/        ChikuwaChatApp (入口、scenePhase で復帰時に再接続)、AppController (ワークスペース、セッション復元、ログイン、強制パスワード変更、エンジン)、
+              Workspaces (M16c: 登録済みサーバの一覧と移行、URL の正規化、通知の振り分け、アプリアイコンのバッジ)
   Api/        ApiClient (bearer 認証、token_expired で 1 回だけ refresh、エラー分類)、Models (OpenAPI のモデル)、JSON (コーダと JSONValue)
   Sync/       SyncEngine (SYNC_PROTOCOL.md §5/§7/§8/§9)、Store (表示の唯一のソース、SQLite へ write-through)、Frames、WebSocketTransport
   Platform/   Keychain、SQLiteStore (SQLite3 ラッパと永続化)
-  UI/         LoginView、ChangePasswordView、MainView (NavigationSplitView)、ChannelListView、ChannelView、MessageBodyView、Sheets
+  UI/         LoginView (最初のログイン / ワークスペースの追加 / 再ログイン)、ChangePasswordView、MainView (NavigationSplitView)、ChannelListView、
+              ChannelView、MessageBodyView、Sheets、WorkspaceViews (切り替えシート、タイル)、Search + SearchView (M16b: 候補、絞り込み、結果)
 ChikuwaChatTests/
   FakeServer (プロトコルの模擬サーバ)、SyncEngineTests、ContractTests (server/tests/contract/*.json をバンドルして実行)、
   ApiClientTests (URLProtocol スタブ)、BodyTokenizerTests、LiveBackendTests (LIVE_URL 指定時のみ)
@@ -45,3 +47,12 @@ Desktop と同じアルゴリズム (`server/tests/contract_client.py` が仕様
 最後のフレームから 60 秒で切断扱い、close 4001 は access token を更新して再接続 (§5.3)。バックグラウンドで iOS がソケットを止めた後は、
 フォアグラウンド復帰 (`scenePhase == .active`) で再接続と catch_up を行う。プッシュ通知は M5 で追加する。
 ローカルストアはサーバ URL とユーザー名のハッシュ名のファイルで、サインアウトで削除する (§11)。
+
+## ワークスペース (M16c, docs/WORKSPACES.md)
+
+登録したサーバの一覧は UserDefaults の `chikuwa.workspaces` (JSON) と `chikuwa.workspace.active`。旧版の `chikuwa.server` /
+`chikuwa.username` は初回起動時に 1 件のワークスペースへ移行し (文字列はそのまま。Keychain とローカルストアの名前に使うため)、
+以後はアクティブなワークスペースの値を映す。接続するのはアクティブな 1 つだけで、ほかは `GET /sync/summary` (復帰時と
+切り替えシートを開いた時) とプッシュでバッジを知る。API クライアントはワークスペースごとに 1 つ (refresh を直列にするため)。
+通知のタップは `workspace_id` → チャンネルを持つローカルストア → アクティブの順で振り分ける。
+

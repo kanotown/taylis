@@ -494,8 +494,29 @@ struct SettingsView: View {
                     }
                     .disabled(busy || current.isEmpty || next.count < 8)
                 }
+                // M16c: the workspace on screen, and the way to others (switch, add, sign out).
+                Section("ワークスペース") {
+                    if let workspace = controller.activeWorkspace {
+                        HStack(spacing: 12) {
+                            WorkspaceTile(workspace: workspace, size: 32)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(workspace.name)
+                                Text("\(workspace.username) @ \(workspace.host)").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    NavigationLink {
+                        WorkspaceListView(controller: controller) { dismiss() }
+                            .navigationTitle("ワークスペース")
+                            .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        Label(controller.workspaces.count > 1 ? "ワークスペースを切り替え・追加" : "ワークスペースを追加", systemImage: "square.stack")
+                    }
+                }
                 Section {
-                    Button("ログアウト", role: .destructive) { Task { await controller.logout() } }
+                    Button(controller.workspaces.count > 1 ? "\(controller.workspaceName) からログアウト" : "ログアウト", role: .destructive) {
+                        Task { await controller.logout() }
+                    }
                 }
             }
             .navigationTitle("設定")

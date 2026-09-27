@@ -778,10 +778,14 @@ final class FakeServer {
 
     func sockets(of userId: String) -> [Socket] { sockets.filter { $0.userId == userId } }
 
+    /// M12g: a user's notification keywords (bootstrap `me` only; the server never tells others about hits).
+    var notifyKeywords: [String: [String]] = [:]
+
     func bootstrap(for userId: String) -> BootstrapOut {
         let user = users[userId]!
         let me = UserMe(id: user.id, username: user.username, displayName: user.displayName, role: user.role, deactivatedAt: nil,
-                        createdAt: user.createdAt, updatedAt: user.updatedAt, email: nil, mustChangePassword: false)
+                        createdAt: user.createdAt, updatedAt: user.updatedAt, email: nil, mustChangePassword: false,
+                        notifyKeywords: notifyKeywords[userId])
         let mine = channels.values.filter { $0.members.contains(userId) }.map { record in
             ChannelOut(id: record.channel.id, type: record.channel.type, name: record.channel.name, topic: nil, purpose: nil, archived: false,
                        createdBy: record.channel.createdBy, lastSeq: record.channel.lastSeq, lastMessageAt: record.channel.lastMessageAt,
