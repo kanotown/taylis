@@ -5,7 +5,8 @@
  *
  * Inline: **bold** / *bold*, _italic_, ~~strike~~, `code`, [label](url), bare https?:// links,
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
- * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level).
+ * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level),
+ * and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
  */
 export type Token =
   | { kind: "text"; text: string }
@@ -25,7 +26,11 @@ export type Block =
   | { kind: "paragraph"; lines: Token[][] }
   | { kind: "quote"; lines: Token[][] }
   | { kind: "list"; ordered: boolean; start: number; items: Array<{ level: number; tokens: Token[] }> }
-  | { kind: "codeblock"; text: string; lang: string | null };
+  | { kind: "codeblock"; text: string; lang: string | null }
+  | { kind: "table"; align: TableAlign[]; header: Token[][]; rows: Token[][][] };
+
+/** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
+export type TableAlign = "left" | "center" | "right" | null;
 
 const INLINE =
   /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)/g;
@@ -79,6 +84,36 @@ function splitFence(raw: string): { text: string; lang: string | null } {
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
 const QUOTE = /^>\s?(.*)$/;
+const TABLE_SEPARATOR = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+/** M15g: the cells of a table row; "\|" is a literal pipe, outer pipes are optional. */
+export function splitTableRow(line: string): string[] {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|") && !text.endsWith("\\|")) text = text.slice(0, -1);
+  const cells: string[] = [];
+  let current = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && text[i + 1] === "|") {
+      current += "|";
+      i++;
+    } else if (ch === "|") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function tableAlign(cell: string): TableAlign {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  return left && right ? "center" : right ? "right" : left ? "left" : null;
+}
 const HEADING = /^(#{1,3})\s+(\S.*)$/;
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
@@ -91,6 +126,12 @@ export function parseBlocks(body: string): Block[] {
   // A fence opens a code block only when a closing ``` line follows; otherwise it is ordinary text.
   const fenceCloseAfter = (index: number) => lines.findIndex((l, k) => k > index && /^```\s*$/.test(l));
   const opensFence = (index: number) => FENCE.test(lines[index] ?? "") && fenceCloseAfter(index) !== -1;
+  // M15g: a header row with a pipe, directly followed by a separator with as many cells.
+  const opensTable = (index: number) => {
+    const header = lines[index] ?? "";
+    const separator = lines[index + 1] ?? "";
+    return header.includes("|") && TABLE_SEPARATOR.test(separator) && splitTableRow(header).length === splitTableRow(separator).length;
+  };
   while (i < lines.length) {
     const line = lines[i] ?? "";
     if (opensFence(i)) {
@@ -118,6 +159,19 @@ export function parseBlocks(body: string): Block[] {
       push({ kind: "quote", lines: quoted });
       continue;
     }
+    if (opensTable(i)) {
+      const header = splitTableRow(line);
+      const align = splitTableRow(lines[i + 1] ?? "").map(tableAlign);
+      const rows: Token[][][] = [];
+      i += 2;
+      while (i < lines.length && (lines[i] ?? "").includes("|") && (lines[i] ?? "").trim() !== "") {
+        const cells = splitTableRow(lines[i] ?? "");
+        rows.push(header.map((_, c) => tokenizeInline(cells[c] ?? ""))); // short rows pad, long rows are cut (GFM)
+        i++;
+      }
+      push({ kind: "table", align, header: header.map((cell) => tokenizeInline(cell)), rows });
+      continue;
+    }
     const bullet = BULLET.exec(line);
     const numbered = NUMBERED.exec(line);
     if (bullet || numbered) {
@@ -140,7 +194,7 @@ export function parseBlocks(body: string): Block[] {
     const paragraph: Token[][] = [];
     while (i < lines.length) {
       const current = lines[i] ?? "";
-      if (paragraph.length > 0 && (opensFence(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
+      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
       paragraph.push(tokenizeInline(current));
       i++;
     }
@@ -153,6 +207,8 @@ export function parseBlocks(body: string): Block[] {
 export function plainText(body: string, maxLength = 200): string {
   const text = body
     .replace(/^```[A-Za-z0-9_+#.-]*\s*$/gm, "")
+    .replace(/^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/gm, "") // M15g: table separators
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, inner: string) => inner.split("|").map((cell) => cell.trim()).join(" "))
     .replace(/^(#{1,3})\s+/gm, "")
     .replace(/^>\s?/gm, "")
     .replace(/^\s*(?:[-*•]|\d{1,3}\.)\s+/gm, "")
