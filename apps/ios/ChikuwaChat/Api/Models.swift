@@ -196,10 +196,15 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var pinnedBy: String? = nil
     /// M14b: the poll, when the message carries one.
     var poll: PollOut? = nil
+    /// M15e: "important" / "urgent", and who acknowledged a message that asked for it (oldest first).
+    var priority: String? = nil
+    var ackRequested: Bool = false
+    var acks: [AckOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
+        case priority, ackRequested, acks
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -260,7 +265,16 @@ extension MessageOut {
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
         poll = try c.decodeIfPresent(PollOut.self, forKey: .poll)
+        priority = try c.decodeIfPresent(String.self, forKey: .priority)
+        ackRequested = try c.decodeIfPresent(Bool.self, forKey: .ackRequested) ?? false
+        acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
     }
+}
+
+/// M15e: one member's 「確認しました」.
+struct AckOut: Codable, Equatable {
+    let userId: String
+    let ackedAt: String
 }
 
 struct HistoryOut: Codable {

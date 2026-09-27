@@ -91,10 +91,11 @@ struct ThreadView: View {
                         Toggle(channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信", isOn: $alsoInChannel)
                             .font(.footnote).padding(.horizontal, 16)
                     }
-                    ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds in
+                    ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds, _ in
                         let shared = canShare && alsoInChannel
                         alsoInChannel = false
-                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds, alsoInChannel: shared) }
+                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds,
+                                                             options: SendOptions(alsoInChannel: shared)) }
                     }
                 }
             }

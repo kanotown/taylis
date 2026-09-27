@@ -7,7 +7,8 @@ final class MessageCodingTests: XCTestCase {
     {"id": "m2", "channel_id": "c1", "sender_id": "u1", "parent_id": "m1", "also_in_channel": true, "seq": 7, "updated_seq": 8,
      "client_msg_id": null, "type": "user", "body": "📊 どこにする?", "mentioned_user_ids": [], "mention_all": false, "reactions": [],
      "attachments": [], "reply_count": 0, "last_reply_at": null, "created_at": "2026-09-27T04:00:00Z", "edited_at": null, "deleted": false,
-     "pinned_at": null, "pinned_by": null,
+     "pinned_at": null, "pinned_by": null, "priority": "urgent", "ack_requested": true,
+     "acks": [{"user_id": "u3", "acked_at": "2026-09-27T04:05:00Z"}],
      "poll": {"question": "どこにする?", "options": ["焼き鳥", "中華"], "multiple": false, "closed_at": null, "votes": [["u1"], []]}}
     """
 
@@ -24,5 +25,10 @@ final class MessageCodingTests: XCTestCase {
         XCTAssertTrue(persisted.alsoInChannel)
         XCTAssertEqual(MessageOut(persisted)?.poll, message.poll)
         XCTAssertEqual(MessageOut(persisted)?.alsoInChannel, true)
+        // M15e
+        XCTAssertEqual([message.priority, persisted.priority, MessageOut(persisted)?.priority], ["urgent", "urgent", "urgent"])
+        XCTAssertTrue(persisted.ackRequested)
+        XCTAssertEqual(persisted.acks.map(\.userId), ["u3"])
+        XCTAssertEqual(MessageOut(persisted)?.acks, message.acks)
     }
 }

@@ -100,10 +100,10 @@ final class FakeServer {
             return try server.delta(userId: userId, channelId: channelId, sinceSeq: sinceSeq, limit: limit)
         }
 
-        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], alsoInChannel: Bool) async throws -> (MessageOut, Bool) {
+        func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], options: SendOptions) async throws -> (MessageOut, Bool) {
             try maybeFail()
             return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds,
-                                   alsoInChannel: alsoInChannel)
+                                   options: options)
         }
 
         func replies(messageId: String) async throws -> [MessageOut] {
@@ -522,7 +522,7 @@ final class FakeServer {
 
     @discardableResult
     func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
-              alsoInChannel: Bool = false) throws -> (MessageOut, Bool) {
+              options: SendOptions = SendOptions()) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
@@ -543,8 +543,9 @@ final class FakeServer {
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
         let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
                                  createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body),
-                                 parentId: parentId, alsoInChannel: alsoInChannel && parentId != nil,
-                                 attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) })
+                                 parentId: parentId, alsoInChannel: options.alsoInChannel && parentId != nil,
+                                 attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) },
+                                 priority: parentId == nil ? options.priority : nil, ackRequested: parentId == nil && options.ackRequested)
         record.messages.append(message)
         var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
         if let parentIndex {

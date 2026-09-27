@@ -215,6 +215,29 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testPriorityAndAckRequestSurviveTheOutboxOnTopLevelPostsOnly() async throws {  // M15e
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        w.api.pendingFailure = ApiError.network(URLError(.notConnectedToInternet)) // the first attempt fails: the flags must survive the retry
+        await w.engine.send(w.channel.id, body: "本番を止めます", options: SendOptions(priority: "urgent", ackRequested: true))
+        XCTAssertEqual(w.store.outbox.first?.priority, "urgent")
+        XCTAssertEqual(w.store.outbox.first?.ackRequested, true)
+        await w.engine.flushOutbox()
+        await settle(w.engine)
+        let sent = try XCTUnwrap(w.store.messages(w.channel.id).last)
+        XCTAssertEqual(sent.body, "本番を止めます")
+        XCTAssertEqual(sent.priority, "urgent")
+        XCTAssertTrue(sent.ackRequested)
+        XCTAssertFalse(sent.pending)
+        await w.engine.send(w.channel.id, body: "返信", parentId: sent.id, options: SendOptions(priority: "important", ackRequested: true))
+        await settle(w.engine)
+        let reply = try XCTUnwrap(w.store.replies(w.channel.id, parentId: sent.id).last)
+        XCTAssertNil(reply.priority)
+        XCTAssertFalse(reply.ackRequested)
+        w.engine.stop()
+    }
+
     func testReplyAlsoSentToTheChannelShowsInBothPlacesAndCountsUnread() async throws {  // M15c
         let w = makeWorld()
         await w.engine.start()
@@ -222,13 +245,13 @@ final class SyncEngineTests: XCTestCase {
         let (parent, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
         await settle(w.engine)
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "quiet", parentId: parent.id)
-        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "loud", parentId: parent.id, alsoInChannel: true)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "loud", parentId: parent.id, options: SendOptions(alsoInChannel: true))
         await settle(w.engine)
         XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["topic", "loud"])
         XCTAssertEqual(w.store.replies(w.channel.id, parentId: parent.id).map(\.body), ["quiet", "loud"])
         XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2) // the topic and the shared reply
 
-        await w.engine.send(w.channel.id, body: "mine too", parentId: parent.id, alsoInChannel: true)
+        await w.engine.send(w.channel.id, body: "mine too", parentId: parent.id, options: SendOptions(alsoInChannel: true))
         await settle(w.engine)
         let mine = try XCTUnwrap(w.store.messages(w.channel.id).last)
         XCTAssertEqual(mine.body, "mine too")
