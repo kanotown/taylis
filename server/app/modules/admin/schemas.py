@@ -30,6 +30,7 @@ class AdminUserOut(BaseModel):
     email: str | None
     role: str
     must_change_password: bool
+    totp_enabled: bool = False  # M12i
     deactivated_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -44,7 +45,7 @@ class TemporaryPasswordOut(BaseModel):
     temporary_password: str
 
 
-def to_admin_out(user: User) -> AdminUserOut:
+def to_admin_out(user: User, *, totp_enabled: bool = False) -> AdminUserOut:
     return AdminUserOut(
         id=user.id,
         username=user.username,
@@ -52,6 +53,7 @@ def to_admin_out(user: User) -> AdminUserOut:
         email=user.email,
         role=user.role,
         must_change_password=user.must_change_password,
+        totp_enabled=totp_enabled,
         deactivated_at=user.deactivated_at,
         created_at=user.created_at,
         updated_at=user.updated_at,

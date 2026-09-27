@@ -7,6 +7,7 @@ from app.modules.channels import models as _channel_models
 from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
+from app.modules.totp import models as _totp_models
 from app.modules.users import models as _user_models
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "_invite_models",
     "_message_models",
     "_notification_models",
+    "_totp_models",
     "_user_models",
 ]

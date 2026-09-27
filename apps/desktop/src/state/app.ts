@@ -3,9 +3,10 @@ import { ApiClient } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
+import { totpErrorText } from "../ui/totp";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { MessageState } from "../sync/types";
 import { isTauri } from "../platform/env";
@@ -30,6 +31,8 @@ export class AppController {
   error: string | null = null;
   /** A short confirmation (「リンクをコピーしました」); null when nothing to say. */
   notice: string | null = null;
+  /** M12i: the last login was refused for lack of an authenticator code; the form asks for one. */
+  totpRequired = false;
   api: ApiClient | null = null;
   store: Store = new Store();
   engine: SyncEngine | null = null;
@@ -136,7 +139,7 @@ export class AppController {
     }
   }
 
-  async login(server: string, username: string, password: string): Promise<void> {
+  async login(server: string, username: string, password: string, totpCode?: string): Promise<void> {
     server = server.replace(/\/+$/, "");
     const api = this.createApi(server, username);
     try {
@@ -144,12 +147,65 @@ export class AppController {
         platform: "desktop",
         device_name: navigator.platform || "desktop",
         app_version: APP_VERSION,
-      });
+      }, totpCode);
       localStorage.setItem(SERVER_KEY, server);
       localStorage.setItem(USERNAME_KEY, username);
+      this.totpRequired = false;
       await this.enterSession(api, username, tokens.user);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "totp_required") {
+        this.totpRequired = true;
+        this.setScreen("login", null);
+        return;
+      }
+      if (err instanceof ApiError && err.code === "invalid_totp") {
+        this.totpRequired = true;
+        this.setScreen("login", totpErrorText(err));
+        return;
+      }
+      this.totpRequired = false;
       this.setScreen("login", describe(err));
+    }
+  }
+
+  // --- two-factor authentication (M12i): the settings dialog drives these -----------------
+
+  async totpStatus(): Promise<TotpStatusOut | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.totpStatus();
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async beginTotpSetup(password: string): Promise<TotpSetupOut | { error: string }> {
+    if (!this.api) return { error: "ログインしていません" };
+    try {
+      return await this.api.totpSetup(password);
+    } catch (error) {
+      return { error: totpErrorText(error) };
+    }
+  }
+
+  async enableTotp(code: string): Promise<TotpEnabledOut | { error: string }> {
+    if (!this.api) return { error: "ログインしていません" };
+    try {
+      return await this.api.totpEnable(code);
+    } catch (error) {
+      return { error: totpErrorText(error) };
+    }
+  }
+
+  /** Returns the failure text, if any. */
+  async disableTotp(password: string): Promise<string | null> {
+    if (!this.api) return "ログインしていません";
+    try {
+      await this.api.totpDisable(password);
+      return null;
+    } catch (error) {
+      return totpErrorText(error);
     }
   }
 

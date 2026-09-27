@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from typing import Any, cast
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,20 +11,19 @@ from app.modules.users.models import User
 from tests.helpers import make_user
 
 
-async def _post(client: AsyncClient, channel_id: str, body: str) -> dict:
+async def _post(client: AsyncClient, channel_id: str, body: str) -> dict[str, Any]:
     response = await client.post(
         f"/api/v1/channels/{channel_id}/messages",
         json={"client_msg_id": str(uuid.uuid4()), "body": body},
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 async def _mention_count(client: AsyncClient, channel_id: str) -> int:
     booted = (await client.get("/api/v1/sync/bootstrap")).json()
-    return next(c for c in booted["channels"] if c["id"] == channel_id)["read_state"][
-        "mention_count"
-    ]
+    channel = next(c for c in booted["channels"] if c["id"] == channel_id)
+    return int(channel["read_state"]["mention_count"])
 
 
 async def test_keywords_count_as_mentions_for_members_only(

@@ -1,10 +1,11 @@
-import { Check, Hash, Lock, LogOut } from "lucide-react";
+import { Check, Hash, Lock, LogOut, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import type { MemberOut, UserPublic } from "../api/types";
+import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
+import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 import { type SendKey } from "./prefs";
@@ -317,6 +318,12 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   const [repeat, setRepeat] = useState("");
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // M12i: whether my account asks for an authenticator code, and the setup / disable flows.
+  const [totp, setTotp] = useState<TotpStatusOut | null>(null);
+  const [totpDialog, setTotpDialog] = useState<"setup" | "disable" | null>(null);
+  useEffect(() => {
+    void controller.totpStatus().then(setTotp);
+  }, [controller]);
 
   const saveName = async (event: FormEvent) => {
     event.preventDefault();
@@ -414,6 +421,28 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
             ))}
           </div>
         </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">2 要素認証</h3>
+          <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
+            <ShieldCheck size={18} className={totp?.enabled ? "text-success" : "text-muted"} />
+            <div className="min-w-0 flex-1 text-sm">
+              {totp === null ? (
+                <span className="text-muted">確認中…</span>
+              ) : totp.enabled ? (
+                <span>
+                  有効 <span className="ml-1 text-xs text-muted">ログイン時に認証アプリのコードが必要です · 回復コード残り {totp.recovery_codes_left}</span>
+                </span>
+              ) : (
+                <span className="text-muted">無効 (パスワードだけでログインできます)</span>
+              )}
+            </div>
+            {totp && (
+              <Button size="sm" variant="secondary" onClick={() => setTotpDialog(totp.enabled ? "disable" : "setup")}>
+                {totp.enabled ? "無効にする" : "有効にする"}
+              </Button>
+            )}
+          </div>
+        </div>
         <form className="space-y-3" onSubmit={savePassword}>
           <h3 className="text-sm font-semibold">パスワードの変更</h3>
           <Field label="現在のパスワード">
@@ -439,6 +468,8 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
           </Button>
         </div>
       </div>
+      {totpDialog === "setup" && <TotpSetupDialog controller={controller} onClose={() => setTotpDialog(null)} onEnabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
+      {totpDialog === "disable" && <TotpDisableDialog controller={controller} onClose={() => setTotpDialog(null)} onDisabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
     </Modal>
   );
 }

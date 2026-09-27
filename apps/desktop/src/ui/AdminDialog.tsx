@@ -145,6 +145,7 @@ function UsersTab({ controller }: { controller: AppController }) {
                     {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
                     {off && <Badge>無効</Badge>}
                     {user.must_change_password && !off && <Badge tone="danger">仮パスワード</Badge>}
+                    {user.totp_enabled && <Badge tone="accent">2FA</Badge>}
                   </div>
                   <div className="text-[11px] text-muted">作成 {fullTimestamp(user.created_at)}</div>
                 </div>
@@ -159,6 +160,11 @@ function UsersTab({ controller }: { controller: AppController }) {
                     <Button size="sm" variant="ghost" title="全端末からログアウトさせる" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminRevokeSessions(user.id); })}>
                       セッション失効
                     </Button>
+                    {user.totp_enabled && (
+                      <Button size="sm" variant="ghost" title="認証アプリを失くしたとき: 2 要素認証を解除する" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminResetTotp(user.id); })}>
+                        2FA を解除
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" className="text-danger" title="無効化 (ログイン不可、表示は残る)" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: true }); })}>
                       <UserX size={14} /> 無効化
                     </Button>

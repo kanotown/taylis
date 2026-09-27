@@ -206,3 +206,45 @@ describe("invite links (M12h)", () => {
     expect(calls[4]!.body).toEqual({ username: "tanaka", display_name: "田中", password: "pw", device: { platform: "desktop" } });
   });
 });
+
+describe("two-factor authentication (M12i)", () => {
+  it("sends the code with the login and drives the setup endpoints", async () => {
+    const calls: Array<{ method: string; path: string; auth: string | null; body: unknown }> = [];
+    const client = new ApiClient("http://server", {
+      fetchImpl: async (input, init) => {
+        const path = String(input).replace("http://server", "");
+        const headers = init?.headers as Record<string, string>;
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        calls.push({ method: init?.method ?? "GET", path, auth: headers["Authorization"] ?? null, body });
+        if (path === "/api/v1/auth/login") {
+          if (!body.totp_code) return jsonResponse(401, { error: { code: "totp_required", message: "Two-factor code required", details: {} } });
+          return jsonResponse(200, tokens(4));
+        }
+        if (path === "/api/v1/auth/totp") return jsonResponse(200, { enabled: false, enabled_at: null, recovery_codes_left: 0 });
+        if (path.endsWith("/setup")) return jsonResponse(200, { secret: "ABC", otpauth_uri: "otpauth://totp/x", qr_png_base64: "iVBOR" });
+        if (path.endsWith("/enable")) return jsonResponse(200, { recovery_codes: ["abcde-fghjk"] });
+        return new Response(null, { status: 204 });
+      },
+    });
+    await expect(client.login("alice", "pw", { platform: "desktop" })).rejects.toMatchObject({ code: "totp_required", status: 401 });
+    const logged = await client.login("alice", "pw", { platform: "desktop" }, "123456");
+    expect(logged.user.username).toBe("alice");
+    expect(client.accessToken).toBe("access-4");
+    expect((await client.totpStatus()).enabled).toBe(false);
+    expect((await client.totpSetup("pw")).secret).toBe("ABC");
+    expect((await client.totpEnable("123456")).recovery_codes).toEqual(["abcde-fghjk"]);
+    await client.totpDisable("pw");
+    await client.adminResetTotp("u1");
+    expect(calls.map((c) => `${c.method} ${c.path} ${c.auth ?? "-"}`)).toEqual([
+      "POST /api/v1/auth/login -",
+      "POST /api/v1/auth/login -",
+      "GET /api/v1/auth/totp Bearer access-4",
+      "POST /api/v1/auth/totp/setup Bearer access-4",
+      "POST /api/v1/auth/totp/enable Bearer access-4",
+      "POST /api/v1/auth/totp/disable Bearer access-4",
+      "DELETE /api/v1/admin/users/u1/totp Bearer access-4",
+    ]);
+    expect(calls[0]!.body).toEqual({ username: "alice", password: "pw", device: { platform: "desktop" } });
+    expect(calls[1]!.body).toEqual({ username: "alice", password: "pw", device: { platform: "desktop" }, totp_code: "123456" });
+  });
+});

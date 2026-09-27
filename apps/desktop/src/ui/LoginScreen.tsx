@@ -1,4 +1,4 @@
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2, MessageCircle, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -8,12 +8,14 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
   const [server, setServer] = useState(controller.serverUrl);
   const [username, setUsername] = useState(controller.username);
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const needsCode = controller.totpRequired;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    await controller.login(server.trim(), username.trim(), password);
+    await controller.login(server.trim(), username.trim(), password, needsCode ? totpCode.replace(/\s+/g, "") : undefined);
     setBusy(false);
     onDone();
   };
@@ -39,10 +41,18 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
         <Field label="パスワード">
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
         </Field>
+        {needsCode && (
+          <div className="space-y-2 rounded-xl border border-accent/40 bg-accent-soft/50 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck size={16} className="text-accent" /> 2 要素認証</div>
+            <Field label="認証アプリの 6 桁のコード (または回復コード)">
+              <Input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" autoFocus required autoCapitalize="off" />
+            </Field>
+          </div>
+        )}
         {controller.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{controller.error}</p>}
-        <Button type="submit" disabled={busy} className="w-full">
+        <Button type="submit" disabled={busy || (needsCode && !totpCode.trim())} className="w-full">
           {busy && <Loader2 size={16} className="animate-spin" />}
-          {busy ? "ログイン中…" : "ログイン"}
+          {busy ? "ログイン中…" : needsCode ? "コードを確認してログイン" : "ログイン"}
         </Button>
         {onInvite && (
           <button type="button" onClick={onInvite} className="block w-full text-center text-xs text-muted hover:text-ink hover:underline">

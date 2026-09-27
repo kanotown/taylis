@@ -18,6 +18,7 @@ dependencies = [
     "filetype>=1.2.0",
     "pillow>=12.3.0",
     "python-multipart>=0.0.32",
+    "qrcode>=8.2",
 ]
 
 [dependency-groups]
@@ -51,7 +52,7 @@ warn_unreachable = true
 files = ["app", "tests", "migrations/env.py"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "filetype.*"]
+module = ["asyncpg.*", "filetype.*", "qrcode.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

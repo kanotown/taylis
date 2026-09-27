@@ -31,6 +31,7 @@ from app.modules.auth.schemas import (
     to_device_out,
     to_session_out,
 )
+from app.modules.totp import service as totp
 from app.modules.users import service as users
 from app.modules.users.models import User
 from app.modules.users.schemas import to_user_me
@@ -96,6 +97,9 @@ async def login(
         log.warning("login failed", extra={"ip": ip})
         raise unauthorized("invalid_credentials", "Invalid username or password")
     now = utcnow()
+    await totp.check_login(
+        db, user.id, data.totp_code, now
+    )  # M12i: 401 totp_required / invalid_totp
     device = Device(
         user_id=user.id,
         platform=data.device.platform,
@@ -252,7 +256,8 @@ async def change_password(
         )
     context = await _lock_current(db, context)
     if not await verify_password(context.user.password_hash, data.current_password):
-        raise unauthorized("invalid_credentials", "Invalid current password")
+        # 422, not 401: clients end the session on any other 401 during an authenticated call.
+        raise AppError(422, "invalid_password", "Invalid current password")
     password_hash = await hash_password(data.new_password)
     now = utcnow()
     users.change_password_in_tx(context.user, password_hash, now)
