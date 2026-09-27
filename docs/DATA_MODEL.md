@@ -618,6 +618,25 @@ CREATE TABLE poll_votes (
 - `PUT/DELETE /messages/{id}/poll/votes/{index}` は reactions と同じ扱い: 変化があれば seq を 1 つ消費して
   `updated_seq` を進め、`message.updated` (`change = poll`) で全員に届く。単一選択は前の票を動かす。
 - `POST /messages/{id}/poll/close` (投稿者か admin) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
+
+### message_acks と messages.priority (重要度と確認、M15e)
+
+```sql
+ALTER TABLE messages ADD COLUMN priority varchar(16);                 -- 'important' | 'urgent' | NULL
+ALTER TABLE messages ADD COLUMN ack_requested boolean NOT NULL DEFAULT false;
+-- CHECK: どちらもトップレベルの投稿だけ (parent_id IS NULL OR (priority IS NULL AND NOT ack_requested))
+
+CREATE TABLE message_acks (
+  message_id  uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES users(id),
+  acked_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, user_id)
+);
+```
+
+- 重要度と「確認を求める」は投稿時にだけ付けられ、後から変えない (Mattermost と同じ)。
+- 確認は投稿者以外のメンバーが `PUT / DELETE /messages/{id}/ack` で付け外しする。`MessageOut.acks` は古い順。
+  変化は `message.updated` (`change = ack`) で配り、seq を消費する。メッセージを削除すると確認も消す。
 - `MessageOut.poll.votes` は選択肢ごとの投票者 id の配列 (投票順)。件数と「自分の票」はクライアントが導く。
 
 ### reactions

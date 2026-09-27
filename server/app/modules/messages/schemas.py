@@ -1,13 +1,13 @@
 import re
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
-from app.modules.messages.models import Message, PollVote, Reaction
+from app.modules.messages.models import Message, MessageAck, PollVote, Reaction
 
 MAX_BODY_LENGTH = 20_000
 # Control characters other than newline and tab are stripped (SECURITY.md §5).
@@ -52,6 +52,14 @@ class PollOut(BaseModel):
     votes: list[list[UUID]]
 
 
+Priority = Literal["important", "urgent"]
+
+
+class AckOut(BaseModel):
+    user_id: UUID
+    acked_at: datetime
+
+
 class MessageCreate(BaseModel):
     client_msg_id: UUID
     body: str = Field(default="", max_length=MAX_BODY_LENGTH)
@@ -60,6 +68,9 @@ class MessageCreate(BaseModel):
     also_in_channel: bool = False
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
     poll: PollCreate | None = None
+    # M15e: a top-level post may be marked important / urgent and ask readers to acknowledge it.
+    priority: Priority | None = None
+    ack_requested: bool = False
 
     @field_validator("body")
     @classmethod
@@ -72,6 +83,8 @@ class MessageCreate(BaseModel):
             raise ValueError("body must not be empty")
         if self.also_in_channel and self.parent_id is None:
             raise ValueError("also_in_channel is for thread replies")
+        if self.parent_id is not None and (self.priority is not None or self.ack_requested):
+            raise ValueError("priority and acknowledgements are for top-level messages")
         return self
 
 
@@ -127,6 +140,10 @@ class MessageOut(BaseModel):
     pinned_by: UUID | None = None
     # M14b: the poll, when the message carries one.
     poll: PollOut | None = None
+    # M15e: priority label, and who acknowledged a message that asked for it (oldest first).
+    priority: Priority | None = None
+    ack_requested: bool = False
+    acks: list[AckOut] = []
 
 
 class MessageRevisionOut(BaseModel):
@@ -187,6 +204,7 @@ def to_message_out(
     reactions: Sequence[Reaction] = (),
     attachments: Sequence[AttachmentOut] = (),
     votes: Sequence[PollVote] = (),
+    acks: Sequence[MessageAck] = (),
 ) -> MessageOut:
     deleted = message.is_deleted
     return MessageOut(
@@ -212,6 +230,9 @@ def to_message_out(
         pinned_at=None if deleted else message.pinned_at,
         pinned_by=None if deleted else message.pinned_by,
         poll=None if deleted else poll_out(message.poll, votes),
+        priority=message.priority,  # type: ignore[arg-type]
+        ack_requested=message.ack_requested,
+        acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],
     )
 
 

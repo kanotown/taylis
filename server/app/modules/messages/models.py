@@ -62,11 +62,24 @@ class Message(Base):
     pinned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     # Poll (M14b): {question, options, multiple, closed_at}; the votes live in poll_votes.
     poll: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # M15e: "important" / "urgent" on a top-level post, and whether readers are asked to
+    # acknowledge it (the acknowledgements live in message_acks).
+    priority: Mapped[str | None] = mapped_column(String(16))
+    ack_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),
         CheckConstraint(
             "NOT also_in_channel OR parent_id IS NOT NULL", name="also_in_channel_needs_parent"
+        ),
+        CheckConstraint(
+            "priority IS NULL OR priority IN ('important', 'urgent')", name="priority_values"
+        ),
+        CheckConstraint(
+            "parent_id IS NULL OR (priority IS NULL AND NOT ack_requested)",
+            name="priority_top_level",
         ),
         Index(
             "messages_client_msg_id_uniq",
@@ -116,6 +129,20 @@ class PollVote(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
     option_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
+class MessageAck(Base):
+    """One member's "確認しました" on a message that asked for it (M15e)."""
+
+    __tablename__ = "message_acks"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    acked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
 

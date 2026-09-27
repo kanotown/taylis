@@ -139,6 +139,17 @@ async def unvote(message_id: UUID, index: int, user: CurrentUser, db: Db) -> Mes
     return message
 
 
+@router.put("/messages/{message_id}/ack", response_model=MessageOut)
+async def acknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    """M15e: 「確認しました」 on a message that asks for it (not your own); idempotent."""
+    return await service.set_ack(db, user, message_id, present=True)
+
+
+@router.delete("/messages/{message_id}/ack", response_model=MessageOut)
+async def unacknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    return await service.set_ack(db, user, message_id, present=False)
+
+
 @router.post("/messages/{message_id}/poll/close", response_model=MessageOut)
 async def close_poll(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
     """M14b: the author or an administrator ends the voting."""

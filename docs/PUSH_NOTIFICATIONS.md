@@ -120,7 +120,7 @@ WS の `ping` フレームに `{ "active": true|false }` を持たせ、クラ�
   "channel_id": "…", "message_id": "…", "seq": 1533,
   "title": "#general",                 // DM なら相手の表示名
   "subtitle": "Alice",                 // チャンネルの場合の送信者。DM では省略
-  "body": "本文の先頭 200 文字",         // PUSH_INCLUDE_CONTENT=false なら "新しいメッセージ"
+  "body": "本文の先頭 200 文字",         // PUSH_INCLUDE_CONTENT=false なら "新しいメッセージ"。重要度 (M15e) があれば先頭に "[重要] " / "[緊急] "
   "badge": 3,
   "collapse_key": "<channel_id>",
   "sent_at": "2026-09-25T13:00:00Z"

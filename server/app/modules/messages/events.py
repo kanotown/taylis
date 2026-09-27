@@ -19,7 +19,7 @@ class MessageCreatedData(BaseModel):
 
 class MessageUpdatedData(BaseModel):
     message: MessageOut
-    change: Literal["body", "reactions", "pin", "poll"]
+    change: Literal["body", "reactions", "pin", "poll", "ack"]
 
 
 class MessageDeletedData(BaseModel):

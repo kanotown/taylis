@@ -214,6 +214,8 @@ class PushPlanner:
             if self.settings.push_include_content
             else "新しいメッセージ"
         )
+        label = {"important": "[重要] ", "urgent": "[緊急] "}.get(str(message.get("priority")), "")
+        body = label + (body or "新しいメッセージ")  # M15e
         return PushPayload(
             kind="message",
             channel_id=channel.id,

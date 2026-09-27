@@ -898,6 +898,26 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AckOut": {
+            "properties": {
+              "acked_at": {
+                "format": "date-time",
+                "title": "Acked At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "acked_at"
+            ],
+            "title": "AckOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -969,6 +989,19 @@
           },
           "MessageOut": {
             "properties": {
+              "ack_requested": {
+                "default": false,
+                "title": "Ack Requested",
+                "type": "boolean"
+              },
+              "acks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AckOut"
+                },
+                "title": "Acks",
+                "type": "array"
+              },
               "also_in_channel": {
                 "default": false,
                 "title": "Also In Channel",
@@ -1105,6 +1138,22 @@
                   }
                 ],
                 "default": null
+              },
+              "priority": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "important",
+                      "urgent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Priority"
               },
               "reactions": {
                 "default": [],
@@ -1307,6 +1356,26 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AckOut": {
+            "properties": {
+              "acked_at": {
+                "format": "date-time",
+                "title": "Acked At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "acked_at"
+            ],
+            "title": "AckOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -1378,6 +1447,19 @@
           },
           "MessageOut": {
             "properties": {
+              "ack_requested": {
+                "default": false,
+                "title": "Ack Requested",
+                "type": "boolean"
+              },
+              "acks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AckOut"
+                },
+                "title": "Acks",
+                "type": "array"
+              },
               "also_in_channel": {
                 "default": false,
                 "title": "Also In Channel",
@@ -1514,6 +1596,22 @@
                   }
                 ],
                 "default": null
+              },
+              "priority": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "important",
+                      "urgent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Priority"
               },
               "reactions": {
                 "default": [],
@@ -1717,6 +1815,26 @@
       "consumes_seq": true,
       "data": {
         "$defs": {
+          "AckOut": {
+            "properties": {
+              "acked_at": {
+                "format": "date-time",
+                "title": "Acked At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "acked_at"
+            ],
+            "title": "AckOut",
+            "type": "object"
+          },
           "AttachmentOut": {
             "properties": {
               "content_type": {
@@ -1788,6 +1906,19 @@
           },
           "MessageOut": {
             "properties": {
+              "ack_requested": {
+                "default": false,
+                "title": "Ack Requested",
+                "type": "boolean"
+              },
+              "acks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/AckOut"
+                },
+                "title": "Acks",
+                "type": "array"
+              },
               "also_in_channel": {
                 "default": false,
                 "title": "Also In Channel",
@@ -1925,6 +2056,22 @@
                 ],
                 "default": null
               },
+              "priority": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "important",
+                      "urgent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Priority"
+              },
               "reactions": {
                 "default": [],
                 "items": {
@@ -2057,7 +2204,8 @@
               "body",
               "reactions",
               "pin",
-              "poll"
+              "poll",
+              "ack"
             ],
             "title": "Change",
             "type": "string"
