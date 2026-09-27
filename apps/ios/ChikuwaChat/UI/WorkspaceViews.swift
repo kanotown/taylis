@@ -1,8 +1,15 @@
 import SwiftUI
 
 /// The eight tile colours of the desktop rail (apps/desktop/src/state/workspaces.ts), so a workspace looks the same on both.
-private let workspacePalette: [Color] = [0x5b5bd6, 0x0f9d8a, 0xd9480f, 0xc2255c, 0x1c7ed6, 0x7048e8, 0x2b8a3e, 0xe67700].map { hex in
-    Color(red: Double((hex >> 16) & 0xff) / 255, green: Double((hex >> 8) & 0xff) / 255, blue: Double(hex & 0xff) / 255)
+/// Spelled out with explicit types: the literal-to-Color chain made older compilers (Xcode 26) give up type-checking.
+private let workspacePaletteHex: [UInt32] = [0x5b5bd6, 0x0f9d8a, 0xd9480f, 0xc2255c, 0x1c7ed6, 0x7048e8, 0x2b8a3e, 0xe67700]
+private let workspacePalette: [Color] = workspacePaletteHex.map(paletteColor)
+
+private func paletteColor(_ hex: UInt32) -> Color {
+    let red = Double((hex >> 16) & 0xff) / 255
+    let green = Double((hex >> 8) & 0xff) / 255
+    let blue = Double(hex & 0xff) / 255
+    return Color(red: red, green: green, blue: blue)
 }
 
 /// A workspace's tile (M16c): its initials on its colour, grey while signed out, a dot when something waits there.
