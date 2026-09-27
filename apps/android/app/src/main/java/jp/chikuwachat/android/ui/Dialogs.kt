@@ -164,7 +164,9 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
     var renaming by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf<String?>(null) }
-    val canManage = channel.channel.membership?.role == "owner" || store.me?.role == "admin"
+    val isAdmin = store.me?.role == "admin"
+    val canManage = channel.channel.membership?.role == "owner" || isAdmin
+    val toPrivate = channel.channel.type == "public"
     LaunchedEffect(channel.id) { controller.memberList(channel.id).onSuccess { members = it } }
     val level = channel.channel.notification?.level ?: if (isChannel) "mentions" else "all"
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
@@ -255,6 +257,20 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                             TextButton(onClick = { scope.launch { if (controller.archiveChannel(channel.id)) onDismiss() } }) { Text("アーカイブ", color = MaterialTheme.colorScheme.error) }
                             TextButton(onClick = { confirm = null }) { Text("キャンセル") }
                         }
+                        // M15b: making a channel public shows its whole history, so that direction is for admins only.
+                        "convert" -> Column {
+                            Text(
+                                if (toPrivate) "非公開にすると、メンバー以外はこのチャンネルを見つけられず、これまでのメッセージもメンバーだけが読めます。" + (if (isAdmin) "" else "公開に戻せるのは管理者だけです。")
+                                else "公開すると、ゲスト以外の全員が参加でき、これまでのメッセージも読めるようになります。",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Row {
+                                TextButton(onClick = { scope.launch { if (controller.convertChannel(channel.id, if (toPrivate) "private" else "public")) confirm = null } }) {
+                                    Text(if (toPrivate) "非公開にする" else "公開にする", color = MaterialTheme.colorScheme.error)
+                                }
+                                TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                            }
+                        }
                     }
                     if (confirm == null && !renaming) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -266,6 +282,21 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                                 TextButton(onClick = { scope.launch { if (controller.unarchiveChannel(channel.id)) onDismiss() } }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブを解除") }
                             }
                             TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text("退出", color = MaterialTheme.colorScheme.error) }
+                        }
+                        if (canManage && !channel.channel.archived) {
+                            // M15a: an announcement channel; thread replies stay open to everyone.
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text("投稿をオーナーと管理者に限る", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = channel.channel.isAnnouncement,
+                                    onCheckedChange = { on -> scope.launch { controller.setPostingPolicy(channel.id, if (on) "owners" else "everyone") } },
+                                )
+                            }
+                        }
+                        if ((toPrivate && canManage) || (channel.channel.type == "private" && isAdmin)) {
+                            TextButton(onClick = { confirm = "convert" }, contentPadding = PaddingValues(0.dp)) {
+                                Text(if (toPrivate) "非公開チャンネルに変換" else "公開チャンネルに変換")
+                            }
                         }
                     }
                 }

@@ -446,6 +446,7 @@ class SyncEngine(
                 val memberIds = (frame.data["member_ids"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
                 val isMember = store.me?.id?.let { it in memberIds } ?: false
                 if (isMember || channel.type == "public") store.upsertChannel(channel, isMember = isMember)
+                else if (store.channel(channel.id) != null) store.removeChannel(channel.id) // made private (M15b)
             }
             "channel.archived" -> frame.data.str("channel_id")?.let { id ->
                 store.updateChannel(id) { it.copy(channel = it.channel.copy(archived = true)) }

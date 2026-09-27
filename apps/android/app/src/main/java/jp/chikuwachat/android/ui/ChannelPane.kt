@@ -3,6 +3,7 @@ package jp.chikuwachat.android.ui
 import jp.chikuwachat.android.ui.EmojiEntry
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -190,6 +191,14 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
             Text("このチャンネルはアーカイブされています", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else if (!channel.isMember) {
             TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
+        } else if (!channel.canPostTopLevel(isAdmin = controller.store.me?.role == "admin")) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         } else {
             TypingLine(controller, channelId, version = version)
             ConversationComposer(controller, channelId, version)

@@ -547,6 +547,29 @@ class SyncEngineTest {
         engine.stop(); scope.cancel()
     }
 
+    @Test fun channelSettingsKeepMyRoleAndHideChannelsMadePrivate() = runBlocking { // M15
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        val general = server.createChannel("general", alice.id)
+        val owner = Store(); val outsider = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engines = listOf(alice.id to owner, bob.id to outsider).map { (id, store) ->
+            SyncEngine(server.api(id), server.connector(id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        }
+        engines.forEach { it.start(); settle(it) }
+        assertEquals("owner", owner.channel(general.id)?.channel?.membership?.role)
+        assertEquals(false, outsider.channel(general.id)?.isMember)
+
+        server.updateChannel(general.id, postingPolicy = "owners"); engines.forEach { settle(it) }
+        assertEquals(true, owner.channel(general.id)?.channel?.isAnnouncement)
+        assertEquals(true, owner.channel(general.id)?.canPostTopLevel(isAdmin = false)) // the event carries no membership
+
+        server.updateChannel(general.id, type = "private"); engines.forEach { settle(it) }
+        assertEquals("private", owner.channel(general.id)?.channel?.type)
+        assertNull(outsider.channel(general.id))
+        engines.forEach { it.stop() }; scope.cancel()
+    }
+
     @Test fun browsablePublicChannelsAndJoining() = runBlocking {
         val server = FakeServer()
         val alice = server.addUser("alice"); val bob = server.addUser("bob")

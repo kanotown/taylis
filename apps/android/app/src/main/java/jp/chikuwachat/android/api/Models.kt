@@ -140,8 +140,11 @@ data class ChannelOut(
     val readState: ReadStateOut? = null,
     /** How many members the channel has (M11h); lists, single-channel responses and channel events carry it. */
     val memberCount: Int? = null,
+    /** M15a: "owners" = an announcement channel (only owners and admins start top-level posts). */
+    val postingPolicy: String? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
+    val isAnnouncement: Boolean get() = postingPolicy == "owners"
 }
 
 @Serializable

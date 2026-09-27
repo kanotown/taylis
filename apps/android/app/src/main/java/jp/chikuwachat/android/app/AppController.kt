@@ -614,6 +614,18 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
+    /** M15a: "owners" makes an announcement channel (owners and admins start the posts). */
+    suspend fun setPostingPolicy(channelId: String, policy: String): Boolean = runCatching {
+        store.upsertChannel(api!!.updateChannel(channelId, postingPolicy = policy))
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** M15b: public → private (owner / admin) or private → public (admin only). */
+    suspend fun convertChannel(channelId: String, type: String): Boolean = runCatching {
+        store.upsertChannel(api!!.updateChannel(channelId, type = type))
+        true
+    }.getOrElse { error = describe(it); false }
+
     suspend fun archiveChannel(channelId: String): Boolean = runCatching {
         store.upsertChannel(api!!.archiveChannel(channelId))
         true
