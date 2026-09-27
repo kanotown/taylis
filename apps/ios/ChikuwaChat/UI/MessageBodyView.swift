@@ -26,6 +26,13 @@ enum BodyBlock: Equatable {
     case quote([[BodyToken]])
     case list(ordered: Bool, start: Int, items: [BodyListItem])
     case codeBlock(String, lang: String?)
+    /// M15g: a GFM table; rows have exactly as many cells as the header.
+    case table(align: [BodyTableAlign], header: [[BodyToken]], rows: [[[BodyToken]]])
+}
+
+/// M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right).
+enum BodyTableAlign: Equatable {
+    case none, left, center, right
 }
 
 enum BodyTokenizer {
@@ -38,6 +45,40 @@ enum BodyTokenizer {
     private static let numbered = try! NSRegularExpression(pattern: #"^(\s*)(\d{1,3})\.\s+(.*)$"#)
     private static let quote = try! NSRegularExpression(pattern: #"^>\s?(.*)$"#)
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(\S.*)$"#)
+    private static let tableSeparator = try! NSRegularExpression(pattern: #"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
+
+    /// M15g: the cells of a table row; "\|" is a literal pipe, outer pipes are optional.
+    static func splitTableRow(_ line: String) -> [String] {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("|") { text.removeFirst() }
+        if text.hasSuffix("|") && !text.hasSuffix("\\|") { text.removeLast() }
+        var cells: [String] = []
+        var current = ""
+        let chars = Array(text)
+        var index = 0
+        while index < chars.count {
+            let ch = chars[index]
+            if ch == "\\", index + 1 < chars.count, chars[index + 1] == "|" {
+                current.append("|")
+                index += 2
+                continue
+            }
+            if ch == "|" {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(ch)
+            }
+            index += 1
+        }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+
+    private static func tableAlign(_ cell: String) -> BodyTableAlign {
+        let left = cell.hasPrefix(":"), right = cell.hasSuffix(":")
+        return left && right ? .center : right ? .right : left ? .left : .none
+    }
 
     /// Whole-body tokens (inline markup, fenced code and newlines); kept for the search highlighter and tests.
     static func tokenize(_ body: String) -> [BodyToken] { scan(body, pattern: fullPattern, withBlocks: true) }
@@ -109,6 +150,11 @@ enum BodyTokenizer {
             ((index + 1)..<lines.count).first { firstMatch(fenceClose, lines[$0]) != nil }
         }
         func opensFence(_ index: Int) -> Bool { firstMatch(fenceOpen, lines[index]) != nil && fenceCloseAfter(index) != nil }
+        // M15g: a header row with a pipe, directly followed by a separator with as many cells.
+        func opensTable(_ index: Int) -> Bool {
+            guard index + 1 < lines.count, lines[index].contains("|"), firstMatch(tableSeparator, lines[index + 1]) != nil else { return false }
+            return splitTableRow(lines[index]).count == splitTableRow(lines[index + 1]).count
+        }
         var blocks: [BodyBlock] = []
         var i = 0
         while i < lines.count {
@@ -133,6 +179,19 @@ enum BodyTokenizer {
                 blocks.append(.quote(quoted))
                 continue
             }
+            if opensTable(i) {
+                let header = splitTableRow(line)
+                let align = splitTableRow(lines[i + 1]).map(tableAlign)
+                var rows: [[[BodyToken]]] = []
+                i += 2
+                while i < lines.count, lines[i].contains("|"), !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
+                    let cells = splitTableRow(lines[i])
+                    rows.append(header.indices.map { tokenizeInline($0 < cells.count ? cells[$0] : "") }) // short rows pad, long rows are cut (GFM)
+                    i += 1
+                }
+                blocks.append(.table(align: align, header: header.map(tokenizeInline), rows: rows))
+                continue
+            }
             let isBullet = firstMatch(bullet, line) != nil
             if isBullet || firstMatch(numbered, line) != nil {
                 let ordered = !isBullet
@@ -151,7 +210,7 @@ enum BodyTokenizer {
             var paragraph: [[BodyToken]] = []
             while i < lines.count {
                 let current = lines[i]
-                if !paragraph.isEmpty, opensFence(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil { break }
+                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil { break }
                 paragraph.append(tokenizeInline(current))
                 i += 1
             }
@@ -206,6 +265,8 @@ struct MessageBodyView: View {
                     .padding(.leading, CGFloat(item.level) * 16)
                 }
             }
+        case .table(let align, let header, let rows):
+            tableView(align: align, header: header, rows: rows)
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {
                 if let lang { Text(lang.uppercased()).font(.caption2).foregroundStyle(.secondary) }
@@ -214,6 +275,39 @@ struct MessageBodyView: View {
             .padding(8)
             .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    /// M15g: a bordered grid; wide tables scroll sideways.
+    private func tableView(align: [BodyTableAlign], header: [[BodyToken]], rows: [[[BodyToken]]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(header.indices, id: \.self) { column in
+                        tableCell(header[column], align: align[column], header: true)
+                    }
+                }
+                ForEach(rows.indices, id: \.self) { row in
+                    GridRow {
+                        ForEach(rows[row].indices, id: \.self) { column in
+                            tableCell(rows[row][column], align: align[column], header: false)
+                        }
+                    }
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true) // rows only as tall as their content
+            .overlay(Rectangle().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+        }
+    }
+
+    private func tableCell(_ tokens: [BodyToken], align: BodyTableAlign, header: Bool) -> some View {
+        let alignment: Alignment = align == .center ? .center : align == .right ? .trailing : .leading
+        return inlineText(tokens)
+            .font(header ? .subheadline.bold() : .subheadline)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment) // every cell fills its row
+            .background(header ? Color.secondary.opacity(0.1) : Color.clear)
+            .border(Color.secondary.opacity(0.25), width: 0.5)
     }
 
     private func marker(ordered: Bool, index: Int, start: Int, level: Int) -> String {

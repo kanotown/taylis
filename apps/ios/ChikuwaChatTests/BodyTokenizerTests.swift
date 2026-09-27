@@ -51,4 +51,23 @@ final class BodyTokenizerTests: XCTestCase {
             .mentionGroup("00000000-0000-7000-8000-00000000000a"), .text(" and "), .mention("00000000-0000-7000-8000-000000000001"),
         ])
     }
+
+    func testTablesWithAlignmentEscapesAndRaggedRows() {  // M15g
+        let body = "予定:\n| 項目 | 担当 | 期限 |\n| :--- | :-: | ---: |\n| API | <@01234567-89ab-cdef-0123-456789abcdef> | 10/2 |\n| a \\| b | **UI** |\n| x | y | z | extra |\n後書き"
+        let blocks = BodyTokenizer.parseBlocks(body)
+        XCTAssertEqual(blocks.count, 3)
+        guard case .table(let align, let header, let rows) = blocks[1] else { return XCTFail("no table: \(blocks)") }
+        XCTAssertEqual(align, [.left, .center, .right])
+        XCTAssertEqual(header, [[.text("項目")], [.text("担当")], [.text("期限")]])
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows[0][1], [.mention("01234567-89ab-cdef-0123-456789abcdef")])
+        XCTAssertEqual(rows[1][0], [.text("a | b")])
+        XCTAssertEqual(rows[1][1], [.bold("UI")])
+        XCTAssertEqual(rows[1][2], [])
+        XCTAssertEqual(rows[2].count, 3)
+        // Without a matching separator the pipes are text.
+        if case .paragraph = BodyTokenizer.parseBlocks("a | b\nc | d")[0] {} else { XCTFail("expected a paragraph") }
+        XCTAssertEqual(BodyTokenizer.parseBlocks("| a | b |\n| --- |").count, 1)
+        XCTAssertEqual(Timeline.excerpt("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |", hasAttachments: false, users: [:]), "項目 担当 API 田中")
+    }
 }

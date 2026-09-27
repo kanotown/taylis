@@ -41,6 +41,17 @@ final class ComposerSnapshotTests: XCTestCase {
         return m
     }
 
+    func testTableBodyRenders() throws {  // M15g
+        let body = "リリース前の担当表です\n| 項目 | 担当 | 状態 | 期限 |\n| :--- | :-: | :-: | ---: |\n| API の移行 | 田中 | ✅ 完了 | 9/30 |\n| **UI** の最終確認 | 鈴木 | 🚧 作業中 | 10/1 |\n| ドキュメント (`README`) | 佐藤 | 未着手 | 10/2 |\n質問があればスレッドへ"
+        let view = VStack(alignment: .leading) {
+            PriorityLabelView(priority: "important")
+            MessageBodyView(text: body, users: [:])
+            Spacer()
+        }.padding()
+        let image = try render(view, size: CGSize(width: 390, height: 320), name: "table-body.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
     func testChannelScreenWithComposerRenders() throws {
         let controller = AppController()
         let store = controller.store
