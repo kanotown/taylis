@@ -273,6 +273,20 @@
         "title": "Body_upload_api_v1_attachments_post",
         "type": "object"
       },
+      "Body_upload_avatar_api_v1_users_me_avatar_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_avatar_api_v1_users_me_avatar_post",
+        "type": "object"
+      },
       "BookmarkItem": {
         "properties": {
           "created_at": {
@@ -3056,6 +3070,18 @@
       },
       "UserMe": {
         "properties": {
+          "avatar_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Updated At"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -3202,6 +3228,18 @@
       },
       "UserPublic": {
         "properties": {
+          "avatar_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Updated At"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8123,6 +8161,77 @@
         ]
       }
     },
+    "/api/v1/users/me/avatar": {
+      "delete": {
+        "operationId": "delete_avatar_api_v1_users_me_avatar_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMe"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Avatar",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "description": "M14a: a PNG / JPEG / GIF / WebP, cropped square and resized to 256px.",
+        "operationId": "upload_avatar_api_v1_users_me_avatar_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_avatar_api_v1_users_me_avatar_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMe"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Avatar",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/users/me/password": {
       "put": {
         "operationId": "auth_password_api_v1_users_me_password_put",
@@ -8205,6 +8314,53 @@
           }
         ],
         "summary": "Get User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/avatar": {
+      "get": {
+        "description": "The picture (PNG). Clients add `?v=<avatar_updated_at>` so a change is not cached away.",
+        "operationId": "get_avatar_api_v1_users__user_id__avatar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Avatar",
         "tags": [
           "users"
         ]

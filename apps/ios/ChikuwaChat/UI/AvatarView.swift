@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Initials on a colour derived from the user id; no image uploads in v1.
+/// The profile picture when the user has one (M14a), else initials on a colour derived from the user id.
 struct AvatarView: View {
     let id: String
     let name: String
@@ -9,11 +9,8 @@ struct AvatarView: View {
     var presence: String? = nil
 
     var body: some View {
-        Text(Timeline.initials(name))
-            .font(.system(size: size * 0.42, weight: .bold))
-            .foregroundStyle(.white)
+        face
             .frame(width: size, height: size)
-            .background(Color(hue: Timeline.hue(id), saturation: 0.55, brightness: 0.72), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
             .overlay(alignment: .bottomTrailing) {
                 if let presence, presence != "offline" {
                     Circle()
@@ -24,6 +21,24 @@ struct AvatarView: View {
                 }
             }
             .accessibilityHidden(true)
+    }
+
+    /// The profile picture (M14a) when it is cached, else initials on a colour derived from the id.
+    @ViewBuilder
+    private var face: some View {
+        if let image = AvatarCache.shared.image(for: id) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+        } else {
+            Text(Timeline.initials(name))
+                .font(.system(size: size * 0.42, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: size, height: size)
+                .background(Color(hue: Timeline.hue(id), saturation: 0.55, brightness: 0.72), in: RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+        }
     }
 }
 

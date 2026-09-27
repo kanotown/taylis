@@ -33,6 +33,9 @@ class User(Base):
     quiet_hours_tz: Mapped[str | None] = mapped_column(Text)
     # Keyword notifications (M12g): a message containing one counts as a mention of me.
     notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    # Profile picture (M14a): the object key and its version (null = initials only).
+    avatar_key: Mapped[str | None] = mapped_column(Text)
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

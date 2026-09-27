@@ -250,6 +250,30 @@ export class ApiClient {
   }
 
   /** POST /emoji (multipart): a name and a small image; any member may add one. */
+  /** M14a: my profile picture (any common image; the server stores a 256px PNG). */
+  async uploadAvatar(file: Blob, filename: string): Promise<UserMe> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const form = new FormData();
+    form.append("file", file, filename);
+    const send = async (): Promise<Response> =>
+      this.fetchImpl(`${this.baseUrl}/api/v1/users/me/avatar`, {
+        method: "POST",
+        headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
+        body: form,
+      });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return (await response.json()) as UserMe;
+  }
+
+  deleteAvatar(): Promise<UserMe> {
+    return this.request("DELETE", "/api/v1/users/me/avatar");
+  }
+
   async uploadEmoji(name: string, file: Blob, filename: string): Promise<CustomEmojiOut> {
     if (!this.accessToken && this.refreshToken) await this.refresh();
     const form = new FormData();

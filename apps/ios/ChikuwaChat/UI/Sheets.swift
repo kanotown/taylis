@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct NewDmView: View {
@@ -340,6 +341,7 @@ struct SettingsView: View {
     private var keywordsChanged: Bool { parsedKeywords != (controller.store.me?.notifyKeywords ?? []) }
     @State private var nameSaved = false
     @State private var editingStatus = false
+    @State private var avatarItem: PhotosPickerItem?
     @State private var current = ""
     @State private var next = ""
     @State private var repeated = ""
@@ -381,6 +383,11 @@ struct SettingsView: View {
                                 Text(me.displayName).font(.headline)
                                 Text("@\(me.username)").font(.footnote).foregroundStyle(.secondary)
                             }
+                        }
+                        // M14a: profile picture
+                        PhotosPicker(selection: $avatarItem, matching: .images) { Label("写真を選ぶ", systemImage: "photo") }
+                        if me.avatarUpdatedAt != nil {
+                            Button("写真を削除", role: .destructive) { Task { _ = await controller.deleteAvatar() } }
                         }
                     }
                     Section("ステータス") {
@@ -462,6 +469,15 @@ struct SettingsView: View {
                 }
             }
             .task { totp = await controller.totpStatus() }
+            .onChange(of: avatarItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        _ = await controller.uploadAvatar(data: data, contentType: item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg")
+                    }
+                    avatarItem = nil
+                }
+            }
             .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ") }
         }
     }

@@ -6,6 +6,7 @@ import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { unreadBadgeTotal } from "../ui/channels";
+import { configureAvatars, noteVersions } from "../ui/avatars";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
@@ -137,6 +138,7 @@ export class AppController {
       onTokens: (tokens: TokenResponse) => void this.secrets.set(account, tokens.refresh_token),
       onSignedOut: () => { if (this.api === api) void this.handleSignedOut(account); },
     });
+    configureAvatars((path) => api.fetchBlob(path)); // M14a
     return api;
   }
 
@@ -633,6 +635,34 @@ export class AppController {
     }
   }
 
+  /** M14a: choose (or drop) my profile picture; the store learns the new version at once. */
+  async uploadAvatar(file: File): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const updated = await this.api.uploadAvatar(file, file.name || "avatar");
+      this.me = updated;
+      this.store.setMe(updated);
+      this.setNotice("写真を更新しました");
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async deleteAvatar(): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const updated = await this.api.deleteAvatar();
+      this.me = updated;
+      this.store.setMe(updated);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   async updateDisplayName(displayName: string): Promise<boolean> {
     if (!this.api) return false;
     try {
@@ -677,7 +707,11 @@ export class AppController {
     this.store = new Store(isTauri() ? await SqlitePersistence.open(profile) : null);
     await this.store.load();
     const badgeStore = this.store;
-    badgeStore.subscribe(() => { if (this.store === badgeStore) void setUnreadBadge(unreadBadgeTotal(badgeStore.channels.values())); });
+    badgeStore.subscribe(() => {
+      if (this.store !== badgeStore) return;
+      void setUnreadBadge(unreadBadgeTotal(badgeStore.channels.values()));
+      noteVersions(badgeStore.users.values()); // M14a: pictures follow user.updated
+    });
     if (restoring && (!this.store.me || this.store.me.must_change_password)) return false;
     if (restoring) this.me = this.store.me;
     else if (this.me) this.store.setMe(this.me);
@@ -887,6 +921,7 @@ export class AppController {
   private async handleSignedOut(account: string): Promise<void> {
     this.engine?.stop();
     void setUnreadBadge(0);
+    configureAvatars(null);
     this.engine = null;
     this.api = null;
     this.me = null;

@@ -329,6 +329,19 @@ final class ApiClient: SyncApi {
         return try JSON.snakeDecoder.decode(AttachmentOut.self, from: data)
     }
 
+    /// M14a: my profile picture (any common image; the server stores a 256px PNG).
+    func uploadAvatar(data fileData: Data, contentType: String) async throws -> UserMe {
+        let boundary = "chikuwa-" + UUID().uuidString
+        var body = Data()
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"avatar\"\r\nContent-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        let (data, _) = try await requestData("POST", "/api/v1/users/me/avatar", body: body, contentType: "multipart/form-data; boundary=\(boundary)", retry401: true)
+        return try JSON.snakeDecoder.decode(UserMe.self, from: data)
+    }
+
+    func deleteAvatar() async throws -> UserMe { try await request("DELETE", "/api/v1/users/me/avatar") }
+
     /// Authenticated GET returning the raw body (thumbnails, downloads).
     func fetchData(_ path: String) async throws -> Data {
         try await requestData("GET", path, body: nil, contentType: nil, retry401: true).0

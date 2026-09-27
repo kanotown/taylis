@@ -48,6 +48,7 @@ import jp.chikuwachat.android.platform.PushCenter
 import jp.chikuwachat.android.platform.PushMessage
 import jp.chikuwachat.android.platform.fetchFcmToken
 import jp.chikuwachat.android.platform.RoomPersistence
+import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.platform.SecretStore
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
@@ -134,6 +135,8 @@ class AppController(private val app: Application) {
         val account = account(server, username)
         val api = ApiClient(server, http)
         api.onTokens = { tokens -> scope.launch { secrets.putSecret(account, tokens.refreshToken) } }
+        AvatarCache.fetcher = { path -> api.fetchBytes(path) }  // M14a
+        AvatarCache.scope = scope
         api.onSignedOut = { scope.launch { if (this@AppController.api === api) handleSignedOut(account) } }
         return api
     }
@@ -357,6 +360,7 @@ class AppController(private val app: Application) {
     }
 
     private suspend fun handleSignedOut(account: String) {
+        AvatarCache.reset()
         engine?.stop()
         engine = null
         api = null
@@ -660,6 +664,24 @@ class AppController(private val app: Application) {
         store.channels.values.firstOrNull { it.channel.type == "dm" && userId in (it.channel.dmUserIds ?: emptyList()) && (it.channel.dmUserIds?.size ?: 0) <= 2 }?.let { return it.id }
         return createDm(listOf(userId)).getOrElse { error = describe(it); null }
     }
+
+    /** M14a: choose (or drop) my profile picture; the store learns the new version at once. */
+    suspend fun uploadAvatar(uri: Uri): Boolean = runCatching {
+        val api = api ?: error("ログインが必要です")
+        val resolver = app.contentResolver
+        val bytes = withContext(Dispatchers.IO) { resolver.openInputStream(uri)?.use { it.readBytes() } } ?: error("読み込めませんでした")
+        val updated = api.uploadAvatar(bytes, resolver.getType(uri))
+        me = updated
+        store.setMe(updated)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    suspend fun deleteAvatar(): Boolean = runCatching {
+        val updated = api!!.deleteAvatar()
+        me = updated
+        store.setMe(updated)
+        true
+    }.getOrElse { error = describe(it); false }
 
     suspend fun updateDisplayName(displayName: String): Boolean = runCatching {
         val updated = api!!.updateMe(displayName = displayName.trim())

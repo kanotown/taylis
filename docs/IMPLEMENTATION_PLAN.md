@@ -353,6 +353,19 @@ CI / 監視の通知がチームチャットの主用途のひとつなので最
 | M13f | Desktop の未読バッジ | 参加中の会話のバッジ数 (チャンネルはメンション、DM は未読、ミュート中はメンション) の合計を Tauri では Dock / タスクバーの `setBadgeCount` (capability `core:window:allow-set-badge-count`)、ブラウザではタブのタイトル `(N) ChikuwaChat` に出す。ストアの更新ごとに追従、ログアウトで消す。通知音は見送り (OS 通知の音に任せる) | **実装済み (2026-09-27)**: Desktop vitest 120 |
 | M13g | メンバーディレクトリ | 「メンバー」: 全員 (無効化を除く) を在席順に、肩書・カスタムステータス・在席・ロール (管理者 / ゲスト / BOT)・🔕 と共に一覧し、名前・ユーザー名・肩書で絞り込み、その場で DM を開く。Desktop は DM 節のアイコン、iOS / Android は + メニューの「メンバー」 | **実装済み (2026-09-27)**: Desktop (実サーバで目視)、iOS XCTest、Android ビルド |
 
+### M14: Slack / Mattermost 相当の続き 3 (2026-09-27〜)
+
+M13 と同じ進め方。目に見える差が大きいものから。
+
+| # | 機能 | 内容 | 状況 |
+| --- | --- | --- | --- |
+| M14a | アバター画像 | `users.avatar_key` / `avatar_updated_at` (マイグレーション 0024)、葉モジュール `avatars`: `POST /users/me/avatar` (multipart、5 MB まで、PNG / JPEG / GIF / WebP → 正方形に切って 256px の PNG、`avatars/<user_id>/<uuid>`、古い画像は削除)、`DELETE /users/me/avatar`、`GET /users/{id}/avatar` (要ログイン、1 日キャッシュ、`?v=` で版を分ける)。`UserPublic.avatar_updated_at` が版なので `user.updated` で全端末が新しい画像を取り直す。3 端末: Avatar が画像 (キャッシュ) か従来のイニシャル、設定に「写真を選ぶ / 削除」 | **実装済み (2026-09-27)**: サーバ pytest 180、Desktop vitest 122 (実サーバで目視)、iOS XCTest 79、Android ビルド |
+| M14b | 投票 | メッセージに付く投票 (質問、選択肢 2〜10、単一 / 複数、締切なし)。`polls` / `poll_votes`、`POST /channels/{id}/polls`、`PUT/DELETE /polls/{id}/votes/{option}`、`poll.updated`。3 端末で本文の下に選択肢と票数、`/poll 質問 | 選択肢 | 選択肢` | 未着手 |
+| M14c | メッセージの編集履歴 | `message_revisions` に編集前の本文を残し、`GET /messages/{id}/history`。「(編集済み)」から履歴を見る | 未着手 |
+| M14d | OIDC ログイン | 外部 IdP (Google / Microsoft / Keycloak など) の authorization code + PKCE。メールでアカウントを紐付け、初回は招待相当の扱い。Desktop はループバック、モバイルはシステムブラウザ | 未着手 |
+| M14e | 添付の直接配信 | `BlobStore` の presigned URL で大きな添付のダウンロード / アップロードを API プロセスから外す | 未着手 |
+| M14f | サイドバーの節 | 自分で作る節 (例: 「プロジェクト」) にチャンネルを振り分ける。端末間で同期 | 未着手 |
+
 ### バックログ (未スケジュール)
 
 OIDC、presigned URL、Redis による複数プロセス化、Mattermost からのインポート (`mmctl export` の bulk-import JSONL を

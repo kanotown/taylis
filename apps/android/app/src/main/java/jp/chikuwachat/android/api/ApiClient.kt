@@ -232,6 +232,22 @@ class ApiClient(
         return Codec.snake.decodeFromString(AttachmentOut.serializer(), text)
     }
 
+    /** M14a: my profile picture (any common image; the server stores a 256px PNG). */
+    suspend fun uploadAvatar(bytes: ByteArray, contentType: String?): UserMe {
+        if (accessToken == null && refreshToken != null) refresh()
+        val part = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", "avatar", bytes.toRequestBody((contentType ?: "image/jpeg").toMediaType()))
+            .build()
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v1/users/me/avatar").post(part).header("Accept", "application/json")
+        accessToken?.let { request.header("Authorization", "Bearer $it") }
+        val (status, text) = execute(request.build())
+        if (status == 401) { refresh(); return uploadAvatar(bytes, contentType) }
+        if (status !in 200..299) throw decodeError(status, text)
+        return Codec.snake.decodeFromString(UserMe.serializer(), text)
+    }
+
+    suspend fun deleteAvatar(): UserMe = request("DELETE", "/api/v1/users/me/avatar")
+
     /** Authenticated GET returning raw bytes (thumbnails and downloads). */
     suspend fun fetchBytes(path: String): ByteArray {
         if (accessToken == null && refreshToken != null) refresh()

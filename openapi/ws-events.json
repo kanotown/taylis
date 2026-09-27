@@ -2312,6 +2312,19 @@
           },
           "UserPublic": {
             "properties": {
+              "avatar_updated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Avatar Updated At"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",
@@ -2497,6 +2510,19 @@
           },
           "UserPublic": {
             "properties": {
+              "avatar_updated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Avatar Updated At"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",
@@ -2682,6 +2708,19 @@
           },
           "UserPublic": {
             "properties": {
+              "avatar_updated_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Avatar Updated At"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",

@@ -36,6 +36,7 @@
 		500A85FC8BEF5289D246D082 /* Invite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AD78A04AB0A93B55D3FBD1 /* Invite.swift */; };
 		56C48C77F91642F79A806183 /* CustomEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7D2AF429061631950C7906 /* CustomEmoji.swift */; };
 		581692ADE9D9F2BF23170BDE /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5396B11E764B50A589735215 /* ImageViewer.swift */; };
+		599ACEB5BF7FE2981FB95DEE /* AvatarCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */; };
 		5C1990D579D1995D99A86ADD /* NoticeToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC72EC7EE82888C41D902D52 /* NoticeToast.swift */; };
 		5FECA8B2E9AF819525A1CAA1 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */; };
 		63D7FD65CF59273241B845D0 /* ThreadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B46E6619531606984F31D78 /* ThreadsListView.swift */; };
@@ -177,6 +178,7 @@
 		BC121C06BFAA7AB89AC54106 /* DNDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNDTests.swift; sourceTree = "<group>"; };
 		C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChikuwaChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1B1B9CFD4F32337DCDC0CCA /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
+		C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCache.swift; sourceTree = "<group>"; };
 		C5B17C0044CEFA7773C29BDC /* Permalink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permalink.swift; sourceTree = "<group>"; };
 		CC72EC7EE82888C41D902D52 /* NoticeToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeToast.swift; sourceTree = "<group>"; };
 		CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChikuwaChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -215,6 +217,7 @@
 		13A2B3CCB81E377D6014568B /* Platform */ = {
 			isa = PBXGroup;
 			children = (
+				C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */,
 				6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */,
 				B7A02E6942A8D6B822643B15 /* PushCenter.swift */,
 				39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */,
@@ -518,6 +521,7 @@
 				4A6F0D7B6F124BAE39D7AA84 /* AppController.swift in Sources */,
 				2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */,
 				9E7035C4099857904103250B /* AttachmentsView.swift in Sources */,
+				599ACEB5BF7FE2981FB95DEE /* AvatarCache.swift in Sources */,
 				138952D589A640641DD470D6 /* AvatarView.swift in Sources */,
 				15295BD6F2E1B1010700B78D /* CameraPicker.swift in Sources */,
 				8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */,

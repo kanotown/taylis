@@ -56,6 +56,10 @@ final class AppController {
         let account = account(server.absoluteString, username)
         let api = ApiClient(baseUrl: server)
         api.onTokens = { tokens in Keychain.set(account: account, value: tokens.refreshToken) }
+        AvatarCache.shared.fetcher = { [weak api] path in
+            guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
+            return try await api.fetchData(path)
+        }
         api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
             guard let self, self.api === api else { return }
             self.handleSignedOut(account: account)
@@ -548,6 +552,27 @@ final class AppController {
         } catch { self.error = describe(error); return nil }
     }
 
+    /// M14a: choose (or drop) my profile picture; the store learns the new version at once.
+    func uploadAvatar(data: Data, contentType: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            let updated = try await api.uploadAvatar(data: data, contentType: contentType)
+            me = updated
+            store.setMe(updated)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    func deleteAvatar() async -> Bool {
+        guard let api else { return false }
+        do {
+            let updated = try await api.deleteAvatar()
+            me = updated
+            store.setMe(updated)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
     func updateDisplayName(_ displayName: String) async -> Bool {
         guard let api else { return false }
         do {
@@ -665,6 +690,7 @@ final class AppController {
     }
 
     private func handleSignedOut(account: String) {
+        AvatarCache.shared.reset()
         engine?.stop()
         engine = nil
         api = nil

@@ -22,6 +22,7 @@ data class UserPublic(
     /** Do not disturb (M12c): a manual pause and the daily quiet hours (public, for 🔕 next to the name). */
     val dndUntil: String? = null,
     val quietHours: QuietHours? = null,
+    val avatarUpdatedAt: String? = null,
 )
 
 /** A daily window (in the user's zone) during which pushes are held back (M12c). */
@@ -47,8 +48,10 @@ data class UserMe(
     val quietHours: QuietHours? = null,
     /** M12g: words that make a message count as a mention of me. */
     val notifyKeywords: List<String> = emptyList(),
+    /** M14a: when the profile picture changed (null = no picture); the cache key. */
+    val avatarUpdatedAt: String? = null,
 ) {
-    val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours)
+    val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
 
 /** A custom status (M11d) that has not expired: emoji to text; null otherwise. */
