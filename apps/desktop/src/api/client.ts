@@ -183,11 +183,12 @@ export class ApiClient {
     body: string,
     parentId: string | null = null,
     attachmentIds: string[] = [],
+    alsoInChannel = false,
   ): Promise<{ message: MessageOut; created: boolean }> {
     const { data, status } = await this.requestWithStatus<MessageOut>(
       "POST",
       `/api/v1/channels/${channelId}/messages`,
-      { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds },
+      { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds, ...(alsoInChannel ? { also_in_channel: true } : {}) },
     );
     return { message: data, created: status === 201 };
   }

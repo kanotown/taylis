@@ -62,10 +62,10 @@ describe("conversation UX", () => {
     expect(w.store.draft(w.other.id).attachments).toEqual([]);
     expect(w.store.draft(w.channel.id).attachments).toEqual([attachment]);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
-    expect(w.send).toHaveBeenLastCalledWith(w.other.id, "other conversation", undefined, null, []);
+    expect(w.send).toHaveBeenLastCalledWith(w.other.id, "other conversation", undefined, null, [], false);
     view.rerender(<w.DraftComposer />);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
-    expect(w.send).toHaveBeenLastCalledWith(w.channel.id, "with file", undefined, null, ["a1"]);
+    expect(w.send).toHaveBeenLastCalledWith(w.channel.id, "with file", undefined, null, ["a1"], false);
     expect(w.store.draft(w.channel.id)).toEqual({ text: "", attachments: [] });
   });
 
@@ -174,7 +174,7 @@ describe("conversation UX", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(w.send).not.toHaveBeenCalled(); // Enter is a newline by default
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, []);
+    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, [], false);
   });
 
   it("with Enter as the send key, Enter sends except inside an open code fence", () => {
@@ -189,6 +189,6 @@ describe("conversation UX", () => {
     fireEvent.change(box, { target: { value: "```\ncode\n```" } });
     box.setSelectionRange(12, 12);
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, []);
+    expect(w.send).toHaveBeenCalledWith(w.channel.id, "```\ncode\n```", undefined, null, [], false);
   });
 });

@@ -13,7 +13,7 @@ export interface SyncApi {
   bootstrap(): Promise<BootstrapOut>;
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
-  postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[]): Promise<{ message: MessageOut; created: boolean }>;
+  postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[], alsoInChannel?: boolean): Promise<{ message: MessageOut; created: boolean }>;
   replies(messageId: string): Promise<MessageOut[]>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
@@ -543,7 +543,7 @@ export class SyncEngine {
       store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
       return;
     }
-    if (message.parent_id) return; // replies are not unread items (DATA_MODEL.md read_states)
+    if (message.parent_id && !message.also_in_channel) return; // replies are not unread items unless also in the channel (M15c)
     if (message.seq <= channel.lastReadSeq) return;
     const mentioned = message.mention_all === true || (message.mentioned_user_ids ?? []).includes(me.id);
     store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
@@ -815,11 +815,12 @@ export class SyncEngine {
 
   // --- §9 optimistic send ---------------------------------------------------------------
 
-  send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null, attachmentIds: string[] = []): Promise<void> {
+  send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null, attachmentIds: string[] = [], alsoInChannel = false): Promise<void> {
     clientMsgId = clientMsgId ?? (this.deps.newId ?? defaultId)();
     const createdAt = (this.deps.now ?? (() => new Date().toISOString()))();
     const me = this.deps.store.me;
-    const item: OutboxItem = { client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt, parent_id: parentId, attachment_ids: attachmentIds };
+    const shared = alsoInChannel && parentId !== null; // M15c: only replies can also go to the channel
+    const item: OutboxItem = { client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt, parent_id: parentId, attachment_ids: attachmentIds, ...(shared ? { also_in_channel: true } : {}) };
     this.deps.store.addOutbox(item);
     this.deps.store.putPlaceholder({
       id: LOCAL_PREFIX + clientMsgId,
@@ -834,6 +835,7 @@ export class SyncEngine {
       deleted: false,
       pending: true,
       parent_id: parentId,
+      also_in_channel: shared,
     });
     return this.flushOutbox();
   }
@@ -872,7 +874,7 @@ export class SyncEngine {
       for (const item of [...this.deps.store.outbox]) {
         if (item.failed) continue;
         try {
-          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? []);
+          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? [], item.also_in_channel ?? false);
           this.deps.store.upsertMessage(result.message);
           this.deps.store.removeOutbox(item.client_msg_id);
         } catch (err) {
