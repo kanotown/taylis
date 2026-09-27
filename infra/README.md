@@ -245,7 +245,8 @@ git tag v1.2.3 → git push origin v1.2.3
               upload: このリリースの infra ファイル (compose / Caddyfile / スクリプト) を置き換える
               deploy: infra/deploy.sh → バックアップ → イメージ取得 → 入れ替え → /readyz を確認
                       起動しなければ直前のリリースに戻して失敗で終わる
-  (並行して macOS / Windows のデスクトップ版インストーラを作り、ワークフローの成果物に置く。未署名)
+  (デスクトップ版のインストーラは Actions → desktop → Run workflow で必要なときだけ作る。未署名)
+  deploy が成功したら、GHCR のイメージは新しい 3 リリース分だけ残す (Packages の無料枠)
 ```
 
 - DB のマイグレーションはアプリの起動時に走る。その直前に `backup.sh` のバックアップを必ず取る
@@ -333,8 +334,10 @@ root のパスワードログインは、鍵でログインできることを確
    秘密鍵は `gh secret set DEPLOY_SSH_KEY --env production --repo kanotown/chikuwachat < chikuwa-deploy` でも入る。
    入れたら手元の `chikuwa-deploy` は消してよい (再発行は鍵を作り直して `authorized_keys` を差し替える)。
 3. VPS が ARM の場合だけ、Variables に `DEPLOY_PLATFORMS=linux/arm64` を入れる (既定は linux/amd64)。
-4. Actions の無料枠 (非公開リポジトリは月 2,000 分、macOS は 10 倍で数える) を節約するため、iOS の
-   テスト (`ios.yml`) は iOS 関係のファイルが変わったときだけ、デスクトップのインストーラはタグのときだけ走る。
+4. Actions の無料枠 (非公開リポジトリは月 2,000 分、macOS は 10 倍・Windows は 2 倍で数える) を節約するため、
+   iOS のテスト (`ios.yml`) とデスクトップのインストーラ (`desktop.yml`) は手動実行だけにしている
+   (Actions → Run workflow。以前は iOS のテストだけで月の 7 割を使っていた)。iOS のテストはコミット前に Mac で
+   実行する。Billing の Budgets で Actions / Packages を $0・Stop usage にしておくと、枠を超えても課金されず止まる。
 
 **5. 最初のリリース**
 
