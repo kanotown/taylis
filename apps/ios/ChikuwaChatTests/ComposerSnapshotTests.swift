@@ -41,6 +41,19 @@ final class ComposerSnapshotTests: XCTestCase {
         return m
     }
 
+    func testAvatarCropScreenRenders() throws {  // M16g
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 1200), format: format).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1600, height: 1200))
+            UIColor.systemYellow.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 500, y: 300, width: 600, height: 600))
+        }
+        let image = try render(AvatarCropView(image: photo, onCancel: {}, onDone: { _ in }), size: CGSize(width: 393, height: 760), name: "avatar-crop.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
     func testTableBodyRenders() throws {  // M15g
         let body = "リリース前の担当表です\n| 項目 | 担当 | 状態 | 期限 |\n| :--- | :-: | :-: | ---: |\n| API の移行 | 田中 | ✅ 完了 | 9/30 |\n| **UI** の最終確認 | 鈴木 | 🚧 作業中 | 10/1 |\n| ドキュメント (`README`) | 佐藤 | 未着手 | 10/2 |\n質問があればスレッドへ"
         let view = VStack(alignment: .leading) {

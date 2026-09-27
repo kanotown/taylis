@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar, presenceLabel } from "./Avatar";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { StatusEmoji, UserPopover } from "./UserPopover";
@@ -320,6 +321,7 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
   // M12i: whether my account asks for an authenticator code, and the setup / disable flows.
   const [totp, setTotp] = useState<TotpStatusOut | null>(null);
   const [totpDialog, setTotpDialog] = useState<"setup" | "disable" | null>(null);
@@ -355,6 +357,16 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
 
   return (
     <Modal onClose={onClose} title="設定" className="w-[480px]">
+      {cropping && (
+        <AvatarCropDialog
+          file={cropping}
+          onCancel={() => setCropping(null)}
+          onDone={(picture) => {
+            setCropping(null);
+            void controller.uploadAvatar(new File([picture], "avatar.jpg", { type: "image/jpeg" }));
+          }}
+        />
+      )}
       <div className="mt-4 space-y-6">
         {me && (
           <div className="flex items-center gap-3 rounded-xl bg-panel p-3">
@@ -363,8 +375,9 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
               <div className="truncate font-semibold">{me.display_name}</div>
               <div className="text-sm text-muted">@{me.username}</div>
             </div>
-            <input ref={avatarInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void controller.uploadAvatar(file); }} />
-            <Button size="sm" variant="secondary" onClick={() => avatarInput.current?.click()} title="プロフィール画像: 正方形に切って 256px に縮小されます">
+            {/* M16g: any photo; the crop dialog turns the chosen square into a small JPEG before it is sent. */}
+            <input ref={avatarInput} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) setCropping(file); }} />
+            <Button size="sm" variant="secondary" onClick={() => avatarInput.current?.click()} title="プロフィール画像: 写真を選んで、使う範囲を決めます">
               <ImagePlus size={14} /> 写真
             </Button>
             {me.avatar_updated_at && (

@@ -241,7 +241,8 @@ guest に見えるのは同じチャンネルの人だけで、次の経路も�
 2026-09-27 の見直しで、表のうちメッセージ投稿と WS 接続の上限が未実装だったので実装した
 (`message_rate_limit_per_user` / `ws_max_connections_per_user` / `ws_connect_rate_limit_per_ip`)。
 
-本文サイズは Caddy で制限する (アップロード以外は 1 MB)。
+本文サイズは Caddy で制限する (アップロード以外は 1 MB。プロフィール画像は 6 MB、`AVATAR_MAX_BYTES` 5 MB に合わせる。
+クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。
 
 ## 6. トランスポートとデプロイ
 
