@@ -156,6 +156,7 @@ refresh(token):
 | 名前・トピック変更 | owner / admin | owner / admin | 不可 |
 | アーカイブ | owner / admin | owner / admin | 不可 |
 | 投稿制限の切り替え (M15a) | owner / admin | owner / admin | 不可 |
+| リンクの追加・変更 (M15f) | メンバー (guest 以外。投稿制限なら owner / admin) | 同左 | 同左 |
 | 公開 → 非公開 (M15b) | owner / admin | — | 不可 |
 | 非公開 → 公開 (M15b) | — | admin | 不可 |
 
@@ -164,6 +165,7 @@ guest は上の表の「誰でも」「メンバー」のうち、一覧・参�
 (受信 Webhook) だけ (`403 posting_restricted`)。スレッドの返信とリアクションは従来どおりメンバー全員。
 非公開 → 公開は過去ログ全体を全員に見せる操作なので admin に限り、変換はどちら向きも監査ログ
 `channel.converted` に残す。
+会話のリンク (M15f) は http / https だけを受け付ける (クライアントがそのまま開くため、`javascript:` や `data:` を入れさせない)。
 下書き (M15d) は本人の端末にだけ返し (`draft.updated` も本人宛て)、保存には会話のメンバーであることを要する。
 編集履歴 (M14c) は投稿者本人にだけ見せる。編集で取り消した内容 (誤って貼った秘密など) を他のメンバーに
 残さないため。メッセージを削除すると履歴も消える。

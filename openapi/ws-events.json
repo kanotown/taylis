@@ -338,6 +338,76 @@
         "type": "object"
       }
     },
+    "channel.links_updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "ChannelLinkOut": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "position": {
+                "title": "Position",
+                "type": "integer"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "url",
+              "position",
+              "created_by",
+              "created_at"
+            ],
+            "title": "ChannelLinkOut",
+            "type": "object"
+          }
+        },
+        "description": "channel.links_updated: the conversation's whole link bar after a change.",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/$defs/ChannelLinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel_id",
+          "links"
+        ],
+        "title": "ChannelLinksUpdatedData",
+        "type": "object"
+      }
+    },
     "channel.member_added": {
       "audience": "channel",
       "consumes_seq": false,

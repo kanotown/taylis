@@ -490,6 +490,26 @@ CREATE TABLE sidebar_section_channels (
 - お気に入りはセクションより優先して表示する。抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
 - 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
 
+### channel_links (会話の上部に並べるリンク、M15f)
+
+```sql
+CREATE TABLE channel_links (
+  id          uuid PRIMARY KEY,
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  title       varchar(80) NOT NULL,
+  url         text NOT NULL,                 -- http / https のみ、2000 文字まで
+  position    integer NOT NULL,              -- 0 から。並べ替えで詰め直す
+  created_by  uuid NOT NULL REFERENCES users(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX channel_links_channel_idx ON channel_links (channel_id, position);
+```
+
+- 会話ごとに 30 件まで。メッセージではないので channel seq は消費しない。
+- 変更はすべて `channel.links_updated` (audience=channel) でメンバーへ、ペイロードはリンク全体。
+  クライアントは会話を開いたとき (と再接続後に開いている会話) に `GET /channels/{id}/links` で読み直す。
+
 ### drafts (端末間で共有する下書き、M15d)
 
 ```sql
