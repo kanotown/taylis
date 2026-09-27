@@ -99,6 +99,16 @@ final class SQLitePersistence: Persistence {
         for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: url.path + suffix) }
     }
 
+    /// Whether the account's database (if it has one) knows the channel: routes a notification that carries no
+    /// workspace_id to its workspace (WORKSPACES.md §7). Never creates a file.
+    static func hasChannel(profile: String, channelId: String) -> Bool {
+        guard let url = try? location(profile: profile), FileManager.default.fileExists(atPath: url.path),
+              let db = try? SQLiteDatabase(path: url.path) else { return false }
+        defer { db.close() }
+        let rows = (try? db.query("SELECT 1 AS found FROM channels WHERE id = ? LIMIT 1", [channelId])) ?? []
+        return !rows.isEmpty
+    }
+
     /// Named by a hash of the server URL and the username (§11): accounts whose names differ only in
     /// punctuation or length never share a file.
     static func location(profile: String) throws -> URL {

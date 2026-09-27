@@ -399,14 +399,19 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         try await request("PUT", "/api/v1/messages/\(messageId)/thread/follow", body: .object(["following": .bool(following)]))
     }
 
-    /// GET /search/messages: full-text search across my channels (the server applies the membership filter).
-    func searchMessages(_ query: String, channelId: String? = nil, limit: Int = 20, offset: Int = 0) async throws -> SearchOut {
-        var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "offset", value: String(offset))]
-        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
-        // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
-        items.append(URLQueryItem(name: "tz_offset_minutes", value: String(TimeZone.current.secondsFromGMT() / 60)))
-        return try await request("GET", Self.pathWithQuery("/api/v1/search/messages", items))
+    /// GET /search/messages (M16b): words and structured filters across my channels (the server applies the membership
+    /// filter); the words may be empty when a filter is set.
+    func searchMessages(_ search: SearchRequest, limit: Int = 30, offset: Int = 0) async throws -> SearchOut {
+        try await request("GET", Self.pathWithQuery("/api/v1/search/messages", search.queryItems(limit: limit, offset: offset)))
     }
+
+    // MARK: workspaces (M16c, WORKSPACES.md §3)
+
+    /// GET /server (no login): whether the address is a ChikuwaChat server, its workspace id and name.
+    func serverInfo() async throws -> ServerInfoOut { try await request("GET", "/api/v1/server", auth: false, timeout: 15) }
+
+    /// GET /sync/summary: the badge of a workspace that is not open (WORKSPACES.md §6).
+    func syncSummary() async throws -> UnreadSummaryOut { try await request("GET", "/api/v1/sync/summary") }
 
     /// POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent.
     func uploadAttachment(data fileData: Data, filename: String, contentType: String) async throws -> AttachmentOut {

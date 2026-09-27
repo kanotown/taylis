@@ -1,120 +1,1013 @@
 import SwiftUI
+import UIKit
 
-/// Full-text search: the server filters by membership; we highlight the keywords it matched.
+/// Where a search result is opened: its conversation, pushed inside the search screen so that going back returns
+/// to the same results.
+struct SearchRoute: Hashable {
+    let messageId: String
+    let channelId: String
+    let parentId: String?
+}
+
+enum SearchTab: String, CaseIterable, Identifiable {
+    case messages, files
+
+    var id: String { rawValue }
+    var label: String { self == .messages ? "メッセージ" : "ファイル" }
+}
+
+/// The filter pickers that need more room than a menu.
+enum SearchPicker: String, Identifiable {
+    case sender, channel, dates
+
+    var id: String { rawValue }
+}
+
+/// M16b: the results on screen (messages page by page, and the files tab), kept while a result is open.
+@MainActor
+@Observable
+final class SearchModel {
+    static let pageSize = 30
+
+    private(set) var params: SearchParams?
+    var tab: SearchTab = .messages
+
+    private(set) var hits: [SearchHit] = []
+    private(set) var keywords: [String] = []
+    private(set) var total = 0
+    private(set) var capped = false
+    private(set) var hasMore = false
+    private(set) var unresolved: [String] = []
+    private(set) var loading = false
+    private(set) var loaded = false
+    private(set) var failure: String?
+
+    private(set) var files: [FileItem] = []
+    private(set) var fileCursor: String?
+    private(set) var filesLoading = false
+    private(set) var filesLoaded = false
+    private(set) var filesFailure: String?
+
+    @ObservationIgnored private var nextOffset = 0
+    @ObservationIgnored private var request = 0
+    @ObservationIgnored private var fileRequest = 0
+    /// The words and conversation the file list belongs to (the files tab ignores the other filters).
+    @ObservationIgnored private var filesKey: String?
+
+    init() {}
+
+    /// Results known up front (snapshot tests).
+    init(params: SearchParams, hits: [SearchHit], keywords: [String], total: Int, capped: Bool = false, unresolved: [String] = []) {
+        self.params = params
+        self.hits = hits
+        self.keywords = keywords
+        self.total = total
+        self.capped = capped
+        self.unresolved = unresolved
+        loaded = true
+    }
+
+    /// Back to the start page (no search).
+    func clear() {
+        request += 1
+        fileRequest += 1
+        params = nil
+        resetMessages()
+        resetFiles()
+    }
+
+    /// A new search takes the screen at once; `load` fetches its first page.
+    func begin(_ params: SearchParams) {
+        request += 1
+        fileRequest += 1
+        self.params = params
+        resetMessages()
+        resetFiles()
+    }
+
+    func load(api: ApiClient?) async {
+        if tab == .files { await loadFiles(api: api, more: false) }
+        await loadMessages(api: api, more: false)
+    }
+
+    /// The next page, when the end of the list comes into view.
+    func loadMore(api: ApiClient?) async {
+        guard hasMore, loaded, !loading else { return }
+        await loadMessages(api: api, more: true)
+    }
+
+    func retry(api: ApiClient?) async {
+        if tab == .files { await loadFiles(api: api, more: false) } else { await loadMessages(api: api, more: !hits.isEmpty) }
+    }
+
+    /// The files tab reads GET /files for the words (file names) and the conversation filter.
+    func showFiles(api: ApiClient?) async {
+        guard let params, filesKey != Self.filesKey(params) else { return }
+        await loadFiles(api: api, more: false)
+    }
+
+    func loadMoreFiles(api: ApiClient?) async {
+        guard fileCursor != nil, filesLoaded, !filesLoading else { return }
+        await loadFiles(api: api, more: true)
+    }
+
+    private func resetMessages() {
+        hits = []
+        keywords = []
+        total = 0
+        capped = false
+        hasMore = false
+        unresolved = []
+        loading = false
+        loaded = false
+        failure = nil
+        nextOffset = 0
+    }
+
+    private func resetFiles() {
+        files = []
+        fileCursor = nil
+        filesLoading = false
+        filesLoaded = false
+        filesFailure = nil
+        filesKey = nil
+    }
+
+    private static func filesKey(_ params: SearchParams) -> String { "\(params.words)|\(params.channelId ?? "")" }
+
+    private func loadMessages(api: ApiClient?, more: Bool) async {
+        guard let api, let params, !params.isEmpty else { return }
+        request += 1
+        let id = request
+        let offset = more ? nextOffset : 0
+        loading = true
+        failure = nil
+        do {
+            let result = try await api.searchMessages(SearchLogic.request(params), limit: Self.pageSize, offset: offset)
+            guard id == request else { return }
+            let known = Set(hits.map(\.id))
+            hits = more ? hits + result.hits.filter { !known.contains($0.id) } : result.hits
+            nextOffset = offset + result.hits.count
+            keywords = result.keywords
+            total = result.total ?? hits.count
+            capped = result.totalCapped ?? false
+            hasMore = result.hasMore
+            unresolved = result.filters?.unresolved ?? []
+            loaded = true
+        } catch {
+            guard id == request else { return }
+            failure = ErrorMessages.text(for: error)
+        }
+        loading = false
+    }
+
+    private func loadFiles(api: ApiClient?, more: Bool) async {
+        guard let api, let params else { return }
+        fileRequest += 1
+        let id = fileRequest
+        if !more {
+            filesKey = Self.filesKey(params)
+            files = []
+            fileCursor = nil
+            filesLoaded = false
+        }
+        filesLoading = true
+        filesFailure = nil
+        do {
+            let page = try await api.listFiles(channelId: params.channelId, query: params.words.isEmpty ? nil : params.words, cursor: more ? fileCursor : nil)
+            guard id == fileRequest else { return }
+            files = more ? files + page.items : page.items
+            fileCursor = page.nextCursor
+            filesLoaded = true
+        } catch {
+            guard id == fileRequest else { return }
+            filesFailure = ErrorMessages.text(for: error)
+            if !more { filesKey = nil }
+        }
+        filesLoading = false
+    }
+}
+
+/// M16b: search. The field takes the words and, as tokens, a sender and a conversation. Suggestions offer recent
+/// searches and quick filters when it is empty, and the words, people and conversations while typing. The results
+/// show the count, メッセージ / ファイル, filter chips and the order; a result opens its conversation here.
 struct SearchView: View {
     @Bindable var controller: AppController
-    let onOpen: (MessageOut) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-    @State private var hits: [SearchHit] = []
-    @State private var keywords: [String] = []
-    @State private var hasMore = false
-    @State private var searched = false
-    @State private var filters: SearchFilters?
+
+    @State private var model = SearchModel()
+    @State private var path: [SearchRoute] = []
+    @State private var text = ""
+    @State private var tokens: [SearchToken] = []
+    @State private var searchPresented = false
+    /// Suggestions show while the words are being edited; running a search hides them to show its results.
+    @State private var editing = true
+    /// Words the screen put into the field itself: that change does not reopen the suggestions.
+    @State private var echo: String?
+    @State private var recent: [SearchParams] = []
+    @State private var picker: SearchPicker?
+    /// Messages revealed from here: their focus goes when the screen closes.
+    @State private var revealed: Set<String> = []
+
+    private var store: Store { controller.store }
+    private var recentKey: String { controller.recentSearchKey }
+
+    /// The field (words and tokens) over the filters of the search on screen.
+    private var draft: SearchParams {
+        var params = (model.params ?? SearchParams()).applying(tokens)
+        params.q = text
+        return params
+    }
 
     var body: some View {
-        NavigationStack {
-            List {
-                // M15h: a hint adds its modifier; a complete one (has:file, is:thread …) searches right away.
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(SearchHints.all, id: \.insert) { hint in
-                            Button(hint.label) {
-                                query = SearchHints.append(query, hint.insert)
-                                if hint.complete { Task { await run(offset: 0) } }
-                            }
-                            .font(.caption)
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                        }
+        NavigationStack(path: $path) {
+            content
+                .navigationTitle("検索")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+                .searchable(text: $text, tokens: $tokens, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: Text("メッセージ、人、チャンネルを検索")) { token in
+                    Label(tokenTitle(token), systemImage: tokenImage(token))
+                }
+                .onSubmit(of: .search) { run(draft, remember: true) }
+                .onChange(of: text) { _, value in
+                    if let echo, echo == value { self.echo = nil; return }
+                    echo = nil
+                    editing = true
+                }
+                .onChange(of: tokens) { _, value in tokensEdited(value) }
+                .onChange(of: searchPresented) { _, presented in
+                    // The field's cancel button: back to the start page (閉じる closes the screen).
+                    guard !presented, path.isEmpty else { return }
+                    if model.params != nil || !text.isEmpty || !tokens.isEmpty { reset() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                    // The field got the focus again: suggestions for what is in it. Changed after the keyboard's
+                    // animation has been set up, not inside it.
+                    DispatchQueue.main.async {
+                        if path.isEmpty && picker == nil && searchPresented { editing = true }
                     }
                 }
-                .listRowSeparator(.hidden)
-                if let filters, !filters.unresolved.isEmpty {
-                    Text("見つからない条件があります: \(filters.unresolved.joined(separator: " "))").font(.footnote).foregroundStyle(.red)
+                .navigationDestination(for: SearchRoute.self) { route in
+                    SearchConversationView(controller: controller, route: route)
                 }
-                if let filters, filters.fromUsername != nil || filters.inChannel != nil || filters.after != nil || filters.before != nil
-                    || !(filters.has ?? []).isEmpty || filters.isThread == true {
-                    HStack(spacing: 6) {
-                        if let name = filters.fromUsername { Text("from: @\(name)") }
-                        if let name = filters.inChannel { Text("in: #\(name)") }
-                        if let after = filters.after, let date = parseIsoDate(after) { Text(date.formatted(date: .abbreviated, time: .omitted) + " 以降") }
-                        if let before = filters.before, let date = parseIsoDate(before) { Text(date.formatted(date: .abbreviated, time: .omitted) + " より前") }
-                        ForEach(filters.has ?? [], id: \.self) { flag in Text(SearchHints.flagLabels[flag] ?? "has:\(flag)") }
-                        if filters.isThread == true { Text("スレッド内") }
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                }
-                if searched && hits.isEmpty { Text("見つかりませんでした").foregroundStyle(.secondary) }
-                ForEach(hits) { hit in
-                    let message = hit.message
-                    Button {
-                        onOpen(message)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 8) {
-                                Text(controller.store.channel(message.channelId).map { channelTitle($0, store: controller.store) } ?? "?").bold()
-                                Text(controller.store.users[message.senderId]?.displayName ?? "?").foregroundStyle(.secondary)
-                                if message.parentId != nil { Text("スレッド").font(.caption).foregroundStyle(.secondary) }
-                            }
-                            .font(.caption)
-                            Text(SearchHighlighter.attributed(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : message.body, keywords: keywords))
-                                .lineLimit(4)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                if hasMore { Button("さらに読み込む") { Task { await run(offset: hits.count) } } }
+        }
+        .overlay(alignment: .bottom) { ErrorToast(controller: controller) }
+        .sheet(item: $picker) { which in
+            switch which {
+            case .sender:
+                SearchPersonPicker(controller: controller, selected: draft.fromUserId) { id in update { $0.fromUserId = id } }
+            case .channel:
+                SearchChannelPicker(controller: controller, selected: draft.channelId) { id in update { $0.channelId = id } }
+            case .dates:
+                SearchDateRangeSheet(initial: draft.date) { date in update { $0.date = date } }
             }
-            .listStyle(.plain)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "メッセージを検索")
-            .onSubmit(of: .search) { Task { await run(offset: 0) } }
-            .navigationTitle("検索")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+        }
+        .task {
+            // The field is not activated by code: activating it shortly after the sheet comes up crashes inside UIKit
+            // now and then on a cold start (iOS 27, keyframe animation over a _SwiftUILayerDelegate layer). The start
+            // page offers recent searches and quick filters; a tap on the field starts typing.
+            recent = RecentSearches.read(key: recentKey)
+        }
+        .onDisappear {
+            if let focus = controller.messageFocus, revealed.contains(focus.messageId) { controller.messageFocus = nil }
         }
     }
 
-    private func run(offset: Int) async {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty, let api = controller.api else { return }
-        do {
-            let result = try await api.searchMessages(q, offset: offset)
-            hits = offset == 0 ? result.hits : hits + result.hits
-            keywords = result.keywords
-            hasMore = result.hasMore
-            filters = result.filters
-            searched = true
-        } catch {
-            controller.error = controller.describe(error)
+    @ViewBuilder
+    private var content: some View {
+        if searchPresented && editing {
+            // Suggestions as the screen's own list, not `.searchSuggestions`: that one is a results controller UIKit
+            // animates in alongside the first keyboard, which crashes inside UIKit (iOS 27, _SwiftUILayerDelegate).
+            List { suggestionRows }
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.immediately)
+        } else if model.params != nil {
+            SearchResultsView(controller: controller, model: model,
+                              onUpdate: { change in update(change) },
+                              onPick: { picker = $0 },
+                              onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) })
+        } else {
+            List { startRows }
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.immediately)
+        }
+    }
+
+    // MARK: suggestions and the start page
+
+    @ViewBuilder
+    private var suggestionRows: some View {
+        let rows = SearchSuggestions.build(text, users: Array(store.users.values), channels: Array(store.channels.values), recent: recent,
+                                           title: { channelTitle($0, store: store) })
+        ForEach(SearchSuggestions.grouped(rows)) { section in
+            Section {
+                ForEach(section.rows) { row in suggestionRow(row) }
+                if section.group == .recent && text.trimmingCharacters(in: .whitespaces).isEmpty { clearRecentButton }
+            } header: {
+                if let heading = section.group.heading { Text(heading) }
+            }
+        }
+    }
+
+    /// Without a search: the same rows as the empty field's suggestions, and a hint about typed conditions.
+    @ViewBuilder
+    private var startRows: some View {
+        let rows = SearchSuggestions.build("", users: [], channels: [], recent: recent, title: { _ in "" })
+        ForEach(SearchSuggestions.grouped(rows)) { section in
+            Section {
+                ForEach(section.rows) { row in suggestionRow(row) }
+                if section.group == .recent { clearRecentButton }
+            } header: {
+                if let heading = section.group.heading { Text(heading) }
+            }
+        }
+        Section {
+            Text("語の中で from:@名前、in:#チャンネル、before:2026-09-01、has:file、is:thread のような条件も使えます。")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    private var clearRecentButton: some View {
+        Button("履歴を消去", role: .destructive) {
+            RecentSearches.clear(key: recentKey)
+            recent = []
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private func suggestionRow(_ row: SearchSuggestion) -> some View {
+        if case .recent(let params) = row {
+            HStack(spacing: 12) {
+                Button { choose(row) } label: {
+                    Label { Text(describe(params)).lineLimit(1) } icon: { Image(systemName: "clock").foregroundStyle(.secondary) }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.primary)
+                Button { recent = RecentSearches.remove(params, key: recentKey) } label: {
+                    Image(systemName: "xmark").font(.footnote)
+                }
+                .buttonStyle(.borderless)
+                .tint(.secondary)
+                .accessibilityLabel("履歴から消す")
+            }
+        } else {
+            Button { choose(row) } label: {
+                SearchSuggestionLabel(row: row, controller: controller)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .foregroundStyle(.primary)
+        }
+    }
+
+    private func describe(_ params: SearchParams) -> String {
+        SearchLogic.describe(params, userName: { store.users[$0]?.displayName },
+                             channelTitle: { id in store.channel(id).map { channelTitle($0, store: store) } })
+    }
+
+    private func tokenTitle(_ token: SearchToken) -> String {
+        switch token {
+        case .sender(let id): return store.users[id]?.displayName ?? "?"
+        case .channel(let id):
+            guard let channel = store.channel(id) else { return "?" }
+            let title = channelTitle(channel, store: store)
+            return channel.channel.isDm ? title : String(title.drop(while: { $0 == "#" }))
+        }
+    }
+
+    private func tokenImage(_ token: SearchToken) -> String {
+        switch token {
+        case .sender: return "person"
+        case .channel(let id):
+            guard let channel = store.channel(id)?.channel else { return "number" }
+            return channel.isDm ? "person.2" : channel.type == "private" ? "lock" : "number"
+        }
+    }
+
+    // MARK: running searches
+
+    /// A suggestion: people and conversations become the sender / conversation filter (the words named them), quick
+    /// filters join the conditions on screen, a recent search comes back as it was.
+    private func choose(_ row: SearchSuggestion) {
+        var next = draft
+        switch row {
+        case .search(let words):
+            next.q = words
+        case .recent(let params):
+            next = params
+        case .user(let user):
+            next.q = ""
+            next.fromUserId = user.id
+        case .channel(let id, _, _):
+            next.q = ""
+            next.channelId = id
+        case .has(let flag):
+            if !next.has.contains(flag) { next.has.append(flag) }
+        case .thread:
+            next.isThread = true
+        }
+        run(next, remember: true)
+    }
+
+    /// A chip or picker changed a filter of the search on screen.
+    private func update(_ change: (inout SearchParams) -> Void) {
+        var next = draft
+        change(&next)
+        run(next, remember: false)
+    }
+
+    /// A token was deleted in the field: the filter goes with it.
+    private func tokensEdited(_ value: [SearchToken]) {
+        guard let current = model.params else { return }
+        var next = current.applying(value)
+        guard next.fromUserId != current.fromUserId || next.channelId != current.channelId else { return }
+        next.q = text
+        run(next, remember: false, closeKeyboard: false)
+    }
+
+    private func run(_ params: SearchParams, remember: Bool, closeKeyboard: Bool = true) {
+        var next = params
+        next.q = params.words
+        editing = false
+        if text != next.q {
+            echo = next.q
+            text = next.q
+        }
+        if tokens != next.tokens { tokens = next.tokens }
+        if closeKeyboard { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+        guard !next.isEmpty else {
+            model.clear()
+            return
+        }
+        if remember { recent = RecentSearches.push(next, key: recentKey) }
+        model.begin(next)
+        Task { await model.load(api: controller.api) }
+    }
+
+    private func reset() {
+        model.clear()
+        editing = true
+        if !text.isEmpty {
+            echo = ""
+            text = ""
+        }
+        if !tokens.isEmpty { tokens = [] }
+    }
+
+    /// A result: its conversation around the message (or the thread for a reply), pushed on this screen.
+    private func open(messageId: String, channelId: String, parentId: String?) {
+        Task {
+            guard await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) else { return }
+            revealed.insert(messageId)
+            path.append(SearchRoute(messageId: messageId, channelId: channelId, parentId: parentId))
         }
     }
 }
 
-/// M15h: the modifiers offered above the results (same list as the desktop).
-enum SearchHints {
-    struct Hint { let label: String; let insert: String; let complete: Bool }
+/// One suggestion row's content (the recent-search row has its own, with a remove button).
+struct SearchSuggestionLabel: View {
+    let row: SearchSuggestion
+    @Bindable var controller: AppController
 
-    static let all: [Hint] = [
-        Hint(label: "from:@名前", insert: "from:@", complete: false),
-        Hint(label: "in:#チャンネル", insert: "in:#", complete: false),
-        Hint(label: "on:", insert: "on:", complete: false),
-        Hint(label: "ファイルあり", insert: "has:file", complete: true),
-        Hint(label: "リンクあり", insert: "has:link", complete: true),
-        Hint(label: "ピン留め", insert: "has:pin", complete: true),
-        Hint(label: "リアクションあり", insert: "has:reaction", complete: true),
-        Hint(label: "投票", insert: "has:poll", complete: true),
-        Hint(label: "スレッド", insert: "is:thread", complete: true),
-    ]
+    var body: some View {
+        switch row {
+        case .search(let words):
+            Label {
+                Text("「\(Text(words).bold())」を検索").lineLimit(1)
+            } icon: {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            }
+        case .recent(let params):
+            Label(params.words, systemImage: "clock")
+        case .user(let user):
+            HStack(spacing: 10) {
+                AvatarView(id: user.id, name: user.displayName, size: 26, presence: controller.store.presenceOf(user.id))
+                Text(user.displayName).lineLimit(1)
+                Text("@\(user.username)").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            }
+        case .channel(_, let title, let type):
+            Label {
+                Text(type == "public" || type == "private" ? String(title.drop(while: { $0 == "#" })) : title).lineLimit(1)
+            } icon: {
+                Image(systemName: type == "private" ? "lock" : type == "public" ? "number" : "person.2").foregroundStyle(.secondary)
+            }
+        case .has(let flag):
+            Label { Text("\(flag.label)のメッセージ") } icon: { Image(systemName: flag.systemImage).foregroundStyle(.secondary) }
+        case .thread:
+            Label { Text("スレッド内のメッセージ") } icon: { Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(.secondary) }
+        }
+    }
+}
 
-    static let flagLabels = ["file": "ファイルあり", "link": "リンクあり", "pin": "ピン留め", "reaction": "リアクションあり", "poll": "投票"]
+// MARK: results
 
-    /// Adds a modifier to the query (once); open ones such as "from:@" stay ready for typing.
-    static func append(_ query: String, _ insert: String) -> String {
-        if query.split(whereSeparator: \.isWhitespace).contains(Substring(insert)) { return query }
-        let base = query.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
-        let open = insert.hasSuffix(":") || insert.hasSuffix("@") || insert.hasSuffix("#")
-        return (base.isEmpty ? "" : base + " ") + insert + (open ? "" : " ")
+/// The results of the search on screen: tabs, filter chips, the count and order, and the endless list.
+struct SearchResultsView: View {
+    @Bindable var controller: AppController
+    @Bindable var model: SearchModel
+    let onUpdate: ((inout SearchParams) -> Void) -> Void
+    let onPick: (SearchPicker) -> Void
+    let onOpen: (_ messageId: String, _ channelId: String, _ parentId: String?) -> Void
+
+    private var params: SearchParams { model.params ?? SearchParams() }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("表示", selection: $model.tab) {
+                ForEach(SearchTab.allCases) { tab in Text(tab.label).tag(tab) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+            SearchFilterBar(controller: controller, params: params, filesOnly: model.tab == .files, onUpdate: onUpdate, onPick: onPick)
+            if model.tab == .messages {
+                HStack {
+                    Text(model.loaded ? SearchLogic.totalLabel(model.total, capped: model.capped) : " ")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    sortMenu
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 6)
+            }
+            Divider()
+            if model.tab == .messages { messages } else { files }
+        }
+        .onChange(of: model.tab) { _, tab in
+            if tab == .files { Task { await model.showFiles(api: controller.api) } }
+        }
+    }
+
+    private var messages: some View {
+        List {
+            ForEach(model.hits) { hit in
+                Button { onOpen(hit.message.id, hit.message.channelId, hit.message.parentId) } label: {
+                    SearchResultRow(controller: controller, message: hit.message, keywords: model.keywords)
+                }
+                .buttonStyle(.plain)
+                .onAppear {
+                    if hit.id == model.hits.last?.id { Task { await model.loadMore(api: controller.api) } }
+                }
+            }
+            if model.loading { loadingRow(model.hits.isEmpty ? "検索しています…" : "続きを読み込んでいます…") }
+            if let failure = model.failure { failureRow(failure) }
+        }
+        .listStyle(.plain)
+        .scrollDismissesKeyboard(.immediately)
+        .overlay {
+            if model.loaded && model.hits.isEmpty && !model.loading && model.failure == nil { emptyState }
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("並び順", selection: Binding(get: { params.effectiveSort }, set: { sort in onUpdate { $0.sort = sort } })) {
+                ForEach(SearchSort.allCases) { sort in Text(sort.label).tag(sort) }
+            }
+        } label: {
+            Label(params.effectiveSort.label, systemImage: "arrow.up.arrow.down").font(.subheadline)
+        }
+        .disabled(params.words.isEmpty)
+        .accessibilityHint(params.words.isEmpty ? "語を入れると関連度順にできます" : "")
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("見つかりませんでした", systemImage: "magnifyingglass")
+        } description: {
+            if !model.unresolved.isEmpty {
+                Text("理解できない条件があります: \(model.unresolved.joined(separator: " "))\n名前や書き方を確かめてください。")
+            } else {
+                Text(params.hasFilters ? "条件を減らすと見つかるかもしれません。" : "別の言葉や、より短い言葉で試してください。")
+            }
+        } actions: {
+            if params.hasFilters {
+                Button("条件をクリアして検索") { onUpdate { $0 = $0.withoutFilters } }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var files: some View {
+        List {
+            ForEach(model.files) { item in
+                Button { onOpen(item.messageId, item.channelId, item.parentId) } label: { FileRowView(item: item, controller: controller) }
+                    .buttonStyle(.plain)
+                    .onAppear {
+                        if item.id == model.files.last?.id { Task { await model.loadMoreFiles(api: controller.api) } }
+                    }
+            }
+            if model.filesLoading { loadingRow(model.files.isEmpty ? "検索しています…" : "続きを読み込んでいます…") }
+            if let failure = model.filesFailure { failureRow(failure) }
+        }
+        .listStyle(.plain)
+        .scrollDismissesKeyboard(.immediately)
+        .overlay {
+            if model.filesLoaded && model.files.isEmpty && !model.filesLoading && model.filesFailure == nil {
+                ContentUnavailableView("ファイルは見つかりませんでした", systemImage: "doc", description: Text("ファイル名で探します。"))
+            }
+        }
+        .task { await model.showFiles(api: controller.api) }
+    }
+
+    private func loadingRow(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Spacer()
+            ProgressView()
+            Text(text).font(.footnote).foregroundStyle(.secondary)
+            Spacer()
+        }
+        .listRowSeparator(.hidden)
+    }
+
+    private func failureRow(_ text: String) -> some View {
+        VStack(spacing: 8) {
+            Text(text).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+            Button("もう一度") { Task { await model.retry(api: controller.api) } }.buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .listRowSeparator(.hidden)
+    }
+}
+
+/// The filter chips under the tabs: 送信者 / チャンネル / 期間 / 種類 / スレッド内, each with × to remove it.
+struct SearchFilterBar: View {
+    @Bindable var controller: AppController
+    let params: SearchParams
+    /// The files tab filters by conversation only (GET /files).
+    let filesOnly: Bool
+    let onUpdate: ((inout SearchParams) -> Void) -> Void
+    let onPick: (SearchPicker) -> Void
+
+    private var store: Store { controller.store }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if !filesOnly {
+                    let sender = params.fromUserId.map { store.users[$0]?.displayName ?? "?" }
+                    SearchChip(active: sender != nil, onClear: { onUpdate { $0.fromUserId = nil } }) {
+                        Button { onPick(.sender) } label: { SearchChipLabel(title: sender.map { "送信者: \($0)" } ?? "送信者", systemImage: "person", active: sender != nil) }
+                    }
+                }
+                let channel = params.channelId.map { id in store.channel(id).map { channelTitle($0, store: store) } ?? "?" }
+                SearchChip(active: channel != nil, onClear: { onUpdate { $0.channelId = nil } }) {
+                    Button { onPick(.channel) } label: { SearchChipLabel(title: channel ?? "チャンネル", systemImage: "number", active: channel != nil) }
+                }
+                if !filesOnly {
+                    let date = SearchLogic.dateLabel(params.date)
+                    SearchChip(active: date != nil, onClear: { onUpdate { $0.date = nil } }) {
+                        Menu {
+                            ForEach(SearchDatePreset.allCases) { preset in
+                                Button { onUpdate { $0.date = .preset(preset) } } label: {
+                                    if params.date == .preset(preset) { Label(preset.label, systemImage: "checkmark") } else { Text(preset.label) }
+                                }
+                            }
+                            Divider()
+                            Button("日付を指定…", systemImage: "calendar") { onPick(.dates) }
+                        } label: {
+                            SearchChipLabel(title: date ?? "期間", systemImage: "calendar", active: date != nil)
+                        }
+                    }
+                    SearchChip(active: !params.has.isEmpty, onClear: { onUpdate { $0.has = [] } }) {
+                        Menu {
+                            ForEach(SearchHasFlag.allCases) { flag in
+                                Toggle(isOn: Binding(get: { params.has.contains(flag) }, set: { on in
+                                    onUpdate { next in
+                                        if on { if !next.has.contains(flag) { next.has.append(flag) } } else { next.has.removeAll { $0 == flag } }
+                                    }
+                                })) {
+                                    Label(flag.label, systemImage: flag.systemImage)
+                                }
+                            }
+                        } label: {
+                            SearchChipLabel(title: params.has.isEmpty ? "種類" : params.has.map(\.label).joined(separator: "・"), systemImage: "paperclip",
+                                            active: !params.has.isEmpty)
+                        }
+                        .menuActionDismissBehavior(.disabled)
+                    }
+                    SearchChip(active: params.isThread, onClear: nil) {
+                        Button { onUpdate { $0.isThread.toggle() } } label: {
+                            SearchChipLabel(title: "スレッド内", systemImage: "bubble.left.and.bubble.right", active: params.isThread, menu: false)
+                        }
+                        .accessibilityAddTraits(params.isThread ? .isSelected : [])
+                    }
+                }
+                if filesOnly ? params.channelId != nil : params.hasFilters {
+                    Button("条件をクリア") { onUpdate { $0 = $0.withoutFilters } }
+                        .font(.subheadline)
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+}
+
+/// A capsule for one filter: the control that sets it, and × once it is set.
+struct SearchChip<Control: View>: View {
+    let active: Bool
+    let onClear: (() -> Void)?
+    @ViewBuilder let control: () -> Control
+
+    var body: some View {
+        HStack(spacing: 2) {
+            control()
+                .buttonStyle(.plain)
+            if active, let onClear {
+                Button(action: onClear) {
+                    Image(systemName: "xmark.circle.fill").imageScale(.medium)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("この条件を外す")
+            }
+        }
+        .foregroundStyle(active ? Color.accentColor : Color.primary)
+        .tint(active ? Color.accentColor : Color.primary)
+        .padding(.leading, 12)
+        .padding(.trailing, active && onClear != nil ? 7 : 12)
+        .padding(.vertical, 6)
+        .background(active ? Color.accentColor.opacity(0.14) : Color(.secondarySystemFill), in: Capsule())
+    }
+}
+
+struct SearchChipLabel: View {
+    let title: String
+    let systemImage: String
+    let active: Bool
+    /// A chevron marks a chip that opens a choice.
+    var menu = true
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage).imageScale(.small)
+            Text(title).lineLimit(1)
+            if menu && !active { Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(.secondary) }
+        }
+        .font(.subheadline.weight(active ? .semibold : .regular))
+        .frame(maxWidth: 240)
+        .fixedSize(horizontal: true, vertical: false)
+        .contentShape(Rectangle())
+    }
+}
+
+/// One hit: the conversation, the thread mark, when, who, the highlighted words and the attachments.
+struct SearchResultRow: View {
+    @Bindable var controller: AppController
+    let message: MessageOut
+    let keywords: [String]
+
+    var body: some View {
+        let store = controller.store
+        let channel = store.channel(message.channelId)
+        let sender = store.users[message.senderId]?.displayName ?? "?"
+        let text = Timeline.excerpt(message.body, hasAttachments: false, users: store.users, groups: store.groups)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: conversationImage(channel?.channel)).imageScale(.small).foregroundStyle(.secondary)
+                Text(conversationName(channel)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                if message.parentId != nil {
+                    Text("スレッドの返信")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Color(.tertiarySystemFill), in: Capsule())
+                        .fixedSize()
+                }
+                Spacer(minLength: 6)
+                Text(Self.stamp(message.createdAt)).font(.caption).foregroundStyle(.secondary).fixedSize()
+            }
+            HStack(alignment: .top, spacing: 10) {
+                AvatarView(id: message.senderId, name: sender, size: 34)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(sender).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if !text.isEmpty {
+                        Text(SearchHighlighter.attributed(text, keywords: keywords)).font(.subheadline).lineLimit(3)
+                    }
+                    ForEach(message.attachments.prefix(3)) { attachment in
+                        HStack(spacing: 4) {
+                            Image(systemName: attachment.contentType.hasPrefix("image/") ? "photo" : "doc")
+                            Text(SearchHighlighter.attributed(attachment.filename, keywords: keywords)).lineLimit(1)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    if message.attachments.count > 3 {
+                        Text("ほか \(message.attachments.count - 3) 件のファイル").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private func conversationName(_ channel: ChannelState?) -> String {
+        guard let channel else { return "?" }
+        let title = channelTitle(channel, store: controller.store)
+        return channel.channel.isDm ? title : String(title.drop(while: { $0 == "#" }))
+    }
+
+    private func conversationImage(_ channel: ChannelOut?) -> String {
+        guard let channel else { return "questionmark" }
+        return channel.isDm ? (channel.type == "group_dm" ? "person.2" : "person") : channel.type == "private" ? "lock" : "number"
+    }
+
+    /// 「今日 15:30」「9月26日 (金) 14:00」
+    static func stamp(_ iso: String, now: Date = Date()) -> String {
+        guard let date = parseIsoDate(iso) else { return "" }
+        return "\(Timeline.dayLabel(date, now: now)) \(date.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+/// A result's conversation inside the search screen, focused on the message (a reply opens its thread).
+struct SearchConversationView: View {
+    @Bindable var controller: AppController
+    let route: SearchRoute
+    @State private var threadId: String?
+    @State private var previous: String?
+    @State private var opened = false
+
+    init(controller: AppController, route: SearchRoute) {
+        self.controller = controller
+        self.route = route
+        _threadId = State(initialValue: route.parentId)
+    }
+
+    var body: some View {
+        Group {
+            if controller.store.channel(route.channelId) != nil {
+                ChannelView(controller: controller, channelId: route.channelId, pendingThreadId: $threadId)
+            } else {
+                ContentUnavailableView("会話を開けません", systemImage: "bubble.left", description: Text("この会話のメンバーではなくなった可能性があります。"))
+            }
+        }
+        .task {
+            guard !opened, let engine = controller.engine else { return }
+            opened = true
+            previous = engine.currentChannelId
+            await engine.openChannel(route.channelId)
+        }
+        .onDisappear {
+            // Back to the results: the conversation behind the search is the open one again (notifications, §7).
+            if let engine = controller.engine, engine.currentChannelId == route.channelId { engine.currentChannelId = previous }
+        }
+    }
+}
+
+// MARK: pickers
+
+/// 送信者: the people I can see (deactivated accounts are left out), filtered by name.
+struct SearchPersonPicker: View {
+    @Bindable var controller: AppController
+    let selected: String?
+    let onPick: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var people: [UserPublic] {
+        let needle = SearchSuggestions.fold(query.trimmingCharacters(in: .whitespaces))
+        let japanese = Locale(identifier: "ja")
+        return controller.store.users.values
+            .filter { $0.deactivatedAt == nil && (needle.isEmpty || SearchSuggestions.fold($0.displayName).contains(needle) || SearchSuggestions.fold($0.username).contains(needle)) }
+            .sorted { $0.displayName.compare($1.displayName, locale: japanese) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(people) { user in
+                    Button {
+                        onPick(user.id == selected ? nil : user.id)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            AvatarView(id: user.id, name: user.displayName, size: 30)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(user.displayName).lineLimit(1)
+                                Text("@\(user.username)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if user.id == selected { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(.primary)
+                }
+                if people.isEmpty { Text("見つかりません").foregroundStyle(.secondary) }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "名前で絞り込む")
+            .navigationTitle("送信者")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+        }
+    }
+}
+
+/// チャンネル: the conversations I am in, filtered by name.
+struct SearchChannelPicker: View {
+    @Bindable var controller: AppController
+    let selected: String?
+    let onPick: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var conversations: [(state: ChannelState, title: String)] {
+        let store = controller.store
+        let needle = SearchSuggestions.fold(query.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"^[#@]"#, with: "", options: .regularExpression))
+        let japanese = Locale(identifier: "ja")
+        return store.channels.values
+            .filter(\.isMember)
+            .map { (state: $0, title: channelTitle($0, store: store)) }
+            .filter { needle.isEmpty || SearchSuggestions.fold($0.title).contains(needle) }
+            .sorted { $0.title.compare($1.title, locale: japanese) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(conversations, id: \.state.id) { row in
+                    Button {
+                        onPick(row.state.id == selected ? nil : row.state.id)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: row.state.channel.isDm ? "person.2" : row.state.channel.type == "private" ? "lock" : "number")
+                                .foregroundStyle(.secondary).frame(width: 24)
+                            Text(row.state.channel.isDm ? row.title : String(row.title.drop(while: { $0 == "#" }))).lineLimit(1)
+                            Spacer()
+                            if row.state.id == selected { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(.primary)
+                }
+                if conversations.isEmpty { Text("見つかりません").foregroundStyle(.secondary) }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "会話の名前で絞り込む")
+            .navigationTitle("チャンネル")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+        }
+    }
+}
+
+/// 「日付を指定」: first and last day in this device's time zone (both included); either end may stay open.
+struct SearchDateRangeSheet: View {
+    let initial: SearchDate?
+    let onApply: (SearchDate) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var useFrom = true
+    @State private var useTo = true
+    @State private var from = Date()
+    @State private var to = Date()
+    @State private var prepared = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle("開始日", isOn: $useFrom)
+                    if useFrom { DatePicker("開始日", selection: $from, displayedComponents: .date) }
+                    Toggle("終了日", isOn: $useTo)
+                    if useTo { DatePicker("終了日", selection: $to, displayedComponents: .date) }
+                } footer: {
+                    Text("この端末のタイムゾーンの日付で絞り込みます。開始日と終了日の当日も含みます。")
+                }
+            }
+            .navigationTitle("日付を指定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("絞り込む") {
+                        let (start, end) = useFrom && useTo && from > to ? (to, from) : (from, to)
+                        onApply(.range(from: useFrom ? SearchLogic.dayString(start) : nil, to: useTo ? SearchLogic.dayString(end) : nil))
+                        dismiss()
+                    }
+                    .disabled(!useFrom && !useTo)
+                }
+            }
+            .onAppear {
+                guard !prepared else { return }
+                prepared = true
+                if case .range(let start, let end) = initial {
+                    useFrom = start != nil
+                    useTo = end != nil
+                    if let day = SearchLogic.day(start) { from = day }
+                    if let day = SearchLogic.day(end) { to = day }
+                } else {
+                    from = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

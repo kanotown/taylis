@@ -25,11 +25,15 @@ struct RootView: View {
         case .boot:
             ProgressView("起動中…")
         case .login:
-            LoginView(controller: controller)
+            // A workspace whose session ended signs back in with its server and account filled in (M16c).
+            LoginView(controller: controller, mode: controller.activeWorkspace.map { .relogin($0) } ?? .initial)
+                .id(controller.activeServerUrl ?? "")
         case .changePassword:
             ChangePasswordView(controller: controller)
         case .main:
+            // Keyed by workspace: switching starts from its own open conversation, sheets and drafts (M16c).
             MainView(controller: controller)
+                .id(controller.activeServerUrl ?? "")
         }
     }
 }

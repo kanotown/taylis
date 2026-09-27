@@ -158,6 +158,25 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testMyNotificationKeywordsCountAsMentionsHere() async throws {  // M16a: keyword hits stay on the server
+        let w = makeWorld()
+        w.server.notifyKeywords[w.bob.id] = ["Deploy", "リリース"]
+        await w.engine.start()
+        await settle(w.engine)
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "plain")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "the deploy is done")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "明日リリースします")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.unreadCount, $0.mentionCount] }, [3, 2])
+        XCTAssertEqual(notifications, ["the deploy is done", "明日リリースします"])
+        w.engine.markUnread(w.channel.id, seq: 1) // recounted here with the same rule
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.unreadCount, $0.mentionCount] }, [3, 2])
+        await w.engine.flushReads()
+        w.engine.stop()
+    }
+
     func testMarkUnreadMovesBackHoldsVisibleMarkingAndFollowsOtherDevices() async throws {
         let w = makeWorld()
         w.engine.isActive = { true }

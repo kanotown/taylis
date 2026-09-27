@@ -7,8 +7,8 @@ struct MainView: View {
     @State private var pendingThreadId: String?
 
     enum Sheet: Identifiable {
-        case newDm, newChannel, search, settings, browse, directory
-        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4; case .directory: 5 } }
+        case newDm, newChannel, search, settings, browse, directory, workspaces
+        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4; case .directory: 5; case .workspaces: 6 } }
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
@@ -22,9 +22,11 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView {
             ChannelListView(controller: controller, selection: $selection)
-                .navigationTitle("ChikuwaChat")
+                .navigationTitle(controller.workspaceName)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    // M16c: the workspace on screen; with two or more, a tap opens the switcher.
+                    ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
                     ToolbarItem(placement: .topBarLeading) {
                         Button { sheet = .settings } label: {
                             if let me = controller.store.me {
@@ -108,17 +110,10 @@ struct MainView: View {
             case .newDm: NewDmView(controller: controller) { id in selection = id }
             case .directory: DirectoryView(controller: controller) { id in selection = id }
             case .newChannel: NewChannelView(controller: controller) { id in selection = id }
-            case .search: SearchView(controller: controller) { message in
-                Task {
-                    if await controller.revealMessage(message) {
-                        selection = message.channelId
-                        pendingThreadId = message.parentId
-                        sheet = nil
-                    }
-                }
-            }
+            case .search: SearchView(controller: controller)
             case .settings: SettingsView(controller: controller)
             case .browse: ChannelBrowserView(controller: controller) { id in selection = id }
+            case .workspaces: WorkspaceSwitcherSheet(controller: controller)
             }
         }
         .onChange(of: selection) { _, id in
@@ -129,6 +124,7 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
             if let id = note.userInfo?["id"] as? String {
+                if sheet == .search { sheet = nil } // a conversation opened from a search result's profile or link
                 selection = id
                 if let parentId = note.userInfo?["parentId"] as? String { pendingThreadId = parentId }
             }

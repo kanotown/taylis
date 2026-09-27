@@ -607,7 +607,7 @@ final class SyncEngine {
             store.updateChannel(message.channelId) { state in
                 guard message.seq > state.lastReadSeq else { return }
                 state.unreadCount += 1
-                if message.mentions(me.id) { state.mentionCount += 1 }
+                if message.mentionsMe(me) { state.mentionCount += 1 }
             }
         }
         onBadge?(store.badgeCount)
@@ -654,7 +654,7 @@ final class SyncEngine {
         // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
         let level = channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions")
         if channel.isMuted { return }
-        let involved = message.mentions(me.id) || (thread?.participantIds.contains(me.id) ?? false)
+        let involved = message.mentionsMe(me) || (thread?.participantIds.contains(me.id) ?? false)
         if level == "mentions" && !involved { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
@@ -691,12 +691,14 @@ final class SyncEngine {
         unreadHold[channelId] = target
         pendingReads[channelId]?.cancel()
         store.setUnsentRead(channelId, nil) // an advance not sent yet must not undo this
-        let me = store.me?.id
-        let later = store.messages(channelId).filter { ($0.seq ?? 0) > target && $0.senderId != me }
+        let me = store.me
+        let later = store.messages(channelId).filter { ($0.seq ?? 0) > target && $0.senderId != me?.id }
+        // Mentions counted with the same rule as live events, notification keywords included (§7.4).
+        let mentions = me.map { me in later.filter { $0.mentionAll || $0.mentionedUserIds.contains(me.id) || NotifyKeywords.matches($0.body, me.notifyKeywords) }.count } ?? 0
         store.updateChannel(channelId) { state in
             state.lastReadSeq = target
             state.unreadCount = later.count
-            state.mentionCount = later.filter { message in me.map { message.mentionAll || message.mentionedUserIds.contains($0) } ?? false }.count
+            state.mentionCount = mentions
         }
         onBadge?(store.badgeCount)
         pendingReads[channelId] = Task { [weak self] in
