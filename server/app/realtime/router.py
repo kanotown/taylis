@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
@@ -95,10 +96,23 @@ async def _sender(websocket: WebSocket, conn: Connection) -> None:
         await _send(websocket, frame)
 
 
+def _origin_allowed(origin: str, websocket: WebSocket, settings: Settings) -> bool:
+    """Browsers always send Origin (M12j): accept our own host or a configured client origin."""
+    if origin in settings.cors_origins:
+        return True
+    host = websocket.headers.get("host", "")
+    return bool(host) and urlparse(origin).netloc.lower() == host.lower()
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     settings: Settings = websocket.app.state.settings
     hub: RealtimeHub = websocket.app.state.hub
+    origin = websocket.headers.get("origin")
+    if origin is not None and not _origin_allowed(origin, websocket, settings):
+        log.warning("websocket origin rejected", extra={"origin": origin})
+        await websocket.close(code=1008)  # before accept: the handshake answers 403
+        return
     await websocket.accept()
 
     context = await _authenticate(websocket, settings)

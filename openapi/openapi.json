@@ -809,7 +809,8 @@
             "enum": [
               "ios",
               "android",
-              "desktop"
+              "desktop",
+              "web"
             ],
             "title": "Platform",
             "type": "string"
@@ -2131,15 +2132,19 @@
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Refresh Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
           }
         },
-        "required": [
-          "refresh_token"
-        ],
         "title": "RefreshRequest",
         "type": "object"
       },

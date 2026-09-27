@@ -68,13 +68,20 @@ refresh(token):
 - 失効したセッションの WS 接続には `session.revoked` を送って切断する。
 - クライアント側の保存場所: iOS は Keychain、Android は Android Keystore の鍵で暗号化した
   DataStore、Desktop は OS の資格情報ストア。平文ファイルに置かない。
+- ブラウザ (M12j、`device.platform = web`): refresh token は応答本文に載せず `chikuwa_refresh` cookie
+  (`HttpOnly`、`SameSite=Strict`、`Path=/api/v1/auth`、TLS 時は `Secure`、有効期限 30 日) で返す。
+  ページのスクリプトは読めないので XSS で盗めない。`POST /auth/refresh` は本文にトークンが無ければ cookie を
+  使うが、その場合 `X-Requested-With: ChikuwaChat` ヘッダが無いと `403 csrf_required` (cross-site の
+  フォームはこのヘッダを付けられない)。access token はページのメモリだけに置く。ログアウトと失効時の 401 は
+  cookie を消す。ページ側に残すのは「セッションを開いた」という印だけ (localStorage、秘密ではない)。
 
 ### 2.4 WebSocket
 
 - 接続後の最初のフレームで access token を送る (SYNC_PROTOCOL.md §5.1)。URL やヘッダに載せない
   (ログ・プロキシに残さない、WebView の制約)。5 秒以内に認証が無ければ切断。
 - WS 接続はセッションに紐付き、access token の期限切れでは切らない。セッション失効で切る。
-- Origin 検証は Web クライアント導入時に追加する (今は非ブラウザクライアントのみ)。
+- Origin 検証 (M12j): `Origin` ヘッダがある接続は、自分のホスト (`Host` と一致) か `CORS_ALLOW_ORIGINS` の
+  オリジンだけ受け付け、それ以外はハンドシェイクを 403 で拒否する。ネイティブクライアントは Origin を送らない。
 
 ### 2.5 ユーザーの作成と初期管理者
 
@@ -208,7 +215,9 @@ refresh(token):
   (`--webui` / `--admin-port` を指定しない)。
 - CORS は Desktop アプリの WebView オリジン (`tauri://localhost`、`http://tauri.localhost`) と Vite 開発サーバ
   (`http://localhost:1420`) だけを許可する (`CORS_ALLOW_ORIGINS`)。トークンは Authorization ヘッダで運ぶので
-  credentials 付きの CORS は使わない。Web クライアント導入時はそのオリジンを追加する。
+  credentials 付きの CORS は使わない。ブラウザクライアント (M12j) は Caddy が API と同じオリジンで配信するので
+  CORS を使わず、cookie も first-party になる。Caddy は SPA に CSP (`default-src 'self'` ほか)、
+  `Referrer-Policy: no-referrer`、`X-Frame-Options: DENY` を付ける。
 - Docker イメージはタグではなくダイジェストで固定する。
 
 ## 7. 秘密情報
@@ -248,7 +257,7 @@ refresh(token):
 | OIDC ログイン | `auth` に provider を追加。sessions の仕組みは共通 |
 | TOTP 2FA | `users` に secret を追加し、login に第 2 段階を挟む |
 | 招待リンクによる自己登録 | `invites` テーブルと `POST /auth/register`。管理者作成と併存可能 |
-| Web クライアント | cookie (`HttpOnly`, `Secure`, `SameSite=Strict`) + CSRF トークン、CORS 許可リスト、WS の Origin 検証 |
+| Web クライアント | 実装済み (M12j): cookie (`HttpOnly`, `Secure`, `SameSite=Strict`) + `X-Requested-With`、同一オリジン配信、WS の Origin 検証 |
 | E2E 暗号化 | 範囲外 (検索・プッシュ本文・AI 機能と両立しない) |
 
 ## 14. リンクプレビューと SSRF (M11g)

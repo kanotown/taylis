@@ -45,8 +45,13 @@ import type {
   UserPublic,
 } from "./types";
 
+/** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
+export const COOKIE_SESSION = "cookie";
+/** Sent with cookie refreshes; a cross-site form cannot add it (SECURITY.md §2.3). */
+export const REQUESTED_WITH = "ChikuwaChat";
+
 export interface DeviceInfo {
-  platform: "desktop" | "ios" | "android";
+  platform: "desktop" | "ios" | "android" | "web";
   device_name?: string | null;
   app_version?: string | null;
 }
@@ -60,6 +65,7 @@ export interface ApiClientOptions {
 }
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<string, string> };
 
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 export class ApiClient {
@@ -102,8 +108,8 @@ export class ApiClient {
     this.refreshing = this.request<TokenResponse>(
       "POST",
       "/api/v1/auth/refresh",
-      { refresh_token: token },
-      { auth: false },
+      token === COOKIE_SESSION ? {} : { refresh_token: token },
+      { auth: false, headers: { "X-Requested-With": REQUESTED_WITH } },
     )
       .then((tokens) => {
         if (version !== this.sessionVersion) throw new ApiError(401, "session_changed", "Session changed");
@@ -138,7 +144,7 @@ export class ApiClient {
 
   private applyTokens(tokens: TokenResponse): void {
     this.accessToken = tokens.access_token;
-    this.refreshToken = tokens.refresh_token;
+    this.refreshToken = tokens.refresh_token || COOKIE_SESSION; // empty = the server set the cookie
     this.options.onTokens?.(tokens);
   }
 
@@ -573,7 +579,7 @@ export class ApiClient {
     method: Method,
     path: string,
     body?: unknown,
-    options: { auth?: boolean; retry401?: boolean } = {},
+    options: RequestOptions = {},
   ): Promise<T> {
     return (await this.requestWithStatus<T>(method, path, body, options)).data;
   }
@@ -582,11 +588,11 @@ export class ApiClient {
     method: Method,
     path: string,
     body?: unknown,
-    options: { auth?: boolean; retry401?: boolean } = {},
+    options: RequestOptions = {},
   ): Promise<{ data: T; status: number }> {
     const auth = options.auth ?? true;
     if (auth && !this.accessToken && this.refreshToken) await this.refresh();
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth && this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
 

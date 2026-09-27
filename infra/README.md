@@ -7,7 +7,8 @@
 | `docker-compose.yml` | `db` (groonga/pgroonga: PostgreSQL 17)、`objectstore` (versitygw)、`app` (uvicorn 単一プロセス)、`caddy` (`proxy` プロファイル) |
 | `docker-compose.prod.yml` | 本番用の上書き (ホストへのポート公開を打ち消す) |
 | `Dockerfile` | server のイメージ (uv ベース) |
-| `Caddyfile` | TLS 終端、`/api/*` と `/ws` を app へ、本文サイズ制限 |
+| `web.Dockerfile` | Caddy + ブラウザクライアント (apps/desktop を `vite build` して `/srv/web` に置く。M12j) |
+| `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限、それ以外は SPA (index.html) |
 | `.env.example` | 必要な環境変数の一覧 (SECRET_KEY、DATABASE_URL、S3_*、PUSH_*)。秘密の実値は置かない |
 
 ## 使い方
@@ -24,6 +25,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 
 `docker-compose.yml` は開発向けに PostgreSQL と app を localhost に公開する。`docker-compose.prod.yml` で
 それを打ち消し、`proxy` プロファイルの Caddy が TLS 終端と `/api/*` の中継を行う。
+
+ブラウザクライアント (M12j): `caddy` サービスのイメージは `web.Dockerfile` でリポジトリ全体をコンテキストに
+ビルドし (`.dockerignore` で apps/desktop と Caddyfile だけを送る)、Desktop と同じ React バンドルを
+`https://<CHAT_DOMAIN>/` で配信する。`/m/<id>` や `/invite/<token>` もこの SPA が受ける。フロントを変えたら
+`docker compose ... --profile proxy up -d --build caddy`。開発中は `apps/desktop` で `npm run dev` すると
+Vite が `/api` を `http://127.0.0.1:8000` (環境変数 `CHIKUWA_API` で変更可) に中継するので、
+http://localhost:1420/ をブラウザで開けば同じ cookie セッションで動く。
 
 ## オブジェクトストレージ (versitygw)
 
@@ -164,8 +172,9 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    起動時に `alembic upgrade head` が走り、`/readyz` が `db` / `schema` / `objectstore` / `outbox_pending` を返す。
    `curl https://<CHAT_DOMAIN>/healthz` で疎通を確認する。
 
-3. **クライアント**: Desktop / iOS / Android のログイン画面で `https://<CHAT_DOMAIN>` を指定する。
-   ユーザーは `create-user` (仮パスワード) か管理者 API で作る。
+3. **クライアント**: Desktop / iOS / Android のログイン画面で `https://<CHAT_DOMAIN>` を指定する。ブラウザは
+   `https://<CHAT_DOMAIN>/` を開くだけでよい。ユーザーは `create-user` (仮パスワード)、管理者 API、
+   または管理画面の招待リンク (M12h) で作る。
 
 4. **バックアップ** (毎日。`infra/backup.sh` は `pg_dump -Fc` の後にオブジェクトストアの tar を取る)
 

@@ -3,9 +3,9 @@ from uuid import UUID
 from fastapi import APIRouter, Request, Response
 
 from app.core.db import Db
-from app.core.errors import rate_limited
+from app.core.errors import AppError, rate_limited, unauthorized
 from app.core.ratelimit import RateLimiter
-from app.modules.auth import service
+from app.modules.auth import service, web_session
 from app.modules.auth.deps import CurrentSession, CurrentUser
 from app.modules.auth.schemas import (
     DeviceOut,
@@ -41,7 +41,10 @@ async def login(body: LoginRequest, request: Request, response: Response, db: Db
         if not limiter.try_acquire(key):
             raise rate_limited(limiter.retry_after_seconds(key))
     _no_store(response)
-    return await service.login(db, body, request.app.state.settings, _client_ip(request))
+    tokens = await service.login(db, body, request.app.state.settings, _client_ip(request))
+    if web_session.is_web(body.device.platform):
+        web_session.issue(response, request, tokens)
+    return tokens
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
@@ -49,14 +52,25 @@ async def refresh(
     body: RefreshRequest, request: Request, response: Response, db: Db
 ) -> TokenResponse:
     _no_store(response)
-    return await service.refresh(
-        db, body.refresh_token, request.app.state.settings, _client_ip(request)
-    )
+    from_cookie = not body.refresh_token
+    token = body.refresh_token or web_session.cookie_token(request)
+    if not token:
+        raise unauthorized("invalid_token", "Invalid refresh token")
+    try:
+        tokens = await service.refresh(db, token, request.app.state.settings, _client_ip(request))
+    except AppError as exc:
+        if from_cookie and exc.status == 401:
+            web_session.clear_on_error(exc)
+        raise
+    if from_cookie:
+        web_session.issue(response, request, tokens)
+    return tokens
 
 
 @router.post("/auth/logout", status_code=204, name="auth:logout")
-async def logout(_: CurrentUser, context: CurrentSession, db: Db) -> None:
+async def logout(_: CurrentUser, context: CurrentSession, response: Response, db: Db) -> None:
     await service.logout(db, context)
+    web_session.clear(response)  # a no-op for native clients
 
 
 @router.get("/auth/sessions", response_model=list[SessionOut], name="auth:sessions")
