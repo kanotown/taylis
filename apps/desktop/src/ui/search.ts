@@ -1,0 +1,223 @@
+/** M16b: the search screen's conditions, date presets, recent searches and as-you-type suggestions. */
+import type { ChannelState, UserPublic } from "../sync/types";
+
+export type HasFlag = "file" | "link" | "pin" | "reaction" | "poll";
+export type SearchSort = "relevance" | "newest";
+export type DatePreset = "today" | "yesterday" | "week" | "month" | "year";
+
+/** What the results show: the words plus filters picked from menus (typed modifiers stay in `q`). */
+export interface SearchParams {
+  q: string;
+  fromUserId: string | null;
+  channelId: string | null;
+  /** A preset is resolved when the search runs, so a remembered 「今日」 stays today. */
+  date: { preset: DatePreset } | { from: string | null; to: string | null } | null;
+  has: HasFlag[];
+  isThread: boolean;
+  sort: SearchSort;
+}
+
+export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: null, date: null, has: [], isThread: false, sort: "relevance" };
+
+export const HAS_FLAGS: readonly HasFlag[] = ["file", "link", "pin", "reaction", "poll"];
+
+export const HAS_LABELS: Readonly<Record<HasFlag, string>> = {
+  file: "ファイルあり",
+  link: "リンクあり",
+  pin: "ピン留め",
+  reaction: "リアクションあり",
+  poll: "投票",
+};
+
+export const DATE_PRESETS: ReadonlyArray<{ preset: DatePreset; label: string }> = [
+  { preset: "today", label: "今日" },
+  { preset: "yesterday", label: "昨日" },
+  { preset: "week", label: "過去 7 日間" },
+  { preset: "month", label: "過去 30 日間" },
+  { preset: "year", label: "過去 1 年間" },
+];
+
+export function hasFilters(params: SearchParams): boolean {
+  return !!(params.fromUserId || params.channelId || params.date || params.has.length > 0 || params.isThread);
+}
+
+/** Nothing to look for: no words and no filters (the server answers 422 empty_query). */
+export function isEmptySearch(params: SearchParams): boolean {
+  return !params.q.trim() && !hasFilters(params);
+}
+
+function midnight(day: Date, offsetDays = 0): Date {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + offsetDays);
+}
+
+/** "YYYY-MM-DD" in the local zone → that local midnight; null for anything else. */
+function localDay(value: string | null): Date | null {
+  const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  if (!match) return null;
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(day.getTime()) ? null : day;
+}
+
+/** The instants the API filters on: `after` inclusive, `before` exclusive, in the viewer's days. */
+export function dateRange(date: SearchParams["date"], now: Date = new Date()): { after: string | null; before: string | null } {
+  if (!date) return { after: null, before: null };
+  if ("preset" in date) {
+    const back = { today: 0, yesterday: 1, week: 6, month: 29, year: 364 }[date.preset];
+    return {
+      after: midnight(now, -back).toISOString(),
+      before: date.preset === "yesterday" ? midnight(now).toISOString() : null,
+    };
+  }
+  const from = localDay(date.from);
+  const to = localDay(date.to);
+  return { after: from ? from.toISOString() : null, before: to ? midnight(to, 1).toISOString() : null };
+}
+
+/** The chip text for the date filter. */
+export function dateLabel(date: SearchParams["date"]): string | null {
+  if (!date) return null;
+  if ("preset" in date) return DATE_PRESETS.find((p) => p.preset === date.preset)?.label ?? null;
+  const from = date.from?.replaceAll("-", "/");
+  const to = date.to?.replaceAll("-", "/");
+  if (from && to) return from === to ? from : `${from} 〜 ${to}`;
+  if (from) return `${from} 以降`;
+  if (to) return `${to} まで`;
+  return null;
+}
+
+/** GET /search/messages parameters; searches without words are always newest first. */
+export function toQuery(params: SearchParams, now: Date = new Date()): {
+  q: string;
+  channel_id: string | null;
+  from_user_id: string | null;
+  after: string | null;
+  before: string | null;
+  has: HasFlag[];
+  is_thread: boolean;
+  sort: SearchSort;
+} {
+  const q = params.q.trim();
+  return {
+    q,
+    channel_id: params.channelId,
+    from_user_id: params.fromUserId,
+    ...dateRange(params.date, now),
+    has: params.has,
+    is_thread: params.isThread,
+    sort: q ? params.sort : "newest",
+  };
+}
+
+/** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
+export function totalLabel(total: number, capped: boolean): string {
+  return `${total.toLocaleString("ja-JP")} 件${capped ? "以上" : ""}`;
+}
+
+// ---- recent searches (per workspace and account, this device only) ----
+
+const RECENT_MAX = 10;
+
+export function recentKey(account: string): string {
+  return `chikuwa.search.recent:${account}`;
+}
+
+function sameSearch(a: SearchParams, b: SearchParams): boolean {
+  return JSON.stringify({ ...a, sort: null }) === JSON.stringify({ ...b, sort: null });
+}
+
+export function readRecent(key: string): SearchParams[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((entry): entry is Partial<SearchParams> => typeof entry === "object" && entry !== null && typeof (entry as SearchParams).q === "string")
+      .map((entry) => ({ ...EMPTY_SEARCH, ...entry, has: Array.isArray(entry.has) ? entry.has.filter((f) => HAS_FLAGS.includes(f)) : [] }))
+      .slice(0, RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+/** Newest first, without duplicates; returns the new list. */
+export function pushRecent(key: string, params: SearchParams): SearchParams[] {
+  if (isEmptySearch(params)) return readRecent(key);
+  const entry = { ...params, q: params.q.trim() };
+  const next = [entry, ...readRecent(key).filter((old) => !sameSearch(old, entry))].slice(0, RECENT_MAX);
+  try {
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    /* a convenience only */
+  }
+  return next;
+}
+
+export function removeRecent(key: string, params: SearchParams): SearchParams[] {
+  const next = readRecent(key).filter((old) => !sameSearch(old, params));
+  try {
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    /* a convenience only */
+  }
+  return next;
+}
+
+export function clearRecent(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* a convenience only */
+  }
+}
+
+// ---- suggestions under the search box ----
+
+export type Suggestion =
+  | { kind: "search"; q: string }
+  | { kind: "recent"; params: SearchParams }
+  | { kind: "user"; user: UserPublic }
+  | { kind: "channel"; channel: ChannelState }
+  | { kind: "has"; flag: HasFlag }
+  | { kind: "thread" };
+
+function fold(value: string): string {
+  return value.normalize("NFKC").toLowerCase();
+}
+
+/**
+ * Empty box: recent searches, then quick filters. While typing: search for the words, then people
+ * (→ 送信者) and conversations (→ チャンネル) whose names match, then matching recent searches.
+ */
+export function suggestions(
+  input: string,
+  context: {
+    users: Iterable<UserPublic>;
+    channels: Iterable<ChannelState>;
+    recent: readonly SearchParams[];
+    channelTitle: (channel: ChannelState) => string;
+  },
+): Suggestion[] {
+  const text = input.trim();
+  if (!text) {
+    return [
+      ...context.recent.slice(0, 6).map((params): Suggestion => ({ kind: "recent", params })),
+      ...HAS_FLAGS.slice(0, 3).map((flag): Suggestion => ({ kind: "has", flag })),
+      { kind: "thread" },
+    ];
+  }
+  const needle = fold(text.replace(/^[@#]/, ""));
+  const users = [...context.users]
+    .filter((u) => !u.deactivated_at && (fold(u.display_name).includes(needle) || fold(u.username).includes(needle)))
+    .sort((a, b) => Number(!fold(a.username).startsWith(needle)) - Number(!fold(b.username).startsWith(needle)) || a.display_name.localeCompare(b.display_name, "ja"))
+    .slice(0, 4)
+    .map((user): Suggestion => ({ kind: "user", user }));
+  const channels = [...context.channels]
+    .filter((c) => c.isMember && fold(context.channelTitle(c)).includes(needle))
+    .sort((a, b) => context.channelTitle(a).localeCompare(context.channelTitle(b), "ja"))
+    .slice(0, 4)
+    .map((channel): Suggestion => ({ kind: "channel", channel }));
+  const recent = context.recent
+    .filter((params) => params.q && fold(params.q).includes(fold(text)) && params.q !== text)
+    .slice(0, 3)
+    .map((params): Suggestion => ({ kind: "recent", params }));
+  return [{ kind: "search", q: text }, ...users, ...channels, ...recent];
+}

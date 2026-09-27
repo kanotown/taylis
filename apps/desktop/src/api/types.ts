@@ -137,3 +137,5 @@ export type DraftOut = components["schemas"]["DraftOut"];
 export interface DraftUpdated extends DraftOut {
   deleted: boolean;
 }
+export type ServerInfoOut = components["schemas"]["ServerInfoOut"];
+export type UnreadSummaryOut = components["schemas"]["UnreadSummaryOut"];

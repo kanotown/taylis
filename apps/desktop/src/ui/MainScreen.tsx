@@ -1,4 +1,4 @@
-import { AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -21,7 +21,9 @@ import { FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { SavedView } from "./SavedView";
-import { SearchPane } from "./SearchPane";
+import { describeSearch, SearchBar } from "./SearchBar";
+import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
+import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
@@ -52,11 +54,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders">("channel");
+  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders" | "search">("channel");
   /** M11i: the channel the files view is scoped to (null: all my channels). */
   const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
+  // M16b: the search on screen (view "search"), the open search box, and the way back from a result.
+  const [search, setSearch] = useState<SearchParams | null>(null);
+  const [searchTab, setSearchTab] = useState<SearchTab>("messages");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [backToSearch, setBackToSearch] = useState(false);
+  const searchSnapshot = useRef<SearchSnapshot | null>(null);
+  const recentStorageKey = recentKey(controller.accountKey ?? "");
+  const [recent, setRecent] = useState(() => readRecent(recentStorageKey));
   const [pinsOpen, setPinsOpen] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
@@ -92,8 +101,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const status = engine?.status ?? "idle";
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searching, switcher, view, pinsOpen });
-  state.current = { currentId, dialog, threadId, searching, switcher, view, pinsOpen };
+  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen });
+  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen };
 
   useEffect(() => {
     // Only a channel I belong to; a new member without channels sees the empty state (M12h invites).
@@ -108,7 +117,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const focus = controller.messageFocus;
     if (!focus || (focus.channelId === currentId && view === "channel")) return;
     setView("channel");
-    setSearching(false);
+    setSearchOpen(false);
     setPinsOpen(false);
     setCurrentId(focus.channelId);
     setThreadChannelId(focus.channelId);
@@ -138,6 +147,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPinsOpen(false);
     setView("channel");
     setSwitcher(false);
+    setBackToSearch(false);
   };
 
   const openSaved = () => {
@@ -145,7 +155,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.setEditing(null);
     setThreadId(null);
     setThreadChannelId(null);
-    setSearching(false);
+    setSearchOpen(false);
+    setBackToSearch(false);
     setPinsOpen(false);
     setView((v) => (v === "saved" ? "channel" : "saved"));
   };
@@ -155,11 +166,39 @@ export function MainScreen({ controller }: { controller: AppController }) {
     void controller.revealMessage(message).then((ok) => {
       if (!ok) return;
       setView("channel");
-      setSearching(false);
+      setSearchOpen(false);
+      setBackToSearch(false);
       setPinsOpen(false);
       setCurrentId(message.channel_id);
       setThreadChannelId(message.channel_id);
       setThreadId(message.parent_id ?? null);
+    });
+  };
+
+  /** M16b: run a search from the box; the results take the centre column. */
+  const runSearch = (params: SearchParams) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    searchSnapshot.current = null;
+    setRecent(pushRecent(recentStorageKey, params));
+    setSearch(params);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setPinsOpen(false);
+    setBackToSearch(false);
+    setView("search");
+  };
+
+  /** A result: its conversation (or thread) around the message, with 「検索結果に戻る」. */
+  const openSearchResult = (message: MessageOut) => {
+    void controller.revealMessage(message).then((ok) => {
+      if (!ok) return;
+      setView("channel");
+      setPinsOpen(false);
+      setCurrentId(message.channel_id);
+      setThreadChannelId(message.channel_id);
+      setThreadId(message.parent_id ?? null);
+      setBackToSearch(true);
     });
   };
 
@@ -168,7 +207,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.setEditing(null);
     setThreadId(null);
     setThreadChannelId(null);
-    setSearching(false);
+    setSearchOpen(false);
+    setBackToSearch(false);
     setPinsOpen(false);
     setFilesChannelId(channelId);
     setView("files");
@@ -179,7 +219,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.setEditing(null);
     setThreadId(null);
     setThreadChannelId(null);
-    setSearching(false);
+    setSearchOpen(false);
+    setBackToSearch(false);
     setPinsOpen(false);
     setView((v) => (v === next ? "channel" : next));
   };
@@ -189,7 +230,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.setEditing(null);
     setThreadId(null);
     setThreadChannelId(null);
-    setSearching(false);
+    setSearchOpen(false);
+    setBackToSearch(false);
     setView((v) => (v === "threads" ? "channel" : "threads"));
   };
 
@@ -218,6 +260,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {
+      // An open menu or popover (Radix) has already used this Esc to close itself.
+      if (event.key === "Escape" && event.defaultPrevented) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
@@ -229,7 +273,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setDialog("dm");
       } else if (mod && !event.shiftKey && key === "f") {
         event.preventDefault();
-        setSearching(true);
+        setSearchOpen(true);
       } else if (mod && event.shiftKey && key === "t") {
         event.preventDefault();
         openThreads();
@@ -249,7 +293,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       } else if (event.key === "Escape") {
         if (s.switcher) setSwitcher(false);
         else if (s.dialog) setDialog(null);
-        else if (s.searching) setSearching(false);
+        else if (s.searchOpen) setSearchOpen(false);
         else if (s.pinsOpen) setPinsOpen(false);
         else if (s.threadId) setThreadId(null);
         else if (controller.editing) controller.setEditing(null);
@@ -304,9 +348,23 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   return (
     <div
-      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
+      className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
       style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
+      {/* M16b: the search box across the top, as in Slack. */}
+      <div className="col-span-3 flex h-10 items-center bg-sidebar px-3">
+        <SearchBar
+          controller={controller}
+          current={view === "search" || backToSearch ? search : null}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          onSearch={runSearch}
+          recent={recent}
+          onRecentChange={setRecent}
+          recentKey={recentStorageKey}
+          placeholder={`${controller.workspaceName} を検索`}
+        />
+      </div>
       <Sidebar
         controller={controller}
         channels={channels}
@@ -317,7 +375,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
         onJoin={(id) => void join(id)}
         onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
         onNewChannel={() => setDialog("channel")}
-        onSearch={() => setSearching(true)}
         onSettings={() => setDialog("settings")}
         onThreads={openThreads}
         threadsActive={view === "threads"}
@@ -354,7 +411,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
             {status === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
           </div>
         )}
-        {view === "threads" ? (
+        {view === "search" && search ? (
+          <SearchView
+            controller={controller}
+            params={search}
+            tab={searchTab}
+            onTabChange={setSearchTab}
+            onChange={setSearch}
+            onOpen={openSearchResult}
+            onClose={() => setView("channel")}
+            snapshot={searchSnapshot}
+          />
+        ) : view === "threads" ? (
           <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
         ) : view === "saved" ? (
           <SavedView controller={controller} onOpen={revealFromList} />
@@ -368,6 +436,20 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
         ) : current ? (
           <>
+            {backToSearch && search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBackToSearch(false);
+                  setView("search");
+                }}
+                className="flex shrink-0 items-center gap-1.5 border-b border-line bg-accent-soft/70 px-4 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent-soft"
+              >
+                <ArrowLeft size={13} />
+                <span className="shrink-0">検索結果に戻る</span>
+                <span className="min-w-0 truncate font-normal opacity-80">{describeSearch(controller, search)}</span>
+              </button>
+            )}
             <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="text-muted">
@@ -514,17 +596,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           </div>
         )}
       </main>
-      {searching ? (
-        <SearchPane
-          controller={controller}
-          onClose={() => setSearching(false)}
-          onOpen={(message) => {
-            void controller.revealMessage(message).then((ok) => {
-              if (ok) { setCurrentId(message.channel_id); setThreadId(message.parent_id ?? null); setSearching(false); }
-            });
-          }}
-        />
-      ) : pinsOpen && current && view === "channel" ? (
+      {pinsOpen && current && view === "channel" ? (
         <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
       ) : threadId && threadChannel ? (
         <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />

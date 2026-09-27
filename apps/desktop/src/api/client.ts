@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -599,13 +599,42 @@ export class ApiClient {
     return this.request("PUT", `/api/v1/messages/${messageId}/thread/follow`, { following });
   }
 
-  /** GET /search/messages: full-text search across my channels (the server applies the membership filter). */
-  searchMessages(query: string, options: { channelId?: string | null; limit?: number; offset?: number } = {}): Promise<SearchOut> {
-    const params = new URLSearchParams({ q: query, limit: String(options.limit ?? 20), offset: String(options.offset ?? 0) });
-    if (options.channelId) params.set("channel_id", options.channelId);
-    // before: / after: / on: dates are interpreted in the caller's zone (DATA_MODEL.md 検索).
+  /**
+   * GET /search/messages (M16b): words and / or filters (the server applies the membership filter).
+   * `has` repeats; typed before: / after: / on: dates are read in the caller's zone (DATA_MODEL.md 検索).
+   */
+  search(query: {
+    q: string;
+    channel_id?: string | null;
+    from_user_id?: string | null;
+    after?: string | null;
+    before?: string | null;
+    has?: readonly string[];
+    is_thread?: boolean;
+    sort?: "relevance" | "newest";
+    limit?: number;
+    offset?: number;
+  }): Promise<SearchOut> {
+    const params = new URLSearchParams({ q: query.q, limit: String(query.limit ?? 20), offset: String(query.offset ?? 0) });
+    if (query.channel_id) params.set("channel_id", query.channel_id);
+    if (query.from_user_id) params.set("from_user_id", query.from_user_id);
+    if (query.after) params.set("after", query.after);
+    if (query.before) params.set("before", query.before);
+    for (const flag of query.has ?? []) params.append("has", flag);
+    if (query.is_thread) params.set("is_thread", "true");
+    if (query.sort) params.set("sort", query.sort);
     params.set("tz_offset_minutes", String(-new Date().getTimezoneOffset()));
     return this.request("GET", `/api/v1/search/messages?${params}`);
+  }
+
+  /** GET /server (M16c, no sign-in): which workspace this URL is (WORKSPACES.md §3.1). */
+  serverInfo(): Promise<ServerInfoOut> {
+    return this.request("GET", "/api/v1/server");
+  }
+
+  /** GET /sync/summary (M16c): the switcher badge of a workspace that is not open. */
+  unreadSummary(): Promise<UnreadSummaryOut> {
+    return this.request("GET", "/api/v1/sync/summary");
   }
 
   /** POST /attachments (multipart): the server sniffs the type; the id is bound when a message is sent. */

@@ -75,7 +75,7 @@ export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
   );
 }
 
-function FileRow({ item, controller, onOpen }: { item: FileItem; controller: AppController; onOpen: (message: MessageOut) => void }) {
+export function FileRow({ item, controller, onOpen }: { item: FileItem; controller: AppController; onOpen: (message: MessageOut) => void }) {
   const store = controller.store;
   const { attachment } = item;
   const url = useAttachmentUrl(controller, attachment, "thumbnail", attachment.has_thumbnail);
