@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.errors import AppError, bad_request, forbidden, not_found
+from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import repository as repo
@@ -80,7 +81,8 @@ async def upload(
     kind = filetype.guess(data[:8192])
     content_type = kind.mime if kind is not None else "application/octet-stream"
 
-    attachment_id = uuid.uuid4()
+    # UUIDv7 like every other id (DATA_MODEL.md): generated here because the storage key needs it.
+    attachment_id = uuid7()
     attachment = Attachment(
         id=attachment_id,
         uploader_id=actor.id,

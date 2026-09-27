@@ -587,7 +587,7 @@ CREATE TABLE reactions (
 
 ```sql
 CREATE TABLE attachments (
-  id             uuid PRIMARY KEY,
+  id             uuid PRIMARY KEY,                  -- UUIDv7 (アップロード時。ファイル一覧の同時刻の並びはこの順)
   uploader_id    uuid NOT NULL REFERENCES users(id),
   message_id     uuid REFERENCES messages(id),      -- bind 時に設定
   channel_id     uuid REFERENCES channels(id),      -- bind 時に設定。アクセス制御はこの列で判定
