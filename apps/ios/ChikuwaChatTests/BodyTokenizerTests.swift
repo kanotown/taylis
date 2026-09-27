@@ -45,4 +45,10 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertNotNil(parseIsoDate("2026-09-25T13:00:00Z"))
         XCTAssertNotNil(parseIsoDate("2026-09-25T13:00:00.5+00:00"))
     }
+
+    func testGroupMentionTokens() {
+        XCTAssertEqual(BodyTokenizer.tokenize("<@group:00000000-0000-7000-8000-00000000000a> and <@00000000-0000-7000-8000-000000000001>"), [
+            .mentionGroup("00000000-0000-7000-8000-00000000000a"), .text(" and "), .mention("00000000-0000-7000-8000-000000000001"),
+        ])
+    }
 }

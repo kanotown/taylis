@@ -52,7 +52,7 @@ struct MessageCardView: View {
                 Text(Timeline.timeLabel(message.createdAt)).foregroundStyle(.secondary)
             }
             .font(.caption)
-            Text(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : Mentions.decode(message.body, users: store.users))
+            Text(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : Mentions.decode(message.body, users: store.users, groups: store.groups))
                 .lineLimit(4)
         }
         .padding(.vertical, 2)

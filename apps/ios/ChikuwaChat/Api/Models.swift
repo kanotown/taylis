@@ -268,6 +268,19 @@ struct BootstrapOut: Codable {
     var favorites: [String]? = nil
     /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
     var customEmoji: [CustomEmojiOut]? = nil
+    /// User groups (M12k): every group with its members; changes arrive as group.updated.
+    var groups: [GroupOut]? = nil
+}
+
+/// A named set of members that `@name` notifies (M12k).
+struct GroupOut: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    var description: String? = nil
+    var memberIds: [String] = []
+    let createdBy: String
+    let createdAt: String
+    let updatedAt: String
 }
 
 /// A workspace emoji (M12f) used as `:name:` in text and reactions.

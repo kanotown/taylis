@@ -250,6 +250,8 @@ final class Store {
     /// Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched.
     var customEmoji: [String: CustomEmojiOut] = [:]
     var emojiImages: [String: UIImage] = [:]
+    /// User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server.
+    var groups: [String: GroupOut] = [:]
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
@@ -412,6 +414,16 @@ final class Store {
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+    }
+
+    // MARK: user groups (M12k)
+
+    func replaceGroups(_ rows: [GroupOut]) {
+        groups = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+    }
+
+    func applyGroup(_ row: GroupOut, deleted: Bool) {
+        if deleted { groups.removeValue(forKey: row.id) } else { groups[row.id] = row }
     }
 
     // MARK: reminders (M12e)

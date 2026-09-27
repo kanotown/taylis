@@ -10,6 +10,7 @@ enum BodyToken: Equatable {
     case codeBlock(String, lang: String? = nil)
     case link(String, label: String? = nil)
     case mention(String)
+    case mentionGroup(String)
     case mentionAll(String)
     case newline
 }
@@ -28,7 +29,7 @@ enum BodyBlock: Equatable {
 }
 
 enum BodyTokenizer {
-    private static let inline = #"(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"#
+    private static let inline = #"(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"#
     private static let inlinePattern = try! NSRegularExpression(pattern: inline)
     private static let fullPattern = try! NSRegularExpression(pattern: #"(```([\s\S]*?)```)|"# + inline + #"|(\n)"#)
     private static let fenceOpen = try! NSRegularExpression(pattern: #"^```([A-Za-z0-9_+#.-]{0,20})\s*$"#)
@@ -68,9 +69,10 @@ enum BodyTokenizer {
             else if group(7) != nil { tokens.append(.italic(group(8) ?? "")) }
             else if group(9) != nil { tokens.append(.strike(group(10) ?? "")) }
             else if group(11) != nil { tokens.append(.link(group(13) ?? "", label: group(12))) }
-            else if group(14) != nil { tokens.append(.mention(group(15) ?? "")) }
-            else if group(16) != nil { tokens.append(.mentionAll(group(17) ?? "")) }
-            else if let url = group(18) { tokens.append(.link(url)) }
+            else if group(14) != nil { tokens.append(.mentionGroup(group(15) ?? "")) }
+            else if group(16) != nil { tokens.append(.mention(group(17) ?? "")) }
+            else if group(18) != nil { tokens.append(.mentionAll(group(19) ?? "")) }
+            else if let url = group(20) { tokens.append(.link(url)) }
             else { tokens.append(.newline) }
             last = match.range.location + match.range.length
         }
@@ -162,6 +164,8 @@ enum BodyTokenizer {
 struct MessageBodyView: View {
     let text: String
     let users: [String: UserPublic]
+    /// M12k: user groups by id, for `<@group:id>`.
+    var groups: [String: GroupOut] = [:]
     /// M12b: links on this server (`<base>/m/<id>`) become in-app links; the row's `openURL` handler reveals the message.
     var internalBase: URL? = nil
     /// M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one.
@@ -250,6 +254,7 @@ struct MessageBodyView: View {
             attributed.link = URL(string: url)
             return Text(attributed)
         case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(.blue)
+        case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? "グループ")).foregroundStyle(.blue)
         case .mentionAll(let target): return Text("@" + target).foregroundStyle(.blue)
         case .newline: return Text("\n")
         }

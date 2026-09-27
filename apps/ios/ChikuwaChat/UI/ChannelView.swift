@@ -386,7 +386,7 @@ struct MessageRow: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 if !message.body.isEmpty {
-                    MessageBodyView(text: message.body, users: store.users, internalBase: controller.api?.baseUrl,
+                    MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, onNeedEmojiImage: { controller.loadEmojiImage($0) })
                         .environment(\.openURL, OpenURLAction { url in
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
@@ -476,8 +476,8 @@ struct MessageRow: View {
             }
         }
         .sheet(isPresented: $editing) {
-            EditMessageView(initial: Mentions.decode(message.body, users: store.users)) { body in
-                Task { await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values)) }
+            EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups)) { body in
+                Task { await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values))) }
             }
         }
         .confirmationDialog("メッセージを削除しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -551,7 +551,7 @@ struct ComposerView: View {
 
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
-        return Mentions.candidates(query, users: users)
+        return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
     }
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {
@@ -578,7 +578,7 @@ struct ComposerView: View {
     private func schedule(_ at: Date) {
         guard canSend, let controller else { return }
         guard at.timeIntervalSinceNow >= 60 else { controller.error = "1 分以上先の時刻を選んでください"; return }
-        let body = Mentions.encode(trimmed, users: users)
+        let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
         let ids = pending.map(\.id)
         Task {
             if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at) {
@@ -588,7 +588,7 @@ struct ComposerView: View {
     }
 
     private func send() {
-        let body = Mentions.encode(trimmed, users: users)
+        let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
         guard canSend else { return }
         guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
         let ids = pending.map(\.id)
