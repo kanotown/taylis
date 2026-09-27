@@ -96,11 +96,12 @@ struct MembershipOut: Codable, Equatable {
 
 struct ChannelOut: Codable, Identifiable, Equatable {
     let id: String
-    let type: String
+    /// Changes when a channel is converted between public and private (M15b).
+    var type: String
     let name: String?
     let topic: String?
     let purpose: String?
-    let archived: Bool
+    var archived: Bool
     let createdBy: String?
     let lastSeq: Int
     let lastMessageAt: String?
@@ -114,8 +115,11 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     var notification: NotificationPreferenceOut? = nil
     /// How many members the channel has (M11h); lists, single-channel responses and channel events carry it.
     var memberCount: Int? = nil
+    /// M15a: "owners" = an announcement channel (only owners and admins start top-level posts).
+    var postingPolicy: String? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
+    var isAnnouncement: Bool { postingPolicy == "owners" }
 }
 
 struct NotificationPreferenceOut: Codable, Equatable {

@@ -146,11 +146,15 @@ final class ApiClient: SyncApi {
     /// M13d: owner or administrator; the channel becomes writable again.
     func unarchiveChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/unarchive", body: .object([:])) }
 
-    func updateChannel(id: String, topic: String? = nil, name: String? = nil, purpose: String? = nil) async throws -> ChannelOut {
+    /// `postingPolicy` (M15a) and `type` (M15b: "public" / "private") are for owners and admins.
+    func updateChannel(id: String, topic: String? = nil, name: String? = nil, purpose: String? = nil,
+                       postingPolicy: String? = nil, type: String? = nil) async throws -> ChannelOut {
         var body: [String: JSONValue] = [:]
         if let topic { body["topic"] = .string(topic) }
         if let name { body["name"] = .string(name) }
         if let purpose { body["purpose"] = .string(purpose) }
+        if let postingPolicy { body["posting_policy"] = .string(postingPolicy) }
+        if let type { body["type"] = .string(type) }
         return try await request("PATCH", "/api/v1/channels/\(id)", body: .object(body))
     }
 

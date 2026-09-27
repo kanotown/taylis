@@ -641,6 +641,20 @@ final class FakeServer {
         for (userIds, frame) in pending { emit(userIds, frame) }
     }
 
+    /// PATCH /channels/{id} as the real server announces it (M15): to the members, to everyone for a conversion.
+    func updateChannel(_ channelId: String, postingPolicy: String? = nil, type: String? = nil) {
+        guard var record = channels[channelId] else { return }
+        let converted = type != nil && type != record.channel.type
+        if let postingPolicy { record.channel.postingPolicy = postingPolicy }
+        if let type { record.channel.type = type }
+        channels[channelId] = record
+        eventId += 1
+        emit(converted ? Set(users.keys) : record.members,
+             .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.updated"), "ts": .string(now()),
+                      "channel_id": .string(channelId), "seq": .null,
+                      "data": .object(["channel": try! JSONValue.from(record.channel), "member_ids": .array(record.members.map(JSONValue.string))])]))
+    }
+
     func emitMembership(_ channelId: String, _ userId: String) {
         guard let record = channels[channelId] else { return }
         eventId += 1

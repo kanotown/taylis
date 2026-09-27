@@ -468,6 +468,24 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    /// M15a: "owners" makes an announcement channel (owners and admins start the posts).
+    func setPostingPolicy(_ channelId: String, policy: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.updateChannel(id: channelId, postingPolicy: policy))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// M15b: public → private (owner / admin) or private → public (admin only).
+    func convertChannel(_ channelId: String, to type: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            store.upsertChannel(try await api.updateChannel(id: channelId, type: type))
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
     func archiveChannel(_ channelId: String) async -> Bool {
         guard let api else { return false }
         do {

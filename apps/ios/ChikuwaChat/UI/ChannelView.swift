@@ -201,6 +201,9 @@ struct ChannelView: View {
                     .buttonStyle(.borderedProminent).padding()
                 } else if channel.channel.archived {
                     Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
+                } else if !channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin") {
+                    Label("このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。", systemImage: "megaphone")
+                        .font(.footnote).foregroundStyle(.secondary).padding()
                 } else {
                     TypingLine(controller: controller, channelId: channelId)
                     ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds in

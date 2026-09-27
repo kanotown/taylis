@@ -28,6 +28,10 @@ struct ChannelState: Codable, Identifiable, Equatable {
     var showsUnread: Bool { isMember && (isMuted ? mentionCount > 0 : unreadCount > 0) }
     /// What the app badge and the list show for this channel (PUSH_NOTIFICATIONS.md §4.2).
     var badgeContribution: Int { isMuted ? mentionCount : (channel.isDm ? unreadCount : mentionCount) }
+    /// M15a: whether I may start top-level posts here; thread replies stay open to every member.
+    func canPostTopLevel(isAdmin: Bool) -> Bool {
+        !channel.isAnnouncement || isAdmin || channel.membership?.role == "owner"
+    }
 
     enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder }
 

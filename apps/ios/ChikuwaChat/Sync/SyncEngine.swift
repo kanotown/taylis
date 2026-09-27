@@ -346,16 +346,14 @@ final class SyncEngine {
             struct Payload: Decodable { let channel: ChannelOut; let memberIds: [String] }
             let payload = try frame.data.decode(Payload.self)
             let isMember = store.me.map { payload.memberIds.contains($0.id) } ?? false
-            if isMember || payload.channel.type == "public" { store.upsertChannel(payload.channel, isMember: isMember) }
+            if isMember || payload.channel.type == "public" {
+                store.upsertChannel(payload.channel, isMember: isMember)
+            } else if store.channel(payload.channel.id) != nil {
+                store.removeChannel(payload.channel.id) // made private while I am not a member (M15b)
+            }
         case "channel.archived":
             if let id = frame.data["channel_id"]?.stringValue {
-                store.updateChannel(id) { state in
-                    state.channel = ChannelOut(id: state.channel.id, type: state.channel.type, name: state.channel.name, topic: state.channel.topic,
-                                               purpose: state.channel.purpose, archived: true, createdBy: state.channel.createdBy, lastSeq: state.channel.lastSeq,
-                                               lastMessageAt: state.channel.lastMessageAt, createdAt: state.channel.createdAt, updatedAt: state.channel.updatedAt,
-                                               membership: state.channel.membership, dmUserIds: state.channel.dmUserIds,
-                                               notification: state.channel.notification, memberCount: state.channel.memberCount)
-                }
+                store.updateChannel(id) { state in state.channel.archived = true }
             }
         case "channel.member_added":
             // M11h: keep the intro's member count current; the member list itself is loaded on demand.

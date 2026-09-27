@@ -148,6 +148,7 @@ struct ChannelInfoView: View {
     @State private var newName = ""
     @State private var confirmLeave = false
     @State private var confirmArchive = false
+    @State private var confirmConvert = false
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     /// Owners and admins manage the channel (rename / archive); every member may leave.
@@ -155,10 +156,23 @@ struct ChannelInfoView: View {
         guard let channel else { return false }
         return channel.channel.membership?.role == "owner" || controller.store.me?.role == "admin"
     }
+    private var isAdmin: Bool { controller.store.me?.role == "admin" }
 
     private func loadMembers() async {
         guard let api = controller.api else { return }
         do { members = try await api.members(channelId: channelId) } catch { controller.error = controller.describe(error) }
+    }
+
+    private var convertTitle: String {
+        channel?.channel.type == "public" ? "非公開チャンネルに変換しますか？" : "公開チャンネルに変換しますか？"
+    }
+
+    private var convertMessage: String {
+        if channel?.channel.type == "public" {
+            return "メンバー以外はこのチャンネルを見つけられなくなり、参加には招待が必要になります。これまでのメッセージもメンバーだけが読めます。"
+                + (isAdmin ? "" : "公開に戻せるのは管理者だけです。")
+        }
+        return "ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。"
     }
 
     /// M11h: the channel's purpose, editable by members.
@@ -210,6 +224,21 @@ struct ChannelInfoView: View {
             }
             if canManage && channel.channel.archived {
                 Button("アーカイブを解除", systemImage: "archivebox") { Task { _ = await controller.unarchiveChannel(channelId) } }
+            }
+            if canManage && !channel.channel.archived {
+                // M15a: an announcement channel; thread replies stay open to everyone.
+                Toggle(isOn: Binding(get: { channel.channel.isAnnouncement }, set: { on in
+                    Task { _ = await controller.setPostingPolicy(channelId, policy: on ? "owners" : "everyone") }
+                })) {
+                    Label("投稿をオーナーと管理者に限る", systemImage: "megaphone")
+                }
+            }
+            // M15b: making a channel public shows its whole history, so that direction is for admins only.
+            if canManage && channel.channel.type == "public" {
+                Button("非公開チャンネルに変換", systemImage: "lock") { confirmConvert = true }
+            }
+            if isAdmin && channel.channel.type == "private" {
+                Button("公開チャンネルに変換", systemImage: "number") { confirmConvert = true }
             }
             Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
         }
@@ -319,6 +348,12 @@ struct ChannelInfoView: View {
             .confirmationDialog("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive, titleVisibility: .visible) {
                 Button("アーカイブ", role: .destructive) { Task { if await controller.archiveChannel(channelId) { dismiss() } } }
             } message: { Text("アーカイブしたチャンネルは読み取り専用になります。") }
+            .confirmationDialog(convertTitle, isPresented: $confirmConvert, titleVisibility: .visible) {
+                let toPrivate = channel?.channel.type == "public"
+                Button(toPrivate ? "非公開にする" : "公開にする", role: .destructive) {
+                    Task { _ = await controller.convertChannel(channelId, to: toPrivate ? "private" : "public") }
+                }
+            } message: { Text(convertMessage) }
             .task { await loadMembers() }
             .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
                 AddMemberView(controller: controller, channelId: channelId)
