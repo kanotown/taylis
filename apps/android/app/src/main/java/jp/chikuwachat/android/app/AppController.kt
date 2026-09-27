@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.app
 
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.ui.Dnd
 import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
@@ -367,6 +370,24 @@ class AppController(private val app: Application) {
         try {
             store.upsertMessage(if (message.pinnedAt != null) api.unpinMessage(message.id) else api.pinMessage(message.id))
         } catch (e: Exception) { error = describe(e) }
+    }
+
+    // --- custom emoji (M12f) ----------------------------------------------------------------------
+
+    private val emojiLoads = HashSet<String>()
+
+    /** Fetches an emoji image once into the store's cache. */
+    fun loadEmojiImage(emoji: CustomEmojiOut) {
+        if (store.emojiImages.containsKey(emoji.id) || !emojiLoads.add(emoji.id)) return
+        scope.launch {
+            try {
+                val bytes = fetchBytes("/api/v1/emoji/${emoji.id}/image")
+                val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                if (bitmap != null) store.setEmojiImage(emoji.id, bitmap)
+            } catch (_: Exception) {
+                // the text form stays; a later render retries
+            } finally { emojiLoads.remove(emoji.id) }
+        }
     }
 
     // --- reminders (M12e) -------------------------------------------------------------------------

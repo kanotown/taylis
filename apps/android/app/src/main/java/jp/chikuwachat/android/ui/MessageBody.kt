@@ -1,5 +1,15 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.graphics.ImageBitmap
+import jp.chikuwachat.android.api.CustomEmojiOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,17 +50,43 @@ fun MessageBody(
     /** M12b: links on this server (`<base>/m/<id>`) open the message in place instead of a browser. */
     internalBase: String? = null,
     onOpenMessage: ((String) -> Unit)? = null,
+    /** M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one. */
+    customEmoji: Map<String, CustomEmojiOut> = emptyMap(),
+    emojiImages: Map<String, ImageBitmap> = emptyMap(),
+    onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
 ) {
+    val inlineContent = HashMap<String, InlineTextContent>()
+    fun AnnotatedString.Builder.appendWithEmoji(text: String) {
+        val replaced = Emoji.replaceShortcodes(text)
+        if (customEmoji.isEmpty()) { append(replaced); return }
+        for (piece in CustomEmoji.split(replaced) { customEmoji.containsKey(it) }) {
+            when (piece) {
+                is CustomEmoji.Piece.Text -> append(piece.text)
+                is CustomEmoji.Piece.Emoji -> {
+                    val emoji = customEmoji[piece.name]!!
+                    val image = emojiImages[emoji.id]
+                    if (image == null) { onNeedEmojiImage?.invoke(emoji); append(":${piece.name}:") }
+                    else {
+                        val key = "emoji:" + emoji.id
+                        inlineContent[key] = InlineTextContent(Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.TextCenter)) {
+                            Image(image, contentDescription = ":${piece.name}:", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                        }
+                        appendInlineContent(key, ":${piece.name}:")
+                    }
+                }
+            }
+        }
+    }
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     fun inline(tokens: List<BodyToken>): AnnotatedString = buildAnnotatedString {
         for (token in tokens) {
             when (token) {
-                is BodyToken.Text -> append(Emoji.replaceShortcodes(token.text))
-                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(Emoji.replaceShortcodes(token.text)) }
-                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(Emoji.replaceShortcodes(token.text)) }
-                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(Emoji.replaceShortcodes(token.text)) }
+                is BodyToken.Text -> appendWithEmoji(token.text)
+                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendWithEmoji(token.text) }
+                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendWithEmoji(token.text) }
+                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendWithEmoji(token.text) }
                 is BodyToken.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(token.text) }
                 is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(token.text) }
                 is BodyToken.Link -> {
@@ -87,18 +123,18 @@ fun MessageBody(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 2.dp),
                 )
-                is BodyBlock.Paragraph -> Text(joined(block.lines), style = MaterialTheme.typography.bodyLarge)
+                is BodyBlock.Paragraph -> Text(joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
                 is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
                     Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
                     Spacer(Modifier.width(8.dp))
-                    Text(joined(block.lines), style = MaterialTheme.typography.bodyLarge, color = muted)
+                    Text(joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, color = muted)
                 }
                 is BodyBlock.ListBlock -> Column(Modifier.padding(vertical = 1.dp)) {
                     block.items.forEachIndexed { index, item ->
                         Row(Modifier.padding(start = (item.level * 16).dp), verticalAlignment = Alignment.Top) {
                             val marker = if (block.ordered) "${block.start + index}." else if (item.level > 0) "◦" else "•"
                             Text(marker, style = MaterialTheme.typography.bodyLarge, color = muted, modifier = Modifier.width(22.dp))
-                            Text(inline(item.tokens), style = MaterialTheme.typography.bodyLarge)
+                            Text(inline(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }

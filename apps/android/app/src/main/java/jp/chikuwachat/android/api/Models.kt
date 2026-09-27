@@ -199,7 +199,13 @@ data class BootstrapOut(
     val bookmarks: List<String> = emptyList(),
     /** My starred channels (M12a) among `channels`. */
     val favorites: List<String> = emptyList(),
+    /** Custom emoji (M12f): the whole table; changes arrive as emoji.updated. */
+    val customEmoji: List<CustomEmojiOut> = emptyList(),
 )
+
+/** A workspace emoji (M12f) used as `:name:` in text and reactions. */
+@Serializable
+data class CustomEmojiOut(val id: String, val name: String, val contentType: String, val width: Int, val height: Int, val createdBy: String, val createdAt: String)
 
 /** PUT / DELETE /channels/{id}/favorite (M12a). */
 @Serializable

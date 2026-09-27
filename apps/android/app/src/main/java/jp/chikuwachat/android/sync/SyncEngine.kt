@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
@@ -351,6 +352,7 @@ class SyncEngine(
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
+        store.replaceCustomEmoji(bootstrap.customEmoji)
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
     }
@@ -401,6 +403,10 @@ class SyncEngine(
             "bookmark.updated" -> {
                 val id = frame.data.str("message_id") ?: return
                 store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
+            "emoji.updated" -> {
+                val row = Codec.snake.decodeFromJsonElement(CustomEmojiOut.serializer(), frame.data["emoji"] ?: return)
+                store.applyCustomEmoji(row, frame.data.bool("deleted") ?: false)
             }
             "reminder.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(ReminderOut.serializer(), frame.data["reminder"] ?: return)

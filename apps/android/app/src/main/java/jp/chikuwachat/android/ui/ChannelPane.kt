@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.ui.EmojiEntry
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.outlined.Schedule
@@ -273,7 +274,10 @@ fun MessageRow(
                     )
                 }
                 if (message.body.isNotEmpty()) {
-                    MessageBody(message.body, store.users, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } })
+                    MessageBody(
+                        message.body, store.users, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
+                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) },
+                    )
                 }
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
@@ -306,7 +310,7 @@ fun MessageRow(
             onMoreReactions = { pickingReaction = true },
         )
     }
-    if (pickingReaction) EmojiPickerDialog(onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
+    if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
@@ -347,9 +351,12 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val query = Mentions.query(draft)
         val candidates = if (query != null) Mentions.candidates(query, store.users.values) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
-        val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { Emoji.candidates(it) } ?: emptyList() else emptyList()
+        val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
+            val names = store.customEmoji.keys.filter { it.startsWith(q) || it.contains(q) }.take(4)
+            (names.map { EmojiEntry(shortcode = it, glyph = ":$it:", category = "custom", keywords = it) } + Emoji.candidates(q)).take(8)
+        } ?: emptyList() else emptyList()
         var pickingEmoji by remember { mutableStateOf(false) }
-        if (pickingEmoji) EmojiPickerDialog(onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
+        if (pickingEmoji) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
         if (emojiHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(emojiHits, key = { it.shortcode }) { entry ->
