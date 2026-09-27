@@ -5,6 +5,7 @@ struct LoginView: View {
     @State private var server = ""
     @State private var username = ""
     @State private var password = ""
+    @State private var totpCode = ""
     @State private var busy = false
 
     var body: some View {
@@ -19,6 +20,12 @@ struct LoginView: View {
                         .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("パスワード", text: $password).textContentType(.password)
                 }
+                if controller.totpRequired {
+                    Section("2 要素認証") {
+                        TextField("認証アプリの 6 桁のコード (または回復コード)", text: $totpCode)
+                            .keyboardType(.asciiCapable).textContentType(.oneTimeCode).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }
+                }
                 if let error = controller.error {
                     Section { Text(error).foregroundStyle(.red) }
                 }
@@ -26,13 +33,14 @@ struct LoginView: View {
                     Button {
                         Task {
                             busy = true
-                            await controller.login(server: server, username: username, password: password)
+                            await controller.login(server: server, username: username, password: password,
+                                                   totpCode: controller.totpRequired ? totpCode : nil)
                             busy = false
                         }
                     } label: {
-                        if busy { ProgressView() } else { Text("ログイン") }
+                        if busy { ProgressView() } else { Text(controller.totpRequired ? "コードを確認してログイン" : "ログイン") }
                     }
-                    .disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
+                    .disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty || (controller.totpRequired && totpCode.trimmingCharacters(in: .whitespaces).isEmpty))
                 }
                 Section {
                     NavigationLink("招待リンクをお持ちの方はこちら") { InviteView(controller: controller) }

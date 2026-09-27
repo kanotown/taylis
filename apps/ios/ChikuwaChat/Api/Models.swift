@@ -412,6 +412,23 @@ struct InvitePreviewOut: Codable, Equatable {
     var passwordMinLength: Int = 8
 }
 
+/// Two-factor authentication (M12i).
+struct TotpStatusOut: Codable, Equatable {
+    let enabled: Bool
+    var enabledAt: String? = nil
+    var recoveryCodesLeft: Int = 0
+}
+
+struct TotpSetupOut: Codable, Equatable {
+    let secret: String
+    let otpauthUri: String
+    let qrPngBase64: String
+}
+
+struct TotpEnabledOut: Codable, Equatable {
+    let recoveryCodes: [String]
+}
+
 struct DeviceInfo: Encodable {
     let platform: String
     let deviceName: String?

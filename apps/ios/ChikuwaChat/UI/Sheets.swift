@@ -342,8 +342,30 @@ struct SettingsView: View {
     @State private var repeated = ""
     @State private var passwordMessage: String?
     @State private var busy = false
+    // M12i: whether my account asks for an authenticator code, and the setup / disable sheets.
+    @State private var totp: TotpStatusOut?
+    @State private var totpSheet: TotpSheet?
 
     private var me: UserMe? { controller.store.me ?? controller.me }
+
+    @ViewBuilder
+    private var totpSection: some View {
+        Section("2 要素認証") {
+            if let totp {
+                HStack {
+                    Image(systemName: totp.enabled ? "checkmark.shield.fill" : "shield").foregroundStyle(totp.enabled ? Color.green : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(totp.enabled ? "有効" : "無効").font(.body)
+                        Text(totp.enabled ? "ログイン時に認証アプリのコードが必要です · 回復コード残り \(totp.recoveryCodesLeft)" : "パスワードだけでログインできます").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(totp.enabled ? "無効にする" : "有効にする") { totpSheet = totp.enabled ? .disable : .setup }
+                }
+            } else {
+                Text("確認中…").foregroundStyle(.secondary)
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -402,6 +424,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                totpSection
                 Section("パスワードの変更") {
                     SecureField("現在のパスワード", text: $current)
                     SecureField("新しいパスワード (8 文字以上)", text: $next)
@@ -429,6 +452,13 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
             .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
+            .sheet(item: $totpSheet) { sheet in
+                switch sheet {
+                case .setup: TotpSetupView(controller: controller) { totpSheet = nil; Task { totp = await controller.totpStatus() } }
+                case .disable: TotpDisableView(controller: controller) { totpSheet = nil; Task { totp = await controller.totpStatus() } }
+                }
+            }
+            .task { totp = await controller.totpStatus() }
             .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ") }
         }
     }
@@ -437,4 +467,10 @@ struct SettingsView: View {
 
 struct ProfileTarget: Identifiable {
     let id: String
+}
+
+/// Which 2FA sheet the settings show (M12i).
+enum TotpSheet: String, Identifiable {
+    case setup, disable
+    var id: String { rawValue }
 }

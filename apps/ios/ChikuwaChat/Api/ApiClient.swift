@@ -47,8 +47,9 @@ final class ApiClient: SyncApi {
 
     // MARK: auth
 
-    func login(username: String, password: String, device: DeviceInfo) async throws -> TokenResponse {
-        let body: JSONValue = .object([
+    /// `totpCode` (M12i) is the authenticator or recovery code once the server answered 401 totp_required.
+    func login(username: String, password: String, device: DeviceInfo, totpCode: String? = nil) async throws -> TokenResponse {
+        var fields: [String: JSONValue] = [
             "username": .string(username),
             "password": .string(password),
             "device": .object([
@@ -56,8 +57,9 @@ final class ApiClient: SyncApi {
                 "device_name": device.deviceName.map(JSONValue.string) ?? .null,
                 "app_version": device.appVersion.map(JSONValue.string) ?? .null,
             ]),
-        ])
-        let tokens: TokenResponse = try await request("POST", "/api/v1/auth/login", body: body, auth: false)
+        ]
+        if let totpCode, !totpCode.isEmpty { fields["totp_code"] = .string(totpCode) }
+        let tokens: TokenResponse = try await request("POST", "/api/v1/auth/login", body: .object(fields), auth: false)
         apply(tokens)
         return tokens
     }
@@ -391,6 +393,24 @@ final class ApiClient: SyncApi {
 
     private static func encodeEmoji(_ emoji: String) -> String {
         emoji.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? emoji
+    }
+
+    // MARK: two-factor authentication (M12i)
+
+    func totpStatus() async throws -> TotpStatusOut { try await request("GET", "/api/v1/auth/totp") }
+
+    /// Needs my password; the secret and QR come back once. A wrong password is 422 invalid_password.
+    func totpSetup(password: String) async throws -> TotpSetupOut {
+        try await request("POST", "/api/v1/auth/totp/setup", body: .object(["password": .string(password)]))
+    }
+
+    /// Confirms the setup with an app code; returns the recovery codes once.
+    func totpEnable(code: String) async throws -> TotpEnabledOut {
+        try await request("POST", "/api/v1/auth/totp/enable", body: .object(["code": .string(code)]))
+    }
+
+    func totpDisable(password: String) async throws {
+        _ = try await requestRaw("POST", "/api/v1/auth/totp/disable", body: .object(["password": .string(password)]), auth: true, retry401: true)
     }
 
     // MARK: invite links (M12h)
