@@ -431,6 +431,31 @@ CREATE INDEX user_group_members_user_idx ON user_group_members (user_id);
   展開して `messages.mentioned_user_ids` に足すので、未読のメンション数・`GET /mentions`・プッシュはそのまま効く。
   グループの id は本文に残るだけで messages には列を足さない。削除されたグループのトークンは誰にも展開されない。
 
+### webhooks (受信 Webhook、M13a)
+
+```sql
+CREATE TABLE webhooks (
+  id            uuid PRIMARY KEY,
+  name          varchar(80) NOT NULL,           -- bot ユーザーの表示名にもなる
+  channel_id    uuid NOT NULL REFERENCES channels(id),   -- 投稿先 (public / private。DM は不可)
+  bot_user_id   uuid NOT NULL REFERENCES users(id),      -- role = bot。この Webhook 専用
+  token_hash    bytea NOT NULL UNIQUE,          -- SHA-256(URL のトークン)。トークンは発行応答に 1 回だけ
+  created_by    uuid NOT NULL REFERENCES users(id),
+  enabled       boolean NOT NULL DEFAULT true,
+  post_count    integer NOT NULL DEFAULT 0,
+  last_post_at  timestamptz,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- `POST /hooks/{token}` (認証なし、トークンごとに 60 回 / 分) が `{"text": "..."}` (JSON、または Slack 互換の
+  `payload=` フォーム) を受け、bot ユーザーとして通常の投稿経路 (seq、outbox、メンション、プッシュ、検索) で
+  メッセージを作る。任意の `id` (UUID) は `client_msg_id` になり、再送しても二重投稿にならない。
+- bot は作成時に投稿先チャンネルのメンバーになり、投稿先を変えると移る。`users.role = 'bot'` はログインできず、
+  管理画面のロール変更の対象にもならない。Webhook を削除すると bot は無効化され、投稿は bot 名義のまま残る。
+- 無効化 (`enabled = false`) と未知のトークンはどちらも 404 (存在を漏らさない)。
+
 ### notification_preferences (チャンネルごとの通知設定)
 
 ```sql

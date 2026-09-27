@@ -317,6 +317,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
             <UserPopover controller={controller} userId={message.sender_id} className="hover:underline">
               <strong className="text-sm text-ink">{senderName}</strong>
             </UserPopover>
+            {sender?.role === "bot" && <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="受信 Webhook の投稿">BOT</span>}
             <StatusEmoji controller={controller} userId={message.sender_id} />
             <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
             {message.edited_at && <span>(編集済み)</span>}

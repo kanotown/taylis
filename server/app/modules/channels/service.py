@@ -421,6 +421,27 @@ async def add_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUI
     return True
 
 
+async def remove_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUID) -> bool:
+    """Drop a membership without committing (M13a webhooks); False when there was none."""
+    membership = await repo.get_membership(db, channel.id, user_id)
+    if membership is None:
+        return False
+    await _emit_member(
+        db, events.CHANNEL_MEMBER_REMOVED, channel.id, user_id, audience_type="channel"
+    )
+    await _emit_member(
+        db,
+        events.CHANNEL_MEMBER_REMOVED,
+        channel.id,
+        user_id,
+        audience_type="user",
+        audience_id=user_id,
+    )
+    await db.delete(membership)
+    await db.flush()
+    return True
+
+
 async def remove_member(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, target_user_id: uuid.UUID
 ) -> None:

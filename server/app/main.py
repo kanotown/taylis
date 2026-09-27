@@ -50,6 +50,7 @@ from app.modules.sync.router import router as sync_router
 from app.modules.threads.router import router as threads_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
+from app.modules.webhooks.router import router as webhooks_router
 from app.realtime.hub import RealtimeHub
 from app.realtime.router import router as realtime_router
 
@@ -194,6 +195,7 @@ def build_api_router() -> APIRouter:
     api.include_router(reminders_router)
     api.include_router(emoji_router)
     api.include_router(groups_router)
+    api.include_router(webhooks_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(search_router)
@@ -223,6 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
         "invite": RateLimiter(settings.invite_rate_limit_per_ip),
+        "webhook": RateLimiter(settings.webhook_rate_limit_per_hook),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
         "search": RateLimiter(settings.search_rate_limit_per_user),
         "link_preview": RateLimiter(settings.link_preview_rate_limit_per_user),

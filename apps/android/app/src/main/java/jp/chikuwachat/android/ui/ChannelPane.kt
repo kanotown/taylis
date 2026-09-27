@@ -262,6 +262,11 @@ fun MessageRow(
                 if (!compact) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
+                        if (store.users[message.senderId]?.role == "bot") {
+                            Surface(shape = MaterialTheme.shapes.extraSmall, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(start = 6.dp)) {
+                                Text("BOT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                            }
+                        }
                         StatusEmoji(store.users[message.senderId], modifier = Modifier.padding(start = 6.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -80,6 +80,41 @@ async def create_user_in_tx(
     return user
 
 
+async def create_bot_in_tx(
+    db: AsyncSession, *, actor_id: uuid.UUID, username: str, display_name: str
+) -> User:
+    """A `bot` account for an incoming webhook (M13a): it never logs in; the caller commits."""
+    await _ensure_unique(db, username, None)
+    user = User(
+        username=username,
+        display_name=display_name,
+        password_hash=await hash_password(generate_temporary_password(32)),
+        role="bot",
+        must_change_password=False,
+    )
+    db.add(user)
+    await db.flush()
+    await emit_user_event(db, USER_CREATED, user)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor_id,
+        action="admin.user_created",
+        target_type="user",
+        target_id=user.id,
+        details={"username": user.username, "role": user.role},
+    )
+    return user
+
+
+async def deactivate_bot_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
+    user = await _get_user(db, user_id)
+    if user.is_active:
+        user.deactivated_at = utcnow()
+        user.updated_at = user.deactivated_at
+        await db.flush()
+        await emit_user_event(db, USER_DEACTIVATED, user)
+
+
 async def create_user(
     db: AsyncSession,
     data: AdminUserCreate,

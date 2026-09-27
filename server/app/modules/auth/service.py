@@ -93,8 +93,8 @@ async def login(
     # All mutations lock user before sessions, so login cannot race a password reset.
     user = await users.get_by_username(db, data.username, for_update=True)
     valid_password = await verify_password(user.password_hash if user else None, data.password)
-    if not valid_password or user is None or not user.is_active:
-        log.warning("login failed", extra={"ip": ip})
+    if not valid_password or user is None or not user.is_active or user.role == "bot":
+        log.warning("login failed", extra={"ip": ip})  # bots (M13a) only post via their webhook
         raise unauthorized("invalid_credentials", "Invalid username or password")
     now = utcnow()
     await totp.check_login(
