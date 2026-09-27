@@ -23,6 +23,8 @@ sealed class BodyBlock {
     data class Quote(val lines: List<List<BodyToken>>) : BodyBlock()
     data class ListBlock(val ordered: Boolean, val start: Int, val items: List<BodyListItem>) : BodyBlock()
     data class CodeBlock(val text: String, val lang: String?) : BodyBlock()
+    /** M15g: a GFM table; rows have exactly as many cells as the header. */
+    data class Table(val align: List<TableAlign>, val header: List<List<BodyToken>>, val rows: List<List<List<BodyToken>>>) : BodyBlock()
 }
 
 private const val INLINE =
@@ -35,6 +37,48 @@ private val BULLET = Regex("""^(\s*)[-*•]\s+(.*)$""")
 private val NUMBERED = Regex("""^(\s*)(\d{1,3})\.\s+(.*)$""")
 private val QUOTE = Regex("""^>\s?(.*)$""")
 private val HEADING = Regex("""^(#{1,3})\s+(\S.*)$""")
+private val TABLE_SEPARATOR = Regex("""^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$""")
+
+/** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
+enum class TableAlign { NONE, LEFT, CENTER, RIGHT }
+
+/** M15g: the cells of a table row; "\|" is a literal pipe, outer pipes are optional. */
+fun splitTableRow(line: String): List<String> {
+    var text = line.trim()
+    if (text.startsWith("|")) text = text.drop(1)
+    if (text.endsWith("|") && !text.endsWith("\\|")) text = text.dropLast(1)
+    val cells = ArrayList<String>()
+    val current = StringBuilder()
+    var i = 0
+    while (i < text.length) {
+        val ch = text[i]
+        if (ch == '\\' && i + 1 < text.length && text[i + 1] == '|') {
+            current.append('|')
+            i += 2
+            continue
+        }
+        if (ch == '|') {
+            cells.add(current.toString().trim())
+            current.clear()
+        } else {
+            current.append(ch)
+        }
+        i++
+    }
+    cells.add(current.toString().trim())
+    return cells
+}
+
+private fun tableAlign(cell: String): TableAlign {
+    val left = cell.startsWith(":")
+    val right = cell.endsWith(":")
+    return when {
+        left && right -> TableAlign.CENTER
+        right -> TableAlign.RIGHT
+        left -> TableAlign.LEFT
+        else -> TableAlign.NONE
+    }
+}
 
 /** Whole-body tokens (inline markup, fenced code and newlines); kept for older callers and tests. */
 fun tokenizeBody(body: String): List<BodyToken> = scan(body, FULL_PATTERN, withBlocks = true)
@@ -85,6 +129,9 @@ fun parseBlocks(body: String): List<BodyBlock> {
     val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n")
     fun fenceCloseAfter(index: Int): Int = (index + 1 until lines.size).firstOrNull { FENCE_CLOSE.matches(lines[it]) } ?: -1
     fun opensFence(index: Int) = FENCE_OPEN.matches(lines[index]) && fenceCloseAfter(index) != -1
+    // M15g: a header row with a pipe, directly followed by a separator with as many cells.
+    fun opensTable(index: Int) = index + 1 < lines.size && '|' in lines[index] && TABLE_SEPARATOR.matches(lines[index + 1]) &&
+        splitTableRow(lines[index]).size == splitTableRow(lines[index + 1]).size
     val blocks = ArrayList<BodyBlock>()
     var i = 0
     while (i < lines.size) {
@@ -111,6 +158,19 @@ fun parseBlocks(body: String): List<BodyBlock> {
             blocks.add(BodyBlock.Quote(quoted))
             continue
         }
+        if (opensTable(i)) {
+            val header = splitTableRow(line)
+            val align = splitTableRow(lines[i + 1]).map(::tableAlign)
+            val rows = ArrayList<List<List<BodyToken>>>()
+            i += 2
+            while (i < lines.size && '|' in lines[i] && lines[i].isNotBlank()) {
+                val cells = splitTableRow(lines[i])
+                rows.add(header.indices.map { tokenizeInline(cells.getOrElse(it) { "" }) }) // short rows pad, long rows are cut (GFM)
+                i++
+            }
+            blocks.add(BodyBlock.Table(align, header.map(::tokenizeInline), rows))
+            continue
+        }
         val isBullet = BULLET.matches(line)
         if (isBullet || NUMBERED.matches(line)) {
             val ordered = !isBullet
@@ -129,7 +189,7 @@ fun parseBlocks(body: String): List<BodyBlock> {
         val paragraph = ArrayList<List<BodyToken>>()
         while (i < lines.size) {
             val current = lines[i]
-            if (paragraph.isNotEmpty() && (opensFence(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current))) break
+            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current))) break
             paragraph.add(tokenizeInline(current))
             i++
         }
@@ -155,6 +215,8 @@ fun splitIntoLines(tokens: List<BodyToken>): List<List<BodyToken>> {
 fun plainText(body: String, maxLength: Int = 200): String {
     val text = body
         .replace(Regex("""(?m)^```[A-Za-z0-9_+#.-]*\s*$"""), "")
+        .replace(Regex("""(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"""), "") // M15g: table separators
+        .replace(Regex("""(?m)^[ \t]*\|(.*)\|[ \t]*$""")) { match -> splitTableRow(match.value).joinToString(" ") }
         .replace(Regex("""(?m)^#{1,3}\s+"""), "")
         .replace(Regex("""(?m)^>\s?"""), "")
         .replace(Regex("""(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"""), "")
