@@ -3207,6 +3207,36 @@
         "title": "SectionUpdate",
         "type": "object"
       },
+      "ServerInfoOut": {
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "product": {
+            "const": "chikuwachat",
+            "default": "chikuwachat",
+            "title": "Product",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "name",
+          "api_version"
+        ],
+        "title": "ServerInfoOut",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "created_at": {
@@ -3613,6 +3643,25 @@
           "recovery_codes_left"
         ],
         "title": "TotpStatusOut",
+        "type": "object"
+      },
+      "UnreadSummaryOut": {
+        "description": "What the workspace switcher shows for a workspace that is not open (WORKSPACES.md §6).",
+        "properties": {
+          "badge": {
+            "title": "Badge",
+            "type": "integer"
+          },
+          "has_unread": {
+            "title": "Has Unread",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "badge",
+          "has_unread"
+        ],
+        "title": "UnreadSummaryOut",
         "type": "object"
       },
       "UserMe": {
@@ -9233,6 +9282,27 @@
         ]
       }
     },
+    "/api/v1/server": {
+      "get": {
+        "operationId": "server_info_api_v1_server_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Server Info",
+        "tags": [
+          "server"
+        ]
+      }
+    },
     "/api/v1/sidebar/channels/{channel_id}": {
       "delete": {
         "description": "Back to the default sections.",
@@ -9563,6 +9633,33 @@
           }
         ],
         "summary": "Bootstrap",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/api/v1/sync/summary": {
+      "get": {
+        "description": "Badges for a workspace the client has not opened (WORKSPACES.md §6).",
+        "operationId": "unread_summary_api_v1_sync_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unread Summary",
         "tags": [
           "sync"
         ]

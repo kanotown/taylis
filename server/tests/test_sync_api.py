@@ -75,3 +75,37 @@ async def test_delta_cursor_semantics(
     as_user(bob)
     denied = await client.get(base)
     assert denied.status_code == 403 and denied.json()["error"]["code"] == "not_a_member"
+
+
+async def test_unread_summary_follows_the_badge_rules(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """GET /sync/summary (WORKSPACES.md §6): the switcher badge for a workspace not open."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    as_user(bob)
+    await client.post(f"/api/v1/channels/{general['id']}/join")
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 0, "has_unread": False}
+
+    as_user(alice)
+    await _post(client, general["id"], "plain")  # unread, but no badge in a channel
+    as_user(bob)
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 0, "has_unread": True}
+
+    as_user(alice)
+    dm = (await client.post("/api/v1/dms", json={"user_ids": [str(bob.id)]})).json()
+    await _post(client, dm["id"], "one")
+    await _post(client, dm["id"], "two")  # every DM message counts
+    await _post(client, general["id"], f"<@{bob.id}> look")  # a channel counts mentions
+    as_user(bob)
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 3, "has_unread": True}
+
+    # A muted conversation only counts mentions: the DM drops out, the channel mention stays.
+    muted = {"level": "none"}
+    await client.put(f"/api/v1/channels/{dm['id']}/notification-preference", json=muted)
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 1, "has_unread": True}
+
+    await client.put(f"/api/v1/channels/{general['id']}/read", json={"last_read_seq": 10})
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 0, "has_unread": False}

@@ -63,6 +63,8 @@ PUT /api/v1/devices/current
 - **ログアウト / セッション失効時に `enabled = false` にする** (ログアウト後の端末に通知を送らない)。
 - クライアントはアプリ起動ごと、およびトークン更新 (APNs の `didRegisterForRemoteNotificationsWithDeviceToken`、
   FCM の `onNewToken`) のたびに登録し直す。トークンは変わるものとして扱う。
+- 複数のワークスペース (サーバー) にサインインしている場合、同じトークンを各サーバーに登録する。
+  トークンが変わったら全ワークスペースに登録し直す (WORKSPACES.md §8)。
 - プロバイダから「無効なトークン」が返ったら `push_token = NULL`、`push_token_invalid_reason` を記録する。
   端末行自体は有効のまま。再登録で復活する。
 - 1 ユーザーが複数端末・複数トークンを持つ前提。
@@ -109,6 +111,8 @@ WS の `ping` フレームに `{ "active": true|false }` を持たせ、クラ�
 
 `badge` = 受信者の「DM の未読数 + チャンネルのメンション数」の合計を計画時に数える (M8b で実装。受信者ごとに payload を作る)。
 近似値でよい。アプリは起動時に bootstrap の値でバッジを上書きする。
+複数のワークスペースを使う端末では各サーバーが自分の分だけの値を付けるので、アプリは全ワークスペースの
+合計で上書きする (WORKSPACES.md §6)。
 
 ## 5. ペイロード
 
@@ -117,6 +121,7 @@ WS の `ping` フレームに `{ "active": true|false }` を持たせ、クラ�
 ```json
 {
   "kind": "message",
+  "workspace_id": "…",                 // 送ったデプロイ (WORKSPACES.md §3.3)。タップをワークスペースに振り分ける
   "channel_id": "…", "message_id": "…", "seq": 1533,
   "title": "#general",                 // DM なら相手の表示名
   "subtitle": "Alice",                 // チャンネルの場合の送信者。DM では省略
@@ -207,8 +212,8 @@ Provider の選択は起動時に設定から決め、`notifications` モジュ�
 | 場面 | iOS | Android |
 | --- | --- | --- |
 | 通知受信 (バックグラウンド) | OS が表示。`thread-id` でチャンネルごとにグループ化 | `onMessageReceived` で通知を表示 (`tag = channel_id`、チャンネルの通知チャネル)。可能なら軽い同期 (WorkManager) |
-| 通知受信 (フォアグラウンド) | 表示しない (WS で受信済み) | 表示しない |
-| 通知タップ | 該当チャンネルを開き、通常の起動同期 (WS → bootstrap → catch_up) の後に表示 | 同左 |
+| 通知受信 (フォアグラウンド) | アクティブなワークスペースの通知は表示しない (WS で受信済み)。他のワークスペースの通知は表示する (WORKSPACES.md §7) | 同左 |
+| 通知タップ | `workspace_id` のワークスペースに切り替え、該当チャンネルを開き、通常の起動同期 (WS → bootstrap → catch_up) の後に表示 | 同左 |
 | アプリ起動 / 復帰 | トークン登録 (§3)、バッジを bootstrap の値で更新、当該チャンネルの通知を消去 | 同左 |
 | ログアウト | 何もしなくてよい (サーバがセッション失効時に端末を無効化) | 同左 |
 

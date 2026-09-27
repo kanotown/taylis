@@ -319,7 +319,8 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | DM | `POST /dms` (`{user_ids}`; 既存があればそれを返す) |
 | Messages | `GET /channels/{id}/messages` (履歴: `before_seq`, `limit`。カーソル方式), `GET /channels/{id}/sync` (差分: `since_seq`, `limit`), `POST /channels/{id}/messages`, `GET/PATCH/DELETE /messages/{id}`, `GET /messages/{id}/replies`, `PUT/DELETE /messages/{id}/reactions/{emoji}` |
 | Reads / 通知設定 | `PUT /channels/{id}/read`, `PUT /channels/{id}/notification-preference` |
-| Sync | `GET /sync/bootstrap`, `WS /ws` |
+| Sync | `GET /sync/bootstrap`, `GET /sync/summary` (開いていないワークスペースのバッジ), `WS /ws` |
+| Server | `GET /server` (認証不要。ワークスペース名と `workspace_id`。WORKSPACES.md) |
 | Attachments | `POST /attachments` (multipart), `GET /attachments/{id}`, `GET /attachments/{id}/content`, `GET /attachments/{id}/thumbnail` |
 | Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`) |
 | Health | `GET /healthz` (プロセス生存), `GET /readyz` (DB / オブジェクトストレージ到達性) |
@@ -396,6 +397,8 @@ RealtimeHub だけ**。永続的な処理は必ず outbox の永続ハンドラ�
 - プッシュ通知は「新しいデータがあるかもしれない」という合図としてのみ扱い、受信後は同期する。
 - 認証情報は iOS は Keychain、Android は Android Keystore で保護したストレージ、Desktop は OS の
   資格情報ストア (Keychain / Credential Manager) に保存する。
+- 複数のワークスペース (= 複数のサーバー) を登録して切り替えられる。ローカルストアと資格情報は
+  ワークスペースごとに分ける (WORKSPACES.md)。
 
 ## 12. 横断的関心事
 
@@ -433,3 +436,4 @@ RealtimeHub だけ**。永続的な処理は必ず outbox の永続ハンドラ�
 | D17 | Device と Session を分け、ログインごとに Device 行を作る | 端末 (プッシュトークン、名前、バージョン) と資格情報 (refresh token) のライフサイクルが違う。1 ユーザー複数端末・複数トークンを自然に表せる | sessions に端末情報を持たせる (初稿の案) |
 | D18 | AI / RAG は範囲外だが、本文プレーンテキスト保存・増分入口・同一 DB のベクトル拡張で備える | CLAUDE.md の将来要件。専用基盤を今は作らない | 埋め込みパイプラインの先行実装 |
 | D19 | オブジェクトストレージは versitygw (posix バックエンド) | MinIO コミュニティ版の終了 (2026-04 archive、イメージ削除) を受けて 2026-09-26 に決定。S3 API をディレクトリの上に載せるだけなので 1 台構成で最も単純、バックアップはファイルコピー、Apache-2.0 | RustFS (MinIO 互換だが 1.0 直後)、Garage (AGPL、分散前提)、アプリ内ローカル FS 実装 (S3 互換の要件から外れる) |
+| D20 | ワークスペースの追加・切り替えはクライアント側で複数サーバーを登録して行う | D12 を保ったまま Slack / Mattermost と同じ操作を提供できる。サーバーの変更は `GET /server`、`GET /sync/summary`、プッシュの `workspace_id` だけ (2026-09-27) | 1 サーバー内に複数ワークスペース (テナント列、権限、検索の分離が全体に及ぶ) |

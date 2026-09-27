@@ -123,6 +123,7 @@ async def _push_test(username: str, body: str) -> int:
     from app.modules.notifications.providers import build_providers
     from app.modules.notifications.schemas import PushPayload
     from app.modules.users.models import User
+    from app.modules.workspace import service as workspace
 
     settings = get_settings()
     providers = build_providers(settings)
@@ -149,7 +150,11 @@ async def _push_test(username: str, body: str) -> int:
                 print(f"no push-registered devices for '{username}'")
                 return 1
             payload = PushPayload(
-                kind="test", title="ChikuwaChat", body=body, sent_at=utcnow()
+                kind="test",
+                workspace_id=await workspace.workspace_id(session),
+                title="ChikuwaChat",
+                body=body,
+                sent_at=utcnow(),
             ).model_dump(mode="json")
             for device in devices:
                 provider = providers[device.push_provider]

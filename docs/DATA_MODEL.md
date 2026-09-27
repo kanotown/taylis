@@ -798,6 +798,19 @@ CREATE TABLE audit_logs (
 );
 ```
 
+### workspace_identity (デプロイの識別子、WORKSPACES.md)
+
+```sql
+CREATE TABLE workspace_identity (
+  singleton   boolean PRIMARY KEY DEFAULT true CHECK (singleton),  -- 常に 1 行
+  id          uuid NOT NULL,          -- migration 0034 で gen_random_uuid()
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+```
+
+`GET /api/v1/server` とプッシュのペイロードで `workspace_id` として返す。クライアントはこの値で
+通知をワークスペースに振り分ける。データなのでバックアップ / 復元で保たれる。行が無ければ起動時に作る。
+
 ## 4. 代表的なクエリ
 
 履歴 (上スクロール。カーソルは `seq`。トゥームストーンは含めない):

@@ -18,6 +18,7 @@ from app.modules.messages.schemas import MessageCreate
 from app.modules.notifications.models import NotificationPreference, PushDelivery
 from app.modules.notifications.planner import PushPlanner
 from app.modules.users.models import User
+from app.modules.workspace import service as workspace
 from tests.helpers import make_user
 from tests.test_outbox import RecordingBus
 
@@ -82,6 +83,8 @@ async def test_dm_notifies_recipient_devices_not_sender(
     )
     assert payload["seq"] == 1 and rows[0].message_seq == 1
     assert rows[0].expires_at > utcnow() + timedelta(minutes=9)
+    # WORKSPACES.md §5: the app routes a tap to the workspace that sent it.
+    assert payload["workspace_id"] == str(await workspace.workspace_id(db))
 
 
 async def test_push_text_shows_display_names_and_no_markdown(

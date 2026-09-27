@@ -60,8 +60,10 @@ async def test_request_shape_and_auth_token(keypair: tuple[str, str]) -> None:
     apns = provider(keypair, handler)
     channel_id = str(uuid.uuid4())
     expires = utcnow().replace(microsecond=0)
+    workspace_id = str(uuid.uuid4())
     payload = {
         "kind": "message",
+        "workspace_id": workspace_id,
         "title": "Alice",
         "subtitle": None,
         "body": "hi",
@@ -87,6 +89,7 @@ async def test_request_shape_and_auth_token(keypair: tuple[str, str]) -> None:
     assert body["aps"]["alert"] == {"title": "Alice", "body": "hi"}
     assert body["aps"]["thread-id"] == channel_id and body["aps"]["sound"] == "default"
     assert body["channel_id"] == channel_id and body["seq"] == 7
+    assert body["workspace_id"] == workspace_id
 
     await apns.send(device("production"), payload)
     assert captured[1].url.host == "api.push.apple.com"

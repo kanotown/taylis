@@ -55,6 +55,8 @@ from app.modules.threads.router import router as threads_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
+from app.modules.workspace import service as workspace
+from app.modules.workspace.router import router as workspace_router
 from app.realtime.hub import RealtimeHub
 from app.realtime.router import router as realtime_router
 
@@ -166,6 +168,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.blobs.ensure_bucket()
     except Exception:  # readiness reports the object store; uploads fail loudly until it is back
         log.exception("object store is not reachable at startup")
+    try:
+        async with app.state.db.session_factory() as session:
+            await workspace.ensure(session)
+    except Exception:  # readiness reports the database
+        log.exception("could not read the workspace identity at startup")
     if settings.run_background_tasks:
         tasks.append(asyncio.create_task(app.state.relay.run(stop), name="outbox-relay"))
         tasks.append(asyncio.create_task(_purge_loop(app, stop), name="outbox-purge"))
@@ -185,6 +192,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def build_api_router() -> APIRouter:
     api = APIRouter(prefix=API_PREFIX)
+    api.include_router(workspace_router)
     api.include_router(auth_router)
     api.include_router(totp_router)
     api.include_router(
