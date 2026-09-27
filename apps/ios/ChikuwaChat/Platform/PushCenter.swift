@@ -97,14 +97,24 @@ final class PushCenter {
     }
 }
 
-/// Which APNs environment this build's provisioning profile targets (sandbox for Xcode installs).
+/// Which APNs environment this build targets: the embedded provisioning profile's for Xcode (sandbox) and Ad Hoc
+/// installs. App Store and TestFlight builds carry no embedded profile and always use production.
 enum PushEnvironment {
     static func current() -> String {
-        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-              let data = try? Data(contentsOf: url) else {
-            return "sandbox" // simulator or unsigned build
-        }
-        return parse(String(decoding: data, as: UTF8.self))
+        #if targetEnvironment(simulator)
+        return "sandbox"
+        #else
+        let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision")
+            .flatMap { try? Data(contentsOf: $0) }
+            .map { String(decoding: $0, as: UTF8.self) }
+        return resolve(profile: profile)
+        #endif
+    }
+
+    /// `profile` is nil on a device build without an embedded profile, i.e. from the App Store or TestFlight.
+    static func resolve(profile: String?) -> String {
+        guard let profile else { return "production" }
+        return parse(profile)
     }
 
     /// The profile is a CMS blob wrapping a plist; a substring search is enough for one key.

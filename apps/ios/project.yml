@@ -34,11 +34,13 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.
-        # Production is expected behind TLS (Caddy). The app is installed via Xcode, not the App Store.
+        # Production is expected behind TLS (Caddy). The app is installed via Xcode or TestFlight, not the App Store.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
         NSCameraUsageDescription: 撮った写真をメッセージに添付するために使います
+        # Only HTTPS through the system (exempt): App Store Connect then skips the export compliance question.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios
