@@ -62,6 +62,16 @@ fun activeStatus(user: UserPublic?, now: Long = System.currentTimeMillis()): Pai
     return emoji to text
 }
 
+/** What an invite link offers before any account exists (M12h). */
+@Serializable
+data class InvitePreviewOut(
+    val invitedBy: String,
+    val role: String,
+    val channels: List<String> = emptyList(),
+    val expiresAt: String,
+    val passwordMinLength: Int = 8,
+)
+
 @Serializable
 data class DeviceOut(
     val id: String,

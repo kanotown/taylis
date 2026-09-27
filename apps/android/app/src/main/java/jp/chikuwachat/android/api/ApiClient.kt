@@ -336,6 +336,28 @@ class ApiClient(
     override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState =
         request("PUT", "/api/v1/messages/$messageId/thread/follow", buildJsonObject { put("following", following) })
 
+    // --- invite links (M12h) ------------------------------------------------------------------
+
+    /** No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked. */
+    suspend fun invitePreview(token: String): InvitePreviewOut = request("GET", "/api/v1/invites/$token", auth = false)
+
+    /** Creates the account and logs it in (the response is the same as a login). */
+    suspend fun acceptInvite(token: String, username: String, displayName: String, password: String, platform: String, deviceName: String?, appVersion: String?): TokenResponse {
+        val body = buildJsonObject {
+            put("username", username)
+            put("display_name", displayName)
+            put("password", password)
+            put("device", buildJsonObject {
+                put("platform", platform)
+                put("device_name", deviceName?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("app_version", appVersion?.let { JsonPrimitive(it) } ?: JsonNull)
+            })
+        }
+        val tokens: TokenResponse = request("POST", "/api/v1/invites/$token/accept", body, auth = false)
+        apply(tokens)
+        return tokens
+    }
+
     // --- transport --------------------------------------------------------------------------
 
     private suspend inline fun <reified T> request(method: String, path: String, body: JsonElement? = null, auth: Boolean = true): T {

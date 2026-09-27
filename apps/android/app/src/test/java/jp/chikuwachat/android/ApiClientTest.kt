@@ -106,4 +106,24 @@ class ApiClientTest {
         assertEquals("wss://chat.example.com/api/v1/ws", ApiClient("https://chat.example.com").wsUrl)
         assertEquals("ws://10.0.2.2:8000/api/v1/ws", ApiClient("http://10.0.2.2:8000/").wsUrl)
     }
+
+    @Test fun acceptingAnInviteNeedsNoTokenAndLogsIn() = runBlocking {
+        val seen = ArrayList<Pair<String, String?>>()
+        var body = ""
+        val client = ApiClient("http://server", stubbed { request ->
+            seen.add(request.url.encodedPath to request.header("Authorization"))
+            if (request.url.encodedPath.endsWith("/accept")) {
+                val buffer = okio.Buffer(); request.body!!.writeTo(buffer); body = buffer.readUtf8()
+                201 to tokens(3)
+            } else 200 to """{"invited_by":"Root","role":"member","channels":["general"],"expires_at":"2026-10-04T00:00:00Z","password_min_length":8}"""
+        })
+        val preview = client.invitePreview("t_k")
+        assertEquals("Root", preview.invitedBy)
+        assertEquals(listOf("general"), preview.channels)
+        val tokens = client.acceptInvite("t_k", "tanaka", "田中", "pw", "android", null, null)
+        assertEquals("alice", tokens.user.username)
+        assertEquals("refresh-3", client.refreshToken)
+        assertEquals(listOf("/api/v1/invites/t_k" to null, "/api/v1/invites/t_k/accept" to null), seen)
+        assertTrue(body, body.contains("\"display_name\":\"田中\""))
+    }
 }
