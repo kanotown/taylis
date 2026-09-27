@@ -7,14 +7,14 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import type { Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions } from "./types";
 import { LOCAL_PREFIX } from "./types";
 
 export interface SyncApi {
   bootstrap(): Promise<BootstrapOut>;
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
-  postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[], alsoInChannel?: boolean): Promise<{ message: MessageOut; created: boolean }>;
+  postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[], options?: SendOptions): Promise<{ message: MessageOut; created: boolean }>;
   replies(messageId: string): Promise<MessageOut[]>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
@@ -845,12 +845,17 @@ export class SyncEngine {
 
   // --- §9 optimistic send ---------------------------------------------------------------
 
-  send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null, attachmentIds: string[] = [], alsoInChannel = false): Promise<void> {
+  send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions = {}): Promise<void> {
     clientMsgId = clientMsgId ?? (this.deps.newId ?? defaultId)();
     const createdAt = (this.deps.now ?? (() => new Date().toISOString()))();
     const me = this.deps.store.me;
-    const shared = alsoInChannel && parentId !== null; // M15c: only replies can also go to the channel
-    const item: OutboxItem = { client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt, parent_id: parentId, attachment_ids: attachmentIds, ...(shared ? { also_in_channel: true } : {}) };
+    const shared = options.alsoInChannel === true && parentId !== null; // M15c: only replies can also go to the channel
+    const priority = parentId === null ? (options.priority ?? null) : null; // M15e: top-level posts only
+    const ackRequested = parentId === null && options.ackRequested === true;
+    const item: OutboxItem = {
+      client_msg_id: clientMsgId, channel_id: channelId, body, created_at: createdAt, parent_id: parentId, attachment_ids: attachmentIds,
+      ...(shared ? { also_in_channel: true } : {}), ...(priority ? { priority } : {}), ...(ackRequested ? { ack_requested: true } : {}),
+    };
     this.deps.store.addOutbox(item);
     this.deps.store.putPlaceholder({
       id: LOCAL_PREFIX + clientMsgId,
@@ -866,6 +871,8 @@ export class SyncEngine {
       pending: true,
       parent_id: parentId,
       also_in_channel: shared,
+      priority,
+      ack_requested: ackRequested,
     });
     return this.flushOutbox();
   }
@@ -904,7 +911,11 @@ export class SyncEngine {
       for (const item of [...this.deps.store.outbox]) {
         if (item.failed) continue;
         try {
-          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? [], item.also_in_channel ?? false);
+          const result = await this.deps.api.postMessage(item.channel_id, item.client_msg_id, item.body, item.parent_id ?? null, item.attachment_ids ?? [], {
+            alsoInChannel: item.also_in_channel ?? false,
+            priority: item.priority ?? null,
+            ackRequested: item.ack_requested ?? false,
+          });
           this.deps.store.upsertMessage(result.message);
           this.deps.store.removeOutbox(item.client_msg_id);
         } catch (err) {

@@ -1,5 +1,6 @@
 import { ApiError, NetworkError } from "./errors";
 import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
 export const COOKIE_SESSION = "cookie";
@@ -183,12 +184,17 @@ export class ApiClient {
     body: string,
     parentId: string | null = null,
     attachmentIds: string[] = [],
-    alsoInChannel = false,
+    options: SendOptions = {},
   ): Promise<{ message: MessageOut; created: boolean }> {
     const { data, status } = await this.requestWithStatus<MessageOut>(
       "POST",
       `/api/v1/channels/${channelId}/messages`,
-      { client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds, ...(alsoInChannel ? { also_in_channel: true } : {}) },
+      {
+        client_msg_id: clientMsgId, body, parent_id: parentId, attachment_ids: attachmentIds,
+        ...(options.alsoInChannel ? { also_in_channel: true } : {}),
+        ...(options.priority ? { priority: options.priority } : {}),
+        ...(options.ackRequested ? { ack_requested: true } : {}),
+      },
     );
     return { message: data, created: status === 201 };
   }
@@ -443,6 +449,11 @@ export class ApiClient {
     return present
       ? this.request("PUT", `/api/v1/messages/${messageId}/poll/votes/${option}`, {})
       : this.request("DELETE", `/api/v1/messages/${messageId}/poll/votes/${option}`);
+  }
+
+  /** M15e: 「確認しました」 on a message that asks for it, or take it back. */
+  acknowledge(messageId: string, present: boolean): Promise<MessageOut> {
+    return present ? this.request("PUT", `/api/v1/messages/${messageId}/ack`, {}) : this.request("DELETE", `/api/v1/messages/${messageId}/ack`);
   }
 
   closePoll(messageId: string): Promise<MessageOut> {

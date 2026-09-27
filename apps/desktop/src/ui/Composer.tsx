@@ -1,9 +1,10 @@
-import { Bold, Clock, Code, Eye, EyeOff, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote } from "lucide-react";
+import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
-import type { AttachmentOut } from "../api/types";
+import type { AttachmentOut, Priority } from "../api/types";
 import type { AppController } from "../state/app";
-import type { ChannelState } from "../sync/types";
+import type { ChannelState, SendOptions } from "../sync/types";
+import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
@@ -45,6 +46,10 @@ export function Composer({
   };
   // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack).
   const [alsoInChannel, setAlsoInChannel] = useState(false);
+  // M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const [ackRequested, setAckRequested] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(false);
   const canShare = parentId !== null && canPostTopLevel(channel, controller.isAdmin);
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -90,8 +95,14 @@ export function Composer({
     const ids = pending.map((a) => a.id);
     setText("");
     setPending([]);
+    const options: SendOptions = {};
+    if (canShare && alsoInChannel) options.alsoInChannel = true;
+    if (!parentId && priority) options.priority = priority;
+    if (!parentId && ackRequested) options.ackRequested = true;
     setAlsoInChannel(false);
-    void controller.engine.send(channel.id, body, undefined, parentId, ids, canShare && alsoInChannel);
+    setPriority(null);
+    setAckRequested(false);
+    void controller.engine.send(channel.id, body, undefined, parentId, ids, options);
   };
 
   // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
@@ -348,6 +359,15 @@ export function Composer({
         </ul>
       )}
       <div className="rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+        {(priority || ackRequested) && (
+          <div className="flex items-center gap-2 px-3 pt-2 text-xs">
+            {priority && <PriorityLabel priority={priority} />}
+            {ackRequested && <span className="inline-flex items-center gap-1 text-muted"><CheckCheck size={12} /> 確認を求める</span>}
+            <button type="button" className="text-muted hover:text-ink" aria-label="重要度を外す" onClick={() => { setPriority(null); setAckRequested(false); }}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {uploading > 0 && (
           <div className="flex items-center gap-2 px-3 pt-2 text-xs text-muted" role="status">
             <Loader2 size={12} className="animate-spin" /> 添付をアップロード中… 完了後に送信できます
@@ -421,6 +441,28 @@ export function Composer({
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </IconButton>
             <MarkdownHelp />
+            {!parentId && (
+              <PopoverRoot open={priorityOpen} onOpenChange={setPriorityOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" title="重要度" aria-label="重要度" className={cn("inline-flex h-7 w-7 items-center justify-center rounded-lg hover:bg-ink/6", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
+                    <Flag size={15} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-60 p-2">
+                  <div className="px-1 pb-1 text-xs font-semibold text-muted">重要度</div>
+                  {([[null, "通常"], ["important", "重要"], ["urgent", "緊急"]] as Array<[Priority | null, string]>).map(([value, label]) => (
+                    <button key={label} type="button" className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel", priority === value && "bg-accent-soft")} onClick={() => setPriority(value)}>
+                      {value ? <PriorityLabel priority={value} /> : <span>{label}</span>}
+                      {priority === value && <Check size={14} className="text-accent" />}
+                    </button>
+                  ))}
+                  <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-2 pt-2 text-sm">
+                    <input type="checkbox" className="accent-[var(--accent)]" checked={ackRequested} onChange={(e) => setAckRequested(e.target.checked)} />
+                    確認を求める
+                  </label>
+                </PopoverContent>
+              </PopoverRoot>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1 text-[11px] text-muted lg:flex">

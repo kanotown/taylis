@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -10,6 +10,7 @@ import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
 import { PollCard } from "./PollCard";
+import { PriorityLabel } from "./PriorityLabel";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
@@ -317,6 +318,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         {thread && message.parent_id && message.also_in_channel && (
           <div className="mb-0.5 text-[11px] text-muted">チャンネルにも送信済み</div>
         )}
+        {message.priority && <PriorityLabel priority={message.priority} className="mb-1" />}
         {(pinnedBy || saved) && (
           <div className="mb-0.5 flex items-center gap-3 text-[11px] text-muted">
             {pinnedBy && (
@@ -368,6 +370,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           </div>
         )}
         {message.poll && <PollCard poll={message.poll} message={message} controller={controller} />}
+        {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} />}
         {(message.reply_count ?? 0) > 0 && onOpenThread && (
           <button type="button" className="mt-1 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:underline" onClick={() => onOpenThread(message.id)}>
             <MessageSquare size={13} /> {message.reply_count} 件の返信
@@ -553,6 +556,32 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
         </span>
       </div>
+    </div>
+  );
+}
+
+/** M15e: 「確認しました」 for readers, and who has acknowledged so far. */
+function AckBar({ controller, message }: { controller: AppController; message: MessageState }) {
+  const store = controller.store;
+  const me = store.me;
+  const acks = message.acks ?? [];
+  const mine = !!me && acks.some((a) => a.user_id === me.id);
+  const own = me?.id === message.sender_id;
+  const names = acks.map((a) => store.users.get(a.user_id)?.display_name ?? "?").join(", ");
+  return (
+    <div className="mt-1.5 flex items-center gap-2 text-xs">
+      {!own && (
+        <button
+          type="button"
+          className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium", mine ? "border-accent/40 bg-accent-soft text-accent" : "border-line text-ink hover:bg-panel")}
+          onClick={() => void controller.toggleAck(message)}
+        >
+          <CheckCheck size={13} /> {mine ? "確認済み" : "確認しました"}
+        </button>
+      )}
+      <span className="text-muted" title={names || undefined}>
+        {acks.length > 0 ? `${acks.length} 人が確認` : "まだ誰も確認していません"}
+      </span>
     </div>
   );
 }
