@@ -12,6 +12,9 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
   const [totpCode, setTotpCode] = useState("");
   const [busy, setBusy] = useState(false);
   const needsCode = controller.totpRequired;
+  // M16c: adding another workspace (cancel returns), or signing back in to a registered one.
+  const adding = controller.addingWorkspace;
+  const entry = adding ? null : controller.activeEntry;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -29,15 +32,15 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
             <MessageCircle size={24} />
           </span>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">ChikuwaChat</h1>
-            <p className="text-xs text-muted">チームのチャットにログイン</p>
+            <h1 className="text-xl font-bold tracking-tight">{adding ? "ワークスペースを追加" : entry ? entry.name : "ChikuwaChat"}</h1>
+            <p className="text-xs text-muted">{adding ? "別の ChikuwaChat サーバにログインします" : entry?.signedOut ? "もう一度ログインしてください" : "チームのチャットにログイン"}</p>
           </div>
         </div>
         {isWeb() ? (
           <p className="text-xs text-muted">サーバ: {server}</p>
         ) : (
           <Field label="サーバ URL">
-            <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" />
+            <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" autoFocus={adding} />
           </Field>
         )}
         <Field label="ユーザー名">
@@ -59,7 +62,15 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           {busy && <Loader2 size={16} className="animate-spin" />}
           {busy ? "ログイン中…" : needsCode ? "コードを確認してログイン" : "ログイン"}
         </Button>
-        {onInvite && (
+        {adding && (
+          <Button type="button" variant="secondary" className="w-full" onClick={() => controller.cancelAddWorkspace()}>
+            キャンセル
+          </Button>
+        )}
+        {!adding && entry && controller.workspaces.length > 1 && (
+          <p className="text-center text-xs text-muted">左の一覧から別のワークスペースに切り替えられます</p>
+        )}
+        {onInvite && !adding && (
           <button type="button" onClick={onInvite} className="block w-full text-center text-xs text-muted hover:text-ink hover:underline">
             招待リンクをお持ちの方はこちら
           </button>

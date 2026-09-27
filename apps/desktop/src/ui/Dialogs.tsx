@@ -488,7 +488,8 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
 const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl/⌘ + K", "チャンネルや DM に移動"],
   ["Ctrl/⌘ + Shift + K", "新しい DM"],
-  ["Ctrl/⌘ + F", "検索"],
+  ["Ctrl/⌘ + F", "検索 (↑↓ で候補を選び Enter)"],
+  ["Ctrl/⌘ + 1〜9", "n 番目のワークスペースに切り替え (デスクトップ版)"],
   ["Ctrl/⌘ + Shift + T", "フォロー中のスレッド一覧"],
   ["Ctrl/⌘ + Shift + E", "チャンネルを探す"],
   ["Alt/⌥ + ↑ / ↓", "前 / 次のチャンネル"],

@@ -23,6 +23,7 @@ import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
+import { WorkspaceMenu } from "./WorkspaceRail";
 import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
@@ -265,7 +266,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
-      if (mod && !event.shiftKey && key === "k") {
+      if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
+        // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack).
+        event.preventDefault();
+        controller.switchToIndex(Number(event.key) - 1);
+      } else if (mod && !event.shiftKey && key === "k") {
         event.preventDefault();
         setSwitcher(true);
       } else if (mod && event.shiftKey && key === "k") {
@@ -351,8 +356,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
       style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
-      {/* M16b: the search box across the top, as in Slack. */}
-      <div className="col-span-3 flex h-10 items-center bg-sidebar px-3">
+      {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. */}
+      <div className="flex h-10 min-w-0 items-center bg-sidebar px-2">
+        <WorkspaceMenu controller={controller} />
+      </div>
+      <div className="col-span-2 flex h-10 items-center bg-sidebar px-3">
         <SearchBar
           controller={controller}
           current={view === "search" || backToSearch ? search : null}
