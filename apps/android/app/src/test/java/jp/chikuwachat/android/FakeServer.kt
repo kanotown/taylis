@@ -511,6 +511,17 @@ class FakeServer {
         pending.forEach { (ids, frame) -> emit(ids, frame) }
     }
 
+    /** PATCH /channels/{id} as the real server announces it (M15): to the members, to everyone for a conversion. */
+    fun updateChannel(channelId: String, postingPolicy: String? = null, type: String? = null) {
+        val record = channels[channelId] ?: return
+        val converted = type != null && type != record.channel.type
+        record.channel = record.channel.copy(postingPolicy = postingPolicy ?: record.channel.postingPolicy, type = type ?: record.channel.type)
+        emit(if (converted) users.keys.toSet() else record.members, event("channel.updated", channelId, null, buildJsonObject {
+            put("channel", Codec.snake.encodeToJsonElement(ChannelOut.serializer(), record.channel.copy(membership = null)))
+            put("member_ids", buildJsonArray { record.members.forEach { add(JsonPrimitive(it)) } })
+        }))
+    }
+
     /** What the real server emits after a join / add: member_added to the channel, channel.created to the user. */
     fun emitMembership(channelId: String, userId: String) {
         val record = channels[channelId] ?: return

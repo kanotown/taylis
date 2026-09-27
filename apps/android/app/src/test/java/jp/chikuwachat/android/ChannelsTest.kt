@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ChannelOut
+import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.ui.Channels
@@ -11,6 +12,15 @@ import org.junit.Test
 import java.time.Instant
 
 class ChannelsTest {
+    @Test fun announcementChannelsLetOwnersAndAdminsPost() { // M15a
+        val open = channel("a")
+        assertTrue(open.canPostTopLevel(isAdmin = false))
+        val announce = open.copy(channel = open.channel.copy(postingPolicy = "owners", membership = MembershipOut("member", "")))
+        assertFalse(announce.canPostTopLevel(isAdmin = false))
+        assertTrue(announce.canPostTopLevel(isAdmin = true))
+        assertTrue(announce.copy(channel = announce.channel.copy(membership = MembershipOut("owner", ""))).canPostTopLevel(isAdmin = false))
+    }
+
     private val now = Instant.parse("2026-09-26T12:00:00Z")
 
     private fun channel(

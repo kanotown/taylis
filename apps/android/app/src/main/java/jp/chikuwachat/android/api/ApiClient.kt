@@ -131,11 +131,17 @@ class ApiClient(
     /** M13d: owner or administrator; the channel becomes writable again. */
     suspend fun unarchiveChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/unarchive", buildJsonObject {})
 
-    suspend fun updateChannel(channelId: String, topic: String? = null, name: String? = null, purpose: String? = null): ChannelOut =
+    /** `postingPolicy` (M15a) and `type` (M15b: "public" / "private") are for owners and admins. */
+    suspend fun updateChannel(
+        channelId: String, topic: String? = null, name: String? = null, purpose: String? = null,
+        postingPolicy: String? = null, type: String? = null,
+    ): ChannelOut =
         request("PATCH", "/api/v1/channels/$channelId", buildJsonObject {
             topic?.let { put("topic", it) }
             name?.let { put("name", it) }
             purpose?.let { put("purpose", it) }
+            postingPolicy?.let { put("posting_policy", it) }
+            type?.let { put("type", it) }
         })
 
     suspend fun setNotificationPreference(channelId: String, level: String, mutedUntil: String?): NotificationPreferenceOut =

@@ -41,6 +41,9 @@ data class ChannelState(
 ) {
     val id: String get() = channel.id
     val hasUnread: Boolean get() = unreadCount > 0
+
+    /** M15a: whether I may start top-level posts here; thread replies stay open to every member. */
+    fun canPostTopLevel(isAdmin: Boolean): Boolean = !channel.isAnnouncement || isAdmin || channel.membership?.role == "owner"
 }
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
