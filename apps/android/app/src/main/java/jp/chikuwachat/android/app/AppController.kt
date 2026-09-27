@@ -25,6 +25,7 @@ import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
+import jp.chikuwachat.android.ui.SlashCommands
 import jp.chikuwachat.android.ui.Totp
 import jp.chikuwachat.android.api.TotpEnabledOut
 import jp.chikuwachat.android.api.TotpSetupOut
@@ -34,6 +35,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.SearchOut
@@ -650,6 +652,90 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     /** Password change from the settings sheet; returns the error text or null. */
+    // --- slash commands (M13b) ---------------------------------------------------------------
+
+    /** Runs a command typed in the composer; false when it could not (the reason is in `error`). */
+    suspend fun runCommand(command: SlashCommands.Parsed, channelId: String, parentId: String?): Boolean {
+        val api = api ?: return false
+        val state = store.channels[channelId] ?: return false
+        val isDm = state.channel.type == "dm" || state.channel.type == "group_dm"
+        val spec = SlashCommands.all.firstOrNull { it.name == command.name }
+        if (spec == null) { error = "/${command.name} というコマンドはありません (/help で一覧)"; return false }
+        if (spec.channelOnly && isDm) { error = "/${command.name} はチャンネルでだけ使えます"; return false }
+        fun user(handle: String) = store.users.values.firstOrNull { it.username.equals(handle.removePrefix("@"), ignoreCase = true) }
+        val level = state.channel.notification?.level ?: if (isDm) "all" else "mentions"
+        return when (command.name) {
+            "help" -> { notice = SlashCommands.all.joinToString(" · ") { it.usage }; true }
+            "status" -> {
+                if (command.args.isEmpty() || command.args == "clear") {
+                    updateProfileJson(buildJsonObject { put("status_text", JsonNull); put("status_emoji", JsonNull); put("status_expires_at", JsonNull) })
+                        .also { if (it) notice = "ステータスを消しました" }
+                } else {
+                    val (emoji, text) = SlashCommands.splitStatus(command.args)
+                    updateProfileJson(buildJsonObject {
+                        put("status_text", text.ifEmpty { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+                        put("status_emoji", emoji?.let { JsonPrimitive(it) } ?: JsonNull)
+                        put("status_expires_at", JsonNull)
+                    }).also { if (it) notice = "ステータスを更新しました" }
+                }
+            }
+            "dnd" -> {
+                if (command.args.isEmpty() || command.args == "off") {
+                    updateProfileJson(buildJsonObject { put("dnd_until", JsonNull) }).also { if (it) notice = "通知の一時停止を解除しました" }
+                } else {
+                    val until = SlashCommands.duration(command.args)
+                    if (until == null) { error = "/dnd 30m | 1h | 2h | 4h | tomorrow | off"; false }
+                    else updateProfileJson(buildJsonObject { put("dnd_until", until.toInstant().toString()) }).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
+                }
+            }
+            "topic" -> updateTopic(channelId, command.args)
+            "leave" -> leaveChannel(channelId)
+            "invite" -> {
+                val handles = command.args.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                if (handles.isEmpty()) { error = "/invite @名前"; return false }
+                for (handle in handles) {
+                    val target = user(handle)
+                    if (target == null) { error = "$handle というユーザーはいません"; return false }
+                    val added = addMember(channelId, target.id)
+                    if (added.isFailure) { error = describe(added.exceptionOrNull()!!); return false }
+                }
+                notice = "${handles.size} 人を追加しました"
+                true
+            }
+            "join" -> {
+                val name = command.args.removePrefix("#").lowercase()
+                val target = store.channels.values.firstOrNull { it.channel.type == "public" && (it.channel.name ?: "").lowercase() == name }
+                if (target == null) { error = "#$name という公開チャンネルはありません"; return false }
+                if (!target.isMember && !joinChannel(target.id)) return false
+                pendingChannelId = target.id
+                true
+            }
+            "dm" -> {
+                val target = user(command.args.substringBefore(' '))
+                if (target == null) { error = "/dm @名前"; return false }
+                val id = openDmWith(target.id) ?: return false
+                pendingChannelId = id
+                true
+            }
+            "mute" -> {
+                val until = if (command.args.isEmpty()) ZonedDateTime.now().plusHours(8) else SlashCommands.duration(command.args)
+                if (until == null) { error = "/mute 1h | 8h | tomorrow"; return false }
+                setNotification(channelId, level, until.toInstant().toString()).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
+            }
+            "unmute" -> setNotification(channelId, level, null).also { if (it) notice = "通知を再開しました" }
+            "me" -> {
+                if (command.args.isEmpty()) return false
+                engine?.send(channelId, "_${command.args}_", parentId = parentId)
+                true
+            }
+            "shrug" -> {
+                engine?.send(channelId, (if (command.args.isEmpty()) "" else command.args + " ") + SlashCommands.SHRUG, parentId = parentId)
+                true
+            }
+            else -> false
+        }
+    }
+
     suspend fun changePasswordInSession(current: String, new: String): String? =
         runCatching { api!!.changePassword(current, new); null }.getOrElse { describe(it) }
 

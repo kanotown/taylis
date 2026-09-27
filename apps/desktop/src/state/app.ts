@@ -5,11 +5,12 @@ import { messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { parseEntryPath } from "../ui/routes";
+import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError } from "../api/errors";
 import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, TotpEnabledOut, TotpSetupOut, TotpStatusOut, MessageOut, NotificationLevel, ReminderOut, ScheduledOut, TokenResponse, UserMe, UserUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
-import type { MessageState } from "../sync/types";
+import type { ChannelState, MessageState } from "../sync/types";
 import { isTauri, isWeb } from "../platform/env";
 import { notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
@@ -701,6 +702,144 @@ export class AppController {
       });
     }
     return true;
+  }
+
+  // --- slash commands (M13b) ---------------------------------------------------------------
+
+  /** A conversation a command asked for (/join, /dm); the main screen opens it and clears this. */
+  openChannelRequest: string | null = null;
+
+  requestOpenChannel(channelId: string): void {
+    this.openChannelRequest = channelId;
+    this.emit();
+  }
+
+  /** Runs a command typed in the composer; false when it could not (the reason is in the toast). */
+  async runCommand(command: ParsedCommand, channel: ChannelState, parentId: string | null): Promise<boolean> {
+    const api = this.api;
+    if (!api) return false;
+    const isDm = channel.type === "dm" || channel.type === "group_dm";
+    const spec = COMMANDS.find((c) => c.name === command.name);
+    if (!spec) {
+      this.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
+      return false;
+    }
+    if (spec.channelOnly && isDm) {
+      this.setError(`/${command.name} はチャンネルでだけ使えます`);
+      return false;
+    }
+    const byHandle = (handle: string) => {
+      const name = handle.replace(/^@/, "").toLowerCase();
+      return [...this.store.users.values()].find((u) => u.username.toLowerCase() === name);
+    };
+    const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
+    switch (command.name) {
+      case "help":
+        this.setNotice(COMMANDS.map((c) => c.usage).join(" · "));
+        return true;
+      case "status": {
+        if (!command.args || command.args === "clear") {
+          const cleared = await this.updateProfile({ status_text: null, status_emoji: null, status_expires_at: null });
+          if (cleared) this.setNotice("ステータスを消しました");
+          return cleared;
+        }
+        const { emoji, text } = splitStatus(command.args);
+        const ok = await this.updateProfile({ status_text: text || null, status_emoji: emoji, status_expires_at: null });
+        if (ok) this.setNotice("ステータスを更新しました");
+        return ok;
+      }
+      case "dnd": {
+        if (!command.args || command.args === "off") {
+          const ok = await this.updateProfile({ dnd_until: null });
+          if (ok) this.setNotice("通知の一時停止を解除しました");
+          return ok;
+        }
+        const until = parseDuration(command.args);
+        if (!until) {
+          this.setError("/dnd 30m | 1h | 2h | 4h | tomorrow | off");
+          return false;
+        }
+        const ok = await this.updateProfile({ dnd_until: until.toISOString() });
+        if (ok) this.setNotice(`${scheduleLabel(until.toISOString())} まで通知を止めます`);
+        return ok;
+      }
+      case "topic":
+        return this.updateTopic(channel.id, command.args);
+      case "leave":
+        return this.leaveChannel(channel.id);
+      case "invite": {
+        const handles = command.args.split(/\s+/).filter(Boolean);
+        if (handles.length === 0) {
+          this.setError("/invite @名前");
+          return false;
+        }
+        for (const handle of handles) {
+          const user = byHandle(handle);
+          if (!user) {
+            this.setError(`${handle} というユーザーはいません`);
+            return false;
+          }
+          try {
+            await api.addMember(channel.id, user.id);
+          } catch (error) {
+            this.setError(error);
+            return false;
+          }
+        }
+        this.setNotice(`${handles.length} 人を追加しました`);
+        return true;
+      }
+      case "join": {
+        const name = command.args.replace(/^#/, "").toLowerCase();
+        const target = [...this.store.channels.values()].find((c) => c.type === "public" && (c.name ?? "").toLowerCase() === name);
+        if (!target) {
+          this.setError(`#${name} という公開チャンネルはありません`);
+          return false;
+        }
+        if (!target.isMember) {
+          try {
+            this.store.upsertChannel(await api.joinChannel(target.id), { isMember: true });
+          } catch (error) {
+            this.setError(error);
+            return false;
+          }
+        }
+        this.requestOpenChannel(target.id);
+        return true;
+      }
+      case "dm": {
+        const user = byHandle(command.args.split(/\s+/)[0] ?? "");
+        if (!user) {
+          this.setError("/dm @名前");
+          return false;
+        }
+        const id = await this.openDmWith(user.id);
+        if (id) this.requestOpenChannel(id);
+        return id !== null;
+      }
+      case "mute": {
+        const until = command.args ? parseDuration(command.args) : new Date(Date.now() + 8 * 3_600_000);
+        if (!until) {
+          this.setError("/mute 1h | 8h | tomorrow");
+          return false;
+        }
+        await this.setNotification(channel.id, level, until.toISOString());
+        this.setNotice(`${scheduleLabel(until.toISOString())} まで通知を止めます`);
+        return true;
+      }
+      case "unmute":
+        await this.setNotification(channel.id, level, null);
+        this.setNotice("通知を再開しました");
+        return true;
+      case "me":
+        if (!command.args) return false;
+        await this.engine?.send(channel.id, `_${command.args}_`, undefined, parentId, []);
+        return true;
+      case "shrug":
+        await this.engine?.send(channel.id, `${command.args ? command.args + " " : ""}${SHRUG}`, undefined, parentId, []);
+        return true;
+    }
+    return false;
   }
 
   async logout(): Promise<void> {

@@ -371,6 +371,17 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
         }
+        // `/st` at the very start offers the slash commands (M13b).
+        val commandHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.candidates(draft) else emptyList()
+        if (commandHits.isNotEmpty()) {
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(commandHits, key = { it.name }) { command ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText("/" + command.name + " ") }) {
+                        Text(command.usage + "  " + command.description, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                }
+            }
+        }
         if (candidates.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(candidates, key = { it.username }) { candidate ->
@@ -411,6 +422,12 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             OutlinedTextField(draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6)
             IconButton(
                 onClick = {
+                    SlashCommands.parse(draft)?.let { command ->  // M13b
+                        if (!command.known) { controller.error = "/${command.name} というコマンドはありません (/help で一覧)"; return@IconButton }
+                        store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                        controller.scope.launch { controller.runCommand(command, channelId, parentId) }
+                        return@IconButton
+                    }
                     val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
                     val ids = pendingUploads.map { it.id }
                     if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return@IconButton
