@@ -220,7 +220,7 @@
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
-| `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (pending 以外は一覧から外す) |
+| `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える |
 | `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `roster.updated` | all (guest を除く) | — | `{ user_id, profile: LabProfileOut \| null }` (M23)。名簿の行の追加 / 変更 / 削除 (`profile` が null なら外れた)。クライアントは user_id の表を差し替える。管理グループのメンバーの変化は別に `group.updated` で届く |

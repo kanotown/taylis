@@ -1,5 +1,6 @@
 import { Clock, FileText } from "lucide-react";
 
+import { ERROR_MESSAGES } from "../api/errorMessages";
 import type { AppController } from "../state/app";
 import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
@@ -28,20 +29,32 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
             <ul className="divide-y divide-line rounded-xl border border-line">
               {scheduled.map((row) => {
                 const channel = store.getChannel(row.channel_id);
+                const failed = row.status === "failed";
                 return (
                   <li key={row.id} className="flex items-start gap-3 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-xs text-muted">
                         <span className="font-medium text-ink">{channel ? channelTitle(channel, controller) : "?"}</span>
                         {row.parent_id && <span>· スレッド</span>}
-                        <span>· {scheduleLabel(row.send_at)} に送信</span>
+                        {failed ? <span className="text-danger">· 送信できませんでした</span> : <span>· {scheduleLabel(row.send_at)} に送信</span>}
                         {row.attachments.length > 0 && <span>· 添付 {row.attachments.length}</span>}
                       </div>
                       <div className="mt-0.5 line-clamp-2 text-sm text-ink">{plainText(mentionsToNames(row.body, store.users, store.groups), 200) || "(本文なし)"}</div>
+                      {/* Codex audit C3: why (e.g. the channel was archived meanwhile); the text can go back to a draft. */}
+                      {failed && <div className="mt-0.5 text-xs text-danger">{ERROR_MESSAGES[row.error ?? ""] ?? "送信できませんでした"}</div>}
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <Button size="sm" variant="secondary" onClick={() => void controller.sendScheduledNow(row)}>今すぐ送信</Button>
-                      <Button size="sm" variant="ghost" onClick={() => void controller.cancelScheduled(row)}>取り消し</Button>
+                      {failed ? (
+                        <>
+                          <Button size="sm" variant="secondary" onClick={() => void controller.cancelScheduled(row)}>下書きに戻す</Button>
+                          <Button size="sm" variant="ghost" onClick={() => void controller.cancelScheduled(row, false)}>削除</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="secondary" onClick={() => void controller.sendScheduledNow(row)}>今すぐ送信</Button>
+                          <Button size="sm" variant="ghost" onClick={() => void controller.cancelScheduled(row)}>取り消し</Button>
+                        </>
+                      )}
                     </div>
                   </li>
                 );

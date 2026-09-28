@@ -127,16 +127,28 @@ export function Composer({
   // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [customAt, setCustomAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
+  // Codex audit C2: one key per schedule, kept while the same draft is scheduled again after a failure (the first
+  // request may have gone through), whatever time is picked the second time: the server then answers with the row it
+  // made, instead of making a second one. No second request while one is on its way.
+  const [scheduling, setScheduling] = useState(false);
+  const scheduleKey = useRef<{ key: string; what: string } | null>(null);
   const schedule = async (sendAt: Date) => {
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
-    if ((!body && pending.length === 0) || uploading > 0) return;
+    if ((!body && pending.length === 0) || uploading > 0 || scheduling) return;
     if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; }
     const ids = pending.map((a) => a.id);
+    const what = JSON.stringify([channel.id, parentId, body, ids]);
+    if (scheduleKey.current?.what !== what) scheduleKey.current = { key: crypto.randomUUID(), what };
+    const typed = text;
     setScheduleOpen(false);
-    if (await controller.scheduleMessage(channel.id, parentId, body, ids, sendAt)) {
-      setText("");
-      setPending([]);
-    }
+    setScheduling(true);
+    const done = await controller.scheduleMessage(channel.id, parentId, body, ids, sendAt, scheduleKey.current.key);
+    setScheduling(false);
+    if (!done) return;
+    scheduleKey.current = null;
+    // Codex audit C1: what was typed while the request was on its way stays (only the scheduled text leaves).
+    if (store.draft(channel.id, parentId).text === typed) setText("");
+    setPending((items) => items.filter((a) => !ids.includes(a.id)));
   };
 
   const pickFiles = async (files: FileList | null) => {
@@ -524,7 +536,7 @@ export function Composer({
             </span>
             <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
               <PopoverTrigger asChild>
-                <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || (!text.trim() && pending.length === 0)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ink/6 hover:text-ink disabled:opacity-40">
+                <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ink/6 hover:text-ink disabled:opacity-40">
                   <Clock size={15} />
                 </button>
               </PopoverTrigger>

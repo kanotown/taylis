@@ -101,7 +101,9 @@ async def create(
 
 
 async def list_mine(db: AsyncSession, actor: User) -> list[ScheduledOut]:
-    return [await to_out(db, row) for row in await repo.list_pending_for_user(db, actor.id)]
+    """Pending and failed rows: a failed one stays listed with its error until dismissed, so its
+    text can be taken back into a draft (it was only in this row)."""
+    return [await to_out(db, row) for row in await repo.list_open_for_user(db, actor.id)]
 
 
 async def _require_pending(
@@ -114,10 +116,14 @@ async def _require_pending(
 
 
 async def cancel(db: AsyncSession, actor: User, scheduled_id: uuid.UUID) -> None:
-    row = await _require_pending(db, actor, scheduled_id)
+    """Cancels a pending row, or dismisses a failed one (its attachments were released already)."""
+    row = await repo.get(db, scheduled_id, for_update=True)  # the worker may be sending it
+    if row is None or row.user_id != actor.id or row.status not in ("pending", "failed"):
+        raise not_found("scheduled_not_found", "No such scheduled message")
+    if row.status == "pending":
+        await attachments.release_in_tx(db, list(row.attachment_ids or []))
     row.status = "cancelled"
     row.updated_at = utcnow()
-    await attachments.release_in_tx(db, list(row.attachment_ids or []))
     await _emit(db, row)
     await db.commit()
 
