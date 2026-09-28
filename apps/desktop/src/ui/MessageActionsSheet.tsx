@@ -7,8 +7,17 @@ import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { cn } from "./primitives";
 import { reminderPresets, scheduleLabel } from "./schedule";
 
-/** The quick reactions of the phone sheet, the same six as iOS and Android (M25). */
+/** The default quick reactions of the phone sheet, the same six as iOS and Android (M25). */
 export const SHEET_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
+
+/**
+ * The six quick reactions: the ones I used last first, then the defaults (tester request, 2026-09-28; the same rule on
+ * iOS and Android). Custom emoji stay in the picker: the quick row shows plain emoji.
+ */
+export function quickReactions(recent: readonly string[], count = 6): string[] {
+  const custom = /^:[^:\s]+:$/;
+  return [...new Set([...recent.filter((glyph) => !custom.test(glyph)), ...SHEET_REACTIONS])].slice(0, count);
+}
 
 /** A press this long on a message row opens the sheet (touch screens; a mouse has the hover bar). */
 export const LONG_PRESS_MS = 450;
@@ -92,7 +101,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
         ) : (
           <>
             <div className="flex justify-center gap-2 px-3 pb-2 pt-1">
-              {SHEET_REACTIONS.map((emoji) => (
+              {quickReactions(readRecentEmoji()).map((emoji) => (
                 <button
                   key={emoji}
                   type="button"

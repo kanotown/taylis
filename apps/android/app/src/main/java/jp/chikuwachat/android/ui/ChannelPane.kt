@@ -452,10 +452,11 @@ fun MessageRow(
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
-        onClickLabel = if (!compact) null else if (showTime) "時刻を隠す" else "時刻を表示",
+        onClickLabel = if (message.replyCount > 0 && onOpenThread != null) "スレッドを開く" else if (!compact) null else if (showTime) "時刻を隠す" else "時刻を表示",
         onLongClickLabel = "メッセージの操作",
         onLongClick = if (message.pending) null else ({ menuOpen = true }),
-        onClick = { if (compact) showTime = !showTime },
+        // A tap on a message with replies opens its thread (Slack; tester request); else a grouped row shows its time.
+        onClick = { if (message.replyCount > 0 && onOpenThread != null) onOpenThread() else if (compact) showTime = !showTime },
     )
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
@@ -554,6 +555,7 @@ fun MessageRow(
             onCopyText = if (message.body.isNotEmpty()) ({ controller.copyText(message) }) else null,
             onRemind = { reminding = true },
             onShare = { sharing = true },
+            quick = QuickReactions.pick(QuickReactions.read(controller.prefs)),
             onMoreReactions = { pickingReaction = true },
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
         )

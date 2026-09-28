@@ -20,7 +20,7 @@ function touchScreen(hover: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(hover: none)" ? !hover : hover, addEventListener: () => {}, removeEventListener: () => {} }));
 }
 
-function world() {
+function world(onOpenThread: (id: string) => void = () => {}, theirReplies = 0) {
   const server = new FakeServer();
   const me = server.addUser("alice");
   const bob = server.addUser("bob");
@@ -33,7 +33,7 @@ function world() {
   const mine = server.post(channel.id, me.id, "自分の投稿").message;
   const theirs = server.post(channel.id, bob.id, "相手の投稿").message;
   store.upsertMessage(mine);
-  store.upsertMessage(theirs);
+  store.upsertMessage({ ...theirs, reply_count: theirReplies });
   store.upsertChannel(server.channels.get(channel.id)!.channel, { isMember: true, syncedSeq: 2, oldestLoadedSeq: 0, lastReadSeq: 2 });
   const controller = {
     store, engine: null, api: null, version: 0, setError: vi.fn(), messageFocus: null, editing: null as string | null, isAdmin: false, sendKey: "shift-enter",
@@ -42,7 +42,7 @@ function world() {
   };
   function View() {
     useSyncExternalStore((l) => store.subscribe(l), () => store.version);
-    return <Timeline controller={controller as unknown as AppController} channel={store.getChannel(channel.id)!} onOpenThread={() => {}} />;
+    return <Timeline controller={controller as unknown as AppController} channel={store.getChannel(channel.id)!} onOpenThread={onOpenThread} />;
   }
   render(<View />);
   return { controller, mine, theirs };
@@ -78,6 +78,28 @@ describe("the long-press sheet (M25)", () => {
     const other = within(screen.getByRole("dialog", { name: "メッセージの操作" })).getAllByRole("button").map((b) => b.textContent?.trim());
     expect(other).not.toContain("編集");
     expect(other).not.toContain("削除");
+  });
+
+  it("puts the reactions I used last first", () => {
+    touchScreen(false);
+    vi.useFakeTimers();
+    localStorage.setItem("chikuwa.emoji.recent", JSON.stringify(["🙏", ":party:", "👍"]));
+    const w = world();
+    longPress(document.getElementById(`timeline-${w.mine.id}`)!);
+    const quick = within(screen.getByRole("dialog", { name: "メッセージの操作" })).getAllByRole("button").slice(0, 6).map((b) => b.textContent);
+    expect(quick).toEqual(["🙏", "👍", "❤️", "😂", "🎉", "👀"]); // custom emoji stay in the picker
+    localStorage.removeItem("chikuwa.emoji.recent");
+  });
+
+  it("a tap on a message with replies opens its thread on a phone", () => {
+    touchScreen(false);
+    const onOpenThread = vi.fn();
+    const w = world(onOpenThread, 2);
+    fireEvent.click(document.getElementById(`timeline-${w.theirs.id}`)!.querySelector("p, div")!);
+    expect(onOpenThread).toHaveBeenCalledWith(w.theirs.id);
+    onOpenThread.mockClear();
+    fireEvent.click(document.getElementById(`timeline-${w.mine.id}`)!); // no replies
+    expect(onOpenThread).not.toHaveBeenCalled();
   });
 
   it("a short tap, a scroll or a mouse does not open it", () => {

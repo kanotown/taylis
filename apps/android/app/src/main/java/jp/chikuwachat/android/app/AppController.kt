@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.platform.AvatarPhoto
+import jp.chikuwachat.android.ui.QuickReactions
 import jp.chikuwachat.android.ui.Dnd
 import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
@@ -1111,7 +1112,9 @@ class AppController(private val app: Application) {
 
     suspend fun toggleReaction(message: MessageState, emoji: String): Result<Unit> = attempt {
         val me = store.me ?: return@attempt
-        val updated = if (message.reactedBy(me.id, emoji)) api!!.removeReaction(message.id, emoji) else api!!.addReaction(message.id, emoji)
+        val adding = !message.reactedBy(me.id, emoji)
+        if (adding) QuickReactions.remember(prefs, emoji) // the sheet puts what I use first
+        val updated = if (adding) api!!.addReaction(message.id, emoji) else api!!.removeReaction(message.id, emoji)
         store.upsertMessage(updated)
         Unit
     }.onFailure { error = describe(it) }

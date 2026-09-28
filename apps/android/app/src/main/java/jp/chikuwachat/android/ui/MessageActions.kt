@@ -55,11 +55,30 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 
 val REACTION_PALETTE = listOf("👍", "❤️", "😂", "🎉", "👀", "✅")
+
+/**
+ * The sheet's six quick reactions: the ones I used last first, then REACTION_PALETTE (tester request, 2026-09-28; the
+ * same rule as the web's quickReactions and iOS). Custom emoji stay in the picker: the quick row shows plain emoji.
+ */
+object QuickReactions {
+    private const val KEY = "reactions.recent"
+    private val custom = Regex("^:[^:\\s]+:$")
+
+    fun read(store: KeyValueStore): List<String> = store.getString(KEY)?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
+
+    /** Called when I add a reaction (not when I take one back). */
+    fun remember(store: KeyValueStore, glyph: String) {
+        store.putString(KEY, (listOf(glyph) + read(store).filter { it != glyph }).take(16).joinToString("\n"))
+    }
+
+    fun pick(recent: List<String>, count: Int = 6): List<String> = (recent.filterNot { custom.matches(it) } + REACTION_PALETTE).distinct().take(count)
+}
 
 /**
  * A message's actions, Slack-like (testers, 2026-09-28; the same sheet on iOS, MessageActions.swift): a long press opens
@@ -88,6 +107,7 @@ fun MessageMenu(
     onShare: (() -> Unit)? = null,
     onCopyText: (() -> Unit)? = null,
     reacted: Set<String> = emptySet(),
+    quick: List<String> = REACTION_PALETTE,
 ) {
     if (!expanded) return
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -100,7 +120,7 @@ fun MessageMenu(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            REACTION_PALETTE.forEach { emoji ->
+            quick.forEach { emoji ->
                 Box(
                     Modifier.size(46.dp).clip(CircleShape)
                         .background(if (emoji in reacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
