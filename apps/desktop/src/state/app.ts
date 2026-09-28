@@ -24,6 +24,7 @@ import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
 import { plainText } from "../ui/markdown";
+import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
@@ -681,6 +682,7 @@ export class AppController {
     const me = this.store.me;
     if (!this.api || !me) return;
     const mine = (message.reactions ?? []).some((r) => r.emoji === emoji && r.user_ids.includes(me.id));
+    if (!mine) rememberEmoji(emoji); // the quick reactions put what I use first (M25)
     try {
       const updated = mine ? await this.api.removeReaction(message.id, emoji) : await this.api.addReaction(message.id, emoji);
       this.store.upsertMessage(updated);

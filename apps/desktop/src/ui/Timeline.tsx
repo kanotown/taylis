@@ -24,14 +24,12 @@ import { StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle } from "./MainScreen";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
-import { LONG_PRESS_MS, MessageActionsSheet } from "./MessageActionsSheet";
+import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 
-/** Quick reactions on the action bar; everything else comes from the emoji picker (M11f). */
-const REACTION_PALETTE = ["👍", "❤️", "😂"];
 
 export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
   const store = controller.store;
@@ -635,6 +633,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       onClick={(event) => {
         // Alt+click marks the conversation unread from this message (Mattermost).
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
+        // On a phone a tap on a message with replies opens its thread (Slack; tester request), unless it was on a link,
+        // a button or an image of the message.
+        else if (touchScreen() && (message.reply_count ?? 0) > 0 && onOpenThread && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) onOpenThread(message.id);
       }}
       onTouchStart={(event) => {
         if (message.pending || !touchScreen() || event.touches.length !== 1) return;
@@ -790,7 +791,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       </div>
       {!message.pending && (
         <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
-          {REACTION_PALETTE.slice(0, 3).map((emoji) => (
+          {/* The three I used last (then the defaults), as the phone sheet's six (M25); the rest is in the picker. */}
+          {quickReactions(readRecentEmoji(), 3).map((emoji) => (
             <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
             </button>
