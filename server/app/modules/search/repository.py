@@ -58,19 +58,28 @@ def _apply_flags(stmt: Select[Any], has: Sequence[str], is_thread: bool) -> Sele
     return stmt
 
 
-def _scoped(stmt: Select[Any], scope: Scope) -> Select[Any]:
+def _within(stmt: Select[Any], scope: Scope, row: Any) -> Select[Any]:
+    """The scope's own columns, on `row`: the messages, or the body hits that carry them (_hits)."""
     stmt = stmt.where(
-        Message.channel_id.in_(scope.channel_ids),
-        Message.deleted_at.is_(None),
-        Message.type == "user",
+        row.channel_id.in_(scope.channel_ids),
+        row.deleted_at.is_(None),
+        row.type == "user",
     )
     if scope.from_user_id is not None:
-        stmt = stmt.where(Message.sender_id == scope.from_user_id)
+        stmt = stmt.where(row.sender_id == scope.from_user_id)
     if scope.after is not None:
-        stmt = stmt.where(Message.created_at >= scope.after)
+        stmt = stmt.where(row.created_at >= scope.after)
     if scope.before is not None:
-        stmt = stmt.where(Message.created_at < scope.before)
-    return _apply_flags(stmt, scope.has, scope.is_thread)
+        stmt = stmt.where(row.created_at < scope.before)
+    return stmt
+
+
+def _flagged(scope: Scope) -> bool:
+    return bool(scope.has) or scope.is_thread
+
+
+def _scoped(stmt: Select[Any], scope: Scope) -> Select[Any]:
+    return _apply_flags(_within(stmt, scope, Message), scope.has, scope.is_thread)
 
 
 def _needle(query: str, escaped: bool) -> Any:
@@ -88,29 +97,52 @@ def _hits(query: str, scope: Scope, escaped: bool, *, sort: Sort | None, take: i
     messages, and only a page (or TOTAL_CAP + 1) of them is ever needed.
     """
     needle = _needle(query, escaped)
-    # Sorted by an expression, not the column: with messages_created_idx the planner would walk the
-    # messages newest first and test each against the words, instead of asking PGroonga for the hits
-    # (174 ms and scores of 0 for a rare word on 465k messages, and worse the rarer the word). The
-    # hits are found by the index, then sorted.
-    newest = (Message.created_at + literal_column("interval '0'")).desc()
 
-    def branch(score: Any, stmt: Select[Any]) -> Select[Any]:
-        stmt = _scoped(
-            stmt.add_columns(score.label("score"), Message.created_at.label("created_at")), scope
+    def branch(score: Any, stmt: Select[Any], row: Any) -> Select[Any]:
+        """`stmt` selects the id; `row` has the scope's columns (and joins messages for flags)."""
+        stmt = _within(
+            stmt.add_columns(score.label("score"), row.created_at.label("created_at")), scope, row
         )
+        if _flagged(scope):
+            if row is not Message:
+                stmt = stmt.join(Message, Message.id == row.id)
+            stmt = _apply_flags(stmt, scope.has, scope.is_thread)
+        # Sorted by an expression, not the column: with messages_created_idx the planner would walk
+        # the messages newest first and test each one, instead of taking the hits and sorting them
+        # (174 ms and scores of 0 for a rare word on 465k messages, and worse the rarer the word).
+        newest = (row.created_at + literal_column("interval '0'")).desc()
         if sort == "relevance":
             stmt = stmt.order_by(score.desc(), newest)
         elif sort == "newest":
             stmt = stmt.order_by(newest)
         return stmt.limit(take)
 
-    body = branch(
-        func.pgroonga_score(literal_column("messages.tableoid"), literal_column("messages.ctid")),
-        select(Message.id.label("id")).where(Message.body.op("&@~")(needle)),
+    # Each branch starts from a materialized step whose only condition is the words, so the only
+    # way in is the PGroonga index (seq scans are off, search/service.py) and every hit gets its
+    # score. With the scope beside the words, a small table could be read through another index
+    # (the channel's, the sender's) with the words as a mere filter: every score 0, and 「関連度順」
+    # was 「新しい順」 again (seen in CI on a near-empty database, as a new workspace would be). The
+    # body hits carry the scope's columns: reading each hit again by its id doubled the time of a
+    # common word (50k hits); messages are joined again only for the has: / is: flags.
+    matched = (
+        select(
+            Message.id.label("id"),
+            Message.channel_id.label("channel_id"),
+            Message.sender_id.label("sender_id"),
+            Message.created_at.label("created_at"),
+            Message.deleted_at.label("deleted_at"),
+            Message.type.label("type"),
+            func.pgroonga_score(
+                literal_column("messages.tableoid"), literal_column("messages.ctid")
+            ).label("score"),
+        )
+        .where(Message.body.op("&@~")(needle))
+        .cte("body_hits")
+        .prefix_with("MATERIALIZED")
     )
-    # The file names on their own, as a materialized step with the name as its only condition:
-    # joined to messages, or with the status beside it, the planner tested each attachment's name
-    # instead of asking the attachments' PGroonga index, and scored every file 0.
+    body = branch(matched.c.score, select(matched.c.id.label("id")), matched.c)
+    # The file names the same way: joined to messages, or with the status beside it, the planner
+    # tested each attachment's name instead of asking the attachments' PGroonga index.
     named = (
         select(
             Attachment.message_id.label("message_id"),
@@ -130,6 +162,7 @@ def _hits(query: str, scope: Scope, escaped: bool, *, sort: Sort | None, take: i
         .join(Message, Message.id == named.c.message_id)
         .where(named.c.status == "attached")
         .group_by(Message.id, Message.created_at),
+        Message,
     )
     both = union_all(body, files).subquery("both_hits")
     return (

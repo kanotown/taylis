@@ -879,15 +879,18 @@ ORDER BY updated_seq ASC LIMIT $limit;
 ```sql
 SET LOCAL enable_seqscan = off;              -- PGroonga は索引で見つけた行にしか点数を付けない
 SET LOCAL statement_timeout = 5000;          -- 設定 search_timeout_ms。超えたら 503 search_timeout
-WITH named_files AS MATERIALIZED (           -- ファイル名だけを条件に、attachments の PGroonga 索引で
+WITH body_hits AS MATERIALIZED (             -- 本文の語だけを条件に、messages の PGroonga 索引で
+  SELECT id, channel_id, sender_id, created_at, deleted_at, type, pgroonga_score(tableoid, ctid) AS score
+  FROM messages WHERE body &@~ $q
+), named_files AS MATERIALIZED (             -- ファイル名だけを条件に、attachments の PGroonga 索引で
   SELECT message_id, status, pgroonga_score(tableoid, ctid) AS score
   FROM attachments WHERE filename &@~ $q
 )
 SELECT m.*, hits.score FROM (
   SELECT id, max(score) AS score FROM (
-    (SELECT m.id, pgroonga_score(m.tableoid, m.ctid) AS score, m.created_at
-       FROM messages m WHERE m.body &@~ $q AND <範囲>
-       ORDER BY score DESC, m.created_at + interval '0' DESC LIMIT $offset + $limit)
+    (SELECT b.id, b.score, b.created_at
+       FROM body_hits b WHERE <範囲 (b の列で)>  -- has: / is:thread があるときだけ messages を JOIN し直す
+       ORDER BY b.score DESC, b.created_at + interval '0' DESC LIMIT $offset + $limit)
     UNION ALL
     (SELECT m.id, max(f.score), m.created_at
        FROM named_files f JOIN messages m ON m.id = f.message_id
@@ -901,6 +904,10 @@ LIMIT $limit OFFSET $offset;
 --          AND 修飾子 (from / after / before / has / is:thread)
 ```
 
+- 各枝は語だけを条件にした MATERIALIZED の段から始める。範囲の条件を語と並べると、行の少ない表 (始めたばかりの
+  ワークスペース) ではチャンネルや送信者の索引から読んで語を後から確かめる計画になることがあり、点数がすべて 0 に
+  なった (CI で一度起きた)。本文の段は範囲に使う列を持ち、ヒットを id で読み直さない (読み直すと 5 万件ヒットの語で
+  時間が倍になった)。46.5 万件でよくある語が 76 → 100 ms、132 → 159 ms になったほかは変わらず、結果は同じ。
 - 各枝は 1 ページ分 (`offset + limit` 件) だけ取る。よくある語は数万件に当たるが、使うのは 1 ページか件数の
   上限 (1,000 + 1) まで。件数も各枝を 1,001 件で打ち切って数える。
 - 並べ替えは `created_at` そのものではなく式で行う。`messages_created_idx` を使って新しい順に 1 件ずつ語を
