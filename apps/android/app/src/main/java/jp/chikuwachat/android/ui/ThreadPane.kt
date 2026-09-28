@@ -211,7 +211,7 @@ private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.s
         message, store, controller, version,
         canEdit = !message.pending && message.senderId == store.me?.id,
         canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
-        onRetry = { controller.scope.launch { controller.engine?.retryFailed() } },
+        onRetry = { message.clientMsgId?.let { key -> controller.scope.launch { controller.engine?.retryFailed(key) } } },
         onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
         onReact = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } },
         onEdit = { body -> controller.scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },

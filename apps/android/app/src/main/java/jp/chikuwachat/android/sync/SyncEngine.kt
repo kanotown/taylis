@@ -1145,8 +1145,9 @@ class SyncEngine(
         flushOutbox()
     }
 
-    suspend fun retryFailed() {
-        store.outbox.filter { it.failed != null }.forEach { store.markOutboxFailed(it.clientMsgId, null) }
+    /** 「再送」 on one failed message: that message only (others stay failed until their own 再送). */
+    suspend fun retryFailed(clientMsgId: String) {
+        if (store.outbox.any { it.clientMsgId == clientMsgId && it.failed != null }) store.markOutboxFailed(clientMsgId, null)
         flushOutbox()
     }
 

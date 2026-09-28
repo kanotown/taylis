@@ -873,6 +873,34 @@ describe("send queue (§9)", () => {
     engine.stop();
   });
 
+  it("「再送」 on one failed message sends that message only", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const other = server.createChannel("random", alice.id);
+    server.join(other.id, bob.id);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    const api = server.apiFor(bob.id);
+    const post = api.postMessage;
+    let refuse = true;
+    api.postMessage = async (...args: Parameters<SyncApi["postMessage"]>) => {
+      if (refuse) throw new ApiError(422, "validation_error", "bad");
+      return post(...args);
+    };
+    useApi(engine, api);
+    await engine.send(channel.id, "here");
+    await engine.send(other.id, "there");
+    await engine.idle();
+    expect(store.outbox.map((i) => [i.body, i.failed])).toEqual([["here", "validation_error"], ["there", "validation_error"]]);
+
+    refuse = false;
+    await engine.retryFailed(store.outbox.find((i) => i.body === "here")!.client_msg_id);
+    await engine.idle();
+    expect(server.channels.get(channel.id)!.messages.map((m) => m.body)).toEqual(["here"]);
+    expect(server.channels.get(other.id)!.messages).toEqual([]);
+    expect(store.outbox.map((i) => [i.body, i.failed])).toEqual([["there", "validation_error"]]); // still failed, still offered
+    engine.stop();
+  });
+
   it("marks a refused send failed, goes on with the next one, and keeps the failure across a restart", async () => {
     const persistence = new MemoryPersistence();
     const { server, bob, channel, store, engine } = await setup({ store: new Store(persistence) });
@@ -902,7 +930,7 @@ describe("send queue (§9)", () => {
     await second.start();
     await second.idle();
     expect(restarted.outbox.map((i) => i.body)).toEqual(["refused"]); // not sent again until 再送
-    await second.retryFailed();
+    await second.retryFailed(restarted.outbox[0]!.client_msg_id);
     await second.idle();
     expect(restarted.outbox).toEqual([]);
     expect(server.channels.get(channel.id)!.messages.map((m) => m.body)).toEqual(["fine", "refused"]);

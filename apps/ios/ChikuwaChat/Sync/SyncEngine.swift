@@ -1119,8 +1119,11 @@ final class SyncEngine {
         await flushOutbox()
     }
 
-    func retryFailed() async {
-        for item in store.outbox where item.failed != nil { store.markOutboxFailed(item.clientMsgId, reason: nil) }
+    /// 「再送」 on one failed message: that message only (others stay failed until their own 再送).
+    func retryFailed(_ clientMsgId: String) async {
+        if store.outbox.contains(where: { $0.clientMsgId == clientMsgId && $0.failed != nil }) {
+            store.markOutboxFailed(clientMsgId, reason: nil)
+        }
         await flushOutbox()
     }
 
