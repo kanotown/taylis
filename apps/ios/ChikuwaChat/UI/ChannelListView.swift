@@ -5,10 +5,20 @@ struct ChannelListView: View {
     @Binding var selection: String?
     @AppStorage("sidebar.unreadOnly") private var unreadOnly = false
     @State private var showBrowser = false
-    /// M14f: naming a new section (optionally for a conversation) or renaming one.
-    private enum Naming: Equatable { case create(String?), rename(String) }
-    @State private var naming: Naming?
-    @State private var nameText = ""
+    /// M26: making (no section) or editing one of my sections; the conversation a long-press 「新しいセクション…」 ticks.
+    private struct SectionFormTarget: Identifiable {
+        let id = UUID()
+        let section: SidebarSectionOut?
+        var preselected: [String] = []
+    }
+    @State private var sectionForm: SectionFormTarget?
+    /// M26: the default sections folded on this device; my own sections fold on all my devices through the server.
+    @AppStorage("sidebar.folded") private var foldedRaw = ""
+    private var folded: Set<String> { Self.foldedKeys(foldedRaw) }
+    private func toggleFold(_ key: String) { withAnimation { foldedRaw = Self.toggledFold(foldedRaw, key: key) } }
+    private func shown(_ rows: [ChannelState], _ collapsed: Bool) -> [ChannelState] {
+        Self.shown(rows, collapsed: collapsed, meId: meId, selection: selection)
+    }
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
@@ -50,28 +60,35 @@ struct ChannelListView: View {
                 filesRow
                 savedRow
             }
+            // M26: a folded section keeps its unread rows (and the open one); its hints and actions go.
             if !favorites.isEmpty {
-                Section("お気に入り") {
-                    ForEach(favorites) { row($0) }
-                }
+                let fold = folded.contains("favorites")
+                Section {
+                    ForEach(shown(favorites, fold)) { row($0) }
+                } header: { foldHeader("お気に入り", folded: fold) { toggleFold("favorites") } }
             }
             customSections
             let sections = channelAndTimes
-            Section("チャンネル") {
-                ForEach(sections.channels) { row($0) }
-                if sections.channels.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
-                if !unreadOnly && !controller.isGuest { browseRow }
-            }
-            if !sections.times.isEmpty || (canMakeTimes && !unreadOnly) {
-                Section("Times") {
-                    ForEach(sections.times) { row($0) }
-                    if canMakeTimes && !unreadOnly { makeTimesRow }
+            let channelsFolded = folded.contains("channels")
+            Section {
+                ForEach(shown(sections.channels, channelsFolded)) { row($0) }
+                if !channelsFolded {
+                    if sections.channels.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
+                    if !unreadOnly && !controller.isGuest { browseRow }
                 }
+            } header: { foldHeader("チャンネル", folded: channelsFolded) { toggleFold("channels") } }
+            if !sections.times.isEmpty || (canMakeTimes && !unreadOnly) {
+                let timesFolded = folded.contains("times")
+                Section {
+                    ForEach(shown(sections.times, timesFolded)) { row($0) }
+                    if canMakeTimes && !unreadOnly && !timesFolded { makeTimesRow }
+                } header: { foldHeader("Times", folded: timesFolded) { toggleFold("times") } }
             }
-            Section("ダイレクトメッセージ") {
-                ForEach(dms) { row($0) }
-                if dms.isEmpty { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
-            }
+            let dmsFolded = folded.contains("dms")
+            Section {
+                ForEach(shown(dms, dmsFolded)) { row($0) }
+                if dms.isEmpty && !dmsFolded { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
+            } header: { foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") } }
             if !browse.isEmpty {
                 Section("参加できるチャンネル") {
                     ForEach(browse) { channel in
@@ -88,10 +105,8 @@ struct ChannelListView: View {
             }
         }
         .listStyle(.sidebar)
-        .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
-            TextField("セクション名", text: $nameText)
-            Button("キャンセル", role: .cancel) { naming = nil }
-            Button("OK") { submitName() }
+        .sheet(item: $sectionForm) { target in
+            SectionFormView(controller: controller, section: target.section, preselected: target.preselected)
         }
         .sheet(isPresented: $showBrowser) {
             ChannelBrowserView(controller: controller) { id in selection = id }
@@ -109,6 +124,41 @@ struct ChannelListView: View {
                 rows.filter(\.channel.isTimes).sorted { mine($0) != mine($1) ? mine($0) : byName($0, $1) })
     }
 
+    /// M26 (Slack): a folded section still shows what is unread, and the open conversation.
+    nonisolated static func shown(_ rows: [ChannelState], collapsed: Bool, meId: String?, selection: String?, now: Date = Date()) -> [ChannelState] {
+        collapsed ? rows.filter { $0.id == selection || $0.hasUnread(meId: meId, now: now) } : rows
+    }
+
+    /// M26: the default sections (favorites, channels, times, dms) folded on this device, kept as one line of keys.
+    nonisolated static func foldedKeys(_ raw: String) -> Set<String> { Set(raw.split(separator: " ").map(String.init)) }
+
+    nonisolated static func toggledFold(_ raw: String, key: String) -> String {
+        var keys = foldedKeys(raw)
+        if keys.remove(key) == nil { keys.insert(key) }
+        return keys.sorted().joined(separator: " ")
+    }
+
+    /// A section title that folds (M26): a chevron, the icon of one of my sections, and the name.
+    private func foldHeader(_ title: String, icon: String? = nil, folded: Bool, toggle: @escaping () -> Void) -> some View {
+        Button(action: toggle) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .rotationEffect(.degrees(folded ? -90 : 0))
+                SectionIcon(controller: controller, emoji: icon, size: 16)
+                Text(title)
+            }
+            // The whole header row folds it, not only the title (the row is as wide as the list).
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(folded ? "折りたたみ中" : "展開中")
+        .accessibilityHint(folded ? "開きます" : "折りたたみます")
+        .accessibilityAddTraits(.isHeader)
+    }
+
     // MARK: sidebar sections (M14f)
 
     private func members(of section: SidebarSectionOut) -> [ChannelState] {
@@ -124,8 +174,8 @@ struct ChannelListView: View {
         ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
             Section {
                 let rows = members(of: section)
-                ForEach(rows) { row($0) }
-                if rows.isEmpty && !unreadOnly { hint("会話を長押し →「セクションに移動」で追加できます。") }
+                ForEach(shown(rows, section.collapsed)) { row($0) }
+                if rows.isEmpty && !unreadOnly && !section.collapsed { hint("会話を長押し →「セクションに移動」で追加できます。") }
             } header: {
                 sectionHeader(section, index: index, count: sections.count)
             }
@@ -134,13 +184,15 @@ struct ChannelListView: View {
 
     private func sectionHeader(_ section: SidebarSectionOut, index: Int, count: Int) -> some View {
         HStack {
-            Text(section.name)
+            foldHeader(section.name, icon: section.emoji, folded: section.collapsed) {
+                Task { _ = await controller.setSectionCollapsed(section.id, collapsed: !section.collapsed) }
+            }
             Spacer()
             Menu {
-                Button("名前を変更", systemImage: "pencil") { nameText = section.name; naming = .rename(section.id) }
+                Button("名前とアイコンを変更…", systemImage: "pencil") { sectionForm = SectionFormTarget(section: section) }
                 Button("上へ", systemImage: "arrow.up") { Task { _ = await controller.moveSection(section.id, position: index - 1) } }.disabled(index == 0)
                 Button("下へ", systemImage: "arrow.down") { Task { _ = await controller.moveSection(section.id, position: index + 1) } }.disabled(index == count - 1)
-                Button("新しいセクション…", systemImage: "plus") { nameText = ""; naming = .create(nil) }
+                Button("新しいセクション…", systemImage: "plus") { sectionForm = SectionFormTarget(section: nil) }
                 Button("セクションを削除", systemImage: "trash", role: .destructive) { Task { _ = await controller.deleteSection(section.id) } }
             } label: {
                 Image(systemName: "ellipsis").padding(.horizontal, 4)
@@ -157,31 +209,15 @@ struct ChannelListView: View {
         }
         Menu("セクションに移動", systemImage: "folder") {
             ForEach(controller.store.sidebarSections) { section in
-                Button(section.name) { Task { _ = await controller.moveToSection(channel.id, sectionId: section.id) } }
+                // A menu shows text only: a plain emoji icon goes before the name, a custom one is left out.
+                let icon = section.emoji.flatMap { CustomEmoji.name(of: $0) == nil ? "\($0) " : nil } ?? ""
+                Button(icon + section.name) { Task { _ = await controller.moveToSection(channel.id, sectionId: section.id) } }
                     .disabled(current == section.id)
             }
-            Button("新しいセクション…", systemImage: "plus") { nameText = ""; naming = .create(channel.id) }
+            Button("新しいセクション…", systemImage: "plus") { sectionForm = SectionFormTarget(section: nil, preselected: [channel.id]) }
         }
         if current != nil {
             Button("セクションから外す", systemImage: "folder.badge.minus") { Task { _ = await controller.moveToSection(channel.id, sectionId: nil) } }
-        }
-    }
-
-    private var namingTitle: String {
-        if case .rename = naming { return "セクション名を変更" }
-        return "新しいセクション"
-    }
-
-    private func submitName() {
-        let name = nameText.trimmingCharacters(in: .whitespaces)
-        let target = naming
-        naming = nil
-        guard !name.isEmpty, let target else { return }
-        Task {
-            switch target {
-            case .create(let channelId): _ = await controller.createSection(name, channelId: channelId)
-            case .rename(let id): _ = await controller.renameSection(id, name: name)
-            }
         }
     }
 

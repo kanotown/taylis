@@ -7,8 +7,8 @@ struct MainView: View {
     @State private var pendingThreadId: String?
 
     enum Sheet: Identifiable {
-        case newDm, newChannel, search, settings, browse, directory, workspaces
-        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4; case .directory: 5; case .workspaces: 6 } }
+        case newDm, newChannel, search, settings, browse, directory, workspaces, newSection
+        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .settings: 3; case .browse: 4; case .directory: 5; case .workspaces: 6; case .newSection: 7 } }
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
@@ -47,6 +47,7 @@ struct MainView: View {
                                 Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
                                 Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
                             }
+                            Button("新しいセクション", systemImage: "folder.badge.plus") { sheet = .newSection }
                             Divider()
                             Button("すべて既読にする", systemImage: "checkmark.circle") { Task { await controller.markAllRead() } }
                         } label: { Image(systemName: "plus") }
@@ -114,6 +115,7 @@ struct MainView: View {
             case .settings: SettingsView(controller: controller)
             case .browse: ChannelBrowserView(controller: controller) { id in selection = id }
             case .workspaces: WorkspaceSwitcherSheet(controller: controller)
+            case .newSection: SectionFormView(controller: controller, section: nil)
             }
         }
         .onChange(of: selection) { _, id in

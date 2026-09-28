@@ -1002,17 +1002,29 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    /// A new section at the end; with `channelId`, that conversation moves into it.
-    func createSection(_ name: String, channelId: String?) async -> Bool {
-        let before = Set(store.sidebarSections.map(\.id))
-        guard await sidebarChange({ try await $0.createSidebarSection(name: name) }) else { return false }
-        if let channelId, let created = store.sidebarSections.first(where: { !before.contains($0.id) }) {
-            return await moveToSection(channelId, sectionId: created.id)
-        }
-        return true
+    /// A new section at the end (M26: with its icon); `channelIds` move into it from wherever they were.
+    func createSection(_ name: String, emoji: String?, channelIds: [String]) async -> Bool {
+        await sidebarChange { try await $0.createSidebarSection(name: name, emoji: emoji, channelIds: channelIds) }
     }
 
-    func renameSection(_ id: String, name: String) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, name: name) } }
+    /// M26: the name and the icon (nil takes it off).
+    func editSection(_ id: String, name: String, emoji: String?) async -> Bool {
+        await sidebarChange { try await $0.editSidebarSection(id, name: name, emoji: emoji) }
+    }
+
+    /// M26: folds or unfolds one of my sections on all my devices. The list changes at once; if the server refuses,
+    /// it goes back.
+    func setSectionCollapsed(_ id: String, collapsed: Bool) async -> Bool {
+        let before = store.sidebarSections
+        store.replaceSidebar(before.map { section in
+            var section = section
+            if section.id == id { section.collapsed = collapsed }
+            return section
+        })
+        let done = await sidebarChange { try await $0.updateSidebarSection(id, collapsed: collapsed) }
+        if !done { store.replaceSidebar(before) }
+        return done
+    }
     func moveSection(_ id: String, position: Int) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, position: position) } }
     func deleteSection(_ id: String) async -> Bool { await sidebarChange { try await $0.deleteSidebarSection(id) } }
 

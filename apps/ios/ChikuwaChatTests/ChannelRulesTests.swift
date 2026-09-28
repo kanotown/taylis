@@ -94,6 +94,27 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertEqual(ChannelListView.channelSections(all, meId: "me") { $0.hasUnread(meId: "me") }.times.map(\.id), ["times-amy", "times-bob"])
     }
 
+    func testAFoldedSectionKeepsUnreadAndTheOpenConversation() {  // M26 (Slack)
+        var muted = channel("muted", unread: 3)
+        muted.channel.notification = NotificationPreferenceOut(channelId: "muted", level: "none", mutedUntil: nil)
+        let rows = [channel("read"), channel("unread", unread: 2), channel("open"), channel("dm", type: "dm", unread: 1), muted]
+        XCTAssertEqual(ChannelListView.shown(rows, collapsed: false, meId: "me", selection: nil).map(\.id), rows.map(\.id))
+        // A muted conversation with posts but no mention is not unread, so it folds away too.
+        XCTAssertEqual(ChannelListView.shown(rows, collapsed: true, meId: "me", selection: "open").map(\.id), ["unread", "open", "dm"])
+    }
+
+    func testDefaultSectionsFoldOnThisDevice() {  // M26
+        var raw = ""
+        XCTAssertEqual(ChannelListView.foldedKeys(raw), [])
+        raw = ChannelListView.toggledFold(raw, key: "dms")
+        raw = ChannelListView.toggledFold(raw, key: "channels")
+        XCTAssertEqual(raw, "channels dms")
+        XCTAssertEqual(ChannelListView.foldedKeys(raw), ["channels", "dms"])
+        raw = ChannelListView.toggledFold(raw, key: "dms")
+        XCTAssertEqual(ChannelListView.foldedKeys(raw), ["channels"])
+        XCTAssertEqual(ChannelListView.toggledFold(raw, key: "channels"), "")
+    }
+
     /// `times_owner_id` from the wire; older servers omit it, and channels persisted before M24 lack it.
     func testTimesOwnerDecodesWithAndWithoutTheField() throws {
         let wire = { (extra: String) in

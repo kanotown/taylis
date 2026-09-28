@@ -549,15 +549,26 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
 
     // MARK: sidebar sections (M14f): every call returns my whole list
 
-    func createSidebarSection(name: String) async throws -> [SidebarSectionOut] {
-        try await request("POST", "/api/v1/sidebar/sections", body: .object(["name": .string(name)]))
+    /// M26: with its icon, and the conversations to put in it at once (they leave the section they were in). Those
+    /// fields go only when set: a server before M26 refuses fields it does not know.
+    func createSidebarSection(name: String, emoji: String? = nil, channelIds: [String] = []) async throws -> [SidebarSectionOut] {
+        var fields: [String: JSONValue] = ["name": .string(name)]
+        if let emoji { fields["emoji"] = .string(emoji) }
+        if !channelIds.isEmpty { fields["channel_ids"] = .array(channelIds.map { .string($0) }) }
+        return try await request("POST", "/api/v1/sidebar/sections", body: .object(fields))
     }
 
-    func updateSidebarSection(_ id: String, name: String? = nil, position: Int? = nil) async throws -> [SidebarSectionOut] {
+    func updateSidebarSection(_ id: String, name: String? = nil, position: Int? = nil, collapsed: Bool? = nil) async throws -> [SidebarSectionOut] {
         var fields: [String: JSONValue] = [:]
         if let name { fields["name"] = .string(name) }
         if let position { fields["position"] = .number(Double(position)) }
+        if let collapsed { fields["collapsed"] = .bool(collapsed) }
         return try await request("PATCH", "/api/v1/sidebar/sections/\(id)", body: .object(fields))
+    }
+
+    /// M26: the name and the icon together; a nil `emoji` takes the icon off.
+    func editSidebarSection(_ id: String, name: String, emoji: String?) async throws -> [SidebarSectionOut] {
+        try await request("PATCH", "/api/v1/sidebar/sections/\(id)", body: .object(["name": .string(name), "emoji": emoji.map { .string($0) } ?? .null]))
     }
 
     func deleteSidebarSection(_ id: String) async throws -> [SidebarSectionOut] {
