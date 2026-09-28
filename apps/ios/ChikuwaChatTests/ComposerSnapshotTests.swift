@@ -41,6 +41,20 @@ final class ComposerSnapshotTests: XCTestCase {
         return m
     }
 
+    func testJapaneseMentionCandidatesRender() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.upsertUser(UserPublic(id: "00000000-0000-7000-8000-000000000001", username: "yamada", displayName: "山田 太郎", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+        let channel = ChannelOut(id: "c1", type: "public", name: "研究室", topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                                 lastMessageAt: nil, createdAt: "", updatedAt: "", membership: MembershipOut(role: "member", joinedAt: ""), dmUserIds: nil)
+        store.upsertChannel(channel, isMember: true)
+        store.updateChannel("c1") { $0.hasOlder = false; $0.syncedSeq = 0 }
+        store.setDraft("c1") { $0.text = "確認をお願いします @山田" }
+        let screen = NavigationStack { ChannelView(controller: controller, channelId: "c1", pendingThreadId: .constant(nil)) }
+        let image = try render(screen, size: CGSize(width: 393, height: 760), name: "C6-ios.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
     func testAvatarCropScreenRenders() throws {  // M16g
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
