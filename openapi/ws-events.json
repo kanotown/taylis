@@ -941,6 +941,11 @@
                 "title": "Id",
                 "type": "string"
               },
+              "managed": {
+                "default": false,
+                "title": "Managed",
+                "type": "boolean"
+              },
               "member_ids": {
                 "items": {
                   "format": "uuid",
@@ -2501,6 +2506,145 @@
           "reminder"
         ],
         "title": "ReminderUpdatedData",
+        "type": "object"
+      }
+    },
+    "roster.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "LabProfileOut": {
+            "properties": {
+              "affiliation": {
+                "enum": [
+                  "faculty",
+                  "student",
+                  "alumni",
+                  "other"
+                ],
+                "title": "Affiliation",
+                "type": "string"
+              },
+              "grade": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "B3",
+                      "B4",
+                      "M1",
+                      "M2",
+                      "D1",
+                      "D2",
+                      "D3"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Grade"
+              },
+              "rank": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "professor",
+                      "associate_professor",
+                      "lecturer",
+                      "assistant_professor"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Rank"
+              },
+              "reading": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reading"
+              },
+              "research_topic": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Research Topic"
+              },
+              "supervisor_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Supervisor Id"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "user_id": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "affiliation",
+              "rank",
+              "grade",
+              "supervisor_id",
+              "research_topic",
+              "reading",
+              "updated_at"
+            ],
+            "title": "LabProfileOut",
+            "type": "object"
+          }
+        },
+        "description": "`roster.updated`: the person's line, or null when they left the roster.",
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LabProfileOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "profile"
+        ],
+        "title": "RosterUpdatedData",
         "type": "object"
       }
     },

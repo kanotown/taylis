@@ -6,6 +6,7 @@ can render `<@group:id>` as a name. The messages module asks `expand` for the me
 `mentioned_user_ids`, so unread mention counts and mentions-level pushes need no further logic.
 """
 
+import logging
 import uuid
 
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +22,8 @@ from app.modules.groups.models import UserGroup
 from app.modules.groups.schemas import GroupCreate, GroupOut, GroupUpdate, to_group_out
 from app.modules.users import service as users
 from app.modules.users.models import User
+
+log = logging.getLogger(__name__)
 
 
 async def list_visible(db: AsyncSession, visible: set[uuid.UUID] | None) -> list[GroupOut]:
@@ -123,10 +126,16 @@ async def create(db: AsyncSession, actor: User, data: GroupCreate) -> GroupOut:
     return out
 
 
+def _refuse_managed(group: UserGroup) -> None:
+    if group.managed_key is not None:
+        raise conflict("group_managed", "This group follows the lab roster")
+
+
 async def update(db: AsyncSession, actor: User, group_id: uuid.UUID, data: GroupUpdate) -> GroupOut:
     group = await repo.get(db, group_id, for_update=True)
     if group is None:
         raise not_found("group_not_found", "Group not found")
+    _refuse_managed(group)
     if data.name is not None and data.name != group.name:
         await _ensure_name_free(db, data.name, except_id=group.id)
         group.name = data.name
@@ -154,6 +163,7 @@ async def delete(db: AsyncSession, actor: User, group_id: uuid.UUID) -> None:
     group = await repo.get(db, group_id, for_update=True)
     if group is None:
         raise not_found("group_not_found", "Group not found")
+    _refuse_managed(group)
     members = (await repo.member_ids_for(db, [group.id])).get(group.id, [])
     await _emit(db, group, members, deleted=True)
     await repo.remove(db, group.id)
@@ -166,3 +176,53 @@ async def delete(db: AsyncSession, actor: User, group_id: uuid.UUID) -> None:
         details={"name": group.name},
     )
     await db.commit()
+
+
+async def sync_managed_in_tx(
+    db: AsyncSession, actor: User | None, key: str, description: str, member_ids: list[uuid.UUID]
+) -> None:
+    """For the lab module (M23, DATA_MODEL.md lab_profiles): the managed group `key`, named after
+    it, has exactly these members, in the caller's transaction; `group.updated` only on a change.
+
+    Made once it would have a member. A group of that name made by hand is taken over (its members
+    are replaced; audited). Not made while a user has that name: `@name` would be ambiguous.
+    """
+    group = await repo.get_managed(db, key)
+    if group is None:
+        if not member_ids or actor is None:  # a removal (actor None: anonymizing) never makes one
+            return
+        if await users.get_by_username(db, key) is not None:
+            log.warning("managed group %s not made: a user has that name", key)
+            return
+        group = await repo.get_by_name(db, key)
+        now = utcnow()
+        if group is None:
+            group = UserGroup(
+                name=key,
+                description=description,
+                created_by=actor.id,
+                created_at=now,
+                updated_at=now,
+                managed_key=key,
+            )
+            db.add(group)
+            await db.flush()
+            action = "admin.group_created"
+        else:
+            group.managed_key = key
+            group.updated_at = now
+            action = "admin.group_managed"  # a hand-made group now follows the roster
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action=action,
+            target_type="group",
+            target_id=group.id,
+            details={"name": group.name, "managed_key": key},
+        )
+    elif set((await repo.member_ids_for(db, [group.id])).get(group.id, [])) == set(member_ids):
+        return
+    await repo.set_members(db, group.id, member_ids)
+    group.updated_at = utcnow()
+    await db.flush()
+    await _emit(db, group, list(dict.fromkeys(member_ids)), deleted=False)

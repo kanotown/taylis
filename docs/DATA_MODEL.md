@@ -445,6 +445,45 @@ CREATE INDEX user_group_members_user_idx ON user_group_members (user_id);
   audience=all)。本文の `<@group:{group_id}>` は投稿 / 編集時に (無効化されていない) メンバー全員 (送信者を除く) に
   展開して `messages.mentioned_user_ids` に足すので、未読のメンション数・`GET /mentions`・プッシュはそのまま効く。
   グループの id は本文に残るだけで messages には列を足さない。削除されたグループのトークンは誰にも展開されない。
+- **管理グループ** (M23): `managed_key text UNIQUE` (null = 手で作るグループ) を持つグループは名簿 (`lab_profiles`) から
+  メンバーを自動で保つ。admin が編集・削除・メンバー変更をしようとすると 409 `group_managed`。`GroupOut.managed` で
+  クライアントは読み取り専用に表示する。作成者 (`created_by`) は最初に名簿を変えた admin。
+
+### lab_profiles (名簿、M23)
+
+研究室の名簿: 身分・学年・指導教員・研究テーマ。表示とグループ分けにだけ使い、**権限には使わない** (ロールは
+admin / member / guest のまま)。学籍番号・成績・出欠は保存しない。研究室専用のものは `lab` モジュールに閉じ込め、
+`users` には列を足さない。
+
+```sql
+CREATE TABLE lab_profiles (
+  user_id        uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  affiliation    text NOT NULL,        -- faculty | student | alumni | other (身分)
+  rank           text,                 -- 教員だけ: professor | associate_professor | lecturer | assistant_professor
+  grade          text,                 -- 学生だけ: B3 | B4 | M1 | M2 | D1 | D2 | D3
+  supervisor_id  uuid REFERENCES users(id) ON DELETE SET NULL,   -- 指導教員 (教員の名簿にいる人)
+  research_topic varchar(200),         -- 研究テーマ (本人も編集できる)
+  reading        varchar(80),          -- よみ (名簿の並び順。本人も編集できる)
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  CHECK (rank IS NULL OR affiliation = 'faculty'),
+  CHECK (grade IS NULL OR affiliation = 'student')
+);
+```
+
+- 名簿に載せる・身分・職位・学年・指導教員を変えるのは admin (`PUT /lab/roster/{user_id}`、`DELETE` で外す)。本人は
+  自分の行の研究テーマとよみだけ変えられる (`PATCH /lab/roster/me`、名簿にいなければ 404 `roster_entry_not_found`)。
+- 全員が一覧を持つ (bootstrap の `roster`、`GET /lab/roster`、変化は `roster.updated`)。guest には見える人の行だけ
+  (bootstrap / GET)、`roster.updated` は届けない (group.updated と同じ)。
+- **名簿順** (3 端末と `GET /lab/roster` で同じ): 教員 (教授 → 准教授 → 講師 → 助教 → 職位なし) → 学生 (D3 → D2 →
+  D1 → M2 → M1 → B4 → B3 → 学年なし) → その他 → 卒業生。同じ段の中はよみ (無ければ表示名)、次にユーザー名。
+  名簿にいない人はその後ろ。
+- **管理グループ** (`user_groups.managed_key`): `faculty` (教員)、`students` (学生)、`alumni` (卒業生)、`b4`、`m1`、
+  `m2` (その学年の学生)、`d` (D1〜D3)。名簿が変わるたびに同じトランザクションでメンバーを計算し直し、変わった
+  グループだけ `group.updated` を出す。まだ無いグループはメンバーが 1 人以上になったときに作る。同じ名前の手作りの
+  グループがあれば管理グループにする (メンバーは名簿で置き換わる。監査ログに残す)。同じ名前のユーザーがいれば
+  作らない (`@name` が一意でなくなるため)。無効化されたユーザーは名簿に残るが、メンションの展開は従来どおり
+  有効なユーザーだけ。
+- 匿名化 (admin) は名簿の行も消す。
 
 ### webhooks (受信 Webhook、M13a)
 

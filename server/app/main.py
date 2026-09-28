@@ -36,6 +36,7 @@ from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
 from app.modules.groups.router import router as groups_router
 from app.modules.invites.router import router as invites_router
+from app.modules.lab.router import router as lab_router
 from app.modules.link_previews.fetcher import build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages.router import router as messages_router
@@ -213,6 +214,7 @@ def build_api_router() -> APIRouter:
     api.include_router(reminders_router)
     api.include_router(emoji_router)
     api.include_router(groups_router)
+    api.include_router(lab_router)
     api.include_router(webhooks_router)
     api.include_router(link_previews_router)
     api.include_router(attachments_router)

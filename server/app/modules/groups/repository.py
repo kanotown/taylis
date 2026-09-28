@@ -16,6 +16,16 @@ async def get(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def get_managed(db: AsyncSession, key: str) -> UserGroup | None:
+    stmt = select(UserGroup).where(UserGroup.managed_key == key).with_for_update()
+    return (await db.execute(stmt.execution_options(populate_existing=True))).scalar_one_or_none()
+
+
+async def get_by_name(db: AsyncSession, name: str) -> UserGroup | None:
+    stmt = select(UserGroup).where(UserGroup.name == name).with_for_update()
+    return (await db.execute(stmt.execution_options(populate_existing=True))).scalar_one_or_none()
+
+
 async def list_all(db: AsyncSession) -> list[UserGroup]:
     return list((await db.execute(select(UserGroup).order_by(UserGroup.name))).scalars().all())
 

@@ -47,6 +47,8 @@ class GroupOut(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    # M23: the members follow the lab roster; administrators cannot edit or delete it.
+    managed: bool = False
 
 
 class GroupUpdatedData(BaseModel):
@@ -63,4 +65,5 @@ def to_group_out(group: UserGroup, member_ids: list[UUID]) -> GroupOut:
         created_by=group.created_by,
         created_at=group.created_at,
         updated_at=group.updated_at,
+        managed=group.managed_key is not None,
     )

@@ -165,6 +165,7 @@ server/
       admin/             # ユーザー作成 / リセット / ロール / 無効化, 監査ログ
       invites/           # 招待リンク (発行 / 取消 / 公開の確認と受諾) (M12h)
       groups/            # ユーザーグループ (@group メンションの展開先、admin が管理) (M12k)
+      lab/               # 研究室の名簿 (身分・学年・指導教員・研究テーマ) と管理グループ (M23)
       webhooks/          # 受信 Webhook (トークン付き URL → bot ユーザーとして投稿) (M13a)
       sidebar/           # サイドバーのセクション (個人の並べ替え、sidebar.updated) (M14f)
       drafts/            # 端末間で共有する下書き (本文のみ、draft.updated) (M15d)
@@ -197,7 +198,7 @@ server/
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。
    同一トランザクション内での付随更新も service 呼び出しでよい。例: `messages` → `reads.advance_in_tx()`。
 4. 依存方向は一方向に保つ:
-   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
+   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups` (名簿の対象と管理グループのメンバー)、`admin → lab` (匿名化で名簿の行を消す)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。

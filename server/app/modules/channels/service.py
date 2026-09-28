@@ -94,6 +94,7 @@ def dm_key_for(user_ids: list[uuid.UUID]) -> str:
 # user.* events carry profiles: guests get only those of people they share a channel with (M13e).
 USER_EVENTS = ("user.created", "user.updated", "user.deactivated")
 GROUP_UPDATED = "group.updated"  # member lists: not for guests
+ROSTER_UPDATED = "roster.updated"  # the lab roster (M23): not for guests either
 
 
 async def _user_event_audience(db: AsyncSession, subject: uuid.UUID) -> list[uuid.UUID]:
@@ -113,7 +114,12 @@ async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audien
     """Injected into the OutboxRelay: turns an outbox row's audience into user / session ids."""
     if event.audience_type == "all":
         # A public channel appearing or changing visibility (M15b): not for guests (M13e).
-        if event.event_type in (events.CHANNEL_CREATED, events.CHANNEL_UPDATED, GROUP_UPDATED):
+        if event.event_type in (
+            events.CHANNEL_CREATED,
+            events.CHANNEL_UPDATED,
+            GROUP_UPDATED,
+            ROSTER_UPDATED,
+        ):
             return Audience(kind="users", ids=tuple(await repo.non_guest_user_ids(db)))
         if event.event_type in USER_EVENTS:
             subject = uuid.UUID(str(event.payload["user"]["id"]))

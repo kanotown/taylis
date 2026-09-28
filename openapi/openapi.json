@@ -438,6 +438,14 @@
             "title": "Presence",
             "type": "array"
           },
+          "roster": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LabProfileOut"
+            },
+            "title": "Roster",
+            "type": "array"
+          },
           "server_time": {
             "format": "date-time",
             "title": "Server Time",
@@ -1452,6 +1460,11 @@
             "title": "Id",
             "type": "string"
           },
+          "managed": {
+            "default": false,
+            "title": "Managed",
+            "type": "boolean"
+          },
           "member_ids": {
             "items": {
               "format": "uuid",
@@ -1824,6 +1837,207 @@
           "password_min_length"
         ],
         "title": "InvitePreviewOut",
+        "type": "object"
+      },
+      "LabProfileOut": {
+        "properties": {
+          "affiliation": {
+            "enum": [
+              "faculty",
+              "student",
+              "alumni",
+              "other"
+            ],
+            "title": "Affiliation",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "enum": [
+                  "professor",
+                  "associate_professor",
+                  "lecturer",
+                  "assistant_professor"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "research_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Topic"
+          },
+          "supervisor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supervisor Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "affiliation",
+          "rank",
+          "grade",
+          "supervisor_id",
+          "research_topic",
+          "reading",
+          "updated_at"
+        ],
+        "title": "LabProfileOut",
+        "type": "object"
+      },
+      "LabProfilePut": {
+        "additionalProperties": false,
+        "description": "An administrator's line for someone (PUT /lab/roster/{user_id}). Affiliation, rank, grade and\nsupervisor are replaced as sent; the research topic and reading, which the person may edit\ntoo, change only when sent.",
+        "properties": {
+          "affiliation": {
+            "enum": [
+              "faculty",
+              "student",
+              "alumni",
+              "other"
+            ],
+            "title": "Affiliation",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "enum": [
+                  "professor",
+                  "associate_professor",
+                  "lecturer",
+                  "assistant_professor"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "research_topic": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Topic"
+          },
+          "supervisor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supervisor Id"
+          }
+        },
+        "required": [
+          "affiliation"
+        ],
+        "title": "LabProfilePut",
         "type": "object"
       },
       "Limits": {
@@ -2440,6 +2654,38 @@
           "replaced_at"
         ],
         "title": "MessageRevisionOut",
+        "type": "object"
+      },
+      "MyLabProfileUpdate": {
+        "additionalProperties": false,
+        "description": "What people change on their own line (PATCH /lab/roster/me); null clears.",
+        "properties": {
+          "reading": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "research_topic": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Topic"
+          }
+        },
+        "title": "MyLabProfileUpdate",
         "type": "object"
       },
       "NotificationPreferenceIn": {
@@ -7686,6 +7932,182 @@
         "summary": "Accept Invite",
         "tags": [
           "invites"
+        ]
+      }
+    },
+    "/api/v1/lab/roster": {
+      "get": {
+        "description": "The lab roster in roster order (M23); also part of the bootstrap. Guests get only the people\nthey share a channel with (M13e).",
+        "operationId": "get_roster_api_v1_lab_roster_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LabProfileOut"
+                  },
+                  "title": "Response Get Roster Api V1 Lab Roster Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Roster",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/api/v1/lab/roster/me": {
+      "patch": {
+        "description": "My research topic and reading (404 roster_entry_not_found while I am not on the roster).",
+        "operationId": "update_my_line_api_v1_lab_roster_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyLabProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update My Line",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/api/v1/lab/roster/{user_id}": {
+      "delete": {
+        "operationId": "remove_line_api_v1_lab_roster__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Line",
+        "tags": [
+          "lab"
+        ]
+      },
+      "put": {
+        "description": "Put someone on the roster or change their line; the managed groups follow.",
+        "operationId": "put_line_api_v1_lab_roster__user_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabProfilePut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Line",
+        "tags": [
+          "lab"
         ]
       }
     },
