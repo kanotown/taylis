@@ -1683,6 +1683,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/times": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ensure Times
+         * @description My times (M24): made on the first call (201), returned afterwards (200). The supervisors on
+         *     the lab roster join it (the lookup is injected by main.py: channels does not depend on lab).
+         */
+        post: operations["ensure_times_api_v1_times_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -2114,6 +2135,8 @@ export interface components {
             /** Purpose */
             purpose: string | null;
             read_state?: components["schemas"]["ReadStateOut"] | null;
+            /** Times Owner Id */
+            times_owner_id?: string | null;
             /** Topic */
             topic: string | null;
             /**
@@ -2154,6 +2177,8 @@ export interface components {
             posting_policy?: ("everyone" | "owners") | null;
             /** Purpose */
             purpose?: string | null;
+            /** Times Owner Id */
+            times_owner_id?: string | null;
             /** Topic */
             topic?: string | null;
             /** Type */
@@ -6973,6 +6998,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ensure_times_api_v1_times_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
                 };
             };
         };

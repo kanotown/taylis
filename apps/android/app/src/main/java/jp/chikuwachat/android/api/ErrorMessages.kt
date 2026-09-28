@@ -83,6 +83,7 @@ object ErrorMessages {
         "session_not_found" to "セッションが見つかりません",
         "session_revoked" to "ログアウトされました。もう一度ログインしてください",
         "thumbnail_not_found" to "サムネイルがありません",
+        "times_exists" to "この人の times はすでにあります",
         "token_expired" to "ログインし直してください",
         "too_many_attachments" to "添付は 10 件までです",
         "too_many_drafts" to "下書きが多すぎます。不要な下書きを削除してください",

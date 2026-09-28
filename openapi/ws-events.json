@@ -191,6 +191,19 @@
                 ],
                 "default": null
               },
+              "times_owner_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Times Owner Id"
+              },
               "topic": {
                 "anyOf": [
                   {
@@ -607,6 +620,19 @@
                   }
                 ],
                 "default": null
+              },
+              "times_owner_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Times Owner Id"
               },
               "topic": {
                 "anyOf": [

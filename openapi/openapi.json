@@ -705,6 +705,18 @@
               }
             ]
           },
+          "times_owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times Owner Id"
+          },
           "topic": {
             "anyOf": [
               {
@@ -834,6 +846,18 @@
               }
             ],
             "title": "Purpose"
+          },
+          "times_owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times Owner Id"
           },
           "topic": {
             "anyOf": [
@@ -10190,6 +10214,33 @@
         "summary": "List Threads",
         "tags": [
           "threads"
+        ]
+      }
+    },
+    "/api/v1/times": {
+      "post": {
+        "description": "My times (M24): made on the first call (201), returned afterwards (200). The supervisors on\nthe lab roster join it (the lookup is injected by main.py: channels does not depend on lab).",
+        "operationId": "ensure_times_api_v1_times_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ensure Times",
+        "tags": [
+          "channels"
         ]
       }
     },

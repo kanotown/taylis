@@ -17,6 +17,7 @@ from app.modules.groups import service as groups
 from app.modules.lab import service as lab
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
+from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.sidebar import service as sidebar
 from app.modules.sync.schemas import BootstrapOut, Limits, PresenceEntry, UnreadSummaryOut
@@ -95,15 +96,16 @@ async def unread_summary(db: AsyncSession, actor: User) -> UnreadSummaryOut:
         if state is None:
             continue
         pref = prefs.get(c.id)
-        muted = pref is not None and (
-            pref.level == "none" or (pref.muted_until is not None and pref.muted_until > now)
+        conversation = unread_rules.Conversation(
+            is_dm=c.type in ("dm", "group_dm"),
+            others_times=c.times_owner_id is not None and c.times_owner_id != actor.id,
+            level=pref.level if pref is not None else None,
+            muted=pref is not None and pref.muted_until is not None and pref.muted_until > now,
+            unread=state.unread_count,
+            mentions=state.mention_count,
         )
-        if muted:
-            badge += state.mention_count
-            has_unread = has_unread or state.mention_count > 0
-            continue
-        badge += state.unread_count if c.type in ("dm", "group_dm") else state.mention_count
-        has_unread = has_unread or state.unread_count > 0
+        badge += unread_rules.badge(conversation)
+        has_unread = has_unread or unread_rules.has_unread(conversation)
     if not has_unread:
         has_unread = (await threads.summary_for(db, actor.id)).unread_count > 0
     return UnreadSummaryOut(badge=badge, has_unread=has_unread)

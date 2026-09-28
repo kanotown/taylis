@@ -74,6 +74,7 @@ def to_channel_out(
         membership=_membership_out(membership),
         dm_user_ids=dm_user_ids,
         posting_policy=channel.posting_policy,  # type: ignore[arg-type]
+        times_owner_id=channel.times_owner_id,
         member_count=member_count
         if member_count is not None
         else (len(dm_user_ids) if dm_user_ids else None),
@@ -332,6 +333,8 @@ async def update_channel(
         channel.purpose = data.purpose
     if data.posting_policy is not None:
         channel.posting_policy = data.posting_policy
+    if "times_owner_id" in data.model_fields_set and data.times_owner_id != channel.times_owner_id:
+        await _set_times_owner(db, actor, channel, data.times_owner_id)
     converted = data.type is not None and data.type != channel.type
     if converted:
         # Making a private channel public exposes its whole history: administrators only.
@@ -359,6 +362,102 @@ async def update_channel(
         await db.rollback()
         raise conflict("name_taken", "A channel with this name already exists") from exc
     return await _out_with_count(db, channel, membership)
+
+
+# --- times (M24, DATA_MODEL.md channels) ---------------------------------------------------------
+
+TIMES_NAME_TRIES = 20
+
+
+async def ensure_times(
+    db: AsyncSession, actor: User, followers: list[uuid.UUID]
+) -> tuple[ChannelOut, bool]:
+    """My times, made on the first call (True) as the public channel `times-{username}` I own;
+    `followers` (the supervisors on the lab roster, main.py) become members. Later calls return
+    it (False)."""
+    require_not_guest(actor)
+    existing = await repo.get_times_of(db, actor.id)
+    if existing is not None:
+        return await _out_with_count(
+            db, existing, await repo.get_membership(db, existing.id, actor.id)
+        ), False
+    name = await _free_times_name(db, f"times-{actor.username}")
+    channel = Channel(
+        type="public",
+        name=name,
+        purpose=f"{actor.display_name} の作業ログ",
+        created_by=actor.id,
+        times_owner_id=actor.id,
+    )
+    try:
+        db.add(channel)
+        await db.flush()
+        membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="owner")
+        db.add(membership)
+        await db.flush()
+        await reads.initialize_in_tx(db, actor.id, channel.id, channel.last_seq)
+        await _emit_channel(db, events.CHANNEL_CREATED, channel, audience_type="all")
+        for user_id in dict.fromkeys(followers):
+            if user_id != actor.id:
+                await add_member_in_tx(db, channel, user_id)
+        await db.commit()
+    except IntegrityError:
+        # Made meanwhile by another request of mine (the one-per-person index): that one it is.
+        await db.rollback()
+        made = await repo.get_times_of(db, actor.id)
+        if made is None:
+            raise
+        return await _out_with_count(
+            db, made, await repo.get_membership(db, made.id, actor.id)
+        ), False
+    return await _out_with_count(db, channel, membership), True
+
+
+async def _free_times_name(db: AsyncSession, base: str) -> str:
+    for n in range(1, TIMES_NAME_TRIES + 1):
+        name = base if n == 1 else f"{base}-{n}"
+        if await repo.get_channel_by_name(db, name) is None:
+            return name
+    raise conflict("name_taken", "A channel with this name already exists")
+
+
+async def follow_times_in_tx(db: AsyncSession, owner_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """For the lab module: a supervisor joins their student's times, if any (caller commits)."""
+    channel = await repo.get_times_of(db, owner_id)
+    if channel is None or channel.is_archived or user_id == owner_id:
+        return False
+    return await add_member_in_tx(db, channel, user_id)
+
+
+async def _set_times_owner(
+    db: AsyncSession, actor: User, channel: Channel, owner_id: uuid.UUID | None
+) -> None:
+    """An administrator marks a channel as someone's times (a Mattermost import's, say) or unmarks
+    it; the owner becomes a channel owner, so they can switch it to threads only."""
+    if not actor.is_admin:
+        raise forbidden("admin_required", "Only an administrator can mark a channel as times")
+    if owner_id is not None:
+        owners = await load_users(db, [owner_id])
+        if owners[0].is_guest:
+            raise forbidden("guest_restricted", "A guest cannot have a times channel")
+        other = await repo.get_times_of(db, owner_id)
+        if other is not None and other.id != channel.id:
+            raise conflict("times_exists", "That person already has a times channel")
+        membership = await repo.get_membership(db, channel.id, owner_id)
+        if membership is None:
+            await add_member_in_tx(db, channel, owner_id)
+            membership = await repo.get_membership(db, channel.id, owner_id)
+        if membership is not None and membership.role != "owner":
+            membership.role = "owner"
+    channel.times_owner_id = owner_id
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="channel.times_owner_set",
+        target_type="channel",
+        target_id=channel.id,
+        details={"times_owner_id": str(owner_id) if owner_id else None},
+    )
 
 
 async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:

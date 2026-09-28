@@ -21,6 +21,7 @@ from app.modules.messages.mentions import extract_group_mentions, notification_t
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import default_level
+from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
@@ -200,14 +201,33 @@ class PushPlanner:
         user = await users.get_user(db, user_id)
         if user is None:
             return 1
-        listed = await channels.list_channels(db, user, include_public=False)
+        listed = [
+            c
+            for c in await channels.list_channels(db, user, include_public=False)
+            if not c.archived
+        ]
         states = await reads.states_for_user(db, user_id, [c.id for c in listed])
+        prefs = await repo.preferences_for_user(db, user_id)
+        now = utcnow()
         badge = 0
         for c in listed:
             state = states.get(c.id)
             if state is None:
                 continue
-            badge += state.unread_count if c.type in ("dm", "group_dm") else state.mention_count
+            pref = prefs.get(c.id)
+            # The same rule as GET /sync/summary and the clients (SYNC_PROTOCOL.md §10.5).
+            badge += unread_rules.badge(
+                unread_rules.Conversation(
+                    is_dm=c.type in ("dm", "group_dm"),
+                    others_times=c.times_owner_id is not None and c.times_owner_id != user_id,
+                    level=pref.level if pref is not None else None,
+                    muted=pref is not None
+                    and pref.muted_until is not None
+                    and pref.muted_until > now,
+                    unread=state.unread_count,
+                    mentions=state.mention_count,
+                )
+            )
         return badge + await reminders.fired_count(db, user_id)  # M12e: nudges not yet done
 
     def build_payload(
