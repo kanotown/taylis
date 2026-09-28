@@ -10,8 +10,8 @@ export function overlayTitleBar(): boolean {
   return isTauri() && typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 }
 
-/** Left inset for the macOS window buttons (close / minimise / zoom) at trafficLightPosition x = 16. */
-export const TRAFFIC_LIGHTS_INSET = 78;
+/** macOS window buttons end at x = 76 (trafficLightPosition x = 16); reserve 8 px after them. */
+export const TRAFFIC_LIGHTS_INSET = 84;
 
 /** The same bundle opened in a browser (M12j): served by Caddy next to the API, same origin, cookie session. */
 export function isWeb(): boolean {
