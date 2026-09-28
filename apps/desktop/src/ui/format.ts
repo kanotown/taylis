@@ -30,6 +30,33 @@ export function timeLabel(iso: string): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * The unread banner's "since" (§10.1): 10:23 today, 昨日 10:23, else the day separator's text and the time.
+ * Always 24-hour HH:mm in the device's time zone, never locale-formatted.
+ */
+export function sinceLabel(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const t = timeLabel(iso);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const key = dayKey(iso, now);
+  if (key === dayKey(now.toISOString(), now)) return t;
+  if (key === dayKey(yesterday.toISOString(), now)) return `昨日 ${t}`;
+  return `${dateLabel(iso, now)} ${t}`;
+}
+
+/** 1234 → "1,234": ASCII commas whatever the locale. */
+export function group3(n: number): string {
+  return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** 「未読 2,000 件 · 10:23 以降」; without the time when the server sent none (older servers). */
+export function bannerText(n: number, firstUnreadAt: string | null | undefined, now = new Date()): string {
+  const since = firstUnreadAt ? sinceLabel(firstUnreadAt, now) : "";
+  return `未読 ${group3(n)} 件` + (since ? ` · ${since} 以降` : "");
+}
+
 export function fullTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";

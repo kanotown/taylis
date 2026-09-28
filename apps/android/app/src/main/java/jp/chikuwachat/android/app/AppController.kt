@@ -1198,7 +1198,7 @@ class AppController(private val app: Application) {
     /** Leaving drops the channel locally at once; the server's member_removed confirms it. */
     suspend fun leaveChannel(channelId: String): Boolean = attempt {
         api!!.leaveChannel(channelId)
-        store.removeChannel(channelId)
+        engine?.dropChannel(channelId) ?: store.removeChannel(channelId) // its fetched threads go with it (§10.2)
         true
     }.getOrElse { error = describe(it); false }
 

@@ -80,7 +80,11 @@ final class FakeServer {
         var failures: [String: [Error]] = [:]
         /// Runs inside every POST /messages before it is stored (a test holds a send in flight with it).
         var beforePost: (() async -> Void)?
+        /// Runs after a POST /messages was stored, before its response: a slow response, or a lost one when it throws.
+        var afterPost: (() async throws -> Void)?
         private(set) var calls: [String] = []
+        /// GET /channels/{id}/messages as "before_seq=…&limit=…" ("before_seq=nil" for the newest page).
+        private(set) var historyRequests: [String] = []
 
         init(server: FakeServer, userId: String) {
             self.server = server
@@ -117,6 +121,7 @@ final class FakeServer {
 
         func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut {
             try maybeFail("history")
+            historyRequests.append("before_seq=\(beforeSeq.map(String.init) ?? "nil")&limit=\(limit)")
             return try server.history(userId: userId, channelId: channelId, beforeSeq: beforeSeq, limit: limit)
         }
 
@@ -128,8 +133,10 @@ final class FakeServer {
         func postMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], options: SendOptions) async throws -> (MessageOut, Bool) {
             try maybeFail("post")
             if let beforePost { await beforePost() }
-            return try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds,
-                                   options: options)
+            let result = try server.post(channelId: channelId, senderId: userId, body: body, clientMsgId: clientMsgId, parentId: parentId, attachmentIds: attachmentIds,
+                                         options: options)
+            if let afterPost { try await afterPost() }
+            return result
         }
 
         func replies(messageId: String) async throws -> [MessageOut] {
@@ -247,8 +254,32 @@ final class FakeServer {
     func readState(userId: String, channelId: String) -> ReadStateOut {
         let record = channels[channelId]!
         let position = readPositions["\(userId):\(channelId)"] ?? 0
-        let unread = record.messages.filter { $0.seq > position && !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) && $0.senderId != userId }
-        return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count)
+        let unread = record.messages.filter { $0.seq > position && !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) && $0.senderId != userId && $0.type == "user" }
+        return ReadStateOut(lastReadSeq: position, unreadCount: unread.count, mentionCount: unread.filter { $0.mentions(userId) }.count,
+                            firstUnreadAt: unread.first?.createdAt) // rows are in seq order
+    }
+
+    /// Stores `count` top-level messages at once, without events or read side effects: long histories (§10.1).
+    /// `type` other than "user" makes rows that are shown but never counted as unread (system messages).
+    @discardableResult
+    func seed(_ channelId: String, senderId: String, count: Int, type: String = "user") -> [MessageOut] {
+        guard var record = channels.removeValue(forKey: channelId) else { return [] } // appended to in place
+        var seq = record.channel.lastSeq
+        var added: [MessageOut] = []
+        for _ in 0..<count {
+            seq += 1
+            var message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: nextId(),
+                                     body: "m\(seq)", createdAt: now(), editedAt: nil, deleted: false)
+            message.type = type
+            added.append(message)
+        }
+        record.messages.append(contentsOf: added)
+        let c = record.channel
+        record.channel = ChannelOut(id: c.id, type: c.type, name: c.name, topic: c.topic, purpose: c.purpose, archived: c.archived, createdBy: c.createdBy,
+                                    lastSeq: seq, lastMessageAt: added.last?.createdAt ?? c.lastMessageAt, createdAt: c.createdAt, updatedAt: now(),
+                                    membership: c.membership, dmUserIds: c.dmUserIds, postingPolicy: c.postingPolicy)
+        channels[channelId] = record
+        return added
     }
 
     /// PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change.
@@ -265,7 +296,8 @@ final class FakeServer {
             emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("read.updated"), "ts": .string(now()),
                                     "channel_id": .string(channelId), "seq": .null,
                                     "data": .object(["channel_id": .string(channelId), "reason": .string(mode), "last_read_seq": .number(Double(state.lastReadSeq)),
-                                                     "unread_count": .number(Double(state.unreadCount)), "mention_count": .number(Double(state.mentionCount))])]))
+                                                     "unread_count": .number(Double(state.unreadCount)), "mention_count": .number(Double(state.mentionCount)),
+                                                     "first_unread_at": state.firstUnreadAt.map(JSONValue.string) ?? .null])]))
             return state
         }
         return readState(userId: userId, channelId: channelId)
@@ -404,7 +436,8 @@ final class FakeServer {
     func readAll(_ userId: String) throws -> [ChannelReadStateOut] {
         try channels.values.filter { $0.members.contains(userId) }.map { record in
             let state = try markRead(userId: userId, channelId: record.channel.id, seq: record.channel.lastSeq)
-            return ChannelReadStateOut(channelId: record.channel.id, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount, mentionCount: state.mentionCount)
+            return ChannelReadStateOut(channelId: record.channel.id, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount, mentionCount: state.mentionCount,
+                                       firstUnreadAt: state.firstUnreadAt)
         }
     }
 
@@ -565,9 +598,11 @@ final class FakeServer {
         return record
     }
 
+    /// `type` other than "user" posts a system row (shown, never counted as unread); `advanceRead` false is a scheduled
+    /// send (M12d), which does not read the channel for its sender.
     @discardableResult
     func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
-              options: SendOptions = SendOptions()) throws -> (MessageOut, Bool) {
+              options: SendOptions = SendOptions(), type: String = "user", advanceRead: Bool = true) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
@@ -586,11 +621,12 @@ final class FakeServer {
         record.channel = ChannelOut(id: record.channel.id, type: record.channel.type, name: record.channel.name, topic: nil, purpose: nil, archived: false,
                                     createdBy: record.channel.createdBy, lastSeq: seq, lastMessageAt: now(), createdAt: record.channel.createdAt,
                                     updatedAt: now(), membership: nil, dmUserIds: nil)
-        let message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
+        var message = MessageOut(id: nextId(), channelId: channelId, senderId: senderId, seq: seq, updatedSeq: seq, clientMsgId: key, body: body,
                                  createdAt: now(), editedAt: nil, deleted: false, mentionedUserIds: Self.mentionedIds(body), mentionAll: Self.mentionsAll(body),
                                  parentId: parentId, alsoInChannel: options.alsoInChannel && parentId != nil,
                                  attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) },
                                  priority: parentId == nil ? options.priority : nil, ackRequested: parentId == nil && options.ackRequested)
+        message.type = type
         record.messages.append(message)
         var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
         if let parentIndex {
@@ -610,7 +646,7 @@ final class FakeServer {
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("message.created"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .number(Double(seq)), "data": payload]))
         // §10: a top-level post reads the channel for its sender; a thread reply (even one also sent to the channel) does not.
-        if parentId == nil { _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) }
+        if parentId == nil && advanceRead { _ = try? markRead(userId: senderId, channelId: channelId, seq: seq) }
         if let parentId { emitThread(parentId, to: followers(parentId), reason: "reply") }
         return (message, true)
     }
@@ -723,6 +759,13 @@ final class FakeServer {
         let pending = held
         held = []
         for (userIds, frame) in pending { emit(userIds, frame) }
+    }
+
+    /// Delivers only the oldest held frame (the order of one post's events, one at a time).
+    func releaseNext() {
+        guard !held.isEmpty else { return }
+        let (userIds, frame) = held.removeFirst()
+        for socket in sockets where userIds.contains(socket.userId) { socket.deliver(frame) }
     }
 
     /// PATCH /channels/{id} as the real server announces it (M15): to the members, to everyone for a conversion.

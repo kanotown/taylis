@@ -118,8 +118,8 @@ struct MainView: View {
         }
         .onChange(of: selection) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
-            if id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId || id == FilesView.selectionId || id == RemindersView.selectionId {
-                controller.engine?.currentChannelId = nil // no conversation is open: notifications for all channels
+            if id == nil || id == ThreadsListView.selectionId || id == SavedView.selectionId || id == MentionsView.selectionId || id == DraftsView.selectionId || id == FilesView.selectionId || id == RemindersView.selectionId {
+                controller.engine?.closeConversation() // back to the list (iPhone) or another view: no conversation is open
             } else if let id, let engine = controller.engine { Task { await engine.openChannel(id) } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in

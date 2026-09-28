@@ -161,10 +161,12 @@ export class FakeServer {
   readState(userId: string, channelId: string): ReadStateOut {
     const record = this.record(channelId);
     const position = this.readPositions.get(`${userId}:${channelId}`) ?? 0;
-    // My own posts are never unread (the server's read_states counts skip sender = me).
-    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && m.sender_id !== userId && (!m.parent_id || m.also_in_channel));
+    // My own posts are never unread (the server's read_states counts skip sender = me), nor are system rows.
+    const unread = record.messages.filter((m) => m.seq > position && !m.deleted && m.sender_id !== userId && (m.type ?? "user") === "user" && (!m.parent_id || m.also_in_channel));
     const mentions = unread.filter((m) => m.mention_all === true || (m.mentioned_user_ids ?? []).includes(userId)).length;
-    return { last_read_seq: position, unread_count: unread.length, mention_count: mentions };
+    // §10.1: the oldest counted message's time (the unread banner's 「… 以降」).
+    const firstUnreadAt = unread.reduce<string | null>((min, m) => (min === null || m.created_at < min ? m.created_at : min), null);
+    return { last_read_seq: position, unread_count: unread.length, mention_count: mentions, first_unread_at: firstUnreadAt };
   }
 
   // --- threads (THREADS.md §2) ---------------------------------------------------------------
@@ -297,8 +299,11 @@ export class FakeServer {
     return record;
   }
 
-  /** Server-side post (used by fixtures for "other users" and by the api for the client). */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions = {}): { message: MessageOut; created: boolean } {
+  /**
+   * Server-side post (used by fixtures for "other users" and by the api for the client). `scheduled`: a scheduled
+   * send going out (M12d), which does not read the channel; `type`: a system row.
+   */
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions & { scheduled?: boolean; type?: string } = {}): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -324,7 +329,7 @@ export class FakeServer {
       seq,
       updated_seq: seq,
       client_msg_id: clientMsgId,
-      type: "user",
+      type: options.type ?? "user",
       body,
       mentioned_user_ids: mentionedIds(body),
       mention_all: MENTION_ALL.test(body),
@@ -361,7 +366,7 @@ export class FakeServer {
       seq,
       data: parentThread ? { message, parent_thread: parentThread } : { message },
     });
-    if (!parentId) this.markRead(senderId, channelId, seq); // a top-level post reads the channel; a reply does not (§10)
+    if (!parentId && !options.scheduled) this.markRead(senderId, channelId, seq); // a top-level post reads the channel; a reply does not (§10)
     if (parentThread) this.emitThread(parentThread.id, this.followers(parentThread.id), "reply");
     return { message, created: true };
   }

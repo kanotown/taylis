@@ -425,6 +425,7 @@ describe("read state (M8b)", () => {
     server.post(channel.id, alice.id, "m1");
     server.post(channel.id, alice.id, "m2");
     await engine.start();
+    await engine.openChannel(channel.id); // §10.1: visible rows mark read only once the unread rows are loaded
     await engine.idle();
     expect(store.getChannel(channel.id)?.unreadCount).toBe(2);
     server.post(channel.id, alice.id, `hey <@${bob.id}>`);

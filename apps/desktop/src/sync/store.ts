@@ -282,6 +282,7 @@ export class Store {
       lastReadSeq: Math.max(existing?.lastReadSeq ?? 0, channel.read_state?.last_read_seq ?? 0),
       unreadCount: channel.read_state?.unread_count ?? existing?.unreadCount ?? 0,
       mentionCount: channel.read_state?.mention_count ?? existing?.mentionCount ?? 0,
+      firstUnreadAt: channel.read_state ? (channel.read_state.first_unread_at ?? null) : (existing?.firstUnreadAt ?? null),
       pendingReadSeq: existing?.pendingReadSeq ?? null,
       hasOlder: existing?.hasOlder ?? true,
       oldestLoadedSeq: existing?.oldestLoadedSeq ?? null,
@@ -725,9 +726,9 @@ export class Store {
   }
 }
 
-/** A channel row as persisted; rows from older versions lack the §7.3 range and the §10 unsent mark. */
+/** A channel row as persisted; rows from older versions lack the §7.3 range, the §10 unsent mark and the §10.1 time. */
 function restoredChannel(row: ChannelState): ChannelState {
-  const channel: ChannelState = { ...row, pendingReadSeq: row.pendingReadSeq ?? null };
+  const channel: ChannelState = { ...row, pendingReadSeq: row.pendingReadSeq ?? null, firstUnreadAt: row.firstUnreadAt ?? null };
   if ((row as Partial<ChannelState>).oldestLoadedSeq === undefined) {
     // Fully paged back: the range starts at 0. Otherwise the range is unknown: reload the latest page.
     channel.oldestLoadedSeq = row.syncedSeq !== null && !row.hasOlder ? 0 : null;

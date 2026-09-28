@@ -1,14 +1,15 @@
 import { Bell, BellRing, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
+import { firstUnreadRow, passedUnseen } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { Composer } from "./Composer";
 import { rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Button, IconButton } from "./primitives";
-import { MessageRow } from "./Timeline";
+import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
 
 /** The right pane: one thread (parent + replies) with its own composer, follow toggle and read position. */
@@ -27,6 +28,26 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const focused = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const lastReplyId = replies[replies.length - 1]?.id;
+  const me = store.me?.id;
+  // §10.2: ready once the whole thread was fetched here (the engine forgets that when the channel's messages are
+  // cleared) and my read position in it is known. Before that the held replies may be only the newest ones.
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const ready = loaded === parentId && !!engine?.threadComplete(parentId) && state !== undefined;
+  // Like the timeline's: visible replies mark read only after the first unread reply has been on screen.
+  const anchored = useRef(false);
+  /** The parent whose opening position was applied (once, when the thread is ready). */
+  const positioned = useRef<string | null>(null);
+  /** The reader scrolled before the thread was ready: the opening position is then skipped. */
+  const userScrolled = useRef(false);
+  const divider = useRef<HTMLDivElement>(null);
+  // A search hit or permalink inside this thread.
+  const focusId = controller.messageFocus?.parentId === parentId ? controller.messageFocus.messageId : null;
+
+  useLayoutEffect(() => {
+    anchored.current = false;
+    positioned.current = null;
+    userScrolled.current = false;
+  }, [parentId]);
 
   // My own reply (or a reply arriving while I am at the bottom) shows the newest message.
   useEffect(() => {
@@ -37,9 +58,50 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     if (nearBottom || (last.sender_id === store.me?.id && last.pending)) el.scrollTop = el.scrollHeight;
   }, [lastReplyId]);
 
+  // Fetched on open and after reconnecting, and again as soon as the engine forgets the whole thread while online (a
+  // §7.3 reload of the channel, §10.2): waiting for the connection to change would leave it unread for good.
+  const complete = !!engine?.threadComplete(parentId);
+  const fetched = useRef<{ engine: unknown; key: string } | null>(null);
   useEffect(() => {
-    void engine?.loadReplies(channel.id, parentId).catch((error) => controller.setError(error));
-  }, [engine, engine?.status, channel.id, parentId]);
+    const key = `${channel.id}:${parentId}:${engine?.status}`;
+    if (complete && fetched.current?.engine === engine && fetched.current.key === key) return; // that fetch completed it
+    fetched.current = { engine, key };
+    void engine?.loadReplies(channel.id, parentId).then((ok) => {
+      if (ok) setLoaded(parentId);
+    }, (error) => controller.setError(error));
+  }, [engine, engine?.status, channel.id, parentId, complete]);
+
+  // Until the thread is ready the held replies sit at the bottom (or the search hit is centred). Once it is, the
+  // opening position is applied once: the hit, else 「新しい返信」 at the top, else the newest reply.
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el || positioned.current === parentId) return;
+    if (userScrolled.current) {
+      if (ready) positioned.current = parentId; // the reader moved first: leave the view where it is
+      return;
+    }
+    const hit = focusId ? document.getElementById(`thread-${focusId}`) : null;
+    const unread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me) : null;
+    if (hit) hit.scrollIntoView({ block: "center" });
+    else if (unread && divider.current) divider.current.scrollIntoView({ block: "start" });
+    else el.scrollTop = el.scrollHeight;
+    if (!ready) return;
+    positioned.current = parentId;
+    if (!hit && unread) anchored.current = true;
+  }, [parentId, replies.length, ready, focusId]);
+
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const moved = () => {
+      userScrolled.current = true;
+    };
+    const events = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
+    for (const name of events) el.addEventListener(name, moved, { passive: true });
+    return () => {
+      for (const name of events) el.removeEventListener(name, moved);
+    };
+  }, []);
 
   // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
   useEffect(() => {
@@ -47,17 +109,27 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     void engine?.loadThreadState(parentId, parent as MessageOut).catch((error) => controller.setError(error));
   }, [engine, engine?.status, parentId, state !== undefined, parent?.seq]);
 
+  // §10.2 (false cases 1 and 2): the thread stopped being ready, or a §7.3 reload replaced the channel's rows (perhaps
+  // refetched before any render saw the thread not ready). Dropped here even in the background, where markVisible
+  // does not run.
+  const reloads = engine?.reloadCount(channel.id) ?? 0;
+  const seenReloads = useRef(reloads);
+  useEffect(() => {
+    if (!ready || seenReloads.current !== reloads) anchored.current = false;
+    seenReloads.current = reloads;
+  }, [ready, reloads]);
+
   // Read position = the newest reply that has been shown (never just "opened"), like the timeline.
   const markVisible = () => {
     const el = list.current;
     if (!el || !document.hasFocus()) return;
-    const bounds = el.getBoundingClientRect();
-    const visible = [...el.querySelectorAll<HTMLElement>("[data-replies] article[data-seq]")].filter((row) => {
-      const box = row.getBoundingClientRect();
-      return box.bottom <= bounds.bottom + 1 && box.bottom > bounds.top && (box.top >= bounds.top || box.height > bounds.height);
-    });
-    const seq = Math.max(0, ...visible.map((row) => Number(row.dataset["seq"])));
-    if (seq > 0) engine?.markThreadRead(parentId, seq);
+    const seen = screenRows(el, "[data-replies] article[data-seq]", "thread-");
+    // §10.2 anchored: false while the thread is not ready; then true once the first unread reply (matched by message
+    // id, §10.3) is on screen or there is none, until that reply goes past above the screen unseen (§10.1 2.).
+    const unread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me) : null;
+    anchored.current = ready && (anchored.current ? !passedUnseen(unread, seen.seqs, seen.partly) : unread === null || seen.shown.has(unread.id));
+    const seq = Math.max(0, ...seen.seqs);
+    if (anchored.current && seq > 0) engine?.markThreadRead(parentId, seq);
   };
   useEffect(() => {
     markVisible();
@@ -68,7 +140,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
       el?.removeEventListener("scroll", markVisible);
       window.removeEventListener("focus", markVisible);
     };
-  }, [parentId, replies.length, lastReplyId, engine]);
+  }, [parentId, replies.length, lastReplyId, engine, ready, state?.last_read_seq]);
 
   useEffect(() => {
     const id = controller.messageFocus?.messageId;
@@ -78,9 +150,9 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     }
   }, [parentId, controller.messageFocus?.messageId, replies.length]);
 
-  // 「新しい返信」: the divider sits before the first reply from someone else past my read position.
-  const me = store.me?.id;
-  const firstUnread = state ? replies.find((r) => r.seq !== null && r.seq > state.last_read_seq && r.sender_id !== me)?.id : undefined;
+  // 「新しい返信」: the divider sits before the first reply from someone else past my read position; only once the
+  // whole thread is held (the newest replies alone would put it in the wrong place).
+  const firstUnread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me)?.id : undefined;
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
@@ -117,7 +189,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
               {replies.map((reply) => (
                 <div key={rowKey(reply)}>
                   {reply.id === firstUnread && (
-                    <div className="my-1 flex items-center gap-2 text-[11px] font-semibold text-rose-500">
+                    <div ref={divider} className="my-1 flex items-center gap-2 text-[11px] font-semibold text-rose-500">
                       <span className="h-px flex-1 bg-rose-400/70" />
                       新しい返信
                     </div>

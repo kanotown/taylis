@@ -38,6 +38,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import jp.chikuwachat.android.sync.EngineStatus
+import jp.chikuwachat.android.sync.ReadAnchor
+import jp.chikuwachat.android.sync.ReadGate
+import androidx.compose.foundation.interaction.DragInteraction
+import java.time.ZonedDateTime
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -57,6 +70,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,46 +91,134 @@ import kotlinx.coroutines.launch
 fun ChannelPane(controller: AppController, channelId: String, version: Int, onOpenThread: (String) -> Unit = {}) {
     val store = controller.store
     val channel = store.channel(channelId) ?: return
+    val me = store.me?.id
     val focus = controller.messageFocus?.takeIf { it.channelId == channelId }
     val messages = remember(version, channelId, focus) {
         focus?.context?.map { message ->
             store.message(channelId, message.id)?.takeIf { it.updatedSeq >= message.updatedSeq } ?: message
         }?.filter { !it.deleted } ?: store.messages(channelId)
     }
+    // The read gate judges the rows the list shows, so it takes the channel state from the same store version as
+    // `messages` (store.channel is live, and a scroll can lay out the old rows again before the next recomposition).
+    val shown = remember(version, channelId, focus) { store.channel(channelId) ?: channel }
+    // A §7.3 reload replaced every row: the view opens again (position, anchor, divider) as if just opened.
+    val reloadGen = remember(version, channelId, focus) { controller.engine?.reloadCount(channelId) ?: 0 }
     var loadingOlder by remember(channelId) { mutableStateOf(false) }
-    var positioned by remember(channelId, focus?.messageId) { mutableStateOf(false) }
-    // The 「新着メッセージ」 divider stays where it was when the channel was opened.
-    var unreadMark by remember(channelId) { mutableStateOf(channel.lastReadSeq.takeIf { channel.unreadCount > 0 }) }
+    var positioned by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    // §10.1 rule 4: a drag before the view is positioned (it may wait for a catch-up) leaves the list where it is.
+    var userScrolled by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    // The 「新着メッセージ」 divider stays where it was when the channel was opened (「最初の未読へ」 moves it). Leaving the
+    // search view, however it is left, captures it again like a fresh open (§10.1 rule 4).
+    var capturedMark by remember(channelId, reloadGen, focus?.messageId) { mutableStateOf(ReadGate.openMark(shown)) }
     val heldUnread = controller.engine?.heldUnread(channelId)
-    val items = remember(messages, channelId, focus, unreadMark, heldUnread) { Timeline.build(messages, heldUnread ?: unreadMark, store.me?.id).asReversed() }
+    // §10.1 rule 2: visible rows are read only after the first unread row was on screen with every unread row held.
+    var anchor by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
+    var jumping by remember(channelId) { mutableStateOf(false) }
+    val shownChannelId by rememberUpdatedState(channelId)
+    // Drawn only where the loaded range reaches (§10.1 rule 3): above the oldest loaded row it would be a lie.
+    val mark = if (focus != null) null else ReadGate.dividerMark(heldUnread, capturedMark, shown.oldestLoadedSeq)
+    val items = remember(messages, channelId, mark) { Timeline.build(messages, mark, me).asReversed() }
+    // What the latest composition shows, for the coroutines that wait for it (positioning after a catch-up, the jump).
+    val currentItems by rememberUpdatedState(items)
+    val currentMessages by rememberUpdatedState(messages)
+    val currentShown by rememberUpdatedState(shown)
+    val currentMark by rememberUpdatedState(mark)
+    val currentHeld by rememberUpdatedState(heldUnread)
     val listState = rememberLazyListState()
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
-    // Newest seq the reader has had on screen at the bottom; later messages from others are "new".
-    var seenSeq by remember(channelId) { mutableStateOf(channel.lastReadSeq) }
+    // §10.1 rule 7: the divider's position when positioned there, else the newest seq seen at the bottom; later rows
+    // from others are 「新着」. Keyed like the divider: the search view moves it to its own (old) rows.
+    var seenSeq by remember(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
     val maxSeq = messages.maxOfOrNull { it.seq ?: 0 } ?: 0
-    LaunchedEffect(atBottom, maxSeq) { if (atBottom && maxSeq > seenSeq) seenSeq = maxSeq }
-    val unseenBelow = if (focus != null) 0 else messages.count { (it.seq ?: 0) > seenSeq && it.senderId != store.me?.id }
+    LaunchedEffect(atBottom, maxSeq, positioned, anchor.landing) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned && !anchor.landing, atBottom, maxSeq) }
+    val unseenBelow = if (focus != null) 0 else ReadGate.newBelow(messages, seenSeq, me)
     val scope = rememberCoroutineScope()
-    LaunchedEffect(channelId, focus?.messageId, items.isEmpty()) {
+    LaunchedEffect(listState, channelId, focus?.messageId, reloadGen) {
+        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start && !positioned) userScrolled = true }
+    }
+    LaunchedEffect(channelId, focus?.messageId, items.isEmpty(), reloadGen) {
         if (items.isEmpty() || positioned) return@LaunchedEffect
-        val target = focus?.let { it.parentId ?: it.messageId }
-            ?: messages.firstOrNull { message -> unreadMark?.let { (message.seq ?: 0) > it } == true }?.id
-        val index = items.indexOfFirst { it.key == target }.coerceAtLeast(0)
-        listState.scrollToItem(index)
+        // §10.1 rule 4: opened while a catch-up is on its way (it may bring the first unread row), the position waits
+        // for it, at most 3 s; offline nothing comes. A drag meanwhile keeps the list where the reader put it.
+        val position = focus != null || Timeline.awaitCatchUp(
+            snapshotFlow { ReadGate.waitsForCatchUp(controller.engineStatus, currentShown) }, snapshotFlow { userScrolled },
+        )
+        if (position) {
+            val rows = currentMessages
+            val listItems = currentItems
+            when (val at = Timeline.openPosition(listItems, rows, focus?.let { it.parentId ?: it.messageId }, currentMark, me)) {
+                is OpenPosition.Center -> listState.centerOn(at.index)
+                is OpenPosition.Top -> {
+                    listState.showAtTop(at.index)
+                    anchor = anchor.landed() // the first unread row is on screen: no banner, not even for a frame
+                    currentMark?.let { seenSeq = it }
+                }
+                OpenPosition.Bottom -> {
+                    listState.scrollToItem(0)
+                    if (focus == null) {
+                        seenSeq = rows.maxOfOrNull { it.seq ?: 0 } ?: seenSeq
+                        val layout = listState.layoutInfo
+                        anchor = anchor.observe(currentShown, currentHeld, rows, me, layout.seenIndexes().mapNotNull { rowAt(listItems, it) }, layout.onScreenIds(listItems)).anchor
+                    }
+                }
+            }
+        }
         positioned = true
     }
-    LaunchedEffect(channelId, focus?.messageId, positioned, controller.engineStatus, controller.appForeground, items) {
+    // Keyed on the read state too: a read.updated, a hold, a catch-up or a §7.3 reload must re-check the range.
+    LaunchedEffect(
+        channelId, focus?.messageId, positioned, controller.engineStatus, controller.appForeground, items,
+        shown.lastReadSeq, shown.unreadCount, shown.oldestLoadedSeq, shown.syncedSeq, shown.lastSeq, heldUnread,
+    ) {
         if (!positioned || focus != null) return@LaunchedEffect
+        // Rule 2-3: after a lowering, only a change of the view resumes marking. Being away (the background) or
+        // offline is one; a lowering noticed after it (a lower bootstrap on reconnecting) is quiet again.
+        if (!controller.appForeground || controller.engineStatus == EngineStatus.OFFLINE) anchor = anchor.resumed()
+        if (!controller.appForeground) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo }.collectLatest { layout ->
-            val seq = layout.visibleItemsInfo.mapNotNull { visible ->
-                val fullyVisible = visible.offset >= layout.viewportStartOffset &&
-                    visible.offset + visible.size <= layout.viewportEndOffset
-                val tall = visible.size > layout.viewportEndOffset - layout.viewportStartOffset
-                if (!fullyVisible && !tall) null
-                else (items.getOrNull(visible.index) as? TimelineItem.Message)?.message?.seq
-            }.maxOrNull()
-            if (seq != null) controller.engine?.markRead(channelId, seq)
+            val step = anchor.observe(shown, heldUnread, messages, me, layout.seenIndexes().mapNotNull { rowAt(items, it) }, layout.onScreenIds(items))
+            anchor = step.anchor
+            step.markSeq?.let { controller.engine?.markRead(channelId, it) }
+        }
+    }
+    // 「最初の未読へ」 (§10.1 rule 6): older pages until the range reaches the read position, then that row at the top.
+    // One coroutine from the press to the scroll: 「読み込み中…」 stays until the row is in place.
+    fun jumpToFirstUnread() {
+        fun stillShown() = shownChannelId == channelId && controller.messageFocus?.channelId != channelId
+        scope.launch {
+            jumping = true
+            try {
+                val ok = try {
+                    controller.engine?.loadFirstUnread(channelId) == true
+                } catch (e: Exception) {
+                    controller.report(e)
+                    false
+                }
+                // Not covered yet: the banner stays and another press goes on from there. The view may also have moved on.
+                if (!ok || !stillShown()) return@launch
+                val state = store.channel(channelId) ?: return@launch
+                capturedMark = state.lastReadSeq
+                seenSeq = state.lastReadSeq // rule 7: 「新着 N 件」 counts every unread row below the divider again
+                val first = ReadGate.firstUnreadRow(store.messages(channelId), state.lastReadSeq, me)
+                if (first == null) {
+                    anchor = anchor.landed()
+                    return@launch
+                }
+                // Landing (rule 6): until the row is at the top nothing is judged or read (the viewport still shows the
+                // bottom rows), and the banner is gone, so the list has its final height before the last scroll.
+                anchor = anchor.startLanding()
+                // The loaded pages (and the divider) reach the list with the next recomposition.
+                withTimeoutOrNull(2_000) { snapshotFlow { Timeline.topOf(currentItems, first.id) }.first { it >= 0 } } ?: return@launch
+                val viewport = listState.layoutInfo.viewportSize
+                withTimeoutOrNull(500) { snapshotFlow { listState.layoutInfo.viewportSize }.first { it != viewport } }
+                if (!stillShown()) return@launch
+                listState.showAtTop(Timeline.topOf(currentItems, first.id))
+                anchor = anchor.landed()
+            } finally {
+                jumping = false
+                if (anchor.landing) anchor = anchor.landingCancelled()
+            }
         }
     }
 
@@ -128,7 +230,24 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { unreadMark = null; controller.messageFocus = null; scope.launch { listState.scrollToItem(0) } }) { Text("最新の会話へ") }
+                // Like a fresh open (§10.1 rule 4): the divider at the read position of now, then the open position.
+                TextButton(onClick = { controller.messageFocus = null }) { Text("最新の会話へ") }
+            }
+        }
+        val awaitingFirstUnread = ReadGate.awaitingFirstUnread(controller.engineStatus, shown, messages, me)
+        if (ReadGate.bannerShown(focus != null, positioned, channel.unreadCount, anchor.anchored, heldUnread != null, anchor.landing, awaitingFirstUnread)) {
+            val online = controller.engineStatus == jp.chikuwachat.android.sync.EngineStatus.ONLINE
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(Timeline.bannerText(channel.unreadCount, channel.firstUnreadAt, ZonedDateTime.now()), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                if (jumping) {
+                    Text("読み込み中…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+                } else {
+                    // Above 500 unread only 「既読にする」: the rows a device holds at once stay bounded (scrolling up still works).
+                    if (ReadGate.jumpButtonShown(ReadGate.readRangeReady(channel), channel.unreadCount)) {
+                        TextButton(onClick = { jumpToFirstUnread() }, enabled = online) { Text("最初の未読へ") }
+                    }
+                    TextButton(onClick = { controller.engine?.markRead(channelId, channel.lastSeq, force = true) }, enabled = online) { Text("既読にする") }
+                }
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -149,7 +268,10 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.parentId ?: message.id) },
-                                onMarkUnread = message.seq?.takeIf { !message.pending }?.let { seq -> { controller.engine?.markUnread(channelId, seq); unreadMark = seq - 1 } },
+                                // Not offered where it would read unread rows this device never loaded (§10.1).
+                                onMarkUnread = message.seq?.takeIf { !message.pending && ReadGate.markUnreadOffered(shown, it) }?.let { seq ->
+                                    { controller.engine?.markUnread(channelId, seq)?.let { capturedMark = it } }
+                                },
                             )
                         }
                     }
@@ -212,6 +334,45 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
             ConversationComposer(controller, channelId, version)
         }
     }
+}
+
+private fun rowAt(items: List<TimelineItem>, index: Int): MessageState? = (items.getOrNull(index) as? TimelineItem.Message)?.message
+
+/** Indexes of the items the reader can be said to have seen: fully visible, or taller than the viewport (§10). */
+internal fun LazyListLayoutInfo.seenIndexes(): List<Int> = visibleItemsInfo.mapNotNull { visible ->
+    val fullyVisible = visible.offset >= viewportStartOffset && visible.offset + visible.size <= viewportEndOffset
+    val tall = visible.size > viewportEndOffset - viewportStartOffset
+    if (fullyVisible || tall) visible.index else null
+}
+
+/** Message ids of the rows at least partly on screen: a row partly shown was not passed unseen (§10.1 rule 2). */
+private fun LazyListLayoutInfo.onScreenIds(items: List<TimelineItem>): Set<String> = onScreenIndexes().mapNotNullTo(HashSet()) { rowAt(items, it)?.id }
+
+/** Indexes of the items at least partly inside the viewport. */
+internal fun LazyListLayoutInfo.onScreenIndexes(): List<Int> = visibleItemsInfo.mapNotNull { visible ->
+    if (visible.offset + visible.size > viewportStartOffset && visible.offset < viewportEndOffset) visible.index else null
+}
+
+/** The item once the list has measured it (a scroll asked for before the first layout lands on the next one). */
+private suspend fun LazyListState.laidOut(index: Int): LazyListItemInfo? =
+    layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+        ?: withTimeoutOrNull(1_000) { snapshotFlow { layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } }.filterNotNull().first() }
+
+/** Centres the item (a search hit, a permalink). */
+internal suspend fun LazyListState.centerOn(index: Int) {
+    scrollToItem(index)
+    val item = laidOut(index) ?: return
+    scrollBy((item.offset + item.size / 2 - (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2).toFloat())
+}
+
+/**
+ * Reversed list: the item's upper edge goes to the top of the viewport and the newer rows fill in below it
+ * (scrollToItem alone leaves it at the bottom edge). Offsets count from the list's start, the bottom here.
+ */
+private suspend fun LazyListState.showAtTop(index: Int) {
+    scrollToItem(index)
+    val item = laidOut(index) ?: return
+    scrollBy((item.offset + item.size - layoutInfo.viewportEndOffset).toFloat())
 }
 
 @Composable

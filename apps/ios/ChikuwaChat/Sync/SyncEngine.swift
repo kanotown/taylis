@@ -88,6 +88,9 @@ final class SyncEngine {
     private(set) var unreadHold: [String: Int] = [:]
     /// Thread read positions sent (or about to be) while the thread's state is not loaded yet.
     private var threadReadFloor: [String: Int] = [:]
+    /// §10.2: parent id → channel id of the threads whose replies were all fetched since the channel's rows were last
+    /// cleared. Only those take visible-range read marks: a partial thread (live replies only) would skip older unread ones.
+    private(set) var completeThreads: [String: String] = [:]
     private var threadRefreshTask: Task<Void, Never>?
     /// "channel[:parent]" → when the last typing frame went out.
     private var typingSent: [String: Date] = [:]
@@ -432,6 +435,7 @@ final class SyncEngine {
     /// connection does not try to catch it up (§7.6).
     private func channelRemoved(_ channelId: String) {
         if currentChannelId == channelId { currentChannelId = nil }
+        forgetThreads(of: channelId)
         unreadHold[channelId] = nil
         pendingReads[channelId]?.cancel()
         pendingReads[channelId] = nil
@@ -541,7 +545,7 @@ final class SyncEngine {
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are
             // refreshed from the server shortly after, which also covers threads we do not hold.
-            store.applyThreadState(try frame.data.decode(ThreadState.self))
+            applyThreadState(try frame.data.decode(ThreadState.self))
             onBadge?(store.badgeCount)
             scheduleThreadRefresh()
         case "notification_preference.updated":
@@ -602,25 +606,54 @@ final class SyncEngine {
         store.updateChannel(message.channelId) { $0.channel.lastMessageAt = message.createdAt }
     }
 
-    /// §7.4 / §10: my own top-level post reads the conversation; someone else's message is unread until read.updated says otherwise.
+    /// §7.4 / §10: someone else's message is unread until read.updated says otherwise. Counted as the server counts
+    /// (§10.1 12.): rows from others, of type "user", in the timeline (top-level, or a reply also sent there, M15c).
+    /// My own message moves nothing here (§10.1 11.): this device's send moves the position from its POST response
+    /// (`readOwnPost`), a post from my other device is followed by the server's read.updated, and a scheduled send
+    /// (M12d) reads nothing on the server either.
     private func countUnread(_ message: MessageOut) {
         store.clearTyping(message.channelId, parentId: message.parentId, userId: message.senderId) // their message arrived
-        guard let me = store.me else { return }
-        if message.senderId == me.id {
-            // A thread reply, even one also sent to the channel, moves only the thread's position (the server does the same).
-            guard !message.isReply else { return }
-            unreadHold[message.channelId] = nil // sending reads the conversation (the server does the same)
-            store.updateChannel(message.channelId) { $0.lastReadSeq = max($0.lastReadSeq, message.seq); $0.unreadCount = 0; $0.mentionCount = 0 }
-        } else if message.isReply && !message.alsoInChannel {
-            return // replies are not unread items unless also sent to the channel (M15c)
-        } else {
-            store.updateChannel(message.channelId) { state in
-                guard message.seq > state.lastReadSeq else { return }
-                state.unreadCount += 1
-                if message.mentionsMe(me) { state.mentionCount += 1 }
-            }
+        guard let me = store.me, MessageState(message).countsAsUnread(meId: me.id) else { return }
+        store.updateChannel(message.channelId) { state in
+            guard message.seq > state.lastReadSeq else { return }
+            if state.unreadCount == 0 { state.firstUnreadAt = message.createdAt } // §10.1 8.
+            state.unreadCount += 1
+            if message.mentionsMe(me) { state.mentionCount += 1 }
         }
         onBadge?(store.badgeCount)
+    }
+
+    /// §10.1 11.: the server read the channel up to my top-level post inside the send transaction; this device mirrors it
+    /// from the POST response, and the post ends a 「ここから未読にする」 hold. A reply (also sent to the channel or not)
+    /// moves only its thread's position.
+    /// - A retry that found the post already stored (`created` false) read nothing now: that commit's read.updated (or
+    ///   the bootstrap) carried its position, and a mark-as-unread may have lowered it since. Only the hold ends.
+    /// - Rows from others after my post (their events came before this response) stay unread: they are counted again
+    ///   from the rows held when every one of them is, and otherwise left to the server's read.updated. Zeroing them
+    ///   let the next visible mark skip unread rows never shown.
+    private func readOwnPost(_ message: MessageOut, created: Bool) {
+        guard message.parentId == nil else { return }
+        unreadHold[message.channelId] = nil
+        guard created else { return }
+        store.updateChannel(message.channelId) { state in state.lastReadSeq = max(state.lastReadSeq, message.seq) }
+        guard let state = store.channel(message.channelId) else { return }
+        if state.lastReadSeq >= state.lastSeq {
+            store.updateChannel(message.channelId) { $0.unreadCount = 0; $0.mentionCount = 0; $0.firstUnreadAt = nil }
+        } else if ReadGate.covers(state.oldestLoadedSeq, state.lastReadSeq) && ReadGate.reachesNewest(state) {
+            let held = heldUnread(message.channelId, after: state.lastReadSeq)
+            store.updateChannel(message.channelId) { $0.unreadCount = held.count; $0.mentionCount = held.mentions; $0.firstUnreadAt = held.firstAt }
+        }
+        onBadge?(store.badgeCount)
+    }
+
+    /// The counts after `after` from the rows held, as the server counts them (§10.1 12.): someone else's user messages
+    /// in the timeline. Right only while every timeline row after `after` is held.
+    private func heldUnread(_ channelId: String, after: Int) -> (count: Int, mentions: Int, firstAt: String?) {
+        let me = store.me
+        let later = store.messages(channelId).filter { ($0.seq ?? 0) > after && $0.countsAsUnread(meId: me?.id) }
+        // Mentions counted with the same rule as live events, notification keywords included (§7.4).
+        let mentions = me.map { me in later.filter { $0.mentionAll || $0.mentionedUserIds.contains(me.id) || NotifyKeywords.matches($0.body, me.notifyKeywords) }.count } ?? 0
+        return (later.count, mentions, later.first?.createdAt)
     }
 
     /// M12e: open reminders; refreshed after every bootstrap.
@@ -639,7 +672,8 @@ final class SyncEngine {
     /// 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated.
     func markAllRead() async throws {
         for row in try await api.readAll() {
-            applyReadState(row.channelId, ReadStateOut(lastReadSeq: row.lastReadSeq, unreadCount: row.unreadCount, mentionCount: row.mentionCount))
+            applyReadState(row.channelId, ReadStateOut(lastReadSeq: row.lastReadSeq, unreadCount: row.unreadCount, mentionCount: row.mentionCount,
+                                                       firstUnreadAt: row.firstUnreadAt))
         }
         onBadge?(store.badgeCount)
     }
@@ -653,6 +687,7 @@ final class SyncEngine {
             $0.lastReadSeq = allowDecrease ? state.lastReadSeq : max($0.lastReadSeq, state.lastReadSeq)
             $0.unreadCount = state.unreadCount
             $0.mentionCount = state.mentionCount
+            $0.firstUnreadAt = state.firstUnreadAt
         }
         if state.unreadCount == 0 { onRead?(channelId) }
         onBadge?(store.badgeCount)
@@ -670,15 +705,37 @@ final class SyncEngine {
         onNotify?(message, channel)
     }
 
-    /// Opening a thread: fetch its replies (live ones keep arriving as timeline events).
-    func loadReplies(_ channelId: String, parentId: String) async {
+    /// Opening a thread: fetch its replies (live ones keep arriving as timeline events). True only when the fetch
+    /// succeeded: the thread is then complete and takes visible-range read marks (§10.2).
+    @discardableResult
+    func loadReplies(_ channelId: String, parentId: String) async -> Bool {
+        var loaded = false
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
             for reply in try await api.replies(messageId: parentId) { store.upsertMessage(reply) }
+            completeThreads[parentId] = channelId
+            loaded = true
         }.value
+        return loaded
+    }
+
+    /// §10.2: every reply of the thread has been fetched (live ones keep arriving after that).
+    func threadComplete(_ parentId: String) -> Bool { completeThreads[parentId] != nil }
+
+    /// The channel's local rows are gone (§7.3 reload, removed from it): its threads have to be fetched again.
+    private func forgetThreads(of channelId: String) {
+        guard completeThreads.values.contains(channelId) else { return }
+        completeThreads = completeThreads.filter { $0.value != channelId }
     }
 
     // MARK: §7.3 catch_up
+
+    /// No conversation is on screen any more (back to the channel list, or the threads / mentions / saved views): a
+    /// 「ここから未読にする」 hold lasts only until its conversation is left (§10), and notifications cover every channel.
+    func closeConversation() {
+        currentChannelId = nil
+        unreadHold = [:]
+    }
 
     func openChannel(_ channelId: String) async {
         currentChannelId = channelId
@@ -694,21 +751,27 @@ final class SyncEngine {
     }
 
     /// §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer wins.
-    /// 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once.
-    func markUnread(_ channelId: String, seq: Int) {
-        guard status == .online, seq >= 1, let channel = store.channel(channelId), channel.isMember else { return }
+    /// 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once. Returns the position
+    /// visible-range reads are held at (nil when nothing happened).
+    @discardableResult
+    func markUnread(_ channelId: String, seq: Int) -> Int? {
+        guard status == .online, seq >= 1, let channel = store.channel(channelId), channel.isMember else { return nil }
+        // §10.1 10.: moving the position forward reads the rows before `seq`, and unread rows this device never loaded may
+        // be among them. Nothing moves and nothing is sent; visible-range reads only pause where they are.
+        guard ReadGate.markUnreadOffered(channel, seq: seq) else {
+            unreadHold[channelId] = channel.lastReadSeq
+            return channel.lastReadSeq
+        }
         let target = seq - 1
         unreadHold[channelId] = target
         pendingReads[channelId]?.cancel()
         store.setUnsentRead(channelId, nil) // an advance not sent yet must not undo this
-        let me = store.me
-        let later = store.messages(channelId).filter { ($0.seq ?? 0) > target && $0.senderId != me?.id }
-        // Mentions counted with the same rule as live events, notification keywords included (§7.4).
-        let mentions = me.map { me in later.filter { $0.mentionAll || $0.mentionedUserIds.contains(me.id) || NotifyKeywords.matches($0.body, me.notifyKeywords) }.count } ?? 0
+        let later = heldUnread(channelId, after: target)
         store.updateChannel(channelId) { state in
             state.lastReadSeq = target
             state.unreadCount = later.count
-            state.mentionCount = mentions
+            state.mentionCount = later.mentions
+            state.firstUnreadAt = later.firstAt
         }
         onBadge?(store.badgeCount)
         pendingReads[channelId] = Task { [weak self] in
@@ -717,15 +780,19 @@ final class SyncEngine {
             guard let state = try? await self.api.setReadPosition(channelId: channelId, lastReadSeq: target) else { return }
             _ = try? await self.enqueue { [self] in self.applyReadState(channelId, state, allowDecrease: true) }.value
         }
+        return target
     }
 
+    /// Visible-range marks (`force` false) do nothing until every unread row is held (§10.1): the rows on screen may be
+    /// the newest page of many more unread ones this device never loaded. Explicit reads (「既読にする」) always apply.
     func markRead(_ channelId: String, seq: Int, force: Bool = false) {
         guard status == .online, isActive() else { return }
         if force { unreadHold[channelId] = nil } else if unreadHold[channelId] != nil { return }
         guard let channel = store.channel(channelId), channel.isMember, seq > channel.lastReadSeq else { return }
+        if !force && !ReadGate.readRangeReady(channel) { return }
         store.updateChannel(channelId) { state in
             state.lastReadSeq = seq
-            if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0 }
+            if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0; state.firstUnreadAt = nil }
         }
         store.setUnsentRead(channelId, seq) // kept until the server has it (§10)
         onBadge?(store.badgeCount)
@@ -764,7 +831,7 @@ final class SyncEngine {
             }
             store.updateChannel(key) { state in
                 state.lastReadSeq = seq
-                if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0 }
+                if seq >= state.lastSeq { state.unreadCount = 0; state.mentionCount = 0; state.firstUnreadAt = nil }
             }
         }
     }
@@ -797,7 +864,8 @@ final class SyncEngine {
             let cursor = more && store.threadsFilter == filter ? store.threadsCursor : nil
             if more && cursor == nil { return }
             let page = try await api.threads(filter: filter, cursor: cursor, limit: options.threadPageSize)
-            store.setThreadPage(filter: filter, items: page.items, cursor: page.nextCursor, append: cursor != nil, pageSize: options.threadPageSize)
+            let items = page.items.map { ThreadItem(parent: $0.parent, state: floored($0.state)) }
+            store.setThreadPage(filter: filter, items: items, cursor: page.nextCursor, append: cursor != nil, pageSize: options.threadPageSize)
             store.setThreadSummary(page.summary)
             onBadge?(store.badgeCount)
         }.value
@@ -807,15 +875,14 @@ final class SyncEngine {
     func loadThreadState(_ parentId: String, parent: MessageOut? = nil) async {
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
-            var state = try await api.threadState(messageId: parentId)
-            if let floor = threadReadFloor[parentId], floor > state.lastReadSeq { state.lastReadSeq = floor }
-            store.applyThreadState(state, parent: parent)
+            applyThreadState(try await api.threadState(messageId: parentId), parent: parent)
         }.value
     }
 
     /// The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce.
+    /// Ignored until the whole thread has been fetched (§10.2).
     func markThreadRead(_ parentId: String, seq: Int) {
-        guard status == .online, isActive() else { return }
+        guard status == .online, isActive(), threadComplete(parentId) else { return }
         let current = max(store.threads[parentId]?.state.lastReadSeq ?? 0, threadReadFloor[parentId] ?? 0)
         guard seq > current else { return }
         threadReadFloor[parentId] = seq
@@ -841,7 +908,7 @@ final class SyncEngine {
     private func sendThreadRead(_ parentId: String) async {
         let key = Self.threadReadPrefix + parentId
         guard let target = store.unsentReads[key] else { return }
-        var state: ThreadState
+        let state: ThreadState
         do {
             state = try await api.markThreadRead(messageId: parentId, lastReadSeq: target)
         } catch {
@@ -850,9 +917,7 @@ final class SyncEngine {
         }
         if (store.unsentReads[key] ?? 0) <= target { store.setUnsentRead(key, nil) }
         _ = try? await enqueue { [self] in
-            // The position reached here stays even when the server keeps none (a thread I do not follow).
-            if let floor = self.threadReadFloor[parentId], floor > state.lastReadSeq { state.lastReadSeq = floor }
-            self.store.applyThreadState(state)
+            self.applyThreadState(state) // the position reached here stays even when the server keeps none (not followed)
             self.onBadge?(self.store.badgeCount)
         }.value
     }
@@ -860,9 +925,27 @@ final class SyncEngine {
     func setThreadFollow(_ parentId: String, following: Bool) async {
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
-            store.applyThreadState(try await api.setThreadFollow(messageId: parentId, following: following))
+            applyThreadState(try await api.setThreadFollow(messageId: parentId, following: following))
             onBadge?(store.badgeCount)
         }.value
+    }
+
+    /// §10.2: a thread's state from the server (thread.updated, GET state, the threads list, the PUT read and follow
+    /// responses) never takes its read position below what this device reached there, debounced or unsent PUTs
+    /// included. An older position puts the first unread reply above the screen again: the open thread drops its anchor
+    /// and replies already read show as unread.
+    private func floored(_ state: ThreadState) -> ThreadState {
+        guard let floor = threadReadFloor[state.parentId], floor > state.lastReadSeq else { return state }
+        var state = state
+        state.lastReadSeq = floor
+        // As markThreadRead counts it: every reply held is read when the thread is complete.
+        let newest = store.replies(state.channelId, parentId: state.parentId).compactMap(\.seq).max() ?? 0
+        if threadComplete(state.parentId) && floor >= newest { state.unreadCount = 0; state.mentionCount = 0 }
+        return state
+    }
+
+    private func applyThreadState(_ state: ThreadState, parent: MessageOut? = nil) {
+        store.applyThreadState(floored(state), parent: parent)
     }
 
     private func scheduleThreadRefresh() {
@@ -897,6 +980,7 @@ final class SyncEngine {
         // Far behind, or a timeline stored before its window was tracked: read the newest page again (§7.3).
         if let synced = channel.syncedSeq, channel.lastSeq - synced > options.gapLimit || channel.oldestLoadedSeq == nil {
             store.clearMessages(channelId)
+            forgetThreads(of: channelId)
             store.updateChannel(channelId) { $0.syncedSeq = nil; $0.oldestLoadedSeq = nil; $0.hasOlder = true }
             channel = store.channel(channelId) ?? channel
             reloads += 1
@@ -927,13 +1011,38 @@ final class SyncEngine {
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
             guard let channel = store.channel(channelId), channel.isMember, channel.hasOlder, let oldest = channel.oldestLoadedSeq, oldest > 0 else { return }
-            let page = try await api.history(channelId: channelId, beforeSeq: oldest, limit: options.pageSize)
-            for message in page.messages { store.upsertMessage(message) }
-            store.updateChannel(channelId) { state in
-                state.hasOlder = page.hasMore && !page.messages.isEmpty
-                state.oldestLoadedSeq = state.hasOlder ? min(oldest, page.messages.map(\.seq).min() ?? oldest) : 0
-            }
+            prepend(channelId, try await api.history(channelId: channelId, beforeSeq: oldest, limit: options.pageSize), before: oldest)
         }.value
+    }
+
+    /// A page read before the window's start joins the window: one rule for scrolling up and 「最初の未読へ」.
+    private func prepend(_ channelId: String, _ page: HistoryOut, before oldest: Int) {
+        for message in page.messages { store.upsertMessage(message) }
+        store.updateChannel(channelId) { state in
+            state.hasOlder = page.hasMore && !page.messages.isEmpty
+            state.oldestLoadedSeq = state.hasOlder ? min(oldest, page.messages.map(\.seq).min() ?? oldest) : 0
+        }
+    }
+
+    /// Visible-range marks may move the read position (§10.1).
+    func readRangeReady(_ channelId: String) -> Bool { store.channel(channelId).map(ReadGate.readRangeReady) ?? false }
+
+    /// 「最初の未読へ」 (§10.1 6.): pages backwards from the window's start, as scrolling up does, until every row after the
+    /// read position (as it was when pressed) is held; at most jumpMaxPages pages per press, and a press again continues.
+    /// Paging backwards keeps the one contiguous window, so nothing else changes. True when the range is held.
+    func loadFirstUnread(_ channelId: String) async throws -> Bool {
+        guard let target = store.channel(channelId)?.lastReadSeq else { return false } // when pressed, not when the queue gets to it
+        var covered = false
+        try await enqueue { [self] in
+            var pages = 0
+            while let channel = store.channel(channelId), !ReadGate.covers(channel.oldestLoadedSeq, target), channel.hasOlder,
+                  let oldest = channel.oldestLoadedSeq, oldest > 0, pages < ReadGate.jumpMaxPages, status == .online, currentChannelId == channelId {
+                prepend(channelId, try await api.history(channelId: channelId, beforeSeq: oldest, limit: ReadGate.jumpPageSize), before: oldest)
+                pages += 1
+            }
+            covered = ReadGate.covers(store.channel(channelId)?.oldestLoadedSeq, target)
+        }.value
+        return covered
     }
 
     // MARK: §9 optimistic send
@@ -983,12 +1092,13 @@ final class SyncEngine {
         var paused = false
         while status == .online, let item = store.outbox.first(where: { $0.failed == nil }) {
             do {
-                let (message, _) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId,
+                let (message, created) = try await api.postMessage(channelId: item.channelId, clientMsgId: item.clientMsgId, body: item.body, parentId: item.parentId,
                                                              attachmentIds: item.attachmentIds,
                                                              options: SendOptions(alsoInChannel: item.alsoInChannel ?? false, priority: item.priority,
                                                                                   ackRequested: item.ackRequested ?? false))
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
+                readOwnPost(message, created: created)
                 outboxRetryAttempt = 0
             } catch let error as ApiError where error.isRefused {
                 store.markOutboxFailed(item.clientMsgId, reason: error.code) // persisted: still 「送信に失敗」 after a restart

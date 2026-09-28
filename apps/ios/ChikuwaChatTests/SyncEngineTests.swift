@@ -222,6 +222,7 @@ final class SyncEngineTests: XCTestCase {
         await w.engine.start()
         await settle(w.engine)
         XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 2)
+        await w.engine.openChannel(w.channel.id) // visible rows mark read only once the unread ones are loaded (§10.1)
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "hey <@\(w.bob.id)>")
         await settle(w.engine)
         XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.unreadCount, $0.mentionCount] }, [3, 1])
@@ -1000,6 +1001,7 @@ final class SyncEngineTests: XCTestCase {
         let topic = try w.server.messageByBody(w.channel.id, "topic")
         let (answer, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "answer", parentId: topic.id)
         await settle(w.engine)
+        await w.engine.loadReplies(w.channel.id, parentId: topic.id) // the thread opens: its read marks count once it is complete (§10.2)
 
         w.api.failures["markThreadRead"] = [ApiError.network(URLError(.timedOut))]
         w.engine.markThreadRead(topic.id, seq: answer.seq)

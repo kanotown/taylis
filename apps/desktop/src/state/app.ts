@@ -729,7 +729,9 @@ export class AppController {
     if (!this.api) return false;
     try {
       await this.api.leaveChannel(channelId);
-      this.store.removeChannel(channelId);
+      // Through the engine, which also forgets the channel's complete threads (SYNC_PROTOCOL.md §10.2).
+      if (this.engine) this.engine.removeChannel(channelId);
+      else this.store.removeChannel(channelId);
       return true;
     } catch (error) {
       this.setError(error);

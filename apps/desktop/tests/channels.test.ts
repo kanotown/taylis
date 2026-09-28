@@ -25,6 +25,7 @@ const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState =>
   lastReadSeq: 0,
   unreadCount: 0,
   mentionCount: 0,
+  firstUnreadAt: null,
   pendingReadSeq: null,
   hasOlder: true,
   oldestLoadedSeq: null,

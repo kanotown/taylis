@@ -2070,6 +2070,8 @@ export interface components {
              * Format: uuid
              */
             channel_id: string;
+            /** First Unread At */
+            first_unread_at?: string | null;
             /** Last Read Seq */
             last_read_seq: number;
             /** Mention Count */
@@ -2806,6 +2808,8 @@ export interface components {
         };
         /** ReadStateOut */
         ReadStateOut: {
+            /** First Unread At */
+            first_unread_at?: string | null;
             /** Last Read Seq */
             last_read_seq: number;
             /** Mention Count */

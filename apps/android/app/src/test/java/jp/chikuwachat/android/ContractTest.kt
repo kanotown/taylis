@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -47,6 +48,7 @@ class ContractTest {
 
     private fun JsonObject.str(key: String) = this[key]?.jsonPrimitive?.contentOrNull
     private fun JsonObject.int(key: String) = this[key]?.jsonPrimitive?.intOrNull
+    private fun JsonObject.bool(key: String) = this[key]?.jsonPrimitive?.booleanOrNull
 
     private fun key(step: JsonObject): String = "00000000-0000-5000-8000-" + step.str("key")!!.padStart(12, '0')
 
@@ -76,7 +78,9 @@ class ContractTest {
                 }
             }
             "read" -> s.server.markRead(s.server.user(step.str("as")!!).id, s.channelId, step.int("seq")!!)
-            "client.read" -> { s.engine!!.markRead(s.channelId, step.int("seq")!!); s.engine!!.flushReads(); settle(s.engine) }
+            // A visible-range read; `force` is an explicit one (Esc, 「既読にする」, §10.1).
+            "client.read" -> { s.engine!!.markRead(s.channelId, step.int("seq")!!, force = step.bool("force") ?: false); s.engine!!.flushReads(); settle(s.engine) }
+            "client.load_first_unread" -> { s.engine!!.loadFirstUnread(s.channelId); settle(s.engine) }
             "edit" -> {
                 val user = s.server.user(step.str("as")!!)
                 s.server.edit(s.channelId, user.id, s.server.messageByBody(s.channelId, step.str("body_of")!!).id, step.str("body")!!)

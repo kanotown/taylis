@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -15,6 +16,9 @@ class ReadStateOut(BaseModel):
     last_read_seq: int
     unread_count: int
     mention_count: int
+    # created_at of the oldest message counted in unread_count, null when nothing is unread.
+    # Only the unread banner's 「… 以降」 uses it (SYNC_PROTOCOL.md §10.1, M17).
+    first_unread_at: datetime | None = None
 
 
 class ReadUpdatedData(ReadStateOut):

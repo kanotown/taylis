@@ -56,5 +56,9 @@ struct MessageCardView: View {
                 .lineLimit(4)
         }
         .padding(.vertical, 2)
+        // The whole card is the tap target: a plain-style button hits only what is drawn, so the blank end of a short
+        // pinned or saved message did nothing.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }

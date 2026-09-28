@@ -90,8 +90,12 @@ final class ContractTests: XCTestCase {
             let user = s.server.user(named: step["as"]?.stringValue ?? "")
             try s.server.markRead(userId: user.id, channelId: s.channelId, seq: Int(step["seq"]?.doubleValue ?? 0))
         case "client.read":
-            s.engine?.markRead(s.channelId, seq: Int(step["seq"]?.doubleValue ?? 0))
+            // A visible-range read unless forced (「既読にする」): ignored while the unread rows are not all held (§10.1).
+            s.engine?.markRead(s.channelId, seq: Int(step["seq"]?.doubleValue ?? 0), force: step["force"] == .bool(true))
             await s.engine?.flushReads()
+            await settle(s.engine)
+        case "client.load_first_unread":
+            _ = try await s.engine?.loadFirstUnread(s.channelId)
             await settle(s.engine)
         case "edit":
             let user = s.server.user(named: step["as"]?.stringValue ?? "")

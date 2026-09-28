@@ -1,0 +1,18 @@
+{
+  "name": "未読が 1 ページを超える会話: 範囲が届くまで表示範囲の既読は送らない。「最初の未読へ」で届いたら進む。「既読にする」は末尾まで (§10.1)",
+  "steps": [
+    {"op": "users", "names": ["alice", "bob"]},
+    {"op": "channel", "name": "general", "owner": "alice", "members": ["bob"]},
+    {"op": "post", "as": "alice", "count": 60, "body": "m{i}"},
+    {"op": "client.start", "as": "bob", "page_size": 50},
+    {"op": "expect", "message_count": 50, "unread_count": 60, "last_read_seq": 0},
+    {"op": "client.read", "seq": 60},
+    {"op": "expect", "last_read_seq": 0, "unread_count": 60},
+    {"op": "client.load_first_unread"},
+    {"op": "expect", "message_count": 60, "first_body": "m1"},
+    {"op": "client.read", "seq": 30},
+    {"op": "expect", "last_read_seq": 30, "unread_count": 30},
+    {"op": "client.read", "seq": 60, "force": true},
+    {"op": "expect", "last_read_seq": 60, "unread_count": 0}
+  ]
+}

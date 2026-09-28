@@ -294,6 +294,19 @@
           },
           "ReadStateOut": {
             "properties": {
+              "first_unread_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "First Unread At"
+              },
               "last_read_seq": {
                 "title": "Last Read Seq",
                 "type": "integer"
@@ -698,6 +711,19 @@
           },
           "ReadStateOut": {
             "properties": {
+              "first_unread_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "First Unread At"
+              },
               "last_read_seq": {
                 "title": "Last Read Seq",
                 "type": "integer"
@@ -2335,6 +2361,19 @@
             "format": "uuid",
             "title": "Channel Id",
             "type": "string"
+          },
+          "first_unread_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Unread At"
           },
           "last_read_seq": {
             "title": "Last Read Seq",

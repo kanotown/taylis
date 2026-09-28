@@ -9,13 +9,26 @@ struct ThreadView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
+    /// Placed once the whole thread and my read position are known (§10.2); `provisional` until then.
     @State private var positioned = false
+    @State private var provisional = false
+    /// The reader scrolled away from the provisional bottom before the thread was ready: it is not moved again.
+    @State private var userScrolled = false
+    /// §10.2: the first unread reply has been on screen with the thread complete; only then do visible replies mark read.
+    @State private var anchor = ReadAnchor()
+    /// The replies were fetched on this connection. They are fetched again on the next one, and when the thread stops
+    /// being complete while online (a §7.3 reload of its channel drops its rows).
+    @State private var fetchedOnline = false
     /// M15c: "also send to the channel", unticked again after each send (Slack).
     @State private var alsoInChannel = false
     @State private var atBottom = true
     @State private var visibleFrames: [String: CGRect] = [:]
     @State private var viewportHeight: CGFloat = 0
+    @State private var cover = CoverProbe()
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
+    /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
+    private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
+    private var focusReplyId: String? { controller.messageFocus.flatMap { $0.parentId == parentId ? $0.messageId : nil } }
     private var parent: MessageState? {
         controller.store.message(channelId, id: parentId)
             ?? entry.map { MessageState($0.parent) }
@@ -41,13 +54,16 @@ struct ThreadView: View {
                                         .font(.caption).foregroundStyle(.secondary)
                                     Divider()
                                     ForEach(replies, id: \.rowKey) { reply in
-                                        if reply.id == firstUnreadId { NewRepliesDivider() }
-                                        MessageRow(message: reply, controller: controller)
-                                            .id(reply.rowKey)
-                                            .background(GeometryReader { geometry in
-                                                Color.clear.preference(key: VisibleReplyFrames.self,
-                                                                       value: [reply.id: geometry.frame(in: .named("threadViewport"))])
-                                            })
+                                        // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            if reply.id == firstUnreadId { NewRepliesDivider() }
+                                            MessageRow(message: reply, controller: controller)
+                                                .background(GeometryReader { geometry in
+                                                    Color.clear.preference(key: VisibleReplyFrames.self,
+                                                                           value: [reply.id: geometry.frame(in: .named("threadViewport"))])
+                                                })
+                                        }
+                                        .id(reply.rowKey)
                                     }
                                 } else {
                                     Text("メッセージが見つかりません").foregroundStyle(.secondary)
@@ -59,29 +75,32 @@ struct ThreadView: View {
                             .padding()
                         }
                         .coordinateSpace(name: "threadViewport")
+                        .onUserScroll { if provisional && !positioned { userScrolled = true } }
+                        .background(CoverProbe.Marker(probe: cover))
                         .onPreferenceChange(VisibleReplyFrames.self) { frames in
                             visibleFrames = frames
                             viewportHeight = viewport.size.height
                             markRead()
                         }
                     }
-                    .defaultScrollAnchor(.bottom)
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: replies.last?.rowKey) { _, _ in
                         let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
-                        if positioned && (atBottom || mine) && controller.messageFocus?.parentId != parentId {
+                        if (positioned || provisional) && (mine || atBottom && anchor.landing == nil) && controller.messageFocus?.parentId != parentId {
+                            if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
                             withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                         }
                     }
                     .onChange(of: scenePhase) { _, _ in markRead() }
                     .onChange(of: controller.engine?.status) { _, _ in markRead() }
-                    .task(id: replies.count) {
-                        guard !positioned, !replies.isEmpty else { return }
+                    .onChange(of: threadReady) { _, _ in markRead() }
+                    .task(id: "\(replies.count):\(threadReady)") {
                         await Task.yield()
-                        if let focus = controller.messageFocus, focus.parentId == parentId {
-                            proxy.scrollTo(replies.first(where: { $0.id == focus.messageId })?.rowKey ?? focus.messageId, anchor: .center)
-                        } else { proxy.scrollTo("bottom", anchor: .bottom) }
-                        positioned = true
+                        position(proxy)
+                    }
+                    .task(id: anchor.landing) {
+                        if let landing = anchor.landing { await land(landing, proxy) }
                     }
                 }
                 if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
@@ -118,7 +137,12 @@ struct ThreadView: View {
                     }
                 }
             }
-            .task(id: controller.engine?.status) { await controller.engine?.loadReplies(channelId, parentId: parentId) }
+            .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false)") {
+                guard let engine = controller.engine else { return }
+                guard engine.status == .online else { fetchedOnline = false; return }
+                if engine.threadComplete(parentId) && fetchedOnline { return }
+                fetchedOnline = await engine.loadReplies(channelId, parentId: parentId)
+            }
             // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
             .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? "")") {
                 guard entry == nil, let parent, let out = MessageOut(parent) else { return }
@@ -127,14 +151,67 @@ struct ThreadView: View {
         }
     }
 
-    /// Read position = the newest reply fully shown (never just "opened"), like the timeline.
+    /// §10.2: until the thread is ready the local rows (live replies only, perhaps) sit at the bottom, or the focus reply
+    /// in the middle when held; once ready it is placed once, like a channel: the focus, else the first unread reply at the
+    /// top, else the bottom. A reader who scrolled meanwhile is left where they are.
+    private func position(_ proxy: ScrollViewProxy) {
+        guard !positioned else { return }
+        let rows = replies
+        guard threadReady, let state = entry?.state else {
+            guard !provisional, !rows.isEmpty else { return }
+            if let focusReplyId, let focus = rows.first(where: { $0.id == focusReplyId }) {
+                proxy.scrollTo(focus.rowKey, anchor: .center)
+                positioned = true // already where the ready thread would put it
+            } else {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            provisional = true
+            return
+        }
+        positioned = true
+        if userScrolled { return }
+        switch ReadGate.threadTarget(rows, focusId: focusReplyId, lastReadSeq: state.lastReadSeq, meId: controller.store.me?.id) {
+        case .center(let key): proxy.scrollTo(key, anchor: .center)
+        case .top(let key):
+            // Anchored only once the reply is really on screen: a long thread lands by estimated heights first.
+            if let row = rows.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
+        case .bottom: proxy.scrollTo("bottom", anchor: .bottom)
+        }
+    }
+
+    /// Scrolls the first unread reply (and its divider) to the top, again while LazyVStack's estimates leave it off
+    /// screen, then lets the anchor judge from the frames where it ended.
+    private func land(_ landing: ReadAnchor.Landing, _ proxy: ScrollViewProxy) async {
+        for _ in 0..<3 {
+            proxy.scrollTo(landing.rowKey, anchor: .top)
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            if fullyShown(visibleFrames[landing.rowId]) { break }
+        }
+        guard anchor.landing == landing else { return }
+        anchor.landed()
+        markRead()
+    }
+
+    private func fullyShown(_ frame: CGRect?) -> Bool {
+        guard let frame, frame.maxY > 0, frame.minY < viewportHeight else { return false }
+        return frame.minY >= 0 && frame.maxY <= viewportHeight || frame.height > viewportHeight
+    }
+
+    /// Read position = the newest reply fully shown (never just "opened"), like the timeline, and only once anchored:
+    /// the thread complete and its first unread reply seen (or none), so no unread reply above the screen is skipped.
+    /// A thread's unread count says nothing about the rows held before it is complete, so it is not used here.
     private func markRead() {
-        guard scenePhase == .active, viewportHeight > 0 else { return }
-        let seq = replies.compactMap { reply -> Int? in
-            guard let frame = visibleFrames[reply.id], frame.maxY > 0, frame.minY < viewportHeight,
-                  (frame.minY >= 0 && frame.maxY <= viewportHeight || frame.height > viewportHeight) else { return nil }
-            return reply.seq
-        }.max()
+        let rows = replies
+        let looking = scenePhase == .active && viewportHeight > 0 && !cover.covered // not under a message's menu sheets
+        let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
+        let onScreen = looking ? Set(visibleFrames.compactMap { $0.value.maxY > 0 && $0.value.minY < viewportHeight ? $0.key : nil }) : []
+        let state = threadReady ? entry?.state : nil
+        var next = anchor
+        let seq = next.observe(unreadCount: nil, ready: state != nil,
+                               firstUnread: state.flatMap { ReadGate.firstUnreadRow(rows, afterSeq: $0.lastReadSeq, meId: controller.store.me?.id) },
+                               visible: visible, onScreenIds: onScreen)
+        if next != anchor { anchor = next }
         if let seq { controller.engine?.markThreadRead(parentId, seq: seq) }
     }
 }
