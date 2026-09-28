@@ -269,7 +269,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
                                 onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                 onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                                onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },
+                                onEdit = { body -> controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)).isSuccess },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                 // Not offered where it would read unread rows this device never loaded (§10.1).
@@ -432,7 +432,8 @@ fun MessageRow(
     onRetry: () -> Unit,
     onDiscard: () -> Unit,
     onReact: (String) -> Unit,
-    onEdit: (String) -> Unit,
+    /** Saves an edit; true once the server took it (the editor stays open with the text until then). */
+    onEdit: suspend (String) -> Boolean,
     onDelete: () -> Unit,
     onOpenThread: (() -> Unit)? = null,
     onMarkUnread: (() -> Unit)? = null,
@@ -440,6 +441,8 @@ fun MessageRow(
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var savingEdit by remember { mutableStateOf(false) }
+    val rowScope = rememberCoroutineScope()
     var confirmingDelete by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var showingProfile by remember { mutableStateOf(false) }
@@ -559,7 +562,14 @@ fun MessageRow(
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
     if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
-    if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), onDismiss = { editing = false }, onSave = { editing = false; onEdit(it) })
+    // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
+    if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
+        rowScope.launch {
+            savingEdit = true
+            if (onEdit(body)) editing = false
+            savingEdit = false
+        }
+    })
     if (confirmingDelete) ConfirmDeleteDialog(onDismiss = { confirmingDelete = false }, onConfirm = { confirmingDelete = false; onDelete() })
 }
 
