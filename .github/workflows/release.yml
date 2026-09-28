@@ -56,7 +56,9 @@ jobs:
           provenance: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=server
-          cache-to: type=gha,scope=server,mode=max
+          # The cache only speeds builds up: GitHub's cache service answering with an error page failed v0.1.2 and
+          # v0.1.3 after the image was built, and cancelled the push (2026-09-28).
+          cache-to: type=gha,scope=server,mode=max,ignore-error=true
       - name: Web image (Caddy and the browser client)
         uses: docker/build-push-action@v7
         with:
@@ -68,7 +70,7 @@ jobs:
           provenance: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
+          cache-to: type=gha,scope=web,mode=max,ignore-error=true
 
   deploy:
     needs: images
