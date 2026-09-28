@@ -302,9 +302,14 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                             TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text("退出", color = MaterialTheme.colorScheme.error) }
                         }
                         if (canManage && !channel.channel.archived) {
-                            // M15a: an announcement channel; thread replies stay open to everyone.
+                            // M15a: an announcement channel; thread replies stay open to everyone. In a times (M24) the same
+                            // policy reads as the owner's choice: others answer in threads only.
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text("投稿をオーナーと管理者に限る", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Text(
+                                    if (channel.channel.isTimes) "他の人はスレッドでだけ返信できるようにする" else "投稿をオーナーと管理者に限る",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
                                 Switch(
                                     checked = channel.channel.isAnnouncement,
                                     onCheckedChange = { on -> scope.launch { controller.setPostingPolicy(channel.id, if (on) "owners" else "everyone") } },

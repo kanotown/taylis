@@ -225,6 +225,26 @@ final class ApiClientTests: XCTestCase {
         ])
     }
 
+    func testEnsureTimesPostsAndReturnsTheChannel() async throws {  // M24: 201 made, 200 existing
+        var calls: [String] = []
+        StubProtocol.handler = { request in
+            calls.append("\(request.httpMethod ?? "GET") \(request.url!.path)")
+            return (calls.count == 1 ? 201 : 200, Data(#"""
+            {"id":"t1","type":"public","name":"times-alice","topic":null,"purpose":"Alice の作業ログ","archived":false,"created_by":"u","last_seq":0,
+             "last_message_at":null,"created_at":"","updated_at":"","membership":{"role":"owner","joined_at":""},"dm_user_ids":null,
+             "member_count":1,"posting_policy":"everyone","times_owner_id":"u"}
+            """#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        let made = try await client.ensureTimes()
+        let again = try await client.ensureTimes()
+        XCTAssertEqual(calls, ["POST /api/v1/times", "POST /api/v1/times"])
+        XCTAssertEqual(made, again)
+        XCTAssertEqual(made.timesOwnerId, "u")
+        XCTAssertEqual(made.membership?.role, "owner")
+    }
+
     // MARK: release fixes
 
     func testQueryStringsEncodePlus() async throws {  // "C++" must not reach the server as "C  "

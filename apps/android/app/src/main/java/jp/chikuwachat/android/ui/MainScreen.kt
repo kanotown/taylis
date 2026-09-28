@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.foundation.combinedClickable
@@ -490,6 +491,13 @@ fun MainScreen(controller: AppController) {
                         onReminders = { showReminders = true },
                         onBrowse = { dialog = MainDialog.BROWSE },
                         isGuest = controller.isGuest,
+                        onCreateTimes = {
+                            scope.launch {
+                                val id = controller.ensureTimes() ?: return@launch
+                                controller.messageFocus = null
+                                openConversation(id)
+                            }
+                        },
                         onChannelMenu = { channelMenuFor = it },
                         onSectionMenu = { section, index -> sectionMenuFor = section to index },
                     )
@@ -566,12 +574,19 @@ private fun ChannelList(
     isGuest: Boolean = false,
     onFiles: () -> Unit,
     onReminders: () -> Unit,
+    /** M24: make (or open) my times. */
+    onCreateTimes: () -> Unit = {},
     /** M14f: long-press on a conversation, and the 「…」 of one of my sections. */
     onChannelMenu: (String) -> Unit = {},
     onSectionMenu: (jp.chikuwachat.android.api.SidebarSectionOut, Int) -> Unit = { _, _ -> },
 ) {
-    val sections = remember(version, unreadOnly) { Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites, sidebar = store.sidebarSections) }
+    val meId = store.me?.id
+    val sections = remember(version, unreadOnly, meId) {
+        Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId)
+    }
     val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
+    // M24: offer to make my times until I have one (joined or not: a times I left is in 「参加できるチャンネル」).
+    val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }
     val channels = sections.channels
     val dms = sections.dms
     val browsable = sections.browse
@@ -603,6 +618,13 @@ private fun ChannelList(
         items(channels, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
         if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
+        // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
+        val offerTimes = canCreateTimes && !unreadOnly
+        if (sections.times.isNotEmpty() || offerTimes) {
+            item { SectionHeader("Times") }
+            items(sections.times, key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            if (offerTimes) item { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) }
+        }
         item { SectionHeader("ダイレクトメッセージ") }
         items(dms, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
@@ -734,7 +756,9 @@ private fun ChannelGlyph(channel: ChannelState) {
 private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
     val muted = Channels.isMuted(channel)
-    val unread = Channels.hasUnread(channel)
+    val unread = Channels.hasUnread(channel, store.me?.id)
+    // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
+    val quietDot = Channels.showsQuietDot(channel, store.me?.id)
     val badge = Channels.badgeCount(channel)
     Row(
         Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
@@ -766,6 +790,8 @@ private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClic
             )
         } else if (unread) {
             Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+        } else if (quietDot) {
+            Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape))
         }
     }
 }

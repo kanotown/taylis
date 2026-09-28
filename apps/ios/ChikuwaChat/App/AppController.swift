@@ -444,7 +444,8 @@ final class AppController {
     private func activeBadgeChanged(_ count: Int) {
         activeBadge = count
         if let serverUrl = activeServerUrl {
-            let unread = store.channels.values.contains { $0.showsUnread && !$0.channel.archived } || store.threadSummary.unreadCount > 0
+            let meId = store.me?.id
+            let unread = store.channels.values.contains { $0.hasUnread(meId: meId) && !$0.channel.archived } || store.threadSummary.unreadCount > 0
             patch(serverUrl) { entry in
                 entry.badge = count
                 entry.hasUnread = unread
@@ -939,6 +940,16 @@ final class AppController {
         }
         do {
             let channel = try await api.createDm(userIds: [userId])
+            store.upsertChannel(channel, isMember: true)
+            return channel.id
+        } catch { self.error = describe(error); return nil }
+    }
+
+    /// M24: my times (made on the first call; the supervisors on the roster join it); returns its id to open.
+    func ensureTimes() async -> String? {
+        guard let api else { return nil }
+        do {
+            let channel = try await api.ensureTimes()
             store.upsertChannel(channel, isMember: true)
             return channel.id
         } catch { self.error = describe(error); return nil }

@@ -254,11 +254,12 @@ struct ChannelInfoView: View {
                 Button("アーカイブを解除", systemImage: "archivebox") { Task { _ = await controller.unarchiveChannel(channelId) } }
             }
             if canManage && !channel.channel.archived {
-                // M15a: an announcement channel; thread replies stay open to everyone.
+                // M15a: an announcement channel; thread replies stay open to everyone. In a times (M24) the same
+                // policy reads as what it means there.
                 Toggle(isOn: Binding(get: { channel.channel.isAnnouncement }, set: { on in
                     Task { _ = await controller.setPostingPolicy(channelId, policy: on ? "owners" : "everyone") }
                 })) {
-                    Label("投稿をオーナーと管理者に限る", systemImage: "megaphone")
+                    Label(channel.channel.isTimes ? "他の人はスレッドでだけ返信できるようにする" : "投稿をオーナーと管理者に限る", systemImage: "megaphone")
                 }
             }
             if channel.canEditLinks(isAdmin: isAdmin, isGuest: controller.store.me?.role == "guest") {

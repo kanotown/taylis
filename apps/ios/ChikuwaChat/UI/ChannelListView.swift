@@ -11,8 +11,9 @@ struct ChannelListView: View {
     @State private var nameText = ""
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
+    private var meId: String? { controller.store.me?.id ?? controller.me?.id }
     /// The unread filter keeps the open conversation so the selection never disappears.
-    private func keep(_ channel: ChannelState) -> Bool { !unreadOnly || channel.id == selection || channel.showsUnread }
+    private func keep(_ channel: ChannelState) -> Bool { !unreadOnly || channel.id == selection || channel.hasUnread(meId: meId) }
     private func starred(_ channel: ChannelState) -> Bool { controller.store.favorites.contains(channel.id) }
     /// 「お気に入り」 (M12a): starred conversations, out of the other sections.
     private var favorites: [ChannelState] {
@@ -20,7 +21,14 @@ struct ChannelListView: View {
             .sorted { channelTitle($0, store: controller.store) < channelTitle($1, store: controller.store) }
     }
     private func placed(_ channel: ChannelState) -> Bool { controller.store.sectionOf(channel.id) != nil }
-    private var mine: [ChannelState] { channels.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && !starred($0) && !placed($0) && keep($0) }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+    private var channelAndTimes: (channels: [ChannelState], times: [ChannelState]) {
+        Self.channelSections(channels, meId: meId) { !starred($0) && !placed($0) && keep($0) }
+    }
+    /// M24: the row to make my times stays until I have one; guests cannot have one.
+    private var canMakeTimes: Bool {
+        guard let meId, !controller.isGuest else { return false }
+        return !channels.contains { $0.channel.timesOwnerId == meId }
+    }
     private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && !placed($0) && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
     private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
@@ -48,10 +56,17 @@ struct ChannelListView: View {
                 }
             }
             customSections
+            let sections = channelAndTimes
             Section("チャンネル") {
-                ForEach(mine) { row($0) }
-                if mine.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
+                ForEach(sections.channels) { row($0) }
+                if sections.channels.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
                 if !unreadOnly && !controller.isGuest { browseRow }
+            }
+            if !sections.times.isEmpty || (canMakeTimes && !unreadOnly) {
+                Section("Times") {
+                    ForEach(sections.times) { row($0) }
+                    if canMakeTimes && !unreadOnly { makeTimesRow }
+                }
             }
             Section("ダイレクトメッセージ") {
                 ForEach(dms) { row($0) }
@@ -81,6 +96,17 @@ struct ChannelListView: View {
         .sheet(isPresented: $showBrowser) {
             ChannelBrowserView(controller: controller) { id in selection = id }
         }
+    }
+
+    /// The channels I am in, less those shown elsewhere (`include`): 「チャンネル」 by name, and 「Times」 (M24), where
+    /// times channels go instead, mine first, then by name.
+    nonisolated static func channelSections(_ all: [ChannelState], meId: String?,
+                                include: (ChannelState) -> Bool) -> (channels: [ChannelState], times: [ChannelState]) {
+        let rows = all.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && include($0) }
+        let byName = { (a: ChannelState, b: ChannelState) in (a.channel.name ?? "") < (b.channel.name ?? "") }
+        let mine = { (channel: ChannelState) in channel.channel.timesOwnerId == meId }
+        return (rows.filter { !$0.channel.isTimes }.sorted(by: byName),
+                rows.filter(\.channel.isTimes).sorted { mine($0) != mine($1) ? mine($0) : byName($0, $1) })
     }
 
     // MARK: sidebar sections (M14f)
@@ -198,6 +224,20 @@ struct ChannelListView: View {
         }
     }
 
+    /// 「自分の times を作る」 (M24): POST /times, then open it.
+    private var makeTimesRow: some View {
+        Button { makeTimes() } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "plus").font(.body).foregroundStyle(.secondary).frame(width: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("自分の times を作る").foregroundStyle(.primary)
+                    Text("作業ログ用の公開チャンネル").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
     /// 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
     private var threadsRow: some View {
         let summary = controller.store.threadSummary
@@ -289,10 +329,16 @@ struct ChannelListView: View {
         }
     }
 
+    private func makeTimes() {
+        Task { if let id = await controller.ensureTimes() { selection = id } }
+    }
+
     private func row(_ channel: ChannelState) -> some View {
         let badge = channel.badgeContribution
         let muted = channel.isMuted
-        let unread = channel.showsUnread && channel.id != selection
+        let unread = channel.hasUnread(meId: meId) && channel.id != selection
+        // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
+        let quietUnread = !unread && channel.id != selection && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
         let store = controller.store
         return NavigationLink(value: channel.id) {
             HStack(spacing: 12) {
@@ -320,6 +366,8 @@ struct ChannelListView: View {
                         .background(Color.accentColor, in: Capsule())
                 } else if unread {
                     Circle().fill(Color.accentColor).frame(width: 8, height: 8)
+                } else if quietUnread {
+                    Circle().fill(Color.secondary.opacity(0.5)).frame(width: 6, height: 6)
                 }
             }
             .padding(.vertical, 2)

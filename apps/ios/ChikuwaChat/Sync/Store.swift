@@ -21,18 +21,30 @@ struct ChannelState: Codable, Identifiable, Equatable {
     var firstUnreadAt: String?
 
     var id: String { channel.id }
-    var hasUnread: Bool { unreadCount > 0 }
     /// Level "none" or an active timed mute (PUSH_NOTIFICATIONS.md §4).
-    var isMuted: Bool {
+    var isMuted: Bool { isMuted(now: Date()) }
+    func isMuted(now: Date) -> Bool {
         guard let pref = channel.notification else { return false }
         if pref.level == "none" { return true }
         guard let until = pref.mutedUntil.flatMap(parseIsoDate) else { return false }
-        return until > Date()
+        return until > now
     }
-    /// Slack / Mattermost rule: a muted conversation is unread only when I am mentioned.
-    var showsUnread: Bool { isMember && (isMuted ? mentionCount > 0 : unreadCount > 0) }
-    /// What the app badge and the list show for this channel (PUSH_NOTIFICATIONS.md §4.2).
-    var badgeContribution: Int { isMuted ? mentionCount : (channel.isDm ? unreadCount : mentionCount) }
+    /// M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a
+    /// faint dot otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
+    func isQuiet(meId: String?, now: Date = Date()) -> Bool {
+        guard let owner = channel.timesOwnerId, owner != meId else { return false }
+        return channel.notification?.level != "all" && !isMuted(now: now)
+    }
+    /// Slack / Mattermost rule: a muted conversation is unread only when I am mentioned; so is a quiet one (M24).
+    /// Bold rows, the unread filter and the workspace dot all ask this, with my id.
+    func hasUnread(meId: String?, now: Date = Date()) -> Bool {
+        guard isMember else { return false }
+        return isMuted(now: now) || isQuiet(meId: meId, now: now) ? mentionCount > 0 : unreadCount > 0
+    }
+    /// What the app badge and the list show for this channel (PUSH_NOTIFICATIONS.md §4.2). Quiet channels need no
+    /// rule of their own: a channel's badge is its mentions already.
+    var badgeContribution: Int { badgeContribution(now: Date()) }
+    func badgeContribution(now: Date) -> Int { isMuted(now: now) ? mentionCount : (channel.isDm ? unreadCount : mentionCount) }
     /// M15a: whether I may start top-level posts here; thread replies stay open to every member.
     func canPostTopLevel(isAdmin: Bool) -> Bool {
         !channel.isAnnouncement || isAdmin || channel.membership?.role == "owner"
