@@ -222,7 +222,7 @@ class ApiClientTest {
         assertEquals("PATCH /api/v1/sidebar/sections/s1", sent[1].first)
         assertTrue(sent[1].second, sent[1].second.contains("\"emoji\":null")) // explicit null takes the icon off
         assertEquals("""{"collapsed":false}""", sent[2].second)
-        assertFalse(sent[3].second, sent[3].second.contains("emoji"))
+        assertEquals("""{"name":"空"}""", sent[3].second) // what a server before M26 accepts
     }
 
     @Test fun requestsWithoutATokenShareOneRefresh() = runBlocking { // WORKSPACES.md §8: a background workspace

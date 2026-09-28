@@ -614,9 +614,14 @@ export class AppController {
     }
   }
 
-  /** A new section at the end (M26: with its icon), and the conversations that move into it. */
+  /**
+   * A new section at the end (M26: with its icon), and the conversations that move into it. The M26 fields go only
+   * when set: a server before M26 refuses fields it does not know, and a plain section still works there.
+   */
   createSection(name: string, emoji: string | null, channelIds: string[]): Promise<boolean> {
-    return this.sidebarChange((api) => api.createSidebarSection({ name, emoji, channel_ids: channelIds }));
+    return this.sidebarChange((api) =>
+      api.createSidebarSection({ name, ...(emoji ? { emoji } : {}), ...(channelIds.length ? { channel_ids: channelIds } : {}) }),
+    );
   }
 
   /** M26: the name and the icon (null: none). */

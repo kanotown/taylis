@@ -225,6 +225,41 @@ final class ApiClientTests: XCTestCase {
         ])
     }
 
+    func testSectionsCarryTheirIconAndFoldAndTakeConversationsWhenMade() async throws {  // M26
+        var sent: [(call: String, body: [String: Any])] = []
+        StubProtocol.handler = { request in
+            let data = request.httpBodyStream.map { stream -> Data in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; data.append(buffer, count: n) }
+                return data
+            } ?? Data()
+            let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            sent.append(("\(request.httpMethod ?? "GET") \(request.url!.path)", body))
+            return (200, Data(#"""
+            [{"id":"s1","name":"研究","emoji":":chikuwa:","collapsed":true,"position":0,"channel_ids":["c1","c2"]},
+             {"id":"s2","name":"古い","position":1}]
+            """#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        let rows = try await client.createSidebarSection(name: "研究", emoji: ":chikuwa:", channelIds: ["c1", "c2"])
+        XCTAssertEqual(rows[0], SidebarSectionOut(id: "s1", name: "研究", position: 0, channelIds: ["c1", "c2"], emoji: ":chikuwa:", collapsed: true))
+        // A server before M26 sends neither field (nor, here, the list).
+        XCTAssertEqual(rows[1], SidebarSectionOut(id: "s2", name: "古い", position: 1))
+        _ = try await client.editSidebarSection("s1", name: "研究室", emoji: nil)
+        _ = try await client.updateSidebarSection("s1", collapsed: false)
+        _ = try await client.createSidebarSection(name: "空")
+        XCTAssertEqual(sent.map(\.call), ["POST /api/v1/sidebar/sections", "PATCH /api/v1/sidebar/sections/s1",
+                                           "PATCH /api/v1/sidebar/sections/s1", "POST /api/v1/sidebar/sections"])
+        XCTAssertEqual(sent[0].body["emoji"] as? String, ":chikuwa:")
+        XCTAssertEqual(sent[0].body["channel_ids"] as? [String], ["c1", "c2"])
+        XCTAssertEqual(sent[1].body["name"] as? String, "研究室")
+        XCTAssertTrue(sent[1].body["emoji"] is NSNull, "an explicit null takes the icon off")
+        XCTAssertEqual(sent[2].body as NSDictionary, ["collapsed": false] as NSDictionary)
+        XCTAssertEqual(sent[3].body as NSDictionary, ["name": "空"] as NSDictionary)  // what a server before M26 accepts
+    }
+
     func testEnsureTimesPostsAndReturnsTheChannel() async throws {  // M24: 201 made, 200 existing
         var calls: [String] = []
         StubProtocol.handler = { request in

@@ -367,12 +367,28 @@ struct DraftUpdated: Codable, Equatable {
     let deleted: Bool
 }
 
-/// One of my sidebar sections (M14f); `channelIds` are the conversations placed in it.
+/// One of my sidebar sections (M14f); `channelIds` are the conversations placed in it. M26: `emoji` is its icon (an
+/// emoji or a custom `:name:`), `collapsed` folds it up on all my devices.
 struct SidebarSectionOut: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     let position: Int
     var channelIds: [String] = []
+    var emoji: String? = nil
+    var collapsed = false
+}
+
+extension SidebarSectionOut {
+    /// The M26 fields are missing from a server before M26 and from rows saved by an older app.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        position = try c.decode(Int.self, forKey: .position)
+        channelIds = try c.decodeIfPresent([String].self, forKey: .channelIds) ?? []
+        emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+        collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed) ?? false
+    }
 }
 
 /// A named set of members that `@name` notifies (M12k).

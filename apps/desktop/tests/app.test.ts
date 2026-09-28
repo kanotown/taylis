@@ -41,4 +41,13 @@ describe("app controller", () => {
     await controller.cancelScheduled({ ...row, id: "s2" });
     expect(controller.store.draft("c1").text).toBe("書きかけ\n@bob 明日の件 @here");
   });
+
+  it("makes a plain section with its name only, which a server before M26 accepts; icon and conversations when given", async () => {
+    const bodies: unknown[] = [];
+    const controller = new AppController();
+    controller.api = { createSidebarSection: async (body: unknown) => { bodies.push(body); return []; } } as unknown as ApiClient;
+    expect(await controller.createSection("研究", null, [])).toBe(true);
+    expect(await controller.createSection("授業", "📚", ["c1"])).toBe(true);
+    expect(bodies).toEqual([{ name: "研究" }, { name: "授業", emoji: "📚", channel_ids: ["c1"] }]);
+  });
 });

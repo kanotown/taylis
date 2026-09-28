@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00BAB77FECE44AE87840C53A /* contract in Resources */ = {isa = PBXBuildFile; fileRef = D290E26FC75BEFC78C3A87EE /* contract */; };
 		01058071D83FDB3831C7411A /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF56C1D17673E9A46D280F6D /* Frames.swift */; };
 		028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B17C0044CEFA7773C29BDC /* Permalink.swift */; };
 		072F46A639D7FAE65117A223 /* Share.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B2BB586E878AEEC2A31668 /* Share.swift */; };
 		08F3CC14499210725A24A0E5 /* DraftSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A980BB847A9CA5813A391341 /* DraftSync.swift */; };
 		0B30BA10FE1F85A93BEEE644 /* IsoDatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */; };
 		0BF3079882ED5F8F73F73D6D /* ThreadsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095DC9C14EA053C04A5D3DEA /* ThreadsSnapshotTests.swift */; };
+		118575FA56C717B3175B0528 /* SectionFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */; };
 		138952D589A640641DD470D6 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490CD2ABE3C202D8366FF9CE /* AvatarView.swift */; };
 		146F95B96F756A3F63D664AB /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */; };
 		15295BD6F2E1B1010700B78D /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8311B119AAD428B9FFE2D33 /* CameraPicker.swift */; };
@@ -62,6 +62,7 @@
 		7062DBC701415D5A49D00848 /* PushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */; };
 		73256CC2F95C92D250D34D1B /* MentionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F79027247AC5F2ACC79DFE /* MentionsTests.swift */; };
 		73929A42759EC180C603E753 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A676948BB8E2458464753586 /* Models.swift */; };
+		817F08384C5E70498BA0AEF1 /* contract in Resources */ = {isa = PBXBuildFile; fileRef = D5EDF4064A701067C95149BF /* contract */; };
 		84C7F0EBE484CB4BB8577908 /* Search.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA98EE4F635D9C1BC5DA1661 /* Search.swift */; };
 		852F6EC26FBD2882E9D35828 /* AvatarCrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1AA01730F6E993B9EFB406B /* AvatarCrop.swift */; };
 		8613449A516B8C7EA5D701A8 /* CommandsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6ACD361FF6151716ED35A5 /* CommandsTests.swift */; };
@@ -203,6 +204,7 @@
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSyncTests.swift; sourceTree = "<group>"; };
 		888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLinksTests.swift; sourceTree = "<group>"; };
+		89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionFormView.swift; sourceTree = "<group>"; };
 		8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
@@ -237,8 +239,8 @@
 		CA98EE4F635D9C1BC5DA1661 /* Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Search.swift; sourceTree = "<group>"; };
 		CC72EC7EE82888C41D902D52 /* NoticeToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeToast.swift; sourceTree = "<group>"; };
 		CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChikuwaChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D290E26FC75BEFC78C3A87EE /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		D5025810DA770D8747ACC610 /* RemindersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersView.swift; sourceTree = "<group>"; };
+		D5EDF4064A701067C95149BF /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareMessageSheet.swift; sourceTree = "<group>"; };
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
 		DD69D59780770BA776367B43 /* InviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteView.swift; sourceTree = "<group>"; };
@@ -289,6 +291,14 @@
 			path = Platform;
 			sourceTree = "<group>";
 		};
+		2393D3D31E57F51738C65B93 /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				D5EDF4064A701067C95149BF /* contract */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
 		2726A13E90F14ECBF20319B0 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -319,14 +329,6 @@
 				5E67B45469B6C5625C8D9A6A /* Workspaces.swift */,
 			);
 			path = App;
-			sourceTree = "<group>";
-		};
-		7ABD5E85A890283E3F3A5EC4 /* server */ = {
-			isa = PBXGroup;
-			children = (
-				C9463A15C981E0E5253DE882 /* tests */,
-			);
-			path = server;
 			sourceTree = "<group>";
 		};
 		85964B35FF364CC28075330D /* ChikuwaChatTests */ = {
@@ -425,6 +427,7 @@
 				0B404F9D56E0D4FC24A30F35 /* Schedule.swift */,
 				CA98EE4F635D9C1BC5DA1661 /* Search.swift */,
 				4E8952935F7E755BB8B341C5 /* SearchView.swift */,
+				89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */,
 				F4B2BB586E878AEEC2A31668 /* Share.swift */,
 				DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */,
 				B6BACB32869D36BC76BFACD3 /* Sheets.swift */,
@@ -439,12 +442,12 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		9E6B5D6E53A894601B5B7192 /* ChikuwaChat-merge */ = {
+		940172AC3C8023DFF2521604 /* ChikuwaChat-claude */ = {
 			isa = PBXGroup;
 			children = (
-				7ABD5E85A890283E3F3A5EC4 /* server */,
+				C5E238DF7D433581782F67B3 /* server */,
 			);
-			name = "ChikuwaChat-merge";
+			name = "ChikuwaChat-claude";
 			path = ../..;
 			sourceTree = "<group>";
 		};
@@ -457,19 +460,19 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C9463A15C981E0E5253DE882 /* tests */ = {
+		C5E238DF7D433581782F67B3 /* server */ = {
 			isa = PBXGroup;
 			children = (
-				D290E26FC75BEFC78C3A87EE /* contract */,
+				2393D3D31E57F51738C65B93 /* tests */,
 			);
-			path = tests;
+			path = server;
 			sourceTree = "<group>";
 		};
 		EF7AAD189524D9626BFB43BC = {
 			isa = PBXGroup;
 			children = (
 				281A86D9F01B78F75A5D270D /* ChikuwaChat */,
-				9E6B5D6E53A894601B5B7192 /* ChikuwaChat-merge */,
+				940172AC3C8023DFF2521604 /* ChikuwaChat-claude */,
 				85964B35FF364CC28075330D /* ChikuwaChatTests */,
 				9EBFF18BABA664437095FFC6 /* Products */,
 			);
@@ -567,7 +570,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00BAB77FECE44AE87840C53A /* contract in Resources */,
+				817F08384C5E70498BA0AEF1 /* contract in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -684,6 +687,7 @@
 				1C8D809901927C185631CCC1 /* Schedule.swift in Sources */,
 				84C7F0EBE484CB4BB8577908 /* Search.swift in Sources */,
 				8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */,
+				118575FA56C717B3175B0528 /* SectionFormView.swift in Sources */,
 				072F46A639D7FAE65117A223 /* Share.swift in Sources */,
 				4F2C96CF6E06B8753F4011DD /* ShareMessageSheet.swift in Sources */,
 				A891B9120FA22239813BEACD /* Sheets.swift in Sources */,

@@ -480,12 +480,15 @@ class ApiClient(
 
     // --- sidebar sections (M14f): every call returns my whole list ------------------------------
 
-    /** M26: with its icon, and the conversations to put in it at once (they leave the section they were in). */
+    /**
+     * M26: with its icon, and the conversations to put in it at once (they leave the section they were in). Those
+     * fields go only when set: a server before M26 refuses fields it does not know.
+     */
     suspend fun createSidebarSection(name: String, emoji: String? = null, channelIds: List<String> = emptyList()): List<SidebarSectionOut> =
         request("POST", "/api/v1/sidebar/sections", buildJsonObject {
             put("name", name)
             emoji?.let { put("emoji", it) }
-            put("channel_ids", buildJsonArray { channelIds.forEach { add(JsonPrimitive(it)) } })
+            if (channelIds.isNotEmpty()) put("channel_ids", buildJsonArray { channelIds.forEach { add(JsonPrimitive(it)) } })
         })
 
     suspend fun updateSidebarSection(id: String, name: String? = null, position: Int? = null, collapsed: Boolean? = null): List<SidebarSectionOut> =
