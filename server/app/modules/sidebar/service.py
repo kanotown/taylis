@@ -30,7 +30,14 @@ async def list_for(db: AsyncSession, user_id: uuid.UUID) -> list[SidebarSectionO
     for row in await repo.placements_for(db, user_id):
         placed.setdefault(row.section_id, []).append(row.channel_id)
     return [
-        SidebarSectionOut(id=s.id, name=s.name, position=s.position, channel_ids=placed[s.id])
+        SidebarSectionOut(
+            id=s.id,
+            name=s.name,
+            emoji=s.emoji,
+            collapsed=s.collapsed,
+            position=s.position,
+            channel_ids=placed[s.id],
+        )
         for s in sections
     ]
 
@@ -64,9 +71,18 @@ async def _require(db: AsyncSession, actor: User, section_id: uuid.UUID) -> Side
 async def create(db: AsyncSession, actor: User, data: SectionCreate) -> list[SidebarSectionOut]:
     if await repo.count(db, actor.id) >= MAX_SECTIONS:
         raise conflict("too_many_sections", f"At most {MAX_SECTIONS} sections")
-    db.add(
-        SidebarSection(user_id=actor.id, name=data.name, position=await repo.count(db, actor.id))
+    section = SidebarSection(
+        user_id=actor.id,
+        name=data.name,
+        emoji=data.emoji,
+        position=await repo.count(db, actor.id),
     )
+    db.add(section)
+    await db.flush()
+    # M26: the conversations chosen in the create form move here (only ones I am in).
+    for channel_id in dict.fromkeys(data.channel_ids):
+        await channels.require_member(db, actor.id, channel_id)
+        await repo.place(db, actor.id, channel_id, section.id)
     return await _commit(db, actor)
 
 
@@ -76,6 +92,10 @@ async def update(
     section = await _require(db, actor, section_id)
     if data.name is not None:
         section.name = data.name
+    if "emoji" in data.model_fields_set:
+        section.emoji = data.emoji
+    if data.collapsed is not None:
+        section.collapsed = data.collapsed
     if data.position is not None:
         ordered = [s for s in await repo.sections_for(db, actor.id) if s.id != section.id]
         ordered.insert(min(data.position, len(ordered)), section)

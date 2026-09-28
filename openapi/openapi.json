@@ -3455,6 +3455,27 @@
       "SectionCreate": {
         "additionalProperties": false,
         "properties": {
+          "channel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Channel Ids",
+            "type": "array"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
           "name": {
             "maxLength": 40,
             "minLength": 1,
@@ -3470,7 +3491,31 @@
       },
       "SectionUpdate": {
         "additionalProperties": false,
+        "description": "Only the fields sent change; `emoji: null` takes the icon off.",
         "properties": {
+          "collapsed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collapsed"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
           "name": {
             "anyOf": [
               {
@@ -3593,6 +3638,22 @@
             },
             "title": "Channel Ids",
             "type": "array"
+          },
+          "collapsed": {
+            "default": false,
+            "title": "Collapsed",
+            "type": "boolean"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
           },
           "id": {
             "format": "uuid",

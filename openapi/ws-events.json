@@ -2893,6 +2893,23 @@
                 "title": "Channel Ids",
                 "type": "array"
               },
+              "collapsed": {
+                "default": false,
+                "title": "Collapsed",
+                "type": "boolean"
+              },
+              "emoji": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Emoji"
+              },
               "id": {
                 "format": "uuid",
                 "title": "Id",

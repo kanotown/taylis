@@ -3151,11 +3151,22 @@ export interface components {
         };
         /** SectionCreate */
         SectionCreate: {
+            /** Channel Ids */
+            channel_ids?: string[];
+            /** Emoji */
+            emoji?: string | null;
             /** Name */
             name: string;
         };
-        /** SectionUpdate */
+        /**
+         * SectionUpdate
+         * @description Only the fields sent change; `emoji: null` takes the icon off.
+         */
         SectionUpdate: {
+            /** Collapsed */
+            collapsed?: boolean | null;
+            /** Emoji */
+            emoji?: string | null;
             /** Name */
             name?: string | null;
             /** Position */
@@ -3211,6 +3222,13 @@ export interface components {
         SidebarSectionOut: {
             /** Channel Ids */
             channel_ids: string[];
+            /**
+             * Collapsed
+             * @default false
+             */
+            collapsed: boolean;
+            /** Emoji */
+            emoji?: string | null;
             /**
              * Id
              * Format: uuid
