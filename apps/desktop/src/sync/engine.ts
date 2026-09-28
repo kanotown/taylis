@@ -6,10 +6,13 @@
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
-import type { Store } from "./store";
+import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
+
+/** §7.7: a channel nobody looks at is trimmed back to the cap once live rows take it this far past it. */
+export const TRIM_MARGIN = 100;
 
 /**
  * The message mentions me: by name, group or @channel, or by one of my notification keywords (M12g).
@@ -129,6 +132,8 @@ export class SyncEngine {
   private readonly completeThreads = new Map<string, string>();
   /** §7.3 reloads per channel: an open view drops its anchor when its rows were replaced (§10.1 2.). */
   private readonly reloads = new Map<string, number>();
+  /** §7.7: views of a channel's rows besides the open conversation (a thread pane); the channel is not trimmed meanwhile. */
+  private readonly views = new Map<string, number>();
   private threadRefreshCancel: (() => void) | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
@@ -693,11 +698,13 @@ export class SyncEngine {
         this.countUnread(message);
         this.maybeNotify(message, channel, thread);
       }
+      this.trimIfFull(channel.id);
       return;
     }
     if (seq > channel.syncedSeq + 1) {
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
       await this.catchUp(channel.id);
+      this.trimIfFull(channel.id);
       if (isNew) {
         this.countUnread(message);
         this.maybeNotify(message, channel, thread);
@@ -788,7 +795,9 @@ export class SyncEngine {
   // --- §7.3 catch_up ----------------------------------------------------------------------
 
   openChannel(channelId: string): Promise<void> {
+    const previous = this.currentChannelId;
     this.currentChannelId = channelId;
+    if (previous !== null && previous !== channelId) this.trimLater(previous);
     for (const held of [...this.unreadHold.keys()]) if (held !== channelId) this.unreadHold.delete(held);
     if (this.status !== "online") return Promise.resolve();
     void this.loadLinks(channelId);
@@ -1089,6 +1098,45 @@ export class SyncEngine {
       for (const message of page.messages) store.upsertMessage(message);
       store.updateChannel(channelId, loadedRange(page));
     });
+  }
+
+  /**
+   * §7.7: a view of the channel's rows other than the open conversation (a thread pane) keeps them whole until the
+   * returned function releases it.
+   */
+  viewing(channelId: string): () => void {
+    this.views.set(channelId, (this.views.get(channelId) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (this.views.get(channelId) ?? 1) - 1;
+      if (left > 0) this.views.set(channelId, left);
+      else {
+        this.views.delete(channelId);
+        this.trimLater(channelId);
+      }
+    };
+  }
+
+  private shown(channelId: string): boolean {
+    return channelId === this.currentChannelId || this.views.has(channelId);
+  }
+
+  /** §7.7, in the queue: after any page still loading for the channel (a page landing after the trim would leave a gap). */
+  private trimLater(channelId: string): void {
+    void this.enqueue(async () => this.trim(channelId));
+  }
+
+  /** Live rows piling up in a channel nobody looks at: trimmed once they pass the cap by a margin (not on every row). */
+  private trimIfFull(channelId: string): void {
+    if (this.deps.store.heldCount(channelId) > CACHED_MESSAGES_PER_CHANNEL + TRIM_MARGIN) this.trim(channelId);
+  }
+
+  private trim(channelId: string): void {
+    if (this.shown(channelId)) return;
+    // A thread whose older replies went is no longer complete (§10.2): opening it fetches them again.
+    if (this.deps.store.trimMessages(channelId)) this.forgetThreads(channelId);
   }
 
   /** How many §7.3 reloads replaced the channel's rows since start-up (an open view compares it, §10.1 2.). */

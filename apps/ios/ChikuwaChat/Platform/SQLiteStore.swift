@@ -186,6 +186,11 @@ final class SQLitePersistence: Persistence {
         try db.exec("DELETE FROM messages WHERE channel_id = ?", [channelId])
     }
 
+    /// §7.7: on the (channel_id, seq) index; pending rows (seq NULL) stay.
+    func deleteOlderMessages(channelId: String, beforeSeq: Int) throws {
+        try db.exec("DELETE FROM messages WHERE channel_id = ? AND seq IS NOT NULL AND seq < ?", [channelId, beforeSeq])
+    }
+
     func saveOutbox(_ item: OutboxItem) throws {
         try db.exec("INSERT INTO outbox (client_msg_id, created_at, json) VALUES (?, ?, ?) ON CONFLICT(client_msg_id) DO UPDATE SET json = excluded.json",
                     [item.clientMsgId, item.createdAt, encode(item)])

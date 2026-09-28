@@ -57,6 +57,7 @@ interface LocalDao {
     @Query("SELECT * FROM messages") fun messages(): List<MessageRow>
     @Upsert fun putMessage(row: MessageRow)
     @Query("DELETE FROM messages WHERE id = :id") fun deleteMessage(id: String)
+    @Query("DELETE FROM messages WHERE id IN (:ids)") fun deleteMessages(ids: List<String>)
     @Query("DELETE FROM messages WHERE channelId = :channelId") fun clearMessages(channelId: String)
 
     @Query("SELECT * FROM outbox") fun outbox(): List<OutboxRow>
@@ -81,9 +82,10 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         meta = dao.meta().associate { it.key to it.value },
         users = dao.users().mapNotNull { decode(UserPublic.serializer(), it.json) },
         channels = dao.channels().mapNotNull { decode(ChannelState.serializer(), it.json) },
-        messages = dao.messages().mapNotNull { decode(MessageState.serializer(), it.json) },
         outbox = dao.outbox().mapNotNull { decode(OutboxItem.serializer(), it.json) },
     )
+
+    override fun loadMessages(): List<MessageState> = dao.messages().mapNotNull { decode(MessageState.serializer(), it.json) }
 
     override fun saveMeta(key: String, value: String?) = run { if (value == null) dao.deleteMeta(key) else dao.putMeta(MetaRow(key, value)) }
     override fun saveUser(user: UserPublic) = run { dao.putUser(UserRow(user.id, Codec.plain.encodeToString(UserPublic.serializer(), user))) }
@@ -91,6 +93,8 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     override fun deleteChannel(id: String) = run { dao.deleteChannel(id) }
     override fun saveMessage(message: MessageState) = run { dao.putMessage(MessageRow(message.id, message.channelId, Codec.plain.encodeToString(MessageState.serializer(), message))) }
     override fun deleteMessage(id: String) = run { dao.deleteMessage(id) }
+    // Chunked below SQLite's bound-variable limit (999 on older Android versions); one transaction for the whole trim.
+    override fun deleteMessages(ids: List<String>) = run { db.runInTransaction { ids.chunked(DELETE_CHUNK).forEach { dao.deleteMessages(it) } } }
     override fun clearMessages(channelId: String) = run { dao.clearMessages(channelId) }
     override fun saveOutbox(item: OutboxItem) = run { dao.putOutbox(OutboxRow(item.clientMsgId, Codec.plain.encodeToString(OutboxItem.serializer(), item))) }
     override fun deleteOutbox(clientMsgId: String) = run { dao.deleteOutbox(clientMsgId) }
@@ -115,6 +119,8 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         runCatching { Codec.plain.decodeFromString(serializer, json) }.getOrNull()
 
     companion object {
+        private const val DELETE_CHUNK = 500
+
         /**
          * One database per (server, user) profile, named by a hash of both (SYNC_PROTOCOL.md §11), so switching
          * accounts never mixes timelines and similar names cannot collide.

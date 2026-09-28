@@ -161,19 +161,30 @@ data class Snapshot(
 
 /** Write-through persistence (SQLite in the app; null in tests). */
 interface Persistence {
+    /** Everything but the messages, which [loadMessages] reads on its own. */
     fun loadAll(): Snapshot
+    /** The cached messages: the bulk of the store, loaded apart so a failure here loses only them (AND-4). */
+    fun loadMessages(): List<MessageState>
     fun saveMeta(key: String, value: String?)
     fun saveUser(user: UserPublic)
     fun saveChannel(channel: ChannelState)
     fun deleteChannel(id: String)
     fun saveMessage(message: MessageState)
     fun deleteMessage(id: String)
+    /** §7.7: the rows a trim dropped, by id (the table has no seq column to delete a range by). */
+    fun deleteMessages(ids: List<String>)
     fun clearMessages(channelId: String)
     fun saveOutbox(item: OutboxItem)
     fun deleteOutbox(clientMsgId: String)
 }
 
 const val LOCAL_PREFIX = "local:"
+
+/**
+ * At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
+ * stay). Older history is paged in again when the reader scrolls up.
+ */
+const val CACHED_MESSAGES_PER_CHANNEL = 500
 
 /** The single source of truth for the UI (ARCHITECTURE.md §11). Mutated only from the engine's thread. */
 /**
@@ -323,12 +334,17 @@ class Store(private val persistence: Persistence? = null) {
     val version: StateFlow<Int> = _version
 
     fun load() {
-        val snapshot = runCatching { persistence?.loadAll() }.getOrNull() ?: return
-        apply(snapshot)
+        val target = persistence ?: return
+        val snapshot = runCatching { target.loadAll() }.getOrNull() ?: return
+        // AND-4: the messages come on their own. A failure there (years of rows too big for memory) costs only the
+        // cached rows; the outbox, drafts and channels that loaded fine stay.
+        val messages = runCatching { target.loadMessages() }.onFailure { println("messages not loaded: $it") }
+        apply(snapshot.copy(messages = messages.getOrDefault(emptyList())), messagesLost = messages.isFailure)
         emit()
     }
 
-    private fun apply(snapshot: Snapshot) {
+    /** Rows as persisted: stale or lost timelines load again, the cache is trimmed (§7.7). */
+    private fun apply(snapshot: Snapshot, messagesLost: Boolean = false) {
         snapshot.meta.filterKeys { it.startsWith("draft:") }.forEach { (key, value) ->
             runCatching { Codec.plain.decodeFromString(Draft.serializer(), value) }.getOrNull()?.let { drafts[key] = it }
         }
@@ -345,6 +361,28 @@ class Store(private val persistence: Persistence? = null) {
             persist { it.clearMessages(id); kept.forEach { m -> it.saveMessage(m) }; it.saveChannel(channel) }
         }
         outbox.addAll(snapshot.outbox)
+        if (messagesLost) forgetTimelines()
+        messagesByChannel.keys.toList().forEach { trimCache(it) }
+    }
+
+    /**
+     * The messages could not be read: every timeline loads again from the latest page (a synced cursor over rows that
+     * are not here would leave a hole no page fills), the table is emptied so the next start does not fail the same
+     * way, and the unsent messages get their pending rows back from the outbox.
+     */
+    private fun forgetTimelines() {
+        channels.values.toList().forEach { channel ->
+            val reset = channel.copy(syncedSeq = null, oldestLoadedSeq = null, hasOlder = true)
+            channels[channel.id] = reset
+            persist { it.clearMessages(channel.id); it.saveChannel(reset) }
+        }
+        outbox.forEach { item ->
+            val placeholder = MessageState.placeholder(
+                item.clientMsgId, item.channelId, me?.id ?: "", item.body, item.createdAt, item.parentId, item.alsoInChannel, item.priority, item.ackRequested,
+            ).copy(failed = item.failed != null)
+            bucket(item.channelId)[placeholder.id] = placeholder
+            persist { it.saveMessage(placeholder) }
+        }
     }
 
     private fun emit() {
@@ -694,6 +732,40 @@ class Store(private val persistence: Persistence? = null) {
         messagesByChannel.remove(channelId)
         persist { it.clearMessages(channelId) }
         emit()
+    }
+
+    /**
+     * §7.7: keeps the newest CACHED_MESSAGES_PER_CHANNEL rows of a channel nobody is looking at; true when rows were
+     * dropped. The engine decides when (never for an open conversation or thread).
+     */
+    fun trimMessages(channelId: String): Boolean {
+        if (!trimCache(channelId)) return false
+        emit()
+        return true
+    }
+
+    /** Rows with a seq held for the channel: the engine trims once they pass the cap by a margin. */
+    fun heldCount(channelId: String): Int = messagesByChannel[channelId]?.values?.count { it.seq != null } ?: 0
+
+    /** Keeps the newest CACHED_MESSAGES_PER_CHANNEL rows with a seq; the loaded range then starts after the dropped ones. */
+    private fun trimCache(channelId: String): Boolean {
+        val bucket = messagesByChannel[channelId] ?: return false
+        val confirmed = bucket.values.filter { it.seq != null }
+        if (confirmed.size <= CACHED_MESSAGES_PER_CHANNEL) return false
+        // Only from the old side: newer rows, once dropped, would not come back (the delta starts at the synced seq, §7.3).
+        val dropped = confirmed.sortedByDescending { it.seq }.drop(CACHED_MESSAGES_PER_CHANNEL)
+        val newestDropped = dropped.first().seq ?: return false
+        dropped.forEach { bucket.remove(it.id) }
+        val ids = dropped.map { it.id }
+        persist { it.deleteMessages(ids) }
+        val channel = channels[channelId]
+        val oldest = channel?.oldestLoadedSeq
+        if (channel != null && oldest != null && oldest <= newestDropped) {
+            val trimmed = channel.copy(oldestLoadedSeq = newestDropped + 1, hasOlder = true)
+            channels[channelId] = trimmed
+            persist { it.saveChannel(trimmed) }
+        }
+        return true
     }
 
     // --- outbox -----------------------------------------------------------------------------

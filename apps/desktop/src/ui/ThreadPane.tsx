@@ -26,6 +26,8 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const parent = found ?? (lastParent.current?.id === parentId ? lastParent.current.message : undefined);
   const replies = store.replies(channel.id, parentId);
   const state = entry?.state;
+  // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open.
+  useEffect(() => engine?.viewing(channel.id), [engine, channel.id]);
   const focused = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const [tapHandlers] = useState(() => tapClosesKeyboard());
