@@ -67,6 +67,7 @@ fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) 
 @Composable
 private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController) {
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
+    var viewing by remember(attachment.id) { mutableStateOf(false) }
     LaunchedEffect(attachment.id) {
         bitmap = runCatching {
             val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/thumbnail")
@@ -75,12 +76,13 @@ private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController)
     }
     val image = bitmap
     val shape = RoundedCornerShape(8.dp)
-    val modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp).clip(shape).clickable { controller.openAttachment(attachment) }
+    val modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp).clip(shape).clickable { viewing = true }
     if (image != null) {
         Image(image, contentDescription = attachment.filename, contentScale = ContentScale.Fit, modifier = modifier)
     } else {
         Text(attachment.filename, modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape).padding(12.dp))
     }
+    if (viewing) ImageViewer(attachment, controller, onDismiss = { viewing = false })
 }
 
 @Composable
