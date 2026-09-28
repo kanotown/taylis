@@ -51,11 +51,15 @@ private struct KeepsBottom: ViewModifier {
     let enabled: Bool
     let atEnd: Bool
     let restore: (CGFloat, Bool) -> Void
+    /// The reader's finger is on the list, or it is still gliding: nothing scrolls it then (testers felt it catch).
+    @State private var moving = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
-                guard enabled else { return }
+            content
+            .onScrollPhaseChange { _, phase in moving = phase == .interacting || phase == .decelerating || phase == .tracking }
+            .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
+                guard enabled, !moving else { return }
                 let below = KeyboardBehavior.distanceToEnd(contentHeight: old.contentSize.height, insets: old.contentInsets,
                                                           offset: old.contentOffset.y, containerHeight: old.containerSize.height)
                 if abs(old.containerSize.height - new.containerSize.height) > 0.5 {

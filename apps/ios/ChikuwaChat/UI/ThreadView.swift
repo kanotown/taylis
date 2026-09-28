@@ -25,6 +25,7 @@ struct ThreadView: View {
     @State private var visibleFrames: [String: CGRect] = [:]
     @State private var viewportHeight: CGFloat = 0
     @State private var cover = CoverProbe()
+    @State private var landingInterrupted = false
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
@@ -85,7 +86,10 @@ struct ThreadView: View {
                                 proxy.scrollTo(reply.rowKey, anchor: .bottom)
                             }
                         }
-                        .onUserScroll { if provisional && !positioned { userScrolled = true } }
+                        .onUserScroll {
+                            if provisional && !positioned { userScrolled = true }
+                            if anchor.landing != nil { landingInterrupted = true }
+                        }
                         .background(CoverProbe.Marker(probe: cover))
                         .onPreferenceChange(VisibleReplyFrames.self) { frames in
                             visibleFrames = frames
@@ -192,7 +196,9 @@ struct ThreadView: View {
     /// Scrolls the first unread reply (and its divider) to the top, again while LazyVStack's estimates leave it off
     /// screen, then lets the anchor judge from the frames where it ended.
     private func land(_ landing: ReadAnchor.Landing, _ proxy: ScrollViewProxy) async {
+        landingInterrupted = false
         for _ in 0..<3 {
+            if landingInterrupted { break } // the reader took the list: it is not pulled from under a finger
             proxy.scrollTo(landing.rowKey, anchor: .top)
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
