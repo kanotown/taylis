@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.PushPin
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.runtime.snapshotFlow
@@ -581,7 +582,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         if (value.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
     }
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+    fun uploadPicked(uris: List<android.net.Uri>) {
         if (pendingUploads.size + uploading + uris.size > maxAttachments) controller.error = "添付は${maxAttachments}件までです"
         else {
             store.trackUpload(channelId, parentId, uris.size)
@@ -594,6 +595,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             } }
         }
     }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents(), ::uploadPicked)
+    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10), ::uploadPicked)
     Column {
         if (uploading > 0) Text("添付をアップロード中…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp))
         val query = Mentions.query(draft)
@@ -657,7 +660,17 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-            IconButton(enabled = uploading == 0, onClick = { picker.launch("*/*") }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
+            var attachmentMenu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(enabled = uploading == 0, onClick = { attachmentMenu = true }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
+                DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
+                    DropdownMenuItem(text = { Text("写真・動画") }, onClick = {
+                        attachmentMenu = false
+                        mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    })
+                    DropdownMenuItem(text = { Text("ファイル") }, onClick = { attachmentMenu = false; picker.launch("*/*") })
+                }
+            }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
             // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
             var scheduleOpen by remember { mutableStateOf(false) }
