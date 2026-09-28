@@ -1312,6 +1312,16 @@ export class SyncEngine {
   }
 
   /**
+   * §10.1 11.: a top-level post this device made through an endpoint of its own rather than the outbox (a poll, M14b)
+   * reads the channel like a send: the server read it up to the post in the same transaction. Before, the position
+   * waited for read.updated, as for a post from another device.
+   */
+  postedFromHere(message: MessageOut): void {
+    this.deps.store.upsertMessage(message);
+    if (!message.parent_id) this.readOwnPost(message.channel_id, message.seq);
+  }
+
+  /**
    * §10.1 11.: my top-level post went through, and the server read the channel up to it in the same transaction. Only
    * here, never on my own message.created: a scheduled send (M12d) does not read, and a position moved by its event
    * would let the next visible row skip unread rows never shown. Replies leave the channel's position alone.

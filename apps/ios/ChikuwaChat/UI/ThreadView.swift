@@ -26,6 +26,11 @@ struct ThreadView: View {
     @State private var viewportHeight: CGFloat = 0
     @State private var cover = CoverProbe()
     @State private var landingInterrupted = false
+    /// The list's UIScrollView, for keeping its bottom edge on iOS 18 (KeepsBottom), and whether it is doing that.
+    @State private var scroller = ScrollViewProbe()
+    @State private var resizing = false
+    /// A message's sheet, presented here rather than by its row (MessageSheet).
+    @State private var messageSheet: MessageSheet?
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
@@ -50,7 +55,7 @@ struct ThreadView: View {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 12) {
                                 if let parent {
-                                    MessageRow(message: parent, controller: controller)
+                                    MessageRow(message: parent, controller: controller, highlighted: highlighted(parent), present: { messageSheet = $0 })
                                     Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
                                         .font(.caption).foregroundStyle(.secondary)
                                     Divider()
@@ -58,7 +63,7 @@ struct ThreadView: View {
                                         // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
                                         VStack(alignment: .leading, spacing: 12) {
                                             if reply.id == firstUnreadId { NewRepliesDivider() }
-                                            MessageRow(message: reply, controller: controller)
+                                            MessageRow(message: reply, controller: controller, highlighted: highlighted(reply), present: { messageSheet = $0 })
                                                 .background(GeometryReader { geometry in
                                                     Color.clear.preference(key: VisibleReplyFrames.self,
                                                                            value: [reply.id: geometry.frame(in: .named("threadViewport"))])
@@ -74,11 +79,13 @@ struct ThreadView: View {
                                     .onDisappear { atBottom = false }
                             }
                             .padding()
+                            .background(ScrollViewProbe.Marker(probe: scroller))
                         }
                         .coordinateSpace(name: "threadViewport")
                         .dismissesKeyboardOnTap()
                         // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
-                        .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom) { height, atEnd in
+                        .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom, scroller: scroller,
+                                             resizing: { resizing = $0 }) { height, atEnd in
                             if atEnd {
                                 proxy.scrollTo("bottom", anchor: .bottom)
                             } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
@@ -97,7 +104,7 @@ struct ThreadView: View {
                             markRead()
                         }
                     }
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing))
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: replies.last?.rowKey) { _, _ in
                         let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
@@ -141,11 +148,9 @@ struct ThreadView: View {
                         Button {
                             Task { await controller.engine?.setThreadFollow(parentId, following: !state.following) }
                         } label: {
-                            Label(state.following ? "フォロー中" : "フォロー", systemImage: state.following ? "bell.fill" : "bell")
-                                .labelStyle(.titleAndIcon)
+                            followLabel(state.following)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .modifier(ToolbarPill())
                         .tint(state.following ? Color.accentColor : .secondary)
                         .accessibilityLabel(state.following ? "スレッドのフォローを外す" : "スレッドをフォロー")
                     }
@@ -162,11 +167,25 @@ struct ThreadView: View {
                 guard entry == nil, let parent, let out = MessageOut(parent) else { return }
                 await controller.engine?.loadThreadState(parentId, parent: out)
             }
+            .messageSheets(controller, sheet: $messageSheet)
         }
         // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open, also when the
         // channel is not the open conversation (a thread opened from 「スレッド」).
         .keepsChannelRows(controller.engine, channelId)
     }
+
+    /// 「フォロー中」 / 「フォロー」 with the bell where the toolbar shows titles (iOS 18). From iOS 26 it shows the bell
+    /// alone, and the title is what VoiceOver reads there (iOS 26.2 read it rather than the button's label).
+    @ViewBuilder
+    private func followLabel(_ following: Bool) -> some View {
+        if #available(iOS 26.0, *) {
+            Label(following ? "スレッドのフォローを外す" : "スレッドをフォロー", systemImage: following ? "bell.fill" : "bell")
+        } else {
+            Label(following ? "フォロー中" : "フォロー", systemImage: following ? "bell.fill" : "bell").labelStyle(.titleAndIcon)
+        }
+    }
+
+    private func highlighted(_ message: MessageState) -> Bool { messageSheet?.kind == .actions && messageSheet?.message.id == message.id }
 
     /// §10.2: until the thread is ready the local rows (live replies only, perhaps) sit at the bottom, or the focus reply
     /// in the middle when held; once ready it is placed once, like a channel: the focus, else the first unread reply at the
@@ -232,6 +251,19 @@ struct ThreadView: View {
                                visible: visible, onScreenIds: onScreen)
         if next != anchor { anchor = next }
         if let seq { controller.engine?.markThreadRead(parentId, seq: seq) }
+    }
+}
+
+/// A toolbar button that shows its state as a shape of its own: bordered where the toolbar draws none (iOS 18); from
+/// iOS 26 the toolbar puts every item in a glass capsule already, and a bordered button in it showed two shapes
+/// (testers, 2026-09-29). The icon and the tint carry the state there.
+private struct ToolbarPill: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.buttonStyle(.bordered).controlSize(.small)
+        }
     }
 }
 

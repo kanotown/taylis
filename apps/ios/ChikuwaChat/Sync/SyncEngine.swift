@@ -90,6 +90,9 @@ final class SyncEngine {
     private var pendingReads: [String: Task<Void, Never>] = [:]
     /// Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10).
     private(set) var unreadHold: [String: Int] = [:]
+    /// The newest top-level post this device made through an endpoint of its own rather than the outbox (a poll, M14b):
+    /// the conversation goes to it as to a pending post of mine (§10.1 11.).
+    private(set) var postedHere: String?
     /// Thread read positions sent (or about to be) while the thread's state is not loaded yet.
     private var threadReadFloor: [String: Int] = [:]
     /// §10.2: parent id → channel id of the threads whose replies were all fetched since the channel's rows were last
@@ -639,6 +642,15 @@ final class SyncEngine {
             if message.mentionsMe(me) { state.mentionCount += 1 }
         }
         onBadge?(store.badgeCount)
+    }
+
+    /// A post this device created through its own endpoint (a poll): stored, and read like a send from the outbox
+    /// (§10.1 11.; the server reads the channel up to it the same way). Before, a poll left the position where it was
+    /// and the conversation where the reader was, as if it came from another device (testers, 2026-09-29).
+    func postedFromHere(_ message: MessageOut) {
+        store.upsertMessage(message)
+        if message.parentId == nil { postedHere = message.id }
+        readOwnPost(message, created: true)
     }
 
     /// §10.1 11.: the server read the channel up to my top-level post inside the send transaction; this device mirrors it

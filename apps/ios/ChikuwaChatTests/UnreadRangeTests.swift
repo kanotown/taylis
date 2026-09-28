@@ -511,6 +511,28 @@ final class UnreadRangeTests: XCTestCase {
         w.engine.stop()
     }
 
+    /// §10.1 11.: a poll made here (its own endpoint, not the outbox) reads like a send from here, from its response,
+    /// and is the post the conversation goes to.
+    func testAPollFromHereReadsLikeASend() async throws {
+        let w = makeWorld()
+        await open(w, total: 130, lastRead: 100)
+        await read(w, 130)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "131")
+        await settle(w.engine)
+        XCTAssertEqual([state(w).lastReadSeq, state(w).unreadCount], [130, 1])
+        w.server.holdEvents = true // its events are still on their way
+        let (poll, _) = try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "📊 lunch?")
+        w.engine.postedFromHere(poll)
+        XCTAssertEqual([state(w).lastReadSeq, state(w).unreadCount], [132, 0])
+        XCTAssertEqual(w.engine.postedHere, poll.id)
+        XCTAssertEqual(w.store.messages(w.channel.id).last?.id, poll.id)
+        w.server.holdEvents = false
+        w.server.release()
+        await settle(w.engine)
+        XCTAssertEqual([state(w).lastReadSeq, state(w).unreadCount], [132, 0])
+        w.engine.stop()
+    }
+
     /// §10.1 11.: a retry that finds my post already stored (the first response was lost) reads nothing now. The position
     /// came with that commit's read.updated, and the rows others posted since stay unread: zeroing them on the retry's
     /// response made the view anchor at once and mark the bottom row, skipping 132...185 unseen on every device.
