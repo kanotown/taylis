@@ -106,35 +106,64 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
   const [members, setMembers] = useState<Set<string> | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [adding, setAdding] = useState(false);
   const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at && !members?.has(u.id)).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
 
   useEffect(() => {
-    if (!controller.api) return;
-    void controller.api.members(channelId).then((list) => setMembers(new Set(list.map((m) => m.user_id))), () => setMembers(new Set()));
-  }, [controller.api, channelId]);
+    let cancelled = false;
+    setMembers(null);
+    setSelected([]);
+    setLoadError(null);
+    setError(null);
+    const api = controller.api;
+    void (async () => {
+      try {
+        if (!api) throw new Error("接続を確認してください");
+        const list = await api.members(channelId);
+        if (!cancelled) setMembers(new Set(list.map((m) => m.user_id)));
+      } catch (error) {
+        if (!cancelled) setLoadError(controller.describe(error));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [controller, controller.api, channelId, attempt]);
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const add = async () => {
-    if (!controller.api) return;
+    if (!controller.api || members === null || adding || selected.length === 0) return;
+    setAdding(true);
+    setError(null);
     try {
-      for (const userId of selected) await controller.api.addMember(channelId, userId);
+      for (const userId of selected) {
+        await controller.api.addMember(channelId, userId);
+        setMembers((values) => new Set([...(values ?? []), userId]));
+        setSelected((values) => values.filter((id) => id !== userId));
+      }
       onClose();
     } catch (err) {
       setError(controller.describe(err));
-    }
+    } finally { setAdding(false); }
   };
 
   return (
     <Modal onClose={onClose} title="メンバーを追加">
       <div className="mt-4 space-y-3">
-        {members === null ? <p className="py-6 text-center text-sm text-muted">読み込み中…</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty="追加できるユーザーはいません" />}
+        {loadError !== null ? (
+          <div className="space-y-2 py-4 text-sm">
+            <p role="alert">メンバー一覧を読み込めませんでした</p>
+            <p className="text-muted">{loadError}</p>
+            <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>再試行</Button>
+          </div>
+        ) : members === null ? <p role="status" className="py-6 text-center text-sm text-muted">読み込み中…</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty="追加できるユーザーはいません" />}
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             閉じる
           </Button>
-          <Button onClick={() => void add()} disabled={selected.length === 0}>
+          <Button onClick={() => void add()} disabled={members === null || adding || selected.length === 0}>
             追加
           </Button>
         </div>
@@ -532,6 +561,10 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
 }
 
 const SHORTCUTS: Array<[string, string]> = [
+  ["F6 / Shift + F6", "サイドバー・メッセージ一覧・入力欄へ移動"],
+  ["↑ / ↓・Home / End (メッセージ上)", "前後・読み込み済みの先頭/末尾のメッセージへ移動"],
+  ["Enter / Shift + F10 (メッセージ上)", "メッセージの操作ボタンへ移動 (Tab で選択)"],
+  ["→ / T (メッセージ上)", "スレッドを開く"],
   ["Ctrl/⌘ + K", "チャンネルや DM に移動"],
   ["Ctrl/⌘ + Shift + K", "新しい DM"],
   ["Ctrl/⌘ + F", "検索 (↑↓ で候補を選び Enter)"],

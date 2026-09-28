@@ -41,6 +41,60 @@ final class ComposerSnapshotTests: XCTestCase {
         return m
     }
 
+    func testJapaneseMentionCandidatesRender() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.upsertUser(UserPublic(id: "00000000-0000-7000-8000-000000000001", username: "yamada", displayName: "山田 太郎", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+        let channel = ChannelOut(id: "c1", type: "public", name: "研究室", topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                                 lastMessageAt: nil, createdAt: "", updatedAt: "", membership: MembershipOut(role: "member", joinedAt: ""), dmUserIds: nil)
+        store.upsertChannel(channel, isMember: true)
+        store.updateChannel("c1") { $0.hasOlder = false; $0.syncedSeq = 0 }
+        store.setDraft("c1") { $0.text = "確認をお願いします @山田" }
+        let screen = NavigationStack { ChannelView(controller: controller, channelId: "c1", pendingThreadId: .constant(nil)) }
+        let image = try render(screen, size: CGSize(width: 393, height: 760), name: "C6-ios.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
+    func testUnavailableThumbnailRenders() throws {
+        let controller = AppController()
+        let attachment = AttachmentOut(id: "unavailable", filename: "実験結果.png", contentType: "image/png", sizeBytes: 1024, width: 640, height: 480, hasThumbnail: true, status: "attached", createdAt: "")
+        let view = VStack(alignment: .leading) {
+            Text("山田 太郎").font(.headline)
+            Text("実験結果を添付しました")
+            AttachmentsView(attachments: [attachment], controller: controller)
+            Spacer()
+        }.padding()
+        _ = try render(view, size: CGSize(width: 393, height: 450), name: "C7-ios.png")
+    }
+
+    func testThumbnailFailureAndRetry() async throws {
+        let loader = AttachmentImageLoader()
+        await loader.load { throw URLError(.notConnectedToInternet) }
+        XCTAssertTrue(loader.failed)
+        await loader.load { Data("invalid image".utf8) }
+        XCTAssertTrue(loader.failed)
+        let data = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image { _ in
+            UIColor.blue.setFill()
+            UIRectFill(CGRect(x: 0, y: 0, width: 10, height: 10))
+        }.pngData()!
+        await loader.load { data }
+        XCTAssertFalse(loader.failed)
+        XCTAssertNotNil(loader.image)
+    }
+
+    func testThumbnailIgnoresSupersededRequest() async {
+        let loader = AttachmentImageLoader()
+        var oldResponse: CheckedContinuation<Data, Error>?
+        let old = Task { await loader.load { try await withCheckedThrowingContinuation { oldResponse = $0 } } }
+        while oldResponse == nil { await Task.yield() }
+        let data = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image { _ in }.pngData()!
+        await loader.load { data }
+        oldResponse?.resume(throwing: URLError(.networkConnectionLost))
+        await old.value
+        XCTAssertFalse(loader.failed)
+        XCTAssertNotNil(loader.image)
+    }
+
     func testAvatarCropScreenRenders() throws {  // M16g
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1

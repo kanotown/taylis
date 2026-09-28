@@ -9,6 +9,7 @@ struct ImageViewer: View {
     @State private var image: UIImage?
     @State private var fileURL: URL?
     @State private var failed = false
+    @State private var attempt = 0
 
     var body: some View {
         NavigationStack {
@@ -17,7 +18,10 @@ struct ImageViewer: View {
                 if let image {
                     ZoomableImage(image: image).ignoresSafeArea()
                 } else if failed {
-                    Text("画像を読み込めませんでした").foregroundStyle(.white)
+                    VStack(spacing: 12) {
+                        Text("画像を読み込めませんでした").foregroundStyle(.white)
+                        Button("再試行") { attempt += 1 }.buttonStyle(.borderedProminent)
+                    }
                 } else {
                     ProgressView().tint(.white)
                 }
@@ -37,9 +41,14 @@ struct ImageViewer: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .task {
-                fileURL = await controller.downloadAttachment(attachment)
-                if let fileURL, let data = try? Data(contentsOf: fileURL), let loaded = UIImage(data: data) { image = loaded } else { failed = true }
+            .task(id: "\(attachment.id):\(attempt)") {
+                failed = false
+                image = nil
+                fileURL = nil
+                let downloaded = await controller.downloadAttachment(attachment)
+                guard !Task.isCancelled else { return }
+                fileURL = downloaded
+                if let downloaded, let data = try? Data(contentsOf: downloaded), let loaded = UIImage(data: data) { image = loaded } else { failed = true }
             }
         }
         .preferredColorScheme(.dark)

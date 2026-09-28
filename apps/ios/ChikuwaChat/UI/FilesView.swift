@@ -93,20 +93,13 @@ struct FileRowView: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Button { Task { if let url = await controller.downloadAttachment(attachment) { shareUrl = url } } } label: {
-                Image(systemName: "square.and.arrow.down")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("ダウンロード")
+            AttachmentFileButton(attachment: attachment) { await controller.downloadAttachment(attachment) }
         }
         .padding(.vertical, 2)
         .task(id: attachment.id) {
             guard attachment.hasThumbnail, image == nil else { return }
             if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
         }
-        .sheet(item: Binding(get: { shareUrl.map(ShareTarget.init) }, set: { shareUrl = $0?.url })) { target in ShareSheet(items: [target.url]) }
     }
 
-    @State private var shareUrl: URL?
-    private struct ShareTarget: Identifiable { let url: URL; var id: String { url.path } }
 }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00BAB77FECE44AE87840C53A /* contract in Resources */ = {isa = PBXBuildFile; fileRef = D290E26FC75BEFC78C3A87EE /* contract */; };
 		01058071D83FDB3831C7411A /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF56C1D17673E9A46D280F6D /* Frames.swift */; };
 		028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B17C0044CEFA7773C29BDC /* Permalink.swift */; };
 		072F46A639D7FAE65117A223 /* Share.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B2BB586E878AEEC2A31668 /* Share.swift */; };
@@ -91,7 +92,6 @@
 		B229EA04E953D0194682727E /* ApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20149D2520CFB689B293AEB2 /* ApiClient.swift */; };
 		B4CD4CF8E05DA616E9EBA973 /* UserScrollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A51B81551C8578ACBBC035 /* UserScrollTests.swift */; };
 		B60B25516F421B2D785D44C4 /* ChannelIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 040510582EF3182E66D21640 /* ChannelIntroView.swift */; };
-		B707F0057EF21D3BDE715582 /* contract in Resources */ = {isa = PBXBuildFile; fileRef = C1B1B9CFD4F32337DCDC0CCA /* contract */; };
 		BAC374BD1E76EA42F1E24852 /* TypingLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234BE2448E1022BD0D1D55EB /* TypingLine.swift */; };
 		BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7251E3E02E155A12489239 /* ChannelListView.swift */; };
 		BD01E7FD93BC7A0D72CA8F47 /* DirectoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7787A42779309636F0D889A4 /* DirectoryView.swift */; };
@@ -231,13 +231,13 @@
 		B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngineTests.swift; sourceTree = "<group>"; };
 		BC121C06BFAA7AB89AC54106 /* DNDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNDTests.swift; sourceTree = "<group>"; };
 		C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChikuwaChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C1B1B9CFD4F32337DCDC0CCA /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehaviorTests.swift; sourceTree = "<group>"; };
 		C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCache.swift; sourceTree = "<group>"; };
 		C5B17C0044CEFA7773C29BDC /* Permalink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permalink.swift; sourceTree = "<group>"; };
 		CA98EE4F635D9C1BC5DA1661 /* Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Search.swift; sourceTree = "<group>"; };
 		CC72EC7EE82888C41D902D52 /* NoticeToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeToast.swift; sourceTree = "<group>"; };
 		CF9BD65FAC55856BE6E82043 /* ChikuwaChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChikuwaChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D290E26FC75BEFC78C3A87EE /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
 		D5025810DA770D8747ACC610 /* RemindersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersView.swift; sourceTree = "<group>"; };
 		DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareMessageSheet.swift; sourceTree = "<group>"; };
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
@@ -310,23 +310,6 @@
 			path = ChikuwaChat;
 			sourceTree = "<group>";
 		};
-		4BE6D43FC9CA997FB9A40D7F /* tests */ = {
-			isa = PBXGroup;
-			children = (
-				C1B1B9CFD4F32337DCDC0CCA /* contract */,
-			);
-			path = tests;
-			sourceTree = "<group>";
-		};
-		5F7C0C680CF150C309C3DE55 /* ChikuwaChat */ = {
-			isa = PBXGroup;
-			children = (
-				8E8F211CDE90788388A745FB /* server */,
-			);
-			name = ChikuwaChat;
-			path = ../..;
-			sourceTree = "<group>";
-		};
 		746FC348230CABD2E5584727 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -336,6 +319,14 @@
 				5E67B45469B6C5625C8D9A6A /* Workspaces.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		7ABD5E85A890283E3F3A5EC4 /* server */ = {
+			isa = PBXGroup;
+			children = (
+				C9463A15C981E0E5253DE882 /* tests */,
+			);
+			path = server;
 			sourceTree = "<group>";
 		};
 		85964B35FF364CC28075330D /* ChikuwaChatTests */ = {
@@ -448,12 +439,13 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		8E8F211CDE90788388A745FB /* server */ = {
+		9E6B5D6E53A894601B5B7192 /* ChikuwaChat-merge */ = {
 			isa = PBXGroup;
 			children = (
-				4BE6D43FC9CA997FB9A40D7F /* tests */,
+				7ABD5E85A890283E3F3A5EC4 /* server */,
 			);
-			path = server;
+			name = "ChikuwaChat-merge";
+			path = ../..;
 			sourceTree = "<group>";
 		};
 		9EBFF18BABA664437095FFC6 /* Products */ = {
@@ -465,11 +457,19 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		C9463A15C981E0E5253DE882 /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				D290E26FC75BEFC78C3A87EE /* contract */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
 		EF7AAD189524D9626BFB43BC = {
 			isa = PBXGroup;
 			children = (
 				281A86D9F01B78F75A5D270D /* ChikuwaChat */,
-				5F7C0C680CF150C309C3DE55 /* ChikuwaChat */,
+				9E6B5D6E53A894601B5B7192 /* ChikuwaChat-merge */,
 				85964B35FF364CC28075330D /* ChikuwaChatTests */,
 				9EBFF18BABA664437095FFC6 /* Products */,
 			);
@@ -567,7 +567,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B707F0057EF21D3BDE715582 /* contract in Resources */,
+				00BAB77FECE44AE87840C53A /* contract in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

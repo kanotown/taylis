@@ -8,6 +8,18 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class MentionsTest {
+    @Test fun japaneseDisplayNameCompletionKeepsTheWireFormat() {
+        val yamada = alice.copy(username = "yamada", displayName = "山田 太郎")
+        val query = Mentions.query("確認 @山田")!!
+        assertEquals("山田", query)
+        val candidate = Mentions.candidates(query, listOf(yamada)).single()
+        val completed = Mentions.complete("確認 @山田", candidate.username)
+        assertEquals("確認 @yamada ", completed)
+        assertEquals("確認 <@${yamada.id}> ", Mentions.encode(completed, listOf(yamada)))
+        listOf("やまだ", "ヤマダ", "か\u3099", "田中１").forEach { assertEquals(it, Mentions.query("@$it")) }
+        listOf("@山田 ", "@山田、", "mail@山田").forEach { assertNull(Mentions.query(it)) }
+        assertEquals("@山田", Mentions.encode("@山田", listOf(yamada)))
+    }
     private val alice = UserPublic("00000000-0000-7000-8000-000000000001", "alice", "Alice", "member", null, "", "")
     private val bob = UserPublic("00000000-0000-7000-8000-000000000002", "bob.k", "Bob K", "member", null, "", "")
     private val users = listOf(alice, bob)

@@ -1,4 +1,5 @@
 import PhotosUI
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -29,11 +30,10 @@ func formatSize(_ bytes: Int64) -> String {
     return "\(bytes) B"
 }
 
-/// Images show their thumbnail (fetched with the bearer token); other files show a row that downloads and shares.
+/// Images show their thumbnail; documents download with authentication before a local system preview.
 struct AttachmentsView: View {
     let attachments: [AttachmentOut]
     @Bindable var controller: AppController
-    @State private var downloaded: [String: URL] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -48,11 +48,7 @@ struct AttachmentsView: View {
                             Text(formatSize(attachment.sizeBytes)).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if let url = downloaded[attachment.id] {
-                            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                        } else {
-                            Button { Task { await download(attachment) } } label: { Image(systemName: "arrow.down.circle") }
-                        }
+                        AttachmentFileButton(attachment: attachment) { await controller.downloadAttachment(attachment) }
                     }
                     .padding(8)
                     .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
@@ -62,21 +58,167 @@ struct AttachmentsView: View {
         .padding(.top, 2)
     }
 
-    private func download(_ attachment: AttachmentOut) async {
-        if let url = await controller.downloadAttachment(attachment) { downloaded[attachment.id] = url }
+}
+
+enum AttachmentFileCache {
+    static func destination(for attachment: AttachmentOut, in directory: URL) -> URL {
+        directory.appendingPathComponent(attachment.id.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
+            .appendingPathComponent(attachment.filename.replacingOccurrences(of: "/", with: "_"))
+    }
+}
+
+enum AttachmentPreview {
+    // Local Quick Look only; active web documents stay download/share-only, like the server's inline policy.
+    static func allows(_ url: URL) -> Bool {
+        ["pdf", "txt", "md", "csv", "tsv", "json", "log", "rtf", "rtfd", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+         "pages", "numbers", "key", "png", "jpg", "jpeg", "heic", "gif", "webp", "tif", "tiff", "bmp",
+         "mp4", "mov", "m4v", "mp3", "wav", "aac", "m4a", "aiff"].contains(url.pathExtension.lowercased())
+    }
+
+    static func canPreview(_ url: URL) -> Bool { allows(url) && QLPreviewController.canPreview(url as NSURL) }
+}
+
+@MainActor @Observable
+final class AttachmentFileLoader {
+    var url: URL?
+    var loading = false
+    var failed = false
+
+    func load(download: () async -> URL?) async {
+        guard !loading else { return }
+        loading = true
+        failed = false
+        defer { loading = false }
+        let downloaded = await download()
+        guard !Task.isCancelled else { return }
+        url = downloaded
+        failed = downloaded == nil
+    }
+}
+
+/// Shared by conversation attachments and the Files list; no duplicate downloads while one is running.
+struct AttachmentFileButton: View {
+    let attachment: AttachmentOut
+    let download: () async -> URL?
+    @State private var loader = AttachmentFileLoader()
+    @State private var attempt = 0
+    @State private var previewURL: URL?
+    @State private var shareURL: URL?
+
+    var body: some View {
+        VStack(spacing: 4) {
+            if loader.loading {
+                ProgressView().accessibilityLabel("\(attachment.filename) を読み込み中")
+            } else {
+                Button {
+                    if let url = loader.url { open(url) } else { attempt += 1 }
+                } label: {
+                    Label(loader.failed ? "再試行" : "開く", systemImage: loader.failed ? "arrow.clockwise" : "doc.text.magnifyingglass")
+                        .font(.footnote)
+                }
+                .accessibilityLabel("\(attachment.filename) を\(loader.failed ? "再試行" : "開く")")
+                if let url = loader.url {
+                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel("\(attachment.filename) を共有")
+                }
+                if loader.failed { Text("読み込み失敗").font(.caption2).foregroundStyle(.secondary) }
+            }
+        }
+        .buttonStyle(.borderless)
+        .task(id: attempt) {
+            guard attempt > 0 else { return }
+            await loader.load(download: download)
+            guard !Task.isCancelled, let url = loader.url else { return }
+            open(url)
+        }
+        .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
+        .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
+    }
+
+    private func open(_ url: URL) {
+        if AttachmentPreview.canPreview(url) { previewURL = url } else { shareURL = url }
+    }
+}
+
+/// System document rendering and share actions, with a visible way back to the conversation.
+struct FilePreviewSheet: UIViewControllerRepresentable {
+    let url: URL
+    let onDismiss: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let preview = QLPreviewController()
+        preview.dataSource = context.coordinator
+        preview.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { _ in onDismiss() })
+        return UINavigationController(rootViewController: preview)
+    }
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {
+        if context.coordinator.url != url {
+            context.coordinator.url = url
+            (controller.viewControllers.first as? QLPreviewController)?.reloadData()
+        }
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var url: URL
+        init(url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+    }
+}
+
+@MainActor @Observable
+final class AttachmentImageLoader {
+    var image: UIImage?
+    var failed = false
+    private var request = UUID()
+
+    func load(fetch: () async throws -> Data) async {
+        let current = UUID()
+        request = current
+        image = nil
+        failed = false
+        do {
+            let data = try await fetch()
+            try Task.checkCancellation()
+            guard current == request else { return }
+            image = UIImage(data: data)
+            failed = image == nil
+        } catch {
+            guard !Task.isCancelled, current == request else { return }
+            failed = true
+        }
     }
 }
 
 struct ThumbnailView: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
-    @State private var image: UIImage?
+    @State private var loader = AttachmentImageLoader()
+    @State private var attempt = 0
     @State private var viewing = false
 
     var body: some View {
         Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFit()
+            if let image = loader.image {
+                Button { viewing = true } label: { Image(uiImage: image).resizable().scaledToFit() }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 280, maxHeight: 240)
+                    .accessibilityLabel("写真 \(attachment.filename)")
+            } else if loader.failed {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(attachment.filename).lineLimit(2)
+                    Label("画像を読み込めませんでした", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("再試行") { attempt += 1 }
+                        Spacer()
+                        Button("元の画像を開く") { viewing = true }
+                    }
+                }
+                .font(.footnote)
+                .padding(12)
+                .background(Color.secondary.opacity(0.12))
             } else {
                 ZStack {
                     Color.secondary.opacity(0.12)
@@ -85,14 +227,14 @@ struct ThumbnailView: View {
                 .frame(width: 160, height: 120)
             }
         }
-        .frame(maxWidth: 280, maxHeight: 240)
+        .frame(maxWidth: 280, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture { viewing = true }
-        .accessibilityLabel("写真 \(attachment.filename)")
-        .accessibilityAddTraits(.isButton)
-        .task(id: attachment.id) {
-            if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
+        .task(id: "\(attachment.id):\(attempt)") {
+            await loader.load {
+                guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
+                return try await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail")
+            }
         }
         .fullScreenCover(isPresented: $viewing) { ImageViewer(attachment: attachment, controller: controller) }
     }

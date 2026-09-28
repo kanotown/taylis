@@ -17,7 +17,7 @@ import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
-import { Button, cn, IconButton, Kbd, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
@@ -59,6 +59,7 @@ export function Composer({
   const [preview, setPreview] = useState(false);
 
   const fileInput = useRef<HTMLInputElement>(null);
+  const mediaInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
   const composedAt = useRef(0);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -418,6 +419,18 @@ export function Composer({
             e.target.value = "";
           }}
         />
+        <input
+          ref={mediaInput}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          hidden
+          aria-label="写真・動画を選択"
+          onChange={(e) => {
+            void pickFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
         {preview && (
           <div className="min-h-14 px-3 pb-1 pt-3" aria-label="プレビュー">
             {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
@@ -500,9 +513,17 @@ export function Composer({
               </PopoverContent>
             </PopoverRoot>
             <span className="mx-1 h-4 w-px bg-line" />
-            <IconButton label={`ファイルを添付 (${modKey()}+U)`} className="h-7 w-7 text-muted hover:text-ink" onClick={() => fileInput.current?.click()} disabled={uploading > 0}>
-              <Paperclip size={15} />
-            </IconButton>
+            <Menu>
+              <MenuTrigger asChild>
+                <IconButton label={`ファイルを添付 (${modKey()}+U)`} className="h-7 w-7 text-muted hover:text-ink" disabled={uploading > 0}>
+                  <Paperclip size={15} />
+                </IconButton>
+              </MenuTrigger>
+              <MenuContent align="start" side="top">
+                <MenuItem onSelect={() => mediaInput.current?.click()}>写真・動画</MenuItem>
+                <MenuItem onSelect={() => fileInput.current?.click()}>ファイル</MenuItem>
+              </MenuContent>
+            </Menu>
             <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </IconButton>
