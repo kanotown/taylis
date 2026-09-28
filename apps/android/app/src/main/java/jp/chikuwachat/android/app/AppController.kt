@@ -1027,7 +1027,9 @@ class AppController(private val app: Application) {
         try {
             api.cancelScheduled(row.id)
             store.applyScheduled(row.copy(status = "cancelled"))
-            if (row.body.isNotEmpty()) store.setDraft(row.channelId, row.parentId) { it.copy(text = row.body) }
+            if (row.body.isNotEmpty()) store.setDraft(row.channelId, row.parentId) {
+                jp.chikuwachat.android.ui.restoreScheduledDraft(it, row.body, store.users, store.groups)
+            }
         } catch (e: Exception) { report(e) }
     }
 
