@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { cn } from "./primitives";
+import { Button, cn } from "./primitives";
 
 export function formatSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -40,46 +40,73 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
 
 /** Fetches an attachment image with the bearer token and hands back an object URL (revoked on unmount). */
 export function useAttachmentUrl(controller: AppController, attachment: AttachmentOut, kind: "thumbnail" | "content", enabled = true): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  return useAttachmentImage(controller, attachment, kind, enabled).url;
+}
+
+/** Keep failures separate from loading, and ignore responses from a previous image or attempt. */
+export function useAttachmentImage(controller: AppController, attachment: AttachmentOut, kind: "thumbnail" | "content", enabled = true) {
+  const api = controller.api;
+  const [attempt, setAttempt] = useState(0);
+  const key = `${attachment.id}/${kind}/${attempt}`;
+  const [state, setState] = useState({ key, api, url: null as string | null, failed: false });
   useEffect(() => {
     if (!enabled) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    void controller.api
-      ?.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`)
-      .then((blob) => {
+    setState({ key, api, url: null, failed: false });
+    void (async () => {
+      try {
+        if (!api) throw new Error("No session");
+        const blob = await api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`);
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      })
-      .catch(() => setUrl(null));
+        setState({ key, api, url: objectUrl, failed: false });
+      } catch {
+        if (!cancelled) setState({ key, api, url: null, failed: true });
+      }
+    })();
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment.id, controller.api, kind, enabled]);
-  return url;
+  }, [attachment.id, api, kind, enabled, key]);
+  const current = enabled && state.key === key && state.api === api;
+  return {
+    url: current ? state.url : null,
+    failed: current && state.failed,
+    retry: () => setAttempt((value) => value + 1),
+    onError: () => setState((value) => value.key === key && value.api === api ? { ...value, url: null, failed: true } : value),
+  };
 }
 
 function Thumbnail({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
-  const url = useAttachmentUrl(controller, attachment, "thumbnail");
+  const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "thumbnail");
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
+      {failed ? (
+        <div className="flex w-64 flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
+          <span className="truncate" title={attachment.filename}>{attachment.filename}</span>
+          <span role="status" className="text-muted">画像を読み込めませんでした</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={retry}>再試行</Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>元の画像を開く</Button>
+          </div>
+        </div>
+      ) : <button
         type="button"
         className="overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md"
         title={`${attachment.filename} (${formatSize(attachment.size_bytes)}) — クリックで拡大`}
         onClick={() => setOpen(true)}
       >
         {url ? (
-          <img src={url} alt={attachment.filename} className="block max-h-60 max-w-72 object-cover" />
+          <img src={url} alt={attachment.filename} onError={onError} className="block max-h-60 max-w-72 object-cover" />
         ) : (
-          <span className="flex h-24 w-40 items-center justify-center text-muted">
+          <span role="status" aria-label="画像を読み込み中" className="flex h-24 w-40 items-center justify-center text-muted">
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}
-      </button>
+      </button>}
       {open && <Lightbox attachment={attachment} controller={controller} onClose={() => setOpen(false)} />}
     </>
   );
@@ -87,7 +114,7 @@ function Thumbnail({ attachment, controller }: { attachment: AttachmentOut; cont
 
 /** Slack-style photo preview: the full image on a dark backdrop, with download and close. */
 function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
-  const url = useAttachmentUrl(controller, attachment, "content");
+  const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "content");
   const [fit, setFit] = useState(true);
   return (
     <Dialog.Root open onOpenChange={(value) => { if (!value) onClose(); }}>
@@ -118,9 +145,15 @@ function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentO
               <img
                 src={url}
                 alt={attachment.filename}
+                onError={onError}
                 onClick={(e) => { e.stopPropagation(); setFit((v) => !v); }}
                 className={cn("select-none", fit ? "max-h-full max-w-full cursor-zoom-in object-contain" : "mx-auto cursor-zoom-out")}
               />
+            ) : failed ? (
+              <div className="flex flex-col items-center gap-3 text-white" onClick={(e) => e.stopPropagation()}>
+                <p role="status">画像を読み込めませんでした</p>
+                <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={retry}>再試行</button>
+              </div>
             ) : (
               <Loader2 size={28} className="animate-spin text-white/70" />
             )}

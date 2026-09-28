@@ -67,16 +67,58 @@ struct AttachmentsView: View {
     }
 }
 
+@MainActor @Observable
+final class AttachmentImageLoader {
+    var image: UIImage?
+    var failed = false
+    private var request = UUID()
+
+    func load(fetch: () async throws -> Data) async {
+        let current = UUID()
+        request = current
+        image = nil
+        failed = false
+        do {
+            let data = try await fetch()
+            try Task.checkCancellation()
+            guard current == request else { return }
+            image = UIImage(data: data)
+            failed = image == nil
+        } catch {
+            guard !Task.isCancelled, current == request else { return }
+            failed = true
+        }
+    }
+}
+
 struct ThumbnailView: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
-    @State private var image: UIImage?
+    @State private var loader = AttachmentImageLoader()
+    @State private var attempt = 0
     @State private var viewing = false
 
     var body: some View {
         Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFit()
+            if let image = loader.image {
+                Button { viewing = true } label: { Image(uiImage: image).resizable().scaledToFit() }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 280, maxHeight: 240)
+                    .accessibilityLabel("写真 \(attachment.filename)")
+            } else if loader.failed {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(attachment.filename).lineLimit(2)
+                    Label("画像を読み込めませんでした", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("再試行") { attempt += 1 }
+                        Spacer()
+                        Button("元の画像を開く") { viewing = true }
+                    }
+                }
+                .font(.footnote)
+                .padding(12)
+                .background(Color.secondary.opacity(0.12))
             } else {
                 ZStack {
                     Color.secondary.opacity(0.12)
@@ -85,14 +127,14 @@ struct ThumbnailView: View {
                 .frame(width: 160, height: 120)
             }
         }
-        .frame(maxWidth: 280, maxHeight: 240)
+        .frame(maxWidth: 280, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture { viewing = true }
-        .accessibilityLabel("写真 \(attachment.filename)")
-        .accessibilityAddTraits(.isButton)
-        .task(id: attachment.id) {
-            if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
+        .task(id: "\(attachment.id):\(attempt)") {
+            await loader.load {
+                guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
+                return try await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail")
+            }
         }
         .fullScreenCover(isPresented: $viewing) { ImageViewer(attachment: attachment, controller: controller) }
     }
