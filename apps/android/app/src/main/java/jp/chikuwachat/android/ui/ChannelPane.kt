@@ -266,7 +266,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 message, store, controller, version, compact = item.compact,
                                 canEdit = !message.pending && message.senderId == store.me?.id,
                                 canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
-                                onRetry = { scope.launch { controller.engine?.retryFailed() } },
+                                onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
                                 onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                 onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
                                 onEdit = { body -> scope.launch { controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)) } },

@@ -878,7 +878,7 @@ struct MessageRow: View {
                 if message.failed {
                     HStack {
                         Text(failureText).font(.caption).foregroundStyle(.red)
-                        Button("再送") { Task { await engine?.retryFailed() } }.font(.caption)
+                        Button("再送") { if let key = message.clientMsgId { Task { await engine?.retryFailed(key) } } }.font(.caption)
                         Button("破棄", role: .destructive) { if let key = message.clientMsgId { engine?.discardFailed(key) } }.font(.caption)
                     }
                 }

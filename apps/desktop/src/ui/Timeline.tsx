@@ -733,7 +733,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         {message.failed && (
           <div className="mt-1 flex items-center gap-2 text-xs text-danger">
             送信に失敗しました
-            <Button variant="link" size="sm" onClick={() => void engine?.retryFailed()}>再送</Button>
+            <Button variant="link" size="sm" onClick={() => message.client_msg_id && void engine?.retryFailed(message.client_msg_id)}>再送</Button>
             <Button variant="link" size="sm" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>破棄</Button>
           </div>
         )}

@@ -1239,8 +1239,10 @@ export class SyncEngine {
     return this.completeThreads.has(parentId);
   }
 
-  retryFailed(): Promise<void> {
-    for (const item of this.deps.store.outbox) if (item.failed) this.deps.store.clearOutboxFailed(item.client_msg_id);
+  /** 「再送」 on one failed message: that message only (others stay failed until their own 再送). */
+  retryFailed(clientMsgId: string): Promise<void> {
+    const item = this.deps.store.outbox.find((i) => i.client_msg_id === clientMsgId);
+    if (item?.failed) this.deps.store.clearOutboxFailed(clientMsgId);
     return this.flushOutbox();
   }
 
