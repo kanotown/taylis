@@ -506,12 +506,16 @@ export class AppController {
     }
   }
 
-  /** M12d 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. */
-  async scheduleMessage(channelId: string, parentId: string | null, body: string, attachmentIds: string[], sendAt: Date): Promise<boolean> {
+  /**
+   * M12d 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. `clientMsgId` stays the same
+   * when the reader tries the same schedule again after a failure (a lost response must not make a second row, Codex
+   * audit C2).
+   */
+  async scheduleMessage(channelId: string, parentId: string | null, body: string, attachmentIds: string[], sendAt: Date, clientMsgId: string = crypto.randomUUID()): Promise<boolean> {
     if (!this.api) return false;
     try {
       const row = await this.api.scheduleMessage(channelId, {
-        client_msg_id: crypto.randomUUID(),
+        client_msg_id: clientMsgId,
         body,
         parent_id: parentId,
         attachment_ids: attachmentIds,

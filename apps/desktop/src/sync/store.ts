@@ -559,19 +559,23 @@ export class Store {
 
   // --- scheduled messages (M12d) -----------------------------------------------------------
 
+  /** Failed rows first (they need the reader), then the pending ones by time. */
   listScheduled(): ScheduledOut[] {
-    return [...this.scheduled.values()].sort((a, b) => a.send_at.localeCompare(b.send_at));
+    return [...this.scheduled.values()].sort((a, b) => Number(b.status === "failed") - Number(a.status === "failed") || a.send_at.localeCompare(b.send_at));
   }
 
   replaceScheduled(rows: ScheduledOut[]): void {
     this.scheduled.clear();
-    for (const row of rows) if (row.status === "pending") this.scheduled.set(row.id, row);
+    for (const row of rows) if (keptScheduled(row)) this.scheduled.set(row.id, row);
     this.emit();
   }
 
-  /** scheduled.updated: a pending row is kept (created / edited); any other status drops it. */
+  /**
+   * scheduled.updated: pending rows are kept, and failed ones too until dismissed (their text is only there, Codex
+   * audit C3; SYNC_PROTOCOL.md §6); sent and cancelled rows drop.
+   */
   applyScheduled(row: ScheduledOut): void {
-    if (row.status === "pending") this.scheduled.set(row.id, row);
+    if (keptScheduled(row)) this.scheduled.set(row.id, row);
     else this.scheduled.delete(row.id);
     this.emit();
   }
@@ -782,4 +786,8 @@ function restoredChannel(row: ChannelState): ChannelState {
     if (channel.oldestLoadedSeq === null) channel.syncedSeq = null;
   }
   return channel;
+}
+
+function keptScheduled(row: ScheduledOut): boolean {
+  return row.status === "pending" || row.status === "failed";
 }

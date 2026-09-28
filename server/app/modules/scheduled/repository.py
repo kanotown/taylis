@@ -20,10 +20,14 @@ async def get_by_client_msg_id(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def list_pending_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ScheduledMessage]:
+async def list_open_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ScheduledMessage]:
+    """Pending rows, and failed ones the user has not dismissed yet (their text is still wanted)."""
     stmt = (
         select(ScheduledMessage)
-        .where(ScheduledMessage.user_id == user_id, ScheduledMessage.status == "pending")
+        .where(
+            ScheduledMessage.user_id == user_id,
+            ScheduledMessage.status.in_(("pending", "failed")),
+        )
         .order_by(ScheduledMessage.send_at.asc(), ScheduledMessage.id.asc())
     )
     return list((await db.execute(stmt)).scalars().all())

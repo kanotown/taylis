@@ -128,7 +128,14 @@ async def test_worker_posts_at_the_time_once_and_marks_failures(
     replies = (await client.get(f"/api/v1/messages/{parent['id']}/replies")).json()
     assert [r["body"] for r in replies] == ["scheduled reply"]
     assert replies[0]["client_msg_id"] == reply["client_msg_id"]
+    # The failed one stays listed with its error (its text is only there) until dismissed.
+    listed = (await client.get("/api/v1/scheduled")).json()
+    assert [(r["id"], r["status"], r["error"], r["body"]) for r in listed] == [
+        (other["id"], "failed", "channel_archived", "never lands")
+    ]
+    assert (await client.delete(f"/api/v1/scheduled/{other['id']}")).status_code == 204
     assert (await client.get("/api/v1/scheduled")).json() == []
+    assert (await client.delete(f"/api/v1/scheduled/{other['id']}")).status_code == 404
     events = (
         (
             await db.execute(
@@ -146,7 +153,7 @@ async def test_worker_posts_at_the_time_once_and_marks_failures(
             event.payload["scheduled"]["status"]
         )
     assert by_id[reply["id"]] == ["pending", "sent"]
-    assert by_id[other["id"]] == ["pending", "failed"]
+    assert by_id[other["id"]] == ["pending", "failed", "cancelled"]
     failed = [e for e in events if e.payload["scheduled"]["id"] == other["id"]][-1]
     assert failed.payload["scheduled"]["error"] == "channel_archived"
 
