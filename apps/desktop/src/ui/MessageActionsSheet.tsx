@@ -62,7 +62,9 @@ export function MessageActionsSheet({ controller, message, initialView = "action
       <div
         role="dialog"
         aria-label="メッセージの操作"
-        className="max-h-[80vh] w-full overflow-y-auto rounded-t-2xl bg-canvas pb-[max(env(safe-area-inset-bottom),12px)] shadow-2xl"
+        // Every item fits at once on a small phone (testers: ピン留め and 削除 were cut off on iOS); it scrolls only
+        // with very large text.
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl bg-canvas pb-[max(env(safe-area-inset-bottom),12px)] shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-2 mt-2 h-1 w-10 rounded-full bg-line" aria-hidden />
@@ -145,7 +147,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
 
 function SheetButton({ icon, children, onClick, danger = false }: { icon: ReactNode; children: ReactNode; onClick: () => void; danger?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className={cn("flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] active:bg-panel", danger ? "text-danger" : "text-ink")}>
+    <button type="button" onClick={onClick} className={cn("flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] active:bg-panel", danger ? "text-danger" : "text-ink")}>
       <span className={cn("shrink-0", danger ? "text-danger" : "text-muted")}>{icon}</span>
       {children}
     </button>

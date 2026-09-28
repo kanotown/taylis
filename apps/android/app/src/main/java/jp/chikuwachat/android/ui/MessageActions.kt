@@ -110,7 +110,8 @@ fun MessageMenu(
     quick: List<String> = REACTION_PALETTE,
 ) {
     if (!expanded) return
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    // Opens at its full height: half open cut off ピン留め and 削除 (testers, 2026-09-29).
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     fun close(then: () -> Unit) {
         scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); then() }
