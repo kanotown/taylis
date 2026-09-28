@@ -2,9 +2,11 @@ package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.hitsKeyword
 import jp.chikuwachat.android.api.SidebarSectionOut
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.nullable
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
@@ -35,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -488,6 +491,7 @@ class SyncEngine(
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
         store.replaceCustomEmoji(bootstrap.customEmoji)
+        store.replaceRoster(bootstrap.roster)
         store.replaceGroups(bootstrap.groups)
         store.replaceSidebar(bootstrap.sidebarSections)
         drafts.applyBootstrap(bootstrap.drafts)
@@ -570,6 +574,12 @@ class SyncEngine(
             "group.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(GroupOut.serializer(), frame.data["group"] ?: return)
                 store.applyGroup(row, frame.data.bool("deleted") ?: false)
+            }
+            "roster.updated" -> {
+                // M23: the whole line replaces the old one; a null profile means the person left the roster. The managed
+                // groups that follow from it arrive separately as group.updated.
+                val userId = frame.data.str("user_id") ?: return
+                store.applyRoster(userId, Codec.snake.decodeFromJsonElement(LabProfileOut.serializer().nullable, frame.data["profile"] ?: JsonNull))
             }
             "reminder.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(ReminderOut.serializer(), frame.data["reminder"] ?: return)

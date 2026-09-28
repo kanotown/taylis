@@ -27,8 +27,16 @@ function place<T>(values: readonly T[], value: T | null | undefined): number {
   return index < 0 ? values.length : index;
 }
 
-function byCodePoint(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/** By Unicode code point, as Python compares str on the server (`<` on JS strings compares UTF-16 units instead). */
+export function byCodePoint(a: string, b: string): number {
+  const left = [...a];
+  const right = [...b];
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const x = left[i]!.codePointAt(0)!;
+    const y = right[i]!.codePointAt(0)!;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return left.length - right.length === 0 ? 0 : left.length < right.length ? -1 : 1;
 }
 
 /** Where a person sorts: on the roster by step then reading (or name), off it after everyone on it. */

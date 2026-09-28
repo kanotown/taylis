@@ -1228,6 +1228,13 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
+    /** M23: my research topic and reading on the lab roster; null clears (roster.updated tells my other devices). */
+    suspend fun updateMyRosterLine(researchTopic: String?, reading: String?): Boolean = attempt {
+        val myId = (store.me ?: me)?.id ?: return false
+        store.applyRoster(myId, api!!.updateMyRosterLine(researchTopic, reading))
+        true
+    }.getOrElse { error = describe(it); false }
+
     /** Open (or create) the DM with one user; returns its channel id. */
     suspend fun openDmWith(userId: String): String? {
         store.channels.values.firstOrNull { it.channel.type == "dm" && userId in (it.channel.dmUserIds ?: emptyList()) && (it.channel.dmUserIds?.size ?: 0) <= 2 }?.let { return it.id }

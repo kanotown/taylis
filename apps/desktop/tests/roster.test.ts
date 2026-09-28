@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LabProfileOut, UserPublic } from "../src/api/types";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { compareByRoster, rosterLabel, rosterSection, rosterSummary } from "../src/ui/roster";
+import { byCodePoint, compareByRoster, rosterLabel, rosterSection, rosterSummary } from "../src/ui/roster";
 import { FakeServer } from "./fakeServer";
 
 function person(id: string, name: string): UserPublic {
@@ -43,6 +43,14 @@ describe("the lab roster (M23)", () => {
     expect(rosterSection(roster.get("old"))).toBe("卒業生");
     expect(rosterSection(undefined)).toBeNull();
     expect(rosterSummary(roster.get("doc")!, new Map([[prof.id, prof]]))).toBe("D1 · 指導教員: Prof");
+  });
+
+  it("compares names by code point like the server, also past U+FFFF", () => {
+    // UTF-16 would put 𠀋 (U+2000B, a surrogate pair from U+D840) before ｱ (U+FF71); by code point it comes after.
+    expect(byCodePoint("𠀋", "ｱ")).toBe(1);
+    expect(byCodePoint("あおき", "いとう")).toBe(-1);
+    expect(byCodePoint("かの", "かのう")).toBe(-1);
+    expect(byCodePoint("同じ", "同じ")).toBe(0);
   });
 
   it("loads the roster from bootstrap and follows roster.updated", async () => {

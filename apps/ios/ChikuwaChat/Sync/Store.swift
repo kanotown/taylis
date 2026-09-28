@@ -318,6 +318,10 @@ final class Store {
     var emojiImages: [String: UIImage] = [:]
     /// User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server.
     var groups: [String: GroupOut] = [:]
+    /// The lab roster by user id (M23, DATA_MODEL.md lab_profiles); from bootstrap and roster.updated, not persisted.
+    /// Only the member lists and profile screens read it, so a change redraws those and no timeline (M20). The order is
+    /// Roster's.
+    var roster: [String: LabProfileOut] = [:]
     /// My sidebar sections (M14f), in order; from bootstrap and sidebar.updated.
     var sidebarSections: [SidebarSectionOut] = []
     /// Server limits from bootstrap (max attachment size …); nil until the first one.
@@ -586,6 +590,18 @@ final class Store {
 
     func applyGroup(_ row: GroupOut, deleted: Bool) {
         if deleted { groups.removeValue(forKey: row.id) } else { groups[row.id] = row }
+    }
+
+    // MARK: lab roster (M23)
+
+    func replaceRoster(_ rows: [LabProfileOut]) {
+        let next = Dictionary(rows.map { ($0.userId, $0) }, uniquingKeysWith: { _, last in last })
+        if next != roster { roster = next } // every reconnect bootstraps: an unchanged roster redraws nothing
+    }
+
+    /// roster.updated (or my own save): the person's line, or nil when they left the roster.
+    func applyRoster(_ userId: String, _ profile: LabProfileOut?) {
+        if roster[userId] != profile { roster[userId] = profile }
     }
 
     // MARK: reminders (M12e)

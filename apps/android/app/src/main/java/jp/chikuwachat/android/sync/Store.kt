@@ -6,6 +6,7 @@ import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
@@ -242,6 +243,8 @@ class Store(private val persistence: Persistence? = null) {
     val emojiImages = HashMap<String, ImageBitmap>()
     /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
     val groups = LinkedHashMap<String, GroupOut>()
+    /** The lab roster (M23) by user id; from bootstrap and roster.updated, not persisted (like groups). Order: ui/Roster.kt. */
+    val roster = HashMap<String, LabProfileOut>()
     /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
     var sidebarSections: List<SidebarSectionOut> = emptyList()
         private set
@@ -574,6 +577,20 @@ class Store(private val persistence: Persistence? = null) {
 
     fun applyGroup(row: GroupOut, deleted: Boolean) {
         if (deleted) groups.remove(row.id) else groups[row.id] = row
+        emit()
+    }
+
+    // --- lab roster (M23) ---------------------------------------------------------------------
+
+    fun replaceRoster(rows: List<LabProfileOut>) {
+        roster.clear()
+        rows.forEach { roster[it.userId] = it }
+        emit()
+    }
+
+    /** roster.updated (or my own save): the person's line, or null when they left the roster. */
+    fun applyRoster(userId: String, profile: LabProfileOut?) {
+        if (profile != null) roster[userId] = profile else roster.remove(userId)
         emit()
     }
 

@@ -341,6 +341,18 @@ final class FakeServer {
                                        "data": .object(["emoji": try! JSONValue.from(row), "deleted": .bool(deleted)])]))
     }
 
+    /// M23: the lab roster by user id (bootstrap `roster`, roster.updated to everyone).
+    var roster: [String: LabProfileOut] = [:]
+
+    /// An administrator's PUT / DELETE /lab/roster/{user_id} (or the person's PATCH /me): the line, or nil to take them off.
+    func setRosterLine(_ userId: String, _ profile: LabProfileOut?) {
+        roster[userId] = profile
+        eventId += 1
+        emit(Set(users.keys), .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("roster.updated"), "ts": .string(now()),
+                                       "channel_id": .null, "seq": .null,
+                                       "data": .object(["user_id": .string(userId), "profile": profile.map { try! JSONValue.from($0) } ?? .null])]))
+    }
+
     /// "user" → open reminders (M12e).
     var reminders: [String: [ReminderOut]] = [:]
 
@@ -845,7 +857,7 @@ final class FakeServer {
                             presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
                             bookmarks: bookmarks[userId] ?? [],
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
-                            customEmoji: Array(customEmoji.values), drafts: drafts(of: userId))
+                            customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId))
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

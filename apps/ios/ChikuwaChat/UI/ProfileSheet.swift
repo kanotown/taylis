@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The profile card (M11d) behind an avatar or a name: display name, @username, title, custom status,
-/// presence, and a way to message the person.
+/// presence, and a way to message the person. M23: the lab roster line (「M1 · 指導教員: …」 and the research topic).
 struct ProfileSheet: View {
     @Bindable var controller: AppController
     let userId: String
@@ -32,6 +32,16 @@ struct ProfileSheet: View {
                         }
                     }
                     .padding(.vertical, 4)
+                }
+                if let line = controller.store.roster[userId] {
+                    Section {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(Roster.summary(line, users: controller.store.users)).font(.subheadline).fontWeight(.medium)
+                            if let topic = line.researchTopic, !topic.isEmpty {
+                                Text("研究テーマ: \(topic)").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
                 if let status = activeStatus(user) {
                     Section("ステータス") {

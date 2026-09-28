@@ -264,6 +264,8 @@ data class BootstrapOut(
     val customEmoji: List<CustomEmojiOut> = emptyList(),
     /** User groups (M12k): every group with its members; changes arrive as group.updated. */
     val groups: List<GroupOut> = emptyList(),
+    /** The lab roster (M23), in roster order; changes arrive as roster.updated. Absent from servers before M23. */
+    val roster: List<LabProfileOut> = emptyList(),
     /** My sidebar sections (M14f); changes arrive as sidebar.updated. */
     val sidebarSections: List<SidebarSectionOut> = emptyList(),
     /** My drafts shared by my devices (M15d); changes arrive as draft.updated. */
@@ -282,9 +284,32 @@ data class DraftUpdated(val channelId: String, val parentId: String? = null, val
 @Serializable
 data class SidebarSectionOut(val id: String, val name: String, val position: Int, val channelIds: List<String> = emptyList())
 
-/** A named set of members that `@name` notifies (M12k). */
+/**
+ * A named set of members that `@name` notifies (M12k). `managed` (M23): the server keeps its members from the lab
+ * roster (faculty, students, m1 …) and refuses hand edits with 409 group_managed; groups are only edited on desktop.
+ */
 @Serializable
-data class GroupOut(val id: String, val name: String, val description: String? = null, val memberIds: List<String> = emptyList(), val createdBy: String, val createdAt: String, val updatedAt: String)
+data class GroupOut(
+    val id: String, val name: String, val description: String? = null, val memberIds: List<String> = emptyList(), val createdBy: String,
+    val createdAt: String, val updatedAt: String, val managed: Boolean = false,
+)
+
+/**
+ * One line of the lab roster (M23, DATA_MODEL.md lab_profiles): display and grouping only, never permissions.
+ * `affiliation` (faculty / student / alumni / other), `rank` and `grade` stay strings so a value a newer server adds
+ * sorts after the known ones (ui/Roster.kt) instead of failing the whole bootstrap.
+ */
+@Serializable
+data class LabProfileOut(
+    val userId: String,
+    val affiliation: String,
+    val rank: String? = null,
+    val grade: String? = null,
+    val supervisorId: String? = null,
+    val researchTopic: String? = null,
+    val reading: String? = null,
+    val updatedAt: String,
+)
 
 /** A workspace emoji (M12f) used as `:name:` in text and reactions. */
 @Serializable

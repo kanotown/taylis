@@ -433,6 +433,7 @@ final class SyncEngine {
         store.replaceFavorites(bootstrap.favorites ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceGroups(bootstrap.groups ?? [])
+        store.replaceRoster(bootstrap.roster ?? [])
         store.replaceSidebar(bootstrap.sidebarSections ?? [])
         drafts.applyBootstrap(bootstrap.drafts ?? [])
         Task { await self.loadScheduled() }
@@ -537,6 +538,12 @@ final class SyncEngine {
             struct Payload: Decodable { let group: GroupOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyGroup(payload.group, deleted: payload.deleted)
+        case "roster.updated":
+            // M23: one line added, changed or removed (`profile` null = off the roster). The managed groups it moves
+            // arrive on their own as group.updated.
+            struct Payload: Decodable { let userId: String; let profile: LabProfileOut? }
+            let payload = try frame.data.decode(Payload.self)
+            store.applyRoster(payload.userId, payload.profile)
         case "reminder.updated":
             struct Payload: Decodable { let reminder: ReminderOut }
             let reminder = try frame.data.decode(Payload.self).reminder

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -30,7 +32,11 @@ import jp.chikuwachat.android.api.activeStatus
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
 
-/** 「メンバー」(M13g): everyone in the workspace, with presence, title and status; a DM is one tap away. */
+/**
+ * 「メンバー」(M13g): everyone in the workspace, with presence, title and status; a DM is one tap away. People on the lab
+ * roster (M23) come first in roster order under their headings (教員, D3 … B3, その他, 卒業生); the others follow, online
+ * first.
+ */
 @Composable
 fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
     val store = controller.store
@@ -38,12 +44,22 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
     var query by remember { mutableStateOf("") }
     fun rank(user: UserPublic): Int = if (user.role == "bot") 3 else when (store.presenceOf(user.id)) { "online" -> 0; "away" -> 1; else -> 2 }
     val q = query.trim().lowercase()
+    val roster = store.roster
+    val headed = roster.isNotEmpty()
     val people = store.users.values
         .filter { it.deactivatedAt == null }
-        .filter { q.isEmpty() || it.username.lowercase().contains(q) || it.displayName.lowercase().contains(q) || (it.title ?: "").lowercase().contains(q) }
-        .sortedWith(compareBy({ rank(it) }, { it.displayName }))
+        .filter { user ->
+            q.isEmpty() || listOf(user.username, user.displayName, user.title, roster[user.id]?.researchTopic, roster[user.id]?.reading)
+                .any { (it ?: "").lowercase().contains(q) }
+        }
+        .sortedWith(Roster.listOrder(roster, compareBy({ rank(it) }, { it.displayName })))
+    val sections = if (headed) Roster.sections(people, roster) else listOf(null to people)
     fun subtitle(user: UserPublic): String {
-        val parts = listOfNotNull(user.title?.takeIf { it.isNotEmpty() }, activeStatus(user)?.let { (it.first + " " + it.second).trim() })
+        val parts = listOfNotNull(
+            user.title?.takeIf { it.isNotEmpty() },
+            roster[user.id]?.researchTopic?.takeIf { it.isNotEmpty() },
+            activeStatus(user)?.let { (it.first + " " + it.second).trim() },
+        )
         if (parts.isNotEmpty()) return parts.joinToString(" · ")
         if (user.role == "bot") return "受信 Webhook"
         return when (store.presenceOf(user.id)) { "online" -> "オンライン"; "away" -> "離席中"; else -> "オフライン" }
@@ -53,25 +69,38 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
         title = { Text("メンバー (${people.size})") },
         text = {
             Column {
-                OutlinedTextField(query, { query = it }, label = { Text("名前・ユーザー名・肩書で検索") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    query, { query = it }, label = { Text(if (headed) "名前・ユーザー名・肩書・研究テーマで検索" else "名前・ユーザー名・肩書で検索") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
                 LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 8.dp)) {
-                    items(people, key = { it.id }) { user ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(user.id, user.displayName, size = 36.dp, presence = if (user.role == "bot") null else store.presenceOf(user.id))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(user.displayName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                    val tag = when (user.role) { "admin" -> "管理者"; "guest" -> "ゲスト"; "bot" -> "BOT"; else -> null }
-                                    if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
-                                    if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
+                    sections.forEachIndexed { index, (heading, rows) ->
+                        // The index keeps keys unique should a heading come back (an unknown grade among 「学生」).
+                        if (heading != null) stickyHeader(key = "heading:$index") {
+                            Text(
+                                heading, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().background(AlertDialogDefaults.containerColor).padding(top = 8.dp, bottom = 2.dp),
+                            )
+                        }
+                        items(rows, key = { it.id }) { user ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(user.id, user.displayName, size = 36.dp, presence = if (user.role == "bot") null else store.presenceOf(user.id))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(user.displayName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                        roster[user.id]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
+                                        val tag = when (user.role) { "admin" -> "管理者"; "guest" -> "ゲスト"; "bot" -> "BOT"; else -> null }
+                                        if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
+                                        if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
+                                    }
+                                    Text(subtitle(user), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                Text(subtitle(user), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            if (user.id != store.me?.id && user.role != "bot") {
-                                TextButton(onClick = { scope.launch { controller.openDmWith(user.id)?.let { onOpened(it); onDismiss() } } }) { Text("DM") }
+                                if (user.id != store.me?.id && user.role != "bot") {
+                                    TextButton(onClick = { scope.launch { controller.openDmWith(user.id)?.let { onOpened(it); onDismiss() } } }) { Text("DM") }
+                                }
                             }
                         }
                     }
