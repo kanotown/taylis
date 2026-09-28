@@ -635,19 +635,25 @@ class Store(private val persistence: Persistence? = null) {
 
     // --- scheduled messages (M12d) -----------------------------------------------------------
 
-    fun listScheduled(): List<ScheduledOut> = scheduled.values.sortedBy { it.sendAt }
+    /** Failed rows first (they need the reader), then the pending ones by time. */
+    fun listScheduled(): List<ScheduledOut> = scheduled.values.sortedWith(compareBy<ScheduledOut> { it.status != "failed" }.thenBy { it.sendAt })
 
     fun replaceScheduled(rows: List<ScheduledOut>) {
         scheduled.clear()
-        rows.filter { it.status == "pending" }.forEach { scheduled[it.id] = it }
+        rows.filter { it.kept }.forEach { scheduled[it.id] = it }
         emit()
     }
 
-    /** scheduled.updated: a pending row is kept (created / edited); any other status drops it. */
+    /**
+     * scheduled.updated: pending rows are kept, and failed ones too until dismissed (their text is only there, Codex
+     * audit C3; SYNC_PROTOCOL.md §6); sent and cancelled rows drop.
+     */
     fun applyScheduled(row: ScheduledOut) {
-        if (row.status == "pending") scheduled[row.id] = row else scheduled.remove(row.id)
+        if (row.kept) scheduled[row.id] = row else scheduled.remove(row.id)
         emit()
     }
+
+    private val ScheduledOut.kept: Boolean get() = status == "pending" || status == "failed"
 
     // --- favorites (M12a) --------------------------------------------------------------------
 

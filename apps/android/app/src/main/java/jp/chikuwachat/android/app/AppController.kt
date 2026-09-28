@@ -1011,14 +1011,27 @@ class AppController(private val app: Application) {
     // --- scheduled messages (M12d) ----------------------------------------------------------------
 
     /** 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き. */
-    suspend fun scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: List<String>, sendAt: ZonedDateTime): Boolean {
+    /**
+     * `clientMsgId` stays the same while the reader schedules the same draft again after a failure, so a lost response
+     * cannot make a second row (Codex audit C2): the server answers with the row it made.
+     */
+    suspend fun scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: List<String>, sendAt: ZonedDateTime, clientMsgId: String = UUID.randomUUID().toString()): Boolean {
         val api = api ?: return false
         return try {
-            val row = api.scheduleMessage(channelId, UUID.randomUUID().toString(), body, parentId, attachmentIds, sendAt.toInstant().toString())
+            val row = api.scheduleMessage(channelId, clientMsgId, body, parentId, attachmentIds, sendAt.toInstant().toString())
             store.applyScheduled(row)
             notice = Schedule.label(sendAt) + " に送信します"
             true
         } catch (e: Exception) { report(e); false }
+    }
+
+    /** Codex audit C3: 「削除」 on a failed scheduled message, whose text the reader does not want back. */
+    suspend fun dismissScheduled(row: ScheduledOut) {
+        val api = api ?: return
+        try {
+            api.cancelScheduled(row.id)
+            store.applyScheduled(row.copy(status = "cancelled"))
+        } catch (e: Exception) { report(e) }
     }
 
     /** Cancel a scheduled message; its text returns to the conversation's draft so nothing is lost. */
