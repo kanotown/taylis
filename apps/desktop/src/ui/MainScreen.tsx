@@ -39,6 +39,7 @@ import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
+import { focusChatRegion } from "./messageKeyboard";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
@@ -355,7 +356,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
-      if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
+      if (event.key === "F6" && !mod && !event.altKey && !s.dialog && !s.switcher && !s.searchOpen) {
+        if (focusChatRegion(event.shiftKey)) event.preventDefault();
+      } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
         // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack).
         event.preventDefault();
         controller.switchToIndex(Number(event.key) - 1);

@@ -561,6 +561,10 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
 }
 
 const SHORTCUTS: Array<[string, string]> = [
+  ["F6 / Shift + F6", "サイドバー・メッセージ一覧・入力欄へ移動"],
+  ["↑ / ↓・Home / End (メッセージ上)", "前後・読み込み済みの先頭/末尾のメッセージへ移動"],
+  ["Enter / Shift + F10 (メッセージ上)", "メッセージの操作ボタンへ移動 (Tab で選択)"],
+  ["→ / T (メッセージ上)", "スレッドを開く"],
   ["Ctrl/⌘ + K", "チャンネルや DM に移動"],
   ["Ctrl/⌘ + Shift + K", "新しい DM"],
   ["Ctrl/⌘ + F", "検索 (↑↓ で候補を選び Enter)"],

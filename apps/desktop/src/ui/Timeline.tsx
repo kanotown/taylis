@@ -9,6 +9,7 @@ import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnr
 import type { ChannelState, MessageState } from "../sync/types";
 import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
+import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
@@ -397,7 +398,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           )}
         </div>
       )}
-      <div className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
@@ -623,6 +624,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       id={`${thread ? "thread" : "timeline"}-${message.id}`}
       data-seq={message.seq ?? undefined}
       tabIndex={0}
+      aria-keyshortcuts="ArrowUp ArrowDown Home End Enter Shift+F10 ArrowRight T"
+      onKeyDown={(event) => messageRowKey(event, !message.pending && !message.deleted && onOpenThread ? () => onOpenThread(threadId) : undefined)}
       className={cn(
         "message group relative -mx-2 grid gap-x-2.5 rounded-lg px-2 outline-none transition-colors hover:bg-panel focus-visible:ring-2 focus-visible:ring-accent/40",
         thread ? "grid-cols-[30px_minmax(0,1fr)]" : "grid-cols-[36px_minmax(0,1fr)]",
