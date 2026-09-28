@@ -1,5 +1,5 @@
 import { ArrowLeft, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
@@ -37,6 +37,7 @@ import { TypingIndicator } from "./Typing";
 import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
+import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
@@ -77,6 +78,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [paneWidth, setPaneWidth] = useState(readPaneWidth);
   // Phones: one column at a time, the conversation list first; a conversation or a view covers it until 「戻る」.
   const compact = useCompact();
+  const desktopRoot = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(() => window.innerWidth);
+  useLayoutEffect(() => {
+    const root = desktopRoot.current;
+    if (!root) return;
+    const measure = () => setAvailableWidth(root.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [compact]);
+  const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
   // The sidebar's views toggle back to the conversation on a desktop; on a phone a tap always opens them.
   const compactRef = useRef(compact);
@@ -98,10 +111,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = sidebarWidth;
+    const startWidth = columns.sidebarWidth;
     let width = startWidth;
     const move = (e: PointerEvent) => {
-      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
+      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, availableWidth - CONVERSATION_MIN), Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
       setSidebarWidth(width);
     };
     const up = () => {
@@ -121,8 +134,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const startPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = paneWidth;
-    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, window.innerWidth - sidebarWidth - 360));
+    const startWidth = columns.paneWidth;
+    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, availableWidth - columns.sidebarWidth - CONVERSATION_MIN));
     let width = startWidth;
     const move = (e: PointerEvent) => {
       width = Math.min(max, Math.max(PANE_MIN, startWidth - (e.clientX - startX)));
@@ -744,8 +757,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   return (
     <div
+      ref={desktopRoot}
       className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
-      style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+      style={{ "--sidebar-w": `${columns.sidebarWidth}px` } as React.CSSProperties}
     >
       {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
           row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
@@ -774,10 +788,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
           }}
           className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
         />
-        {centre}
+        {sidePane && columns.replaceCentre ? <div className="flex min-h-0 flex-1">{sidePane}</div> : centre}
       </main>
-      {sidePane ? (
-        <div className="relative flex min-h-0" style={{ width: paneWidth }}>
+      {sidePane && !columns.replaceCentre ? (
+        <div className="relative flex min-h-0" style={{ width: columns.paneWidth }}>
           <div
             role="separator"
             aria-orientation="vertical"
