@@ -416,7 +416,17 @@ final class Store {
         let key = draftKey(channelId, parentId)
         uploads[key] = max(0, (uploads[key] ?? 0) + delta)
     }
-    private var messagesByChannel: [String: [String: MessageState]] = [:]
+    /// Each channel's messages in a bucket observed on its own (M20): storing a message in one channel no longer redraws
+    /// a view showing another, and a view that asked for a channel's rows is told when that channel's bucket changes.
+    @ObservationIgnored private var buckets: [String: ChannelMessages] = [:]
+
+    /// The bucket of a channel, made on first use, so a view that asked before any row arrived is told when one does.
+    private func bucket(_ channelId: String) -> ChannelMessages {
+        if let existing = buckets[channelId] { return existing }
+        let made = ChannelMessages()
+        buckets[channelId] = made
+        return made
+    }
     private let persistence: Persistence?
 
     init(persistence: Persistence? = nil) {
@@ -441,7 +451,7 @@ final class Store {
         }
         for user in snapshot.users { users[user.id] = user }
         for channel in snapshot.channels { channels[channel.id] = channel }
-        for message in snapshot.messages { messagesByChannel[message.channelId, default: [:]][message.id] = message }
+        for message in snapshot.messages { bucket(message.channelId).byId[message.id] = message }
         outbox = snapshot.outbox
     }
 
@@ -532,7 +542,7 @@ final class Store {
             entry.parent.replyCount = state.replyCount
             entry.parent.lastReplyAt = state.lastReplyAt
             threads[state.parentId] = entry
-        } else if var known = parent ?? messagesByChannel[state.channelId]?[state.parentId].flatMap(MessageOut.init) {
+        } else if var known = parent ?? buckets[state.channelId]?.byId[state.parentId].flatMap(MessageOut.init) {
             known.replyCount = state.replyCount
             known.lastReplyAt = state.lastReplyAt
             threads[state.parentId] = ThreadEntry(parent: known, state: state)
@@ -676,7 +686,7 @@ final class Store {
 
     func removeChannel(_ id: String) {
         channels[id] = nil
-        messagesByChannel[id] = nil
+        buckets[id]?.byId = [:]
         persist {
             try $0.clearMessages(channelId: id)
             try $0.deleteChannel(id: id)
@@ -691,7 +701,12 @@ final class Store {
     /// window never shows a gap.
     func messages(_ channelId: String) -> [MessageState] {
         let floor = timelineFloor(channelId)
-        return ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.inTimeline && ($0.seq.map { $0 >= floor } ?? true) })
+        let rows = bucket(channelId)
+        let all = rows.byId // read through the observed property, also when the cache answers
+        if let cached = rows.timeline, cached.floor == floor { return cached.rows }
+        let ordered = ordered(all.values.filter { $0.inTimeline && ($0.seq.map { $0 >= floor } ?? true) })
+        rows.timeline = (floor, ordered)
+        return ordered
     }
 
     /// No page read yet: nothing but pending rows. A timeline stored before the window was tracked shows everything
@@ -704,7 +719,7 @@ final class Store {
 
     /// A thread: the replies of one parent, oldest first (pending ones last).
     func replies(_ channelId: String, parentId: String) -> [MessageState] {
-        ordered((messagesByChannel[channelId] ?? [:]).values.filter { $0.parentId == parentId })
+        ordered(bucket(channelId).byId.values.filter { $0.parentId == parentId })
     }
 
     private func ordered(_ all: some Collection<MessageState>) -> [MessageState] {
@@ -713,17 +728,17 @@ final class Store {
         return confirmed + pending
     }
 
-    func message(_ channelId: String, _ id: String) -> MessageState? { messagesByChannel[channelId]?[id] }
-    func message(_ channelId: String, id: String) -> MessageState? { messagesByChannel[channelId]?[id] }
+    func message(_ channelId: String, _ id: String) -> MessageState? { bucket(channelId).byId[id] }
+    func message(_ channelId: String, id: String) -> MessageState? { bucket(channelId).byId[id] }
 
     /// A reply moved the parent's counters (message.created / message.deleted with parent_thread).
     func applyParentThread(_ channelId: String, _ thread: ParentThread) {
-        guard var bucket = messagesByChannel[channelId], var parent = bucket[thread.id], thread.updatedSeq > parent.updatedSeq else { return }
+        let rows = bucket(channelId)
+        guard var parent = rows.byId[thread.id], thread.updatedSeq > parent.updatedSeq else { return }
         parent.replyCount = thread.replyCount
         parent.lastReplyAt = thread.lastReplyAt
         parent.updatedSeq = thread.updatedSeq
-        bucket[parent.id] = parent
-        messagesByChannel[channelId] = bucket
+        rows.byId[parent.id] = parent // in place: no copy of the channel's rows
         persist { try $0.saveMessage(parent) }
     }
 
@@ -733,43 +748,45 @@ final class Store {
 
     @discardableResult
     func upsertMessage(_ message: MessageState) -> Bool {
-        var bucket = messagesByChannel[message.channelId] ?? [:]
+        let rows = bucket(message.channelId)
+        // In place (M20): copying the channel's rows out and back on every message grew with the channel.
         if let clientMsgId = message.clientMsgId {
             let placeholder = localPrefix + clientMsgId
-            if bucket.removeValue(forKey: placeholder) != nil { persist { try $0.deleteMessage(id: placeholder) } }
+            if rows.byId[placeholder] != nil {
+                rows.byId.removeValue(forKey: placeholder)
+                persist { try $0.deleteMessage(id: placeholder) }
+            }
         }
-        if let local = bucket[message.id], message.updatedSeq <= local.updatedSeq {
-            messagesByChannel[message.channelId] = bucket
-            return false
-        }
+        if let local = rows.byId[message.id], message.updatedSeq <= local.updatedSeq { return false }
         if message.deleted {
-            bucket[message.id] = nil
+            rows.byId.removeValue(forKey: message.id)
             persist { try $0.deleteMessage(id: message.id) }
         } else {
-            bucket[message.id] = message
+            rows.byId[message.id] = message
             persist { try $0.saveMessage(message) }
         }
-        messagesByChannel[message.channelId] = bucket
         return true
     }
 
     func putPlaceholder(_ message: MessageState) {
-        messagesByChannel[message.channelId, default: [:]][message.id] = message
+        bucket(message.channelId).byId[message.id] = message
         persist { try $0.saveMessage(message) }
     }
 
     func markPlaceholderFailed(channelId: String, clientMsgId: String, failed: Bool) {
         let id = localPrefix + clientMsgId
-        guard var message = messagesByChannel[channelId]?[id] else { return }
+        let rows = bucket(channelId)
+        guard var message = rows.byId[id] else { return }
         message.failed = failed
-        messagesByChannel[channelId]?[id] = message
+        rows.byId[id] = message
         persist { try $0.saveMessage(message) }
     }
 
     /// Drops a channel's stored rows before its newest page is read again; unsent (pending) rows stay with their outbox items.
     func clearMessages(_ channelId: String) {
-        let pending = (messagesByChannel[channelId] ?? [:]).filter { $0.value.pending }
-        messagesByChannel[channelId] = pending.isEmpty ? nil : pending
+        let rows = bucket(channelId)
+        let pending = rows.byId.filter { $0.value.pending }
+        rows.byId = pending
         persist {
             try $0.clearMessages(channelId: channelId)
             for message in pending.values { try $0.saveMessage(message) }
@@ -807,7 +824,7 @@ final class Store {
         if !unsentReads.isEmpty, let data = try? JSON.plainEncoder.encode(unsentReads) { snapshot.meta[Self.unsentReadsKey] = String(data: data, encoding: .utf8) }
         snapshot.users = Array(users.values)
         snapshot.channels = Array(channels.values)
-        snapshot.messages = messagesByChannel.values.flatMap { $0.values }
+        snapshot.messages = buckets.values.flatMap { $0.byId.values }
         snapshot.outbox = outbox
         return snapshot
     }
@@ -817,4 +834,16 @@ final class Store {
         store.apply(snapshot)
         return store
     }
+}
+
+
+/// One channel's stored messages (M20): observed apart from the other channels, with the ordered timeline kept until
+/// the rows change (a view asks for it many times per redraw; sorting every time grew with the channel).
+@Observable
+final class ChannelMessages {
+    var byId: [String: MessageState] = [:] {
+        didSet { timeline = nil }
+    }
+    /// The ordered timeline for a floor (the oldest loaded seq), dropped whenever a row changes.
+    @ObservationIgnored var timeline: (floor: Int, rows: [MessageState])?
 }

@@ -11,8 +11,11 @@ struct ChannelView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var atBottom = false
     @State private var positioned = false
-    @State private var visibleFrames: [String: CGRect] = [:]
-    @State private var viewportHeight: CGFloat = 0
+    /// Where the rows are on screen, for the read rules and the keyboard (not view state: written on every scroll frame,
+    /// it redrew the whole conversation each time, M20).
+    @State private var frames = RowFrames()
+    private var visibleFrames: [String: CGRect] { frames.byId }
+    private var viewportHeight: CGFloat { frames.viewportHeight }
     @State private var loadingOlder = false
     /// Read position when the channel was opened; the 「新着メッセージ」 divider stays there.
     @State private var unreadMark: Int?
@@ -260,6 +263,7 @@ struct ChannelView: View {
                                     MessageRow(message: message, controller: controller, compact: compact,
                                                onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
                                                onMarkUnread: markUnreadAction(message))
+                                        .equatable() // unchanged messages skip their body (M20)
                                         .id(message.rowKey)
                                         .background(GeometryReader { geometry in
                                             Color.clear.preference(key: VisibleMessageFrames.self,
@@ -294,8 +298,8 @@ struct ChannelView: View {
                         }
                     }
                     .onPreferenceChange(VisibleMessageFrames.self) { frames in
-                        visibleFrames = frames
-                        viewportHeight = viewport.size.height
+                        self.frames.byId = frames
+                        self.frames.viewportHeight = viewport.size.height
                         markRead()
                     }
                     .overlay(alignment: .bottomTrailing) {
@@ -821,15 +825,40 @@ struct EditMessageView: View {
     }
 }
 
-/// The server sends ISO 8601 with microseconds; ISO8601DateFormatter only understands milliseconds.
-func parseIsoDate(_ iso: String) -> Date? {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: iso) { return date }
-    let truncated = iso.replacingOccurrences(of: #"(\.\d{3})\d+"#, with: "$1", options: .regularExpression)
-    if let date = formatter.date(from: truncated) { return date }
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.date(from: iso)
+/// The server sends ISO 8601 with microseconds. Each string is parsed once (IsoDates): a timeline asks for every
+/// row's time on every redraw, and a new ISO8601DateFormatter plus a regex per call made that grow with the rows (M20).
+func parseIsoDate(_ iso: String) -> Date? { IsoDates.shared.date(iso) }
+
+final class IsoDates: @unchecked Sendable {
+    static let shared = IsoDates()
+    private let lock = NSLock()
+    private var cache: [String: Date] = [:]
+    private let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private let whole = Date.ISO8601FormatStyle()
+
+    func date(_ iso: String) -> Date? {
+        lock.lock()
+        let known = cache[iso]
+        lock.unlock()
+        if let known { return known }
+        guard let date = (try? fractional.parse(iso)) ?? (try? whole.parse(iso)) ?? Self.legacy(iso) else { return nil }
+        lock.lock()
+        if cache.count >= 50_000 { cache.removeAll(keepingCapacity: true) }
+        cache[iso] = date
+        lock.unlock()
+        return date
+    }
+
+    /// Anything the format styles refuse (ISO8601DateFormatter reads only milliseconds).
+    private static func legacy(_ iso: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: iso) { return date }
+        let truncated = iso.replacingOccurrences(of: #"(\.\d{3})\d+"#, with: "$1", options: .regularExpression)
+        if let date = formatter.date(from: truncated) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: iso)
+    }
 }
 
 struct ComposerView: View {
@@ -1134,4 +1163,20 @@ private struct VisibleMessageFrames: PreferenceKey {
 extension Notification.Name {
     /// A profile card asked to open a conversation (userInfo["id"] = channel id).
     static let chikuwaOpenChannel = Notification.Name("chikuwa.openChannel")
+}
+
+
+/// Row frames and the viewport's height, kept out of view state (ChannelView.frames).
+final class RowFrames {
+    var byId: [String: CGRect] = [:]
+    var viewportHeight: CGFloat = 0
+}
+
+/// A row redraws when its message or its grouping changes; what it reads from the store (names, custom emoji, the saved
+/// mark) redraws it through observation. Before (M20), every row ran its body on every change of the conversation.
+extension MessageRow: Equatable {
+    static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
+        lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.controller === rhs.controller
+            && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.onMarkUnread == nil) == (rhs.onMarkUnread == nil)
+    }
 }
