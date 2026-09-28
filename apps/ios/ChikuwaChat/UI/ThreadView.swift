@@ -75,6 +75,16 @@ struct ThreadView: View {
                             .padding()
                         }
                         .coordinateSpace(name: "threadViewport")
+                        .dismissesKeyboardOnTap()
+                        // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
+                        .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom) { height, atEnd in
+                            if atEnd {
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
+                                      let reply = replies.first(where: { $0.id == id }) {
+                                proxy.scrollTo(reply.rowKey, anchor: .bottom)
+                            }
+                        }
                         .onUserScroll { if provisional && !positioned { userScrolled = true } }
                         .background(CoverProbe.Marker(probe: cover))
                         .onPreferenceChange(VisibleReplyFrames.self) { frames in

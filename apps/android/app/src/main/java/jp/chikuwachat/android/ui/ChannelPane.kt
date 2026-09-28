@@ -77,6 +77,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -251,7 +252,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+            // Laid out from the bottom: the newest message stays above the input when the keyboard comes up. A tap on the
+            // list closes the keyboard (KeyboardBehavior.kt).
+            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(items, key = { it.key }) { item ->
                     when (item) {
                         is TimelineItem.DateSeparator -> DaySeparator(item.label)

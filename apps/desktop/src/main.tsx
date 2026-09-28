@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./ui/App";
 import { AppController } from "./state/app";
+import { followVisualViewport } from "./platform/viewport";
 import "./styles.css";
 
 const controller = new AppController();
@@ -12,6 +13,7 @@ createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 void controller.boot();
+followVisualViewport();
 
 // Focus and visibility changes reach the server at once, not at the next heartbeat: while this window is not in
 // use, the reader's phone gets pushes again (PUSH_NOTIFICATIONS.md §4.1).

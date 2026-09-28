@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AppController } from "../state/app";
 import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
+import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
@@ -37,6 +38,11 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const container = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  /** When the reader last dragged, wheeled or keyed on the list: scrolls long after that are not theirs. */
+  const readerInputAt = useRef(0);
+  /** Until when the end is held after the keyboard came or went (the input and the list settle their heights). */
+  const holdEndUntil = useRef(0);
+  const [tapHandlers] = useState(() => tapClosesKeyboard());
   const [showJump, setShowJump] = useState(false);
   // Newest seq the reader has had on screen at the bottom; messages above it from others are "new".
   const [seenSeq, setSeenSeq] = useState(channel.lastReadSeq);
@@ -107,6 +113,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const shownFocus = useRef(focus);
   shownFocus.current = focus;
   const content = useRef<HTMLDivElement>(null);
+  const holdingEnd = () => Date.now() < holdEndUntil.current && Date.now() - readerInputAt.current > 800;
   // Scroll the container itself (scrollIntoView would also move scrollable ancestors).
   const scrollToBottom = () => {
     const el = container.current;
@@ -129,18 +136,29 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     const inner = content.current;
     if (!el || !inner || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (atBottom.current && positioned.current && !anchor.current) scrollToBottom();
+      if ((atBottom.current || holdingEnd()) && positioned.current && !anchor.current) scrollToBottom();
     });
     observer.observe(el);
     observer.observe(inner);
-    return () => observer.disconnect();
+    // The keyboard coming or going on a phone: at the end, the list stays at the end while things settle.
+    const viewport = window.visualViewport;
+    const keyboardMoved = () => {
+      if (atBottom.current && positioned.current) holdEndUntil.current = Date.now() + 700;
+    };
+    viewport?.addEventListener("resize", keyboardMoved);
+    return () => {
+      observer.disconnect();
+      viewport?.removeEventListener("resize", keyboardMoved);
+    };
   }, []);
   // Input of the reader's own on the list (not scrolling done by the view, nor the banner resizing it).
   useEffect(() => {
     const el = container.current;
     if (!el) return;
-    const input = () => {
+    const input = (event: Event) => {
       quiet.current = false;
+      // Scrolling input only: a tap (that may close the keyboard) does not move the list.
+      if (event.type !== "pointerdown") readerInputAt.current = Date.now();
     };
     const events = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
     for (const name of events) el.addEventListener(name, input, { passive: true });
@@ -332,6 +350,14 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const onScroll = () => {
     const el = container.current;
     if (!el) return;
+    // Typing at the end on a phone, or the keyboard just came or went: iOS Safari scrolls the list up by what the input
+    // grew, to follow the caret, and the input settles its height. Not the reader's scrolls, so the list stays at the
+    // end (platform/viewport.ts).
+    if ((atBottom.current || holdingEnd()) && positioned.current && (keyboardUp() || holdingEnd())
+        && Date.now() - readerInputAt.current > 800 && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+      scrollToBottom();
+      return;
+    }
     measureScroll();
     markVisible();
     if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") loadOlder();
@@ -360,7 +386,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           )}
         </div>
       )}
-      <div className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll}>
+      <div className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">

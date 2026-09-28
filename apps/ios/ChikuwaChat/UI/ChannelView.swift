@@ -275,10 +275,16 @@ struct ChannelView: View {
                     .background(CoverProbe.Marker(probe: cover))
                     .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
                     .scrollDismissesKeyboard(.interactively)
-                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                        // The keyboard shrinks the viewport: keep the newest message in view when we were at the bottom.
-                        guard atBottom, focus == nil else { return }
-                        DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    .dismissesKeyboardOnTap()
+                    // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
+                    // Not while the list is being placed or lands on the first unread row (§10.1 4.).
+                    .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil, atEnd: atBottom) { height, atEnd in
+                        if atEnd {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
+                                  let row = messages.first(where: { $0.id == id }) {
+                            proxy.scrollTo(row.rowKey, anchor: .bottom)
+                        }
                     }
                     .onPreferenceChange(VisibleMessageFrames.self) { frames in
                         visibleFrames = frames

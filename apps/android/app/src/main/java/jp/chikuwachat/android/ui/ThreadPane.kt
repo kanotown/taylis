@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
@@ -89,6 +90,8 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     var positioned by remember(parentId) { mutableStateOf(false) }
     var userScrolled by remember(parentId) { mutableStateOf(false) }
     var anchored by remember(parentId) { mutableStateOf(false) }
+    // The keyboard and the input growing: the newest reply (or the one read last) stays above the input.
+    KeepBottomOnResize(listState, enabled = placed || positioned)
 
     suspend fun scrollTo(at: OpenPosition) {
         when (at) {
@@ -150,7 +153,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current), state = listState) {
             if (parent != null) {
                 item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                 item(key = "divider") {
