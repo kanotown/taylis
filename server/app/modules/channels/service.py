@@ -378,9 +378,15 @@ async def ensure_times(
     require_not_guest(actor)
     existing = await repo.get_times_of(db, actor.id)
     if existing is not None:
-        return await _out_with_count(
-            db, existing, await repo.get_membership(db, existing.id, actor.id)
-        ), False
+        membership = await repo.get_membership(db, existing.id, actor.id)
+        if membership is None and not existing.is_archived:
+            # I had left my own times: back in, as its owner again.
+            await add_member_in_tx(db, existing, actor.id)
+            membership = await repo.get_membership(db, existing.id, actor.id)
+            if membership is not None:
+                membership.role = "owner"
+            await db.commit()
+        return await _out_with_count(db, existing, membership), False
     name = await _free_times_name(db, f"times-{actor.username}")
     channel = Channel(
         type="public",

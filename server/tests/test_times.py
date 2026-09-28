@@ -73,6 +73,10 @@ async def test_times_is_made_once_and_supervisors_follow_it(
     assert await _member_ids(client, times["id"]) == {str(alice.id), str(prof.id)}
     again = await client.post("/api/v1/times")
     assert again.status_code == 200 and again.json()["id"] == times["id"]
+    # Having left it, asking again brings me back in as its owner.
+    assert (await client.post(f"/api/v1/channels/{times['id']}/leave")).status_code == 204
+    back = await client.post("/api/v1/times")
+    assert back.status_code == 200 and back.json()["membership"]["role"] == "owner"
 
     # A supervisor assigned later joins the student's times too.
     as_user(bob)
