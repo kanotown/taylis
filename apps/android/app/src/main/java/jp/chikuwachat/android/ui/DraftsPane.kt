@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.app.AppController
 
 /** 「下書き」 (M11h): conversations with unsent text or attachments; a row opens the conversation with the draft restored. */
@@ -38,13 +39,24 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(channel?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                         if (row.parentId != null) Text(" · スレッド", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(" · " + Schedule.label(row.sendAt) + " に送信", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val failed = row.status == "failed"
+                        if (failed) Text(" · 送信できませんでした", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        else Text(" · " + Schedule.label(row.sendAt) + " に送信", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (row.attachments.isNotEmpty()) Text(" · 添付 ${row.attachments.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(plainText(Mentions.toNames(row.body, store.users, store.groups)).ifBlank { "(本文なし)" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                    Row {
-                        TextButton(onClick = { controller.scope.launch { controller.sendScheduledNow(row) } }) { Text("今すぐ送信") }
-                        TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text("取り消し") }
+                    // Codex audit C3: a failed row says why; its text can go back to a draft or be dismissed.
+                    if (row.status == "failed") {
+                        Text(ErrorMessages.byCode[row.error ?: ""] ?: "送信できませんでした", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 2.dp))
+                        Row {
+                            TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text("下書きに戻す") }
+                            TextButton(onClick = { controller.scope.launch { controller.dismissScheduled(row) } }) { Text("削除") }
+                        }
+                    } else {
+                        Row {
+                            TextButton(onClick = { controller.scope.launch { controller.sendScheduledNow(row) } }) { Text("今すぐ送信") }
+                            TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text("取り消し") }
+                        }
                     }
                 }
                 HorizontalDivider()

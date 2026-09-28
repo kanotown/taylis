@@ -595,6 +595,14 @@ class SyncEngineTest {
         server.emitScheduled(alice.id, row.copy(status = "sent", sentMessageId = "m1"))
         server.emitScheduled(alice.id, second.copy(status = "cancelled")); settle(engine)
         assertTrue(store.listScheduled().isEmpty())
+        // Codex audit C3: a failed row stays, first, with its error, until it is dismissed.
+        val third = server.schedule(alice.id, general.id, "never lands", "2026-10-04T00:00:00Z")
+        val fourth = server.schedule(alice.id, general.id, "fine", "2026-10-01T00:00:00Z")
+        server.emitScheduled(alice.id, fourth)
+        server.emitScheduled(alice.id, third.copy(status = "failed", error = "channel_archived")); settle(engine)
+        assertEquals(listOf("never lands" to "failed", "fine" to "pending"), store.listScheduled().map { it.body to it.status })
+        server.emitScheduled(alice.id, third.copy(status = "cancelled", error = "channel_archived")); settle(engine)
+        assertEquals(listOf("fine"), store.listScheduled().map { it.body })
         engine.stop(); scope.cancel()
     }
 

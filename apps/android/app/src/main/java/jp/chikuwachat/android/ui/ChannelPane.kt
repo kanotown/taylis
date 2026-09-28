@@ -672,14 +672,28 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
             var scheduleOpen by remember { mutableStateOf(false) }
             var customOpen by remember { mutableStateOf(false) }
-            val canSchedule = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty())
+            // Codex audit C2: one key per schedule, kept while the same draft is scheduled again after a failure; no
+            // second request while one is on its way.
+            var scheduling by remember { mutableStateOf(false) }
+            var scheduleKey by remember { mutableStateOf<Pair<String, String>?>(null) }
+            val canSchedule = !scheduling && uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty())
             fun schedule(at: java.time.ZonedDateTime) {
                 val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
                 val ids = pendingUploads.map { it.id }
                 if (!canSchedule) return
                 if (at.isBefore(java.time.ZonedDateTime.now().plusMinutes(1))) { controller.error = "1 分以上先の時刻を選んでください"; return }
+                val what = listOf(channelId, parentId, body, ids).toString()
+                val key = scheduleKey?.takeIf { it.second == what }?.first ?: java.util.UUID.randomUUID().toString()
+                scheduleKey = key to what
+                val typed = draft
+                scheduling = true
                 controller.scope.launch {
-                    if (controller.scheduleMessage(channelId, parentId, body, ids, at)) store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                    val done = controller.scheduleMessage(channelId, parentId, body, ids, at, key)
+                    scheduling = false
+                    if (!done) return@launch
+                    scheduleKey = null
+                    // Codex audit C1: what was typed or attached while the request was on its way stays.
+                    store.setDraft(channelId, parentId) { it.copy(text = if (it.text == typed) "" else it.text, attachments = it.attachments.filterNot { a -> a.id in ids }) }
                 }
             }
             Box {
