@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import getpass
 import json
+import os
 import re
 import sys
 import uuid
@@ -273,6 +274,94 @@ def cmd_push_test(args: argparse.Namespace) -> int:
     return asyncio.run(_push_test(args.username, args.body))
 
 
+def mattermost_dsn(args: argparse.Namespace) -> str | None:
+    """--dsn, then $MM_DSN, then SqlSettings.DataSource of Mattermost's config.json (--mm-config):
+    the password need not appear on a command line."""
+    if args.dsn:
+        return str(args.dsn)
+    if os.environ.get("MM_DSN"):
+        return os.environ["MM_DSN"]
+    if args.mm_config:
+        config = json.loads(Path(args.mm_config).read_text(encoding="utf-8"))
+        source = config.get("SqlSettings", {}).get("DataSource")
+        return str(source) if source else None
+    return None
+
+
+def cmd_mattermost_extract(args: argparse.Namespace) -> int:
+    """Read one Mattermost team into a JSONL file (M18); Mattermost itself is only read."""
+    from app.modules.importer.mattermost_extract import extract_team
+
+    dsn = mattermost_dsn(args)
+    if dsn is None:
+        print("give --mm-config, --dsn or $MM_DSN", file=sys.stderr)
+        return 2
+    try:
+        counts = asyncio.run(extract_team(dsn, args.team, Path(args.out)))
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {args.out}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+    return 0
+
+
+def parse_user_map(pairs: Sequence[str]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for pair in pairs:
+        mm, sep, chikuwa = pair.partition("=")
+        if not sep or not mm.strip() or not chikuwa.strip():
+            raise ValueError(f"--user {pair}: use MATTERMOST_NAME=CHIKUWA_NAME")
+        mapping[mm.strip().lstrip("@").lower()] = chikuwa.strip().lstrip("@").lower()
+    return mapping
+
+
+async def _import_mattermost(args: argparse.Namespace) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.importer.mattermost_import import ImportFailed, import_mattermost
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                report = await import_mattermost(
+                    session,
+                    Path(args.file),
+                    files_root=Path(args.files) if args.files else None,
+                    user_map=parse_user_map(args.user or []),
+                    actor_username=args.actor,
+                    blobs=build_blobstore(settings),
+                    settings=settings,
+                    dry_run=args.dry_run,
+                )
+            except (ImportFailed, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+    finally:
+        await db.dispose()
+    print("dry run: nothing was written" if report.dry_run else "imported")
+    print("people:")
+    for line in report.people:
+        print(f"  {line}")
+    print("counts:")
+    for key, value in sorted(report.counts.items()):
+        print(f"  {key}: {value}")
+    if report.warnings:
+        print(f"warnings ({len(report.warnings)}):")
+        for line in report.warnings[:200]:
+            print(f"  {line}")
+        if len(report.warnings) > 200:
+            print(f"  … and {len(report.warnings) - 200} more")
+    return 0
+
+
+def cmd_import_mattermost(args: argparse.Namespace) -> int:
+    """Import a mattermost-extract file (M18). Safe to run again: only new posts are added."""
+    return asyncio.run(_import_mattermost(args))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -305,6 +394,28 @@ def build_parser() -> argparse.ArgumentParser:
     export_channel.add_argument("--channel", required=True, help="channel name or id")
     export_channel.add_argument("--out", required=True)
     export_channel.set_defaults(func=cmd_export_channel)
+
+    mm_extract = sub.add_parser(
+        "mattermost-extract", help="read one Mattermost team into a JSONL file (read-only)"
+    )
+    mm_extract.add_argument("--mm-config", help="Mattermost's config.json (for its DataSource)")
+    mm_extract.add_argument("--dsn", help="Mattermost's PostgreSQL URL (or set $MM_DSN)")
+    mm_extract.add_argument("--team", required=True, help="the team's name (URL), e.g. ebi")
+    mm_extract.add_argument("--out", required=True)
+    mm_extract.set_defaults(func=cmd_mattermost_extract)
+
+    mm_import = sub.add_parser("import-mattermost", help="import a mattermost-extract file")
+    mm_import.add_argument("file")
+    mm_import.add_argument("--files", help="Mattermost's data directory (attachments, emoji)")
+    mm_import.add_argument(
+        "--user",
+        action="append",
+        metavar="MM=CHIKUWA",
+        help="map a Mattermost username to an existing account (repeatable)",
+    )
+    mm_import.add_argument("--actor", required=True, help="the administrator running the import")
+    mm_import.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
+    mm_import.set_defaults(func=cmd_import_mattermost)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

@@ -7,6 +7,7 @@ from app.modules.channel_links import models as _channel_link_models
 from app.modules.channels import models as _channel_models
 from app.modules.drafts import models as _draft_models
 from app.modules.groups import models as _group_models
+from app.modules.importer import models as _import_models
 from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
@@ -24,6 +25,7 @@ __all__ = [
     "_draft_models",
     "_event_models",
     "_group_models",
+    "_import_models",
     "_invite_models",
     "_message_models",
     "_notification_models",

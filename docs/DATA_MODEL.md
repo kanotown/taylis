@@ -812,6 +812,37 @@ CREATE TABLE workspace_identity (
 `GET /api/v1/server` とプッシュのペイロードで `workspace_id` として返す。クライアントはこの値で
 通知をワークスペースに振り分ける。データなのでバックアップ / 復元で保たれる。行が無ければ起動時に作る。
 
+### import_refs (移行元の対応、M18)
+
+```sql
+CREATE TABLE import_refs (
+  source      varchar(32) NOT NULL,   -- 'mattermost'
+  kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji'
+  source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id)
+  target_id   uuid NOT NULL,          -- 作った行 (users / channels / messages / attachments / custom_emoji) の id
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source, kind, source_id)
+);
+```
+
+移行 (`app.cli import-mattermost`、infra/README.md「Mattermost からの移行」) で作った行ごとに 1 行。もう一度
+実行すると、ここにある移行元の行は飛ばす (後から増えた投稿だけを足す)。外部キーは張らない (移行元ごとに
+指す表が違う)。移行の対応付け:
+
+- **messages**: 作成順に、そのチャンネルの次の seq を振る (`seq = updated_seq`)。返信は親の `reply_count`・
+  `last_reply_at`・`updated_seq` を通常の投稿と同じく進める。`id` は移行元の作成時刻の UUIDv7
+  (`uuid7_at`)、`client_msg_id` は移行元の id から決まる UUIDv5 (再実行でも同じ)。`created_at`・`edited_at` は
+  移行元の時刻、ピン留めは `pinned_at = created_at`、`pinned_by = 投稿者`。本文の `@名前` は `<@user_id>`、
+  `@channel` / `@all` は `<!channel>`、`@here` は `<!here>` に置き換え、`mentioned_user_ids` / `mention_all`
+  は置き換えた本文から求める。移行元が削除した投稿とシステムメッセージは読み込まない。
+- **attachments**: `status = 'attached'`、id は移行元の id から決まる UUIDv5 (再実行で同じキーに書く)。
+  `content_type` はアップロードと同じく中身から判定する。
+- **reactions**: カスタム絵文字は `:name:`、標準の絵文字は文字そのもの (クライアントが送る形)。
+- **read_states / thread_follows**: 読み込んだメッセージは全メンバーが既読 (`last_read_seq = last_seq`)、
+  スレッドの参加者 (親の投稿者と返信した人) はフォローして既読。
+- **users**: 移行元の人は、指定・前回の移行・同じメールアドレスの順で既存のアカウントに対応付け、それ以外で
+  投稿かリアクションのある人は無効化済みのアカウント (bot は `role = 'bot'`) を作る。
+
 ## 4. 代表的なクエリ
 
 履歴 (上スクロール。カーソルは `seq`。トゥームストーンは含めない):

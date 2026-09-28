@@ -154,6 +154,16 @@ async def _emit_channel(
     )
 
 
+async def announce_created_in_tx(db: AsyncSession, channel: Channel) -> None:
+    """channel.created for a channel made outside the API (M18 import), as create_channel does."""
+    await _emit_channel(
+        db,
+        events.CHANNEL_CREATED,
+        channel,
+        audience_type="all" if channel.type == "public" else "channel",
+    )
+
+
 async def _emit_member(
     db: AsyncSession,
     event_type: str,
