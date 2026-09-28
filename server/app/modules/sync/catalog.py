@@ -12,6 +12,7 @@ from app.modules.drafts import events as draft_events
 from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
 from app.modules.groups import events as group_events
+from app.modules.lab import events as lab_events
 from app.modules.messages import events as message_events
 from app.modules.notifications import events as notification_events
 from app.modules.reads import events as read_events
@@ -65,6 +66,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),
     group_events.GROUP_UPDATED: (group_events.GroupUpdatedData, "all", False),
+    lab_events.ROSTER_UPDATED: (lab_events.RosterUpdatedData, "all", False),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (
         notification_events.NotificationPreferenceUpdatedData,
         "user",

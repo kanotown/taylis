@@ -17,6 +17,7 @@ from app.modules.audit import service as audit
 from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
 from app.modules.groups import service as groups
+from app.modules.lab import service as lab
 from app.modules.totp import service as totp
 from app.modules.users.events import (
     USER_CREATED,
@@ -248,6 +249,7 @@ async def anonymize_user(
     await auth.revoke_all_sessions(db, user.id, "anonymized", now)
     await auth_repo.clear_push_tokens(db, user.id)
     await totp.remove_in_tx(db, user.id)
+    await lab.forget_in_tx(db, actor, user.id)  # the roster line, research topic included (M23)
     await emit_user_event(db, USER_DEACTIVATED, user)
     await audit.record_in_tx(
         db,

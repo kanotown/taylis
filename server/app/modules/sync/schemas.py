@@ -8,6 +8,7 @@ from app.modules.channels.schemas import ChannelOut
 from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut
 from app.modules.groups.schemas import GroupOut
+from app.modules.lab.schemas import LabProfileOut
 from app.modules.sidebar.schemas import SidebarSectionOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
@@ -42,6 +43,8 @@ class BootstrapOut(BaseModel):
     custom_emoji: list[CustomEmojiOut] = []
     # User groups (M12k): every group with its members; changes arrive as group.updated.
     groups: list[GroupOut] = []
+    # The lab roster (M23) in roster order; changes arrive as roster.updated.
+    roster: list[LabProfileOut] = []
     # My sidebar sections (M14f); changes arrive as sidebar.updated.
     sidebar_sections: list[SidebarSectionOut] = []
     # My drafts shared by my devices (M15d); changes arrive as draft.updated.

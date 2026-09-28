@@ -14,6 +14,7 @@ from app.modules.drafts import service as drafts
 from app.modules.emoji import service as emoji
 from app.modules.favorites import service as favorites
 from app.modules.groups import service as groups
+from app.modules.lab import service as lab
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import service as reads
@@ -64,6 +65,7 @@ async def bootstrap(
         favorites=await favorites.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
         groups=await groups.list_visible(db, visible),
+        roster=await lab.roster(db, visible),
         sidebar_sections=await sidebar.list_for(db, actor.id),
         drafts=await drafts.list_for(db, actor.id),
         presence=[
