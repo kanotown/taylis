@@ -46,7 +46,7 @@ it("renders mention tokens as display names for notifications", () => {
 });
 
 describe("group mentions (M12k)", () => {
-  const design: GroupOut = { id: "00000000-0000-7000-8000-00000000000a", name: "design", description: "デザイン担当", member_ids: [alice.id, bob.id], created_by: alice.id, created_at: "", updated_at: "" };
+  const design: GroupOut = { id: "00000000-0000-7000-8000-00000000000a", name: "design", description: "デザイン担当", member_ids: [alice.id, bob.id], created_by: alice.id, created_at: "", updated_at: "", managed: false };
   const groups = new Map([[design.id, design]]);
 
   it("encodes @group to the group token and decodes it back", () => {

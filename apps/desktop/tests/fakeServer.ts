@@ -669,6 +669,7 @@ export class FakeServer {
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           custom_emoji: [...this.customEmoji.values()],
           groups: [],
+          roster: [],
           sidebar_sections: [],
           drafts: this.draftsOf(userId),
         };
