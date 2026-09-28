@@ -156,6 +156,11 @@ export class ApiClient {
     return this.request("POST", "/api/v1/channels", { name, type });
   }
 
+  /** M24: my times, made on the first call (201) and returned afterwards (200). */
+  ensureTimes(): Promise<ChannelOut> {
+    return this.request("POST", "/api/v1/times");
+  }
+
   joinChannel(channelId: string): Promise<ChannelOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/join`);
   }

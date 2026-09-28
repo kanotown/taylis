@@ -698,6 +698,18 @@ export class AppController {
     }
   }
 
+  /** M24 (administrators): mark a channel as someone's times (a Mattermost import's, say), or unmark it with null. */
+  async setTimesOwner(channelId: string, ownerId: string | null): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.updateChannel(channelId, { times_owner_id: ownerId }));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   /** M15b: public → private (owner / admin) or private → public (admin only). */
   async convertChannel(channelId: string, type: "public" | "private"): Promise<boolean> {
     if (!this.api) return false;
@@ -807,6 +819,19 @@ export class AppController {
   }
 
   /** Open (or create) the DM with one user; returns its channel id. */
+  /** M24: my times (made on the first call; the supervisors on the roster join it); returns its id. */
+  async ensureTimes(): Promise<string | null> {
+    if (!this.api) return null;
+    try {
+      const channel = await this.api.ensureTimes();
+      this.store.upsertChannel(channel, { isMember: true });
+      return channel.id;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
   async openDmWith(userId: string): Promise<string | null> {
     if (!this.api) return null;
     const existing = [...this.store.channels.values()].find((c) => c.type === "dm" && (c.dm_user_ids ?? []).includes(userId) && (c.dm_user_ids ?? []).length <= 2);
@@ -904,7 +929,8 @@ export class AppController {
     const session = this.sessions.get(serverUrl);
     if (!session) return { badge: 0, unread: false };
     const channels = [...session.store.channels.values()];
-    return { badge: unreadBadgeTotal(channels), unread: channels.some((c) => c.isMember && !c.archived && hasUnread(c)) };
+    const meId = session.store.me?.id ?? null;
+    return { badge: unreadBadgeTotal(channels), unread: channels.some((c) => c.isMember && !c.archived && hasUnread(c, meId)) };
   }
 
   /** ⌘1 … ⌘9: the n-th workspace of the rail. */

@@ -3,7 +3,7 @@ import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, Compass, FileText, F
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { badgeCount, hasUnread, isDmChannel, isMutedChannel, sectionChannels } from "./channels";
+import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { ChannelContextMenu, SectionHeaderMenu } from "./SidebarMenus";
@@ -21,6 +21,8 @@ interface Props {
   /** M13g: the member directory. */
   onDirectory?: () => void;
   onNewChannel: () => void;
+  /** M24: make (or open) my times. */
+  onCreateTimes?: () => void;
   onSearch?: () => void;
   onSettings?: () => void;
   /** The threads view (THREADS.md §5); `threadsActive` highlights its entry instead of a channel. */
@@ -48,18 +50,22 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm,
-  onDirectory, onNewChannel, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
   const draftCount = store.listDrafts().length + store.scheduled.size;
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections });
+  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
+  // M24: offer to make my times until I have one.
+  const hasMyTimes = !!me && channels.some((c) => c.times_owner_id === me.id);
   const status = controller.engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
     const muted = isMutedChannel(channel);
-    const unread = hasUnread(channel) && channel.id !== currentId;
+    const unread = hasUnread(channel, me?.id ?? null) && channel.id !== currentId;
+    // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
+    const quietUnread = !unread && channel.id !== currentId && channel.unreadCount > 0 && isQuietChannel(channel, me?.id ?? null);
     const badge = badgeCount(channel);
     const active = channel.id === currentId;
     // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
@@ -88,7 +94,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
           {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
-          {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : null}
+          {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/40" title="新しい投稿があります (静かな未読)" /> : null}
         </button>
         </ChannelContextMenu>
       </li>
@@ -295,6 +301,21 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         <ul className="space-y-px">{sections.channels.map(item)}</ul>
         {sections.channels.length === 0 && <Hint>{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</Hint>}
       </Section>
+      {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
+        <Section
+          title="Times"
+          action={
+            onCreateTimes && !hasMyTimes && !controller.isGuest ? (
+              <IconButton tone="sidebar" label="自分の times を作る" className="h-6 w-6" onClick={onCreateTimes}>
+                <Plus size={14} />
+              </IconButton>
+            ) : undefined
+          }
+        >
+          <ul className="space-y-px">{sections.times.map(item)}</ul>
+          {sections.times.length === 0 && <Hint>+ から自分の times (作業ログ) を作れます</Hint>}
+        </Section>
+      )}
       <Section
         title="ダイレクトメッセージ"
         action={
