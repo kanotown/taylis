@@ -1061,7 +1061,7 @@ describe("round 2: the anchor, the read position and the banner (§10.1)", { tim
     const w = world({ posts: 600, lastRead: 400, body: (i) => `m${i} https://example.com/${i}` });
     const controller = controllerFor(w);
     const linkPreview = vi.fn((_url: string) => undefined);
-    Object.assign(controller, { linkPreviews: new Map(), linkPreview });
+    Object.assign(controller, { linkPreviews: new Map(), linkPreview, subscribeLinkPreviews: () => () => {} });
     await openView(w, controller);
     lookAround();
     await act(async () => {

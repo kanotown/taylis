@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
+import { useStoreUpdates } from "./hooks";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
@@ -15,6 +16,8 @@ import { Button, cn, PopoverContent, PopoverRoot, PopoverTrigger } from "./primi
  */
 export function UserPopover({ controller, userId, children, className }: { controller: AppController; userId: string; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
+  // Its trigger sits in memoized message rows: the open card follows presence and status itself.
+  useStoreUpdates(controller, open);
   const store = controller.store;
   const user = store.users.get(userId);
   const me = store.me?.id === userId;

@@ -1,7 +1,10 @@
 import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import type { ApiClient } from "../api/client";
 import type { AppController } from "../state/app";
+import type { SyncEngine } from "../sync/engine";
+import type { Store } from "../sync/store";
 import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
@@ -60,7 +63,14 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   // §10.1: drawn only when the loaded range reaches it (above the oldest loaded row it would be a lie); never
   // in a search context.
   const mark = focus ? null : dividerMark(heldUnread, unreadMark.current.seq, channel.oldestLoadedSeq);
-  const items = buildTimeline(messages, { firstUnreadAfterSeq: mark, meId: me?.id ?? null });
+  // Rebuilt when the rows, the divider or the day change, not on every render of the app (M21).
+  const today = new Date().toDateString();
+  const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: mark, meId: me?.id ?? null }), [messages, mark, me?.id, today]);
+  // The rows are memoized (M21): one function for the life of the view, calling the latest prop (MainScreen passes a new
+  // one on every render).
+  const openThreadRef = useRef(onOpenThread);
+  openThreadRef.current = onOpenThread;
+  const [openThread] = useState(() => (id: string) => openThreadRef.current?.(id));
   const last = messages[messages.length - 1];
   const lastId = last ? rowKey(last) : undefined;
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
@@ -434,7 +444,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
               </div>
             );
           }
-          return <MessageRow key={rowKey(item.message)} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread} />;
+          return <MessageRow key={rowKey(item.message)} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread ? openThread : undefined} />;
         })}
         <div ref={bottom} />
         </div>
@@ -520,12 +530,64 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
   );
 }
 
-/** One message with hover actions; shared by the timeline and the thread pane. */
+/**
+ * One message with hover actions; shared by the timeline and the thread pane.
+ *
+ * Reads here everything the row shows besides its message, and the row itself (MessageRowView) is memoized on that
+ * (M21): the whole app re-renders on every change of the store (a typing frame, a keystroke in the composer, another
+ * channel's unread count), and re-rendering 1,000 rows took 330 ms each time. Messages are replaced, never changed in
+ * place (store.upsertMessage), so a changed message is a new object. `rowsVersion` stands for me, the users, the groups
+ * and the custom emoji (mutable maps). Anything else a row shows must come in as a prop here, or be subscribed to by the
+ * part that shows it (LinkPreviewCard, useAvatarUrl, UserPopover while open, ShareDialog).
+ */
 export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false }: {
   controller: AppController; message: MessageState; compact?: boolean; onOpenThread?: (id: string) => void; thread?: boolean;
 }) {
   const store = controller.store;
-  const engine = controller.engine;
+  // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
+  const conversation = store.getChannel(message.channel_id);
+  return (
+    <MessageRowView
+      controller={controller}
+      message={message}
+      compact={compact}
+      onOpenThread={onOpenThread}
+      thread={thread}
+      store={store}
+      engine={controller.engine}
+      api={controller.api}
+      rowsVersion={store.rowsVersion}
+      editing={controller.editing === message.id}
+      highlighted={controller.messageFocus?.messageId === message.id}
+      saved={store.isBookmarked(message.id)}
+      isAdmin={controller.isAdmin}
+      // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
+      threadParent={!thread && message.parent_id ? store.getMessage(message.channel_id, message.parent_id) : undefined}
+      unreadOffered={!thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation)}
+    />
+  );
+}
+
+interface MessageRowViewProps {
+  controller: AppController;
+  message: MessageState;
+  compact: boolean;
+  onOpenThread: ((id: string) => void) | undefined;
+  thread: boolean;
+  store: Store;
+  engine: SyncEngine | null;
+  api: ApiClient | null;
+  /** Only compared (the row re-renders when it moves): the row reads the maps it stands for from `store`. */
+  rowsVersion: number;
+  editing: boolean;
+  highlighted: boolean;
+  saved: boolean;
+  isAdmin: boolean;
+  threadParent: MessageState | undefined;
+  unreadOffered: boolean;
+}
+
+const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, editing, highlighted, saved, isAdmin, threadParent, unreadOffered }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
@@ -533,24 +595,16 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
-  const editing = controller.editing === message.id;
 
   const sender = store.users.get(message.sender_id);
   const senderName = sender?.display_name ?? (message.pending ? me?.display_name : undefined) ?? "unknown";
   const mine = me?.id === message.sender_id;
   const reactions = message.reactions ?? [];
-  const highlighted = controller.messageFocus?.messageId === message.id;
   const size = thread ? 30 : 36;
-  const saved = store.isBookmarked(message.id);
   const rawLink = message.body ? firstLink(message.body) : null;
-  const link = rawLink && controller.api && parsePermalink(controller.api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
+  const link = rawLink && api && parsePermalink(api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
-  // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
-  const threadParent = !thread && message.parent_id ? store.getMessage(message.channel_id, message.parent_id) : undefined;
   const threadId = message.parent_id ?? message.id;
-  // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
-  const conversation = store.getChannel(message.channel_id);
-  const unreadOffered = !thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation);
   return (
     <article
       key={rowKey(message)}
@@ -631,7 +685,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
         ) : (
           <>
             {message.body && (
-              <MessageBody body={message.body} users={store.users} internalBase={controller.api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} />
+              <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
             {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
@@ -752,7 +806,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
               <Pencil size={15} />
             </IconButton>
           )}
-          {(mine || controller.isAdmin) && (
+          {(mine || isAdmin) && (
             <PopoverRoot open={confirmDelete} onOpenChange={setConfirmDelete}>
               <PopoverTrigger asChild>
                 <button type="button" title="削除" aria-label="削除" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-danger">
@@ -779,7 +833,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
     </article>
   );
-}
+});
 
 /** Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
