@@ -320,7 +320,7 @@ describe("sidebar sections (M14f)", () => {
       },
     });
     client.accessToken = "a";
-    await client.createSidebarSection("x");
+    await client.createSidebarSection({ name: "x", emoji: "🔬", channel_ids: ["c1"] });
     await client.updateSidebarSection("s1", { position: 1 });
     await client.placeInSidebarSection("s1", "c1");
     await client.removeFromSidebarSection("c1");

@@ -5,6 +5,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import type { SidebarSectionOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { SectionDialog } from "./SectionDialog";
 import { Button, cn, Input, Modal } from "./primitives";
 
 const CONTENT = "rx-popover z-50 min-w-52 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
@@ -54,21 +55,21 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
         </ContextMenu.Portal>
       </ContextMenu.Root>
       {naming && (
-        <SectionNameDialog
+        <SectionDialog
+          controller={controller}
           title="新しいセクション"
-          submitLabel="作成して移動"
+          submitLabel="作成"
+          pickChannels
+          preselected={[channel.id]}
           onClose={() => setNaming(false)}
-          onSubmit={async (name) => {
-            const ok = await controller.createSection(name, channel.id);
-            if (ok) setNaming(false);
-          }}
+          onSubmit={(form) => controller.createSection(form.name, form.emoji, form.channelIds)}
         />
       )}
     </>
   );
 }
 
-/** The 「…」 on a custom section's header: rename, move up / down, delete. */
+/** The 「…」 on a custom section's header: name and icon, move up / down, delete. */
 export function SectionHeaderMenu({ controller, section, index, count }: { controller: AppController; section: SidebarSectionOut; index: number; count: number }) {
   const [renaming, setRenaming] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -82,7 +83,7 @@ export function SectionHeaderMenu({ controller, section, index, count }: { contr
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content sideOffset={6} align="end" className={CONTENT}>
-            <DropdownMenu.Item className={ITEM} onSelect={() => setRenaming(true)}>名前を変更</DropdownMenu.Item>
+            <DropdownMenu.Item className={ITEM} onSelect={() => setRenaming(true)}>名前とアイコンを変更…</DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} disabled={index === 0} onSelect={() => void controller.moveSection(section.id, index - 1)}>上へ</DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} disabled={index === count - 1} onSelect={() => void controller.moveSection(section.id, index + 1)}>下へ</DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} onSelect={() => setCreating(true)}>新しいセクション…</DropdownMenu.Item>
@@ -94,48 +95,31 @@ export function SectionHeaderMenu({ controller, section, index, count }: { contr
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
       {renaming && (
-        <SectionNameDialog
-          title="セクション名を変更"
-          initial={section.name}
+        <SectionDialog
+          controller={controller}
+          title="セクションを編集"
           submitLabel="保存"
+          initial={{ name: section.name, emoji: section.emoji ?? null }}
+          pickChannels={false}
           onClose={() => setRenaming(false)}
-          onSubmit={async (name) => {
-            if (await controller.renameSection(section.id, name)) setRenaming(false);
-          }}
+          onSubmit={(form) => controller.editSection(section.id, form.name, form.emoji)}
         />
       )}
-      {creating && (
-        <SectionNameDialog
-          title="新しいセクション"
-          submitLabel="作成"
-          onClose={() => setCreating(false)}
-          onSubmit={async (name) => {
-            if (await controller.createSection(name, null)) setCreating(false);
-          }}
-        />
-      )}
+      {creating && <NewSectionDialog controller={controller} onClose={() => setCreating(false)} />}
     </>
   );
 }
 
-function SectionNameDialog({ title, initial = "", submitLabel, onClose, onSubmit }: { title: string; initial?: string; submitLabel: string; onClose: () => void; onSubmit: (name: string) => Promise<void> }) {
-  const [name, setName] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    await onSubmit(name.trim());
-    setBusy(false);
-  };
+/** 「新しいセクション」 from a header or the channels' 「…」: name, icon and the conversations to put in it. */
+export function NewSectionDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title={title} className="w-[400px]">
-      <form className="mt-4 space-y-4" onSubmit={(e) => void submit(e)}>
-        <Input value={name} maxLength={40} required autoFocus placeholder="例: プロジェクト、チーム" onChange={(e) => setName(e.target.value)} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy || !name.trim()}>{submitLabel}</Button>
-        </div>
-      </form>
-    </Modal>
+    <SectionDialog
+      controller={controller}
+      title="新しいセクション"
+      submitLabel="作成"
+      pickChannels
+      onClose={onClose}
+      onSubmit={(form) => controller.createSection(form.name, form.emoji, form.channelIds)}
+    />
   );
 }
