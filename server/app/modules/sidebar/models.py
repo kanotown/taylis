@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -17,6 +17,9 @@ class SidebarSection(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     name: Mapped[str] = mapped_column(String(40))
+    # M26: an emoji (or a custom emoji `:name:`) before the name, and whether it is folded up.
+    emoji: Mapped[str | None] = mapped_column(String(64))
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     position: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

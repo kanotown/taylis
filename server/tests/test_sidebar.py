@@ -99,3 +99,58 @@ async def test_section_limit(
         ).status_code == 201
     over = await client.post("/api/v1/sidebar/sections", json={"name": "one more"})
     assert over.status_code == 409 and over.json()["error"]["code"] == "too_many_sections"
+
+
+async def test_sections_have_an_icon_fold_up_and_take_conversations_when_made(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """M26 (Slack): name, icon and conversations in one step; the icon and folding change later."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(bob)
+    foreign = (
+        await client.post("/api/v1/channels", json={"name": "bobs", "type": "private"})
+    ).json()
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    papers = (await client.post("/api/v1/channels", json={"name": "papers"})).json()
+    first = (
+        await client.post("/api/v1/sidebar/sections", json={"name": "研究", "emoji": "🔬"})
+    ).json()
+    moved = await client.put(f"/api/v1/sidebar/sections/{first[0]['id']}/channels/{general['id']}")
+    assert moved.status_code == 200
+
+    made = await client.post(
+        "/api/v1/sidebar/sections",
+        json={
+            "name": "論文",
+            "emoji": ":party_parrot:",
+            "channel_ids": [general["id"], papers["id"]],
+        },
+    )
+    assert made.status_code == 201, made.text
+    rows = {r["name"]: r for r in made.json()}
+    assert rows["研究"]["emoji"] == "🔬" and rows["研究"]["channel_ids"] == []  # general moved
+    assert rows["論文"]["emoji"] == ":party_parrot:" and rows["論文"]["collapsed"] is False
+    assert set(rows["論文"]["channel_ids"]) == {general["id"], papers["id"]}
+
+    section_id = rows["論文"]["id"]
+    folded = await client.patch(
+        f"/api/v1/sidebar/sections/{section_id}", json={"collapsed": True, "emoji": "🇯🇵"}
+    )
+    assert {r["name"]: (r["emoji"], r["collapsed"]) for r in folded.json()}["論文"] == ("🇯🇵", True)
+    plain = await client.patch(f"/api/v1/sidebar/sections/{section_id}", json={"emoji": None})
+    assert {r["name"]: r["emoji"] for r in plain.json()}["論文"] is None
+    kept = await client.patch(f"/api/v1/sidebar/sections/{section_id}", json={"name": "論文 2"})
+    assert {r["name"]: r["collapsed"] for r in kept.json()}["論文 2"] is True  # untouched
+
+    bad = await client.post("/api/v1/sidebar/sections", json={"name": "x", "emoji": "two words"})
+    assert bad.status_code == 422
+    not_mine = await client.post(
+        "/api/v1/sidebar/sections", json={"name": "y", "channel_ids": [foreign["id"]]}
+    )
+    assert not_mine.status_code in (403, 404)
+    assert [r["name"] for r in (await client.get("/api/v1/sidebar/sections")).json()] == [
+        "研究",
+        "論文 2",
+    ]

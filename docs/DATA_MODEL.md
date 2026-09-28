@@ -532,6 +532,8 @@ CREATE TABLE sidebar_sections (
   id          uuid PRIMARY KEY,
   user_id     uuid NOT NULL REFERENCES users(id),
   name        varchar(40) NOT NULL,
+  emoji       varchar(64),                   -- M26: アイコン。絵文字 1 つかカスタム絵文字 `:name:` (null = なし)
+  collapsed   boolean NOT NULL DEFAULT false, -- M26: 折りたたみ (自分の全端末で同じ)
   position    integer NOT NULL,              -- 0 から。並べ替えで詰め直す
   created_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -549,6 +551,12 @@ CREATE TABLE sidebar_section_channels (
 - 個人データ (channel seq なし)。1 人 20 セクションまで。参加中の会話 (チャンネルと DM) だけを入れられる。
 - お気に入りはセクションより優先して表示する。抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
 - 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
+- **M26 (Slack のようなセクション)**: 作るときに名前・アイコン・入れる会話をまとめて決められる
+  (`POST /sidebar/sections {name, emoji, channel_ids}`、ほかのセクションにあった会話はこちらへ移る)。名前とアイコンは
+  あとから変えられる (`PATCH` の `emoji: null` で外す)。折りたたんだセクションも、未読のある会話と開いている会話は
+  出す (Slack と同じ)。組み込みの節 (お気に入り、チャンネル、Times、ダイレクトメッセージ) の折りたたみは端末ごと。
+  Desktop は会話をセクションの見出しへドラッグして移せる (「チャンネル」「ダイレクトメッセージ」の見出しへ落とすと
+  セクションから外す)。
 
 ### channel_links (会話の上部に並べるリンク、M15f)
 
