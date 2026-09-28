@@ -3,6 +3,10 @@ package jp.chikuwachat.android.ui
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material.icons.filled.Tag
@@ -119,6 +123,10 @@ fun MainScreen(controller: AppController) {
     // M14f: the conversation whose long-press menu is open, and the section whose 「…」 is.
     var channelMenuFor by remember { mutableStateOf<String?>(null) }
     var sectionMenuFor by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut, Int>?>(null) }
+    // M26: making (no section) or editing one of my sections; the conversations a long-press 「新しいセクション…」 ticks.
+    var sectionForm by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut?, List<String>>?>(null) }
+    // M26: the default sections folded on this device.
+    var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var unreadOnly by rememberSaveable { mutableStateOf(false) }
@@ -426,6 +434,7 @@ fun MainScreen(controller: AppController) {
                                 DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
                                 DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
                             }
+                            DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
                             DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
                             if (isChannel && selectedChannel!!.isMember && !selectedChannel.channel.archived) {
                                 DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
@@ -517,6 +526,10 @@ fun MainScreen(controller: AppController) {
                         },
                         onChannelMenu = { channelMenuFor = it },
                         onSectionMenu = { section, index -> sectionMenuFor = section to index },
+                        folded = folded,
+                        onToggleFolded = { folded = FoldedSections.toggle(controller.prefs, it) },
+                        onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
+                        sectionIcon = { emoji -> SectionIcon(controller, emoji) },
                     )
                 }
             }
@@ -537,8 +550,17 @@ fun MainScreen(controller: AppController) {
         )
         null -> Unit
     }
-    channelMenuFor?.let { id -> ChannelSectionDialog(controller, id, onDismiss = { channelMenuFor = null }) }
-    sectionMenuFor?.let { (section, index) -> SectionActionsDialog(controller, section, index, controller.store.sidebarSections.size, onDismiss = { sectionMenuFor = null }) }
+    channelMenuFor?.let { id ->
+        ChannelSectionDialog(controller, id, onDismiss = { channelMenuFor = null }, onNewSection = { channelMenuFor = null; sectionForm = null to listOf(id) })
+    }
+    sectionMenuFor?.let { (section, index) ->
+        SectionActionsDialog(
+            controller, section, index, controller.store.sidebarSections.size, onDismiss = { sectionMenuFor = null },
+            onEdit = { sectionMenuFor = null; sectionForm = section to emptyList() },
+            onNewSection = { sectionMenuFor = null; sectionForm = null to emptyList() },
+        )
+    }
+    sectionForm?.let { (section, preselected) -> SectionDialog(controller, section, preselected, onDismiss = { sectionForm = null }) }
 }
 
 /**
@@ -612,6 +634,12 @@ private fun ChannelList(
     /** M14f: long-press on a conversation, and the 「…」 of one of my sections. */
     onChannelMenu: (String) -> Unit = {},
     onSectionMenu: (jp.chikuwachat.android.api.SidebarSectionOut, Int) -> Unit = { _, _ -> },
+    /** M26: the default sections folded on this device (FoldedSections), and folding them. */
+    folded: Set<String> = emptySet(),
+    onToggleFolded: (String) -> Unit = {},
+    /** M26: folding one of my sections (on all my devices), and drawing its icon. */
+    onToggleSection: (jp.chikuwachat.android.api.SidebarSectionOut) -> Unit = {},
+    sectionIcon: @Composable (String?) -> Unit = {},
 ) {
     val meId = store.me?.id
     val sections = remember(version, unreadOnly, meId) {
@@ -638,29 +666,38 @@ private fun ChannelList(
         if (reminderCount > 0) item { ListRow(Icons.Default.Alarm, "リマインダー", trailing = if (firedCount > 0) "$firedCount 件" else reminderCount.toString(), onClick = onReminders) }
         item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
         item { SavedRow(store, version, onClick = onSaved) }
+        // M26: a folded section keeps its unread rows (Channels.shown); its hints and actions go.
         if (sections.favorites.isNotEmpty()) {
-            item { SectionHeader("お気に入り") }
-            items(sections.favorites, key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            val fold = FoldedSections.FAVORITES in folded
+            item { SectionHeader("お気に入り", fold) { onToggleFolded(FoldedSections.FAVORITES) } }
+            items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
         }
         sections.custom.forEachIndexed { index, (section, members) ->
-            item(key = "section:" + section.id) { CustomSectionHeader(section.name, onMenu = { onSectionMenu(section, index) }) }
-            items(members, key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-            if (members.isEmpty() && !unreadOnly) item(key = "section-empty:" + section.id) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") }
+            item(key = "section:" + section.id) {
+                CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) })
+            }
+            items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            if (members.isEmpty() && !unreadOnly && !section.collapsed) item(key = "section-empty:" + section.id) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") }
         }
-        item { SectionHeader("チャンネル") }
-        items(channels, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-        if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
-        if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
+        val channelsFolded = FoldedSections.CHANNELS in folded
+        item { SectionHeader("チャンネル", channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } }
+        items(Channels.shown(channels, channelsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        if (!channelsFolded) {
+            if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
+            if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
+        }
         // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
         val offerTimes = canCreateTimes && !unreadOnly
         if (sections.times.isNotEmpty() || offerTimes) {
-            item { SectionHeader("Times") }
-            items(sections.times, key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-            if (offerTimes) item { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) }
+            val timesFolded = FoldedSections.TIMES in folded
+            item { SectionHeader("Times", timesFolded) { onToggleFolded(FoldedSections.TIMES) } }
+            items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            if (offerTimes && !timesFolded) item { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) }
         }
-        item { SectionHeader("ダイレクトメッセージ") }
-        items(dms, key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-        if (dms.isEmpty()) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
+        val dmsFolded = FoldedSections.DMS in folded
+        item { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } }
+        items(Channels.shown(dms, dmsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        if (dms.isEmpty() && !dmsFolded) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
         if (browsable.isNotEmpty()) {
             item { SectionHeader("参加できるチャンネル") }
             items(browsable, key = { "browse:" + it.id }) { channel ->
@@ -748,18 +785,41 @@ private fun SavedRow(store: Store, version: Int, onClick: () -> Unit) {
     }
 }
 
-/** A custom section's title with its 「…」 (M14f). */
+/** A custom section's title with its icon and 「…」 (M14f); M26: tapping the title folds it on all my devices. */
 @Composable
-private fun CustomSectionHeader(title: String, onMenu: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Composable () -> Unit, onToggle: () -> Unit, onMenu: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).foldable(collapsed, onToggle).padding(start = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            FoldChevron(collapsed)
+            Spacer(Modifier.width(4.dp))
+            icon()
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+        }
         IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = "$title のメニュー") }
+    }
+}
+
+/** A default section's title; M26: tapping it folds it on this device. */
+@Composable
+private fun SectionHeader(title: String, collapsed: Boolean, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth().foldable(collapsed, onToggle).padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        FoldChevron(collapsed)
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
     }
 }
 
 @Composable
 private fun SectionHeader(title: String) {
     Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
+}
+
+/** A section header that folds: TalkBack reads 「折りたたみ中」 / 「展開中」 and offers the action by name. */
+private fun Modifier.foldable(collapsed: Boolean, onToggle: () -> Unit): Modifier =
+    clickable(onClickLabel = if (collapsed) "開く" else "折りたたむ", onClick = onToggle).semantics { stateDescription = if (collapsed) "折りたたみ中" else "展開中" }
+
+@Composable
+private fun FoldChevron(collapsed: Boolean) {
+    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp).rotate(if (collapsed) -90f else 0f))
 }
 
 @Composable

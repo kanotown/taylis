@@ -1302,15 +1302,23 @@ class AppController(private val app: Application) {
         store.replaceSidebar(work(api!!)); true
     }.getOrElse { error = describe(it); false }
 
-    /** A new section at the end; with `channelId`, that conversation moves into it. */
-    suspend fun createSection(name: String, channelId: String?): Boolean {
-        val before = store.sidebarSections.map { it.id }.toSet()
-        if (!sidebarChange { it.createSidebarSection(name) }) return false
-        val created = store.sidebarSections.firstOrNull { it.id !in before }
-        return if (channelId != null && created != null) moveToSection(channelId, created.id) else true
+    /** A new section at the end (M26: with its icon); `channelIds` move into it from wherever they were. */
+    suspend fun createSection(name: String, emoji: String?, channelIds: List<String>): Boolean =
+        sidebarChange { it.createSidebarSection(name, emoji, channelIds) }
+
+    /** M26: the name and the icon (null takes it off). */
+    suspend fun editSection(id: String, name: String, emoji: String?): Boolean = sidebarChange { it.editSidebarSection(id, name, emoji) }
+
+    /**
+     * M26: folds or unfolds one of my sections on all my devices. The list changes at once; if the server refuses, it
+     * goes back.
+     */
+    suspend fun setSectionCollapsed(id: String, collapsed: Boolean): Boolean {
+        val before = store.sidebarSections
+        store.replaceSidebar(before.map { if (it.id == id) it.copy(collapsed = collapsed) else it })
+        return sidebarChange { it.updateSidebarSection(id, collapsed = collapsed) }.also { if (!it) store.replaceSidebar(before) }
     }
 
-    suspend fun renameSection(id: String, name: String): Boolean = sidebarChange { it.updateSidebarSection(id, name = name) }
     suspend fun moveSection(id: String, position: Int): Boolean = sidebarChange { it.updateSidebarSection(id, position = position) }
     suspend fun deleteSection(id: String): Boolean = sidebarChange { it.deleteSidebarSection(id) }
 

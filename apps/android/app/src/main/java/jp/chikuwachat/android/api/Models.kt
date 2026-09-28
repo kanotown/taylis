@@ -286,9 +286,15 @@ data class DraftOut(val channelId: String, val parentId: String? = null, val bod
 @Serializable
 data class DraftUpdated(val channelId: String, val parentId: String? = null, val body: String = "", val updatedAt: String, val deleted: Boolean = false)
 
-/** One of my sidebar sections (M14f); `channelIds` are the conversations placed in it. */
+/**
+ * One of my sidebar sections (M14f); `channelIds` are the conversations placed in it. M26: `emoji` is its icon (an
+ * emoji or a custom `:name:`), `collapsed` folds it up on all my devices.
+ */
 @Serializable
-data class SidebarSectionOut(val id: String, val name: String, val position: Int, val channelIds: List<String> = emptyList())
+data class SidebarSectionOut(
+    val id: String, val name: String, val position: Int, val channelIds: List<String> = emptyList(),
+    val emoji: String? = null, val collapsed: Boolean = false,
+)
 
 /**
  * A named set of members that `@name` notifies (M12k). `managed` (M23): the server keeps its members from the lab
