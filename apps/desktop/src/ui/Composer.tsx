@@ -1,4 +1,4 @@
-import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, X } from "lucide-react";
+import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, Vote, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority } from "../api/types";
@@ -17,6 +17,7 @@ import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
+import { PollDialog } from "./PollDialog";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
@@ -98,11 +99,18 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
+  const [pollOpen, setPollOpen] = useState(false);
   const send = () => {
     const command = parseSlashCommand(text);
     if (command) {
       if (!command.known) {
         controller.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
+        return;
+      }
+      if (command.name === "poll" && !command.args.trim()) {
+        // `/poll` alone opens the form (a question and its options can still be typed after it).
+        setText("");
+        setPollOpen(true);
         return;
       }
       setText("");
@@ -338,6 +346,7 @@ export function Composer({
       }}
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
+      {pollOpen && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} onClose={() => setPollOpen(false)} />}
       {emojiHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
           {emojiHits.map((entry, index) => (
@@ -524,6 +533,9 @@ export function Composer({
                 <MenuItem onSelect={() => fileInput.current?.click()}>ファイル</MenuItem>
               </MenuContent>
             </Menu>
+            <IconButton label="アンケートを作成" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setPollOpen(true)}>
+              <Vote size={15} />
+            </IconButton>
             <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </IconButton>

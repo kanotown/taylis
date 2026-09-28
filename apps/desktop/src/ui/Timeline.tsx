@@ -240,7 +240,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     const opened = openedWith.current !== null && openedWith.current.lastId === lastId;
     openedWith.current = null;
     const last = messages[messages.length - 1];
-    const mine = !!last && last.pending === true && last.sender_id === me?.id && !last.parent_id;
+    // A poll made here is such a post too, though it skips the send queue (no placeholder).
+    const mine = !!last && last.sender_id === me?.id && !last.parent_id && (last.pending === true || last.id === controller.postedHere);
     if (opened || focus || !positioned.current || !(atBottom.current || mine)) return;
     scrollToBottom();
     // A batch taller than the screen (the catch-up after reconnecting, or when a held channel opens) would put its
