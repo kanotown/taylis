@@ -1053,6 +1053,76 @@ describe("timeline range (§7.3)", () => {
   });
 });
 
+describe("the cap on held messages (§7.7, M22)", () => {
+  /** The timeline's seqs are one unbroken run from the range start to the newest message. */
+  function unbroken(store: Store, channelId: string): boolean {
+    const seqs = store.messages(channelId).map((m) => m.seq!);
+    return seqs.every((seq, i) => i === 0 || seq === seqs[i - 1]! + 1) && seqs[0] === store.getChannel(channelId)!.oldestLoadedSeq;
+  }
+
+  it("trims a conversation when the reader leaves it, never while it is open, and pages it back in", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup(); // pages of 3
+    const other = server.createChannel("random", alice.id);
+    server.join(other.id, bob.id);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    for (let i = 1; i <= 620; i++) server.post(channel.id, alice.id, `m${i}`);
+    await engine.idle();
+    expect(store.messages(channel.id)).toHaveLength(620); // open: every live row stays
+
+    await engine.openChannel(other.id);
+    await engine.idle();
+    const kept = store.messages(channel.id);
+    expect(kept).toHaveLength(500);
+    expect([kept[0]!.body, kept[499]!.body]).toEqual(["m121", "m620"]);
+    expect(store.getChannel(channel.id)).toMatchObject({ oldestLoadedSeq: 121, hasOlder: true, syncedSeq: 620 });
+
+    await engine.openChannel(channel.id);
+    await engine.loadOlder(channel.id); // back from the new range start, with no gap
+    expect(store.messages(channel.id).map((m) => m.body).slice(0, 4)).toEqual(["m118", "m119", "m120", "m121"]);
+    expect(unbroken(store, channel.id)).toBe(true);
+    engine.stop();
+  });
+
+  it("trims a channel nobody looks at once live rows pass the cap by the margin", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const other = server.createChannel("random", alice.id);
+    server.join(other.id, bob.id);
+    await engine.start();
+    await engine.openChannel(channel.id); // synced: its live rows are kept
+    await engine.openChannel(other.id);
+    await engine.idle();
+    for (let i = 1; i <= 650; i++) server.post(channel.id, alice.id, `m${i}`);
+    await engine.idle();
+    const held = store.messages(channel.id);
+    expect(held.length).toBeGreaterThanOrEqual(500);
+    expect(held.length).toBeLessThanOrEqual(600);
+    expect(held.at(-1)!.body).toBe("m650");
+    expect(unbroken(store, channel.id)).toBe(true);
+    expect(store.getChannel(channel.id)).toMatchObject({ hasOlder: true, syncedSeq: 650 });
+    engine.stop();
+  });
+
+  it("keeps a channel whole while a thread of it is open", async () => {
+    const { server, alice, bob, channel, store, engine } = await setup();
+    const other = server.createChannel("random", alice.id);
+    server.join(other.id, bob.id);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    for (let i = 1; i <= 520; i++) server.post(channel.id, alice.id, `m${i}`);
+    await engine.idle();
+    const release = engine.viewing(channel.id);
+    await engine.openChannel(other.id);
+    await engine.idle();
+    expect(store.messages(channel.id)).toHaveLength(520);
+    release();
+    release(); // once only
+    await engine.idle();
+    expect(store.messages(channel.id)).toHaveLength(500);
+    engine.stop();
+  });
+});
+
 describe("threads without a loaded timeline (§7.4)", () => {
   it("shows new replies in a thread opened from the threads view although the channel was never opened", async () => {
     const { server, alice, bob, channel, store, engine } = await setup();

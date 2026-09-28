@@ -82,6 +82,8 @@ final class FakeServer {
         var beforePost: (() async -> Void)?
         /// Runs after a POST /messages was stored, before its response: a slow response, or a lost one when it throws.
         var afterPost: (() async throws -> Void)?
+        /// Runs inside every GET /channels/{id}/messages before it is answered (a test holds a page in flight with it).
+        var beforeHistory: (() async -> Void)?
         private(set) var calls: [String] = []
         /// GET /channels/{id}/messages as "before_seq=…&limit=…" ("before_seq=nil" for the newest page).
         private(set) var historyRequests: [String] = []
@@ -122,6 +124,7 @@ final class FakeServer {
         func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut {
             try maybeFail("history")
             historyRequests.append("before_seq=\(beforeSeq.map(String.init) ?? "nil")&limit=\(limit)")
+            if let beforeHistory { await beforeHistory() }
             return try server.history(userId: userId, channelId: channelId, beforeSeq: beforeSeq, limit: limit)
         }
 

@@ -72,7 +72,11 @@ struct EngineOptions {
 @Observable
 final class SyncEngine {
     private(set) var status: EngineStatus = .idle
-    var currentChannelId: String?
+    /// The conversation on screen. The one left (another opened, back to the list, a search result's conversation
+    /// closed) is trimmed to the cap (§7.7), in the queue, unless it is shown again by then.
+    var currentChannelId: String? {
+        didSet { if let oldValue, oldValue != currentChannelId { trimLater(oldValue) } }
+    }
     private(set) var catchUps = 0
     private(set) var reloads = 0
     private(set) var reconnects = 0
@@ -91,6 +95,9 @@ final class SyncEngine {
     /// §10.2: parent id → channel id of the threads whose replies were all fetched since the channel's rows were last
     /// cleared. Only those take visible-range read marks: a partial thread (live replies only) would skip older unread ones.
     private(set) var completeThreads: [String: String] = [:]
+    /// §7.7: views of a channel's rows (a thread, a conversation still on screen under the search sheet), counted per
+    /// channel; the channel is not trimmed while any is shown.
+    @ObservationIgnored private var views: [String: Int] = [:]
     private var threadRefreshTask: Task<Void, Never>?
     /// "channel[:parent]" → when the last typing frame went out.
     private var typingSent: [String: Date] = [:]
@@ -131,6 +138,8 @@ final class SyncEngine {
                                                     "password_change_required"]
     /// Key prefix of a thread's unsent read position in `Store.unsentReads` (and of its debounce task).
     private static let threadReadPrefix = "thread:"
+    /// §7.7: a channel nobody looks at is trimmed back to the cap once live rows take it this far past it.
+    private static let trimMargin = 100
 
     init(api: SyncApi, connect: @escaping WsConnector, wsUrl: URL, store: Store,
          getAccessToken: @escaping () -> String?, options: EngineOptions = EngineOptions()) {
@@ -584,9 +593,11 @@ final class SyncEngine {
             if let thread { store.applyParentThread(channelId, thread) }
             store.updateChannel(channelId) { $0.syncedSeq = seq; $0.lastSeq = max($0.lastSeq, seq) }
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
+            trimIfFull(channelId)
         } else if seq > synced + 1 {
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             try await catchUp(channelId)
+            trimIfFull(channelId)
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
         }
         // seq <= synced: already applied.
@@ -726,6 +737,45 @@ final class SyncEngine {
     private func forgetThreads(of channelId: String) {
         guard completeThreads.values.contains(channelId) else { return }
         completeThreads = completeThreads.filter { $0.value != channelId }
+    }
+
+    // MARK: §7.7 the cap on held messages
+
+    /// §7.7: a view of the channel's rows other than the open conversation (a thread) keeps them whole until the returned
+    /// function releases it; only the first call releases, and the channel is trimmed then unless it is still shown.
+    func viewing(_ channelId: String) -> @MainActor () -> Void {
+        views[channelId, default: 0] += 1
+        var released = false
+        return { [weak self] in
+            guard !released, let self else { return }
+            released = true
+            let left = (views[channelId] ?? 1) - 1
+            if left > 0 {
+                views[channelId] = left
+            } else {
+                views[channelId] = nil
+                trimLater(channelId)
+            }
+        }
+    }
+
+    private func shown(_ channelId: String) -> Bool { channelId == currentChannelId || views[channelId] != nil }
+
+    /// §7.7, in the queue: after any page still loading for the channel (a page landing after the trim would leave a gap).
+    private func trimLater(_ channelId: String) {
+        enqueue { [self] in trim(channelId) }
+    }
+
+    /// Live rows piling up in a channel nobody looks at: trimmed once they pass the cap by a margin (not on every row).
+    private func trimIfFull(_ channelId: String) {
+        if store.heldCount(channelId) > cachedMessagesPerChannel + Self.trimMargin { trim(channelId) }
+    }
+
+    /// Never on screen (§10.1 9.): checked when the queue gets here, as the channel may have been opened again meanwhile.
+    private func trim(_ channelId: String) {
+        guard !shown(channelId) else { return }
+        // A thread whose older replies went is no longer complete (§10.2): opening it fetches them again.
+        if store.trimMessages(channelId) { forgetThreads(of: channelId) }
     }
 
     // MARK: §7.3 catch_up

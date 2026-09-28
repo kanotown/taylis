@@ -163,6 +163,9 @@ struct ThreadView: View {
                 await controller.engine?.loadThreadState(parentId, parent: out)
             }
         }
+        // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open, also when the
+        // channel is not the open conversation (a thread opened from 「スレッド」).
+        .keepsChannelRows(controller.engine, channelId)
     }
 
     /// §10.2: until the thread is ready the local rows (live replies only, perhaps) sit at the bottom, or the focus reply

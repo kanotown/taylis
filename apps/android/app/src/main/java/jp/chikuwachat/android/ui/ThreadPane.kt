@@ -109,6 +109,11 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         engine?.threadShown(parentId, true)
         onDispose { engine?.threadShown(parentId, false) }
     }
+    // §7.7: the channel keeps its rows (these replies among them) while the thread is on screen; trimmed after if not open.
+    DisposableEffect(engine, channelId) {
+        val release = engine?.viewing(channelId)
+        onDispose { release?.invoke() }
+    }
     // The held rows at the bottom (or the focus) at once; the §10.2 position once, when the thread is ready,
     // unless the reader has scrolled meanwhile.
     LaunchedEffect(parentId, replies.size, threadReady) {

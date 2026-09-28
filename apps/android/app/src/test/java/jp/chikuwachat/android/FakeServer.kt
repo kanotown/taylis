@@ -121,6 +121,8 @@ class FakeServer {
         var postResponseGate: CompletableDeferred<Unit>? = null
         /** When set, the next GET /sync waits for it (a catch-up still on its way, §10.1). */
         var deltaGate: CompletableDeferred<Unit>? = null
+        /** When set, the next GET history waits for it (a 「以前を読み込む」 page still on its way, §7.7). */
+        var historyGate: CompletableDeferred<Unit>? = null
         /** When set, the next PUT thread read waits for it (a thread read still in flight, §10.2). */
         var threadReadGate: CompletableDeferred<Unit>? = null
         /** Requests made, for tests that count them: GET history (before_seq, limit), PUT read (advance, set), PUT thread read. */
@@ -141,6 +143,7 @@ class FakeServer {
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
             maybeFail()
             historyCalls.add(beforeSeq to limit)
+            historyGate?.let { gate -> historyGate = null; gate.await() }
             return this@FakeServer.history(userId, channelId, beforeSeq, limit)
         }
         override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut {

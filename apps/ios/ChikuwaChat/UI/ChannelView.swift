@@ -452,6 +452,8 @@ struct ChannelView: View {
                 pendingThreadId = nil
             }
         }
+        // Also while another conversation is the open one: a search result's, opened in the sheet over this one (§7.7).
+        .keepsChannelRows(controller.engine, channelId)
     }
 
     private func headerSubtitle(_ channel: ChannelState) -> String? {
@@ -527,6 +529,27 @@ extension View {
     /// Runs `action` when the reader drags the list, not when it moves by itself (rows inserted above, the keyboard,
     /// scrollTo).
     func onUserScroll(_ action: @escaping () -> Void) -> some View { modifier(UserScrollDetector(action: action)) }
+
+    /// §7.7 (M22): the channel's rows are not trimmed to the cap while this view (a conversation, a thread) is on screen.
+    func keepsChannelRows(_ engine: SyncEngine?, _ channelId: String) -> some View {
+        modifier(ChannelRowsHold(engine: engine, channelId: channelId))
+    }
+}
+
+/// Registered with the engine from appearing to disappearing; the engine counts every view of a channel.
+private struct ChannelRowsHold: ViewModifier {
+    let engine: SyncEngine?
+    let channelId: String
+    @State private var release: (@MainActor () -> Void)?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { if release == nil { release = engine?.viewing(channelId) } }
+            .onDisappear {
+                release?()
+                release = nil
+            }
+    }
 }
 
 private struct UserScrollDetector: ViewModifier {

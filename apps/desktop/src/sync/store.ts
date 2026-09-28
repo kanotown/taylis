@@ -32,7 +32,7 @@ export function emptySnapshot(): Snapshot {
 }
 
 /**
- * At most this many messages per channel survive a restart: the newest ones (pending sends always
+ * At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
  * stay). Older history is paged in again when the reader scrolls up.
  */
 export const CACHED_MESSAGES_PER_CHANNEL = 500;
@@ -211,12 +211,28 @@ export class Store {
     for (const channelId of [...this.messagesByChannel.keys()]) this.trimCache(channelId);
   }
 
+  /**
+   * §7.7: keeps the newest CACHED_MESSAGES_PER_CHANNEL rows of a channel nobody is looking at; true when rows were
+   * dropped. The engine decides when (never for an open conversation or thread).
+   */
+  trimMessages(channelId: string): boolean {
+    if (!this.trimCache(channelId)) return false;
+    this.timelines.delete(channelId);
+    this.emit();
+    return true;
+  }
+
+  /** Rows held for the channel (pending ones included): the engine trims once it passes the cap by a margin. */
+  heldCount(channelId: string): number {
+    return this.messagesByChannel.get(channelId)?.size ?? 0;
+  }
+
   /** Keeps the newest CACHED_MESSAGES_PER_CHANNEL rows; the loaded range then starts after the dropped ones. */
-  private trimCache(channelId: string): void {
+  private trimCache(channelId: string): boolean {
     const bucket = this.bucket(channelId);
     const confirmed = [...bucket.values()].filter((m) => m.seq !== null).sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0));
     const dropped = confirmed.slice(CACHED_MESSAGES_PER_CHANNEL);
-    if (dropped.length === 0) return;
+    if (dropped.length === 0) return false;
     const newestDropped = dropped[0]!.seq ?? 0;
     for (const message of dropped) bucket.delete(message.id);
     this.persist((p) => p.deleteOlderMessages(channelId, newestDropped + 1));
@@ -226,6 +242,7 @@ export class Store {
       this.channels.set(channelId, trimmed);
       this.persist((p) => p.saveChannel(trimmed));
     }
+    return true;
   }
 
   /** Sign-out (§11): the account's local data (messages, drafts, send queue …) is erased. */

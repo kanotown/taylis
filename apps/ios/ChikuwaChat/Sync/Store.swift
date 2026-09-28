@@ -274,11 +274,17 @@ protocol Persistence {
     func saveMessage(_ message: MessageState) throws
     func deleteMessage(id: String) throws
     func clearMessages(channelId: String) throws
+    /// Confirmed rows of the channel with seq < beforeSeq (pending ones stay).
+    func deleteOlderMessages(channelId: String, beforeSeq: Int) throws
     func saveOutbox(_ item: OutboxItem) throws
     func deleteOutbox(clientMsgId: String) throws
 }
 
 let localPrefix = "local:"
+
+/// At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
+/// stay). Older history is paged in again when the reader scrolls up.
+let cachedMessagesPerChannel = 500
 
 /// The single source of truth for the UI (ARCHITECTURE.md §11).
 @MainActor
@@ -453,6 +459,7 @@ final class Store {
         for channel in snapshot.channels { channels[channel.id] = channel }
         for message in snapshot.messages { bucket(message.channelId).byId[message.id] = message }
         outbox = snapshot.outbox
+        for channelId in Array(buckets.keys) { trimMessages(channelId) } // §7.7: the cap applies from the start
     }
 
     private func persist(_ work: (Persistence) throws -> Void) {
@@ -792,6 +799,29 @@ final class Store {
             for message in pending.values { try $0.saveMessage(message) }
         }
     }
+
+    /// §7.7: keeps the newest `cachedMessagesPerChannel` rows with a seq (replies and rows outside the window count;
+    /// pending ones are neither counted nor dropped) and deletes the older ones here and on disk. Only the old side goes,
+    /// so the delta (§7.3) never has a hole to fill; the window then starts after the newest dropped row and pages in again
+    /// from there. True when rows were dropped. The engine decides when (never for an open conversation or thread).
+    @discardableResult
+    func trimMessages(_ channelId: String) -> Bool {
+        guard let rows = buckets[channelId] else { return false }
+        let seqs = rows.byId.values.compactMap(\.seq)
+        guard seqs.count > cachedMessagesPerChannel else { return false }
+        let newestDropped = seqs.sorted(by: >)[cachedMessagesPerChannel]
+        // In place, row by row (M20): the channel's rows are not copied out and back.
+        let dropped = rows.byId.compactMap { ($0.value.seq ?? .max) <= newestDropped ? $0.key : nil }
+        for id in dropped { rows.byId.removeValue(forKey: id) }
+        persist { try $0.deleteOlderMessages(channelId: channelId, beforeSeq: newestDropped + 1) }
+        if let oldest = channels[channelId]?.oldestLoadedSeq, oldest <= newestDropped {
+            updateChannel(channelId) { $0.oldestLoadedSeq = newestDropped + 1; $0.hasOlder = true }
+        }
+        return true
+    }
+
+    /// Rows held for the channel (pending ones included): the engine trims once it passes the cap by a margin.
+    func heldCount(_ channelId: String) -> Int { buckets[channelId]?.byId.count ?? 0 }
 
     // MARK: outbox
 

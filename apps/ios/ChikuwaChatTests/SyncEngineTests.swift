@@ -1158,4 +1158,147 @@ final class SyncEngineTests: XCTestCase {
         store.setDraft("c1") { $0.text = "after sign-out" } // a closed store fails quietly, it does not recreate the file
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
+
+    // MARK: the cap on held messages (SYNC_PROTOCOL.md §7.7, M22)
+
+    /// The timeline's seqs are one unbroken run from the window's start to the newest message.
+    private func unbroken(_ store: Store, _ channelId: String) -> Bool {
+        let seqs = store.messages(channelId).compactMap(\.seq)
+        return seqs.first == store.channel(channelId)?.oldestLoadedSeq && zip(seqs, seqs.dropFirst()).allSatisfy { $1 == $0 + 1 }
+    }
+
+    func testLoadingKeepsTheNewest500MessagesPerChannelAndMovesTheWindowPastThePrunedOnes() throws {  // §7.7
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let channel = server.createChannel("general", ownerId: alice.id)
+        let messages = server.seed(channel.id, senderId: alice.id, count: 520)
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("trim-\(UUID().uuidString).db").path
+        defer { for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) } }
+        let persistence = try SQLitePersistence(db: SQLiteDatabase(path: path))
+        defer { persistence.close() }
+        let writer = Store(persistence: persistence)
+        writer.upsertChannel(channel, isMember: true)
+        writer.updateChannel(channel.id) { $0.syncedSeq = 520; $0.lastSeq = 520; $0.oldestLoadedSeq = 0; $0.hasOlder = false }
+        for message in messages { writer.upsertMessage(message) }
+        writer.putPlaceholder(MessageState(placeholderFor: "c1", channelId: channel.id, senderId: alice.id, body: "unsent", createdAt: "9999"))
+
+        let reader = Store(persistence: persistence)
+        reader.load()
+        let timeline = reader.messages(channel.id)
+        XCTAssertEqual(timeline.count, 501)
+        XCTAssertEqual([timeline[0].body, timeline[499].body, timeline[500].body], ["m21", "m520", "unsent"])
+        XCTAssertEqual(reader.channel(channel.id).map { [$0.oldestLoadedSeq, $0.syncedSeq] }, [21, 520])
+        XCTAssertEqual(reader.channel(channel.id)?.hasOlder, true)
+        let stored = try persistence.loadAll()
+        XCTAssertEqual(stored.messages.count, 501) // pruned on disk too; the pending row stays
+        XCTAssertEqual(stored.channels.first?.oldestLoadedSeq, 21)
+    }
+
+    func testLeavingAConversationTrimsItNeverWhileOpenAndItPagesBackInWithoutAGap() async throws {  // §7.7
+        let w = makeWorld() // pages of 3
+        let other = w.server.createChannel("random", ownerId: w.alice.id)
+        w.server.join(other.id, w.bob.id)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        for i in 1...620 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 620) // open: every live row stays
+
+        await w.engine.openChannel(other.id)
+        await settle(w.engine)
+        let kept = w.store.messages(w.channel.id)
+        XCTAssertEqual(kept.count, 500)
+        XCTAssertEqual([kept.first?.body, kept.last?.body], ["m121", "m620"])
+        XCTAssertEqual(w.store.channel(w.channel.id).map { [$0.oldestLoadedSeq, $0.syncedSeq] }, [121, 620])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.hasOlder, true)
+
+        await w.engine.openChannel(w.channel.id)
+        await w.engine.loadOlder(w.channel.id) // back from the window's new start, with no gap
+        XCTAssertEqual(w.store.messages(w.channel.id).prefix(4).map(\.body), ["m118", "m119", "m120", "m121"])
+        XCTAssertTrue(unbroken(w.store, w.channel.id))
+
+        w.engine.closeConversation() // back to the list (iPhone): the conversation left is trimmed as well
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 500)
+        XCTAssertEqual(w.store.messages(w.channel.id).first?.body, "m121")
+        w.engine.stop()
+    }
+
+    func testAChannelNobodyLooksAtIsTrimmedOnceLiveRowsPassTheCapByTheMargin() async throws {  // §7.7
+        let w = makeWorld()
+        let other = w.server.createChannel("random", ownerId: w.alice.id)
+        w.server.join(other.id, w.bob.id)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id) // synced: its live rows are kept
+        let (topic, _) = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "topic")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "r1", parentId: topic.id)
+        await settle(w.engine)
+        await w.engine.loadReplies(w.channel.id, parentId: topic.id)
+        await w.engine.openChannel(other.id)
+        await settle(w.engine)
+        XCTAssertTrue(w.engine.threadComplete(topic.id)) // nothing to trim yet
+
+        for i in 1...650 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await settle(w.engine)
+        let held = w.store.messages(w.channel.id)
+        XCTAssertTrue((500...600).contains(held.count), "\(held.count)")
+        XCTAssertEqual(held.last?.body, "m650")
+        XCTAssertTrue(unbroken(w.store, w.channel.id))
+        XCTAssertEqual(w.store.channel(w.channel.id)?.hasOlder, true)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 652)
+        XCTAssertFalse(w.engine.threadComplete(topic.id)) // its reply went: opening it fetches the replies again (§10.2)
+        w.engine.stop()
+    }
+
+    func testAnOpenThreadKeepsItsChannelWholeUntilItCloses() async throws {  // §7.7
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        for i in 1...520 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await settle(w.engine)
+        let thread = w.engine.viewing(w.channel.id)
+        let behind = w.engine.viewing(w.channel.id) // a second view of the same channel
+        w.engine.closeConversation() // the thread stays open over the list, as one opened from 「スレッド」
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 520)
+        for i in 521...610 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 610) // past the cap and margin, still shown
+
+        thread()
+        thread() // once only: the other view still holds the rows
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 610)
+        behind()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).count, 500)
+        XCTAssertEqual(w.store.messages(w.channel.id).first?.body, "m111")
+        w.engine.stop()
+    }
+
+    func testAPageStillLoadingLandsBeforeTheTrimSoTheWindowHasNoGap() async throws {  // §7.7
+        let w = makeWorld() // pages of 3
+        w.server.seed(w.channel.id, senderId: w.alice.id, count: 10)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id) // the newest page: m8...m10
+        for i in 11...630 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.oldestLoadedSeq, 8)
+
+        var resume: CheckedContinuation<Void, Never>?
+        w.api.beforeHistory = { await withCheckedContinuation { resume = $0 } }
+        let paging = Task { await w.engine.loadOlder(w.channel.id) }
+        for _ in 0..<200 where resume == nil { await Task.yield() }
+        XCTAssertNotNil(resume) // the page before seq 8 is on its way …
+        w.engine.closeConversation() // … when the reader leaves
+        w.api.beforeHistory = nil
+        resume?.resume()
+        await paging.value
+        await settle(w.engine)
+        let kept = w.store.messages(w.channel.id)
+        XCTAssertEqual(kept.count, 500)
+        XCTAssertEqual([kept.first?.body, kept.last?.body], ["m131", "m630"]) // the page landed first, then the trim
+        XCTAssertTrue(unbroken(w.store, w.channel.id))
+        w.engine.stop()
+    }
 }

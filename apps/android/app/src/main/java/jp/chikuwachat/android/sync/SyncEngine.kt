@@ -82,6 +82,9 @@ typealias WsConnector = suspend (url: String, token: String) -> WsTransport
 
 enum class EngineStatus { IDLE, CONNECTING, ONLINE, OFFLINE, SIGNED_OUT }
 
+/** §7.7: a channel nobody looks at is trimmed back to the cap once live rows take it this far past it. */
+const val TRIM_MARGIN = 100
+
 /** Extras for a send (they travel with the outbox so retries keep them). */
 data class SendOptions(
     /** M15c: a thread reply also shown in the channel. */
@@ -204,6 +207,8 @@ class SyncEngine(
     private val completeThreads = HashMap<String, String>()
     /** Threads on screen, whose ThreadState a GET /threads refresh must not drop (§10.2). */
     private val shownThreads = HashSet<String>()
+    /** §7.7: views of a channel's rows besides the open conversation (a thread pane); the channel is not trimmed meanwhile. */
+    private val views = HashMap<String, Int>()
     private var threadRefresh: Job? = null
     /** "channel[:parent]" → when the last typing frame went out. */
     private val typingSent = HashMap<String, Long>()
@@ -650,11 +655,13 @@ class SyncEngine(
                 if (thread != null) store.applyParentThread(channelId, thread)
                 store.updateChannel(channelId) { it.advancedTo(seq, message, isNew).copy(syncedSeq = seq) }
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
+                trimIfFull(channelId)
             }
             seq > synced + 1 -> {
                 store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
                 // The rows the catch-up brings after the last seq known before this event (this one too) were never counted.
                 catchUp(channelId, countedTo = channel.lastSeq)
+                trimIfFull(channelId)
                 if (isNew) { store.clearTyping(message.channelId, message.parentId, message.senderId); maybeNotify(message, channel, thread) }
             }
             // seq <= synced: already applied
@@ -777,7 +784,9 @@ class SyncEngine(
     // --- §7.3 catch_up --------------------------------------------------------------------------
 
     suspend fun openChannel(channelId: String) {
+        val previous = currentChannelId
         currentChannelId = channelId
+        if (previous != null && previous != channelId) trimLater(previous) // §7.7: the conversation just left
         unreadHold.keys.filter { it != channelId }.forEach { unreadHold.remove(it) }
         if (_status.value != EngineStatus.ONLINE) return
         scope.launch { loadLinks(channelId) }
@@ -1067,6 +1076,46 @@ class SyncEngine(
 
     /** The oldest seq a history page reaches; 0 once nothing older is left. */
     private fun oldestOf(page: HistoryOut): Int = if (page.hasMore) page.messages.minOfOrNull { it.seq } ?: 0 else 0
+
+    // --- §7.7 cap on held messages ----------------------------------------------------------------
+
+    /**
+     * §7.7: a view of the channel's rows other than the open conversation (a thread pane) keeps them whole until the
+     * returned function releases it. Releasing twice counts once.
+     */
+    fun viewing(channelId: String): () -> Unit {
+        views[channelId] = (views[channelId] ?: 0) + 1
+        var released = false
+        return release@{
+            if (released) return@release
+            released = true
+            val left = (views[channelId] ?: 1) - 1
+            if (left > 0) {
+                views[channelId] = left
+            } else {
+                views.remove(channelId)
+                trimLater(channelId)
+            }
+        }
+    }
+
+    /** The open conversation, or a channel a thread pane shows (§10.1 rule 9: reading must not lose its rows). */
+    private fun shown(channelId: String): Boolean = channelId == currentChannelId || channelId in views
+
+    /** §7.7, on the work queue: after any page still loading for the channel (a page landing after the trim would leave a gap). */
+    private fun trimLater(channelId: String) = post { trim(channelId) }
+
+    /** Live rows piling up in a channel nobody looks at: trimmed once they pass the cap by a margin (not on every row). */
+    private fun trimIfFull(channelId: String) {
+        if (store.heldCount(channelId) > CACHED_MESSAGES_PER_CHANNEL + TRIM_MARGIN) trim(channelId)
+    }
+
+    /** Runs on the work queue only; the channel may have been opened again since the trim was queued. */
+    private fun trim(channelId: String) {
+        if (shown(channelId)) return
+        // A thread whose older replies went is no longer complete (§10.2): opening it fetches them again.
+        if (store.trimMessages(channelId)) forgetThreads(channelId)
+    }
 
     // --- §9 optimistic send -------------------------------------------------------------------
 
