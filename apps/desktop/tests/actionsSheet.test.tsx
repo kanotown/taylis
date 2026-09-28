@@ -1,0 +1,101 @@
+// @vitest-environment jsdom
+import { useSyncExternalStore } from "react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { UserMe } from "../src/api/types";
+import type { AppController } from "../src/state/app";
+import { Store } from "../src/sync/store";
+import { LONG_PRESS_MS } from "../src/ui/MessageActionsSheet";
+import { Timeline } from "../src/ui/Timeline";
+import { FakeServer } from "./fakeServer";
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+/** A phone: no hover, so a long press opens the sheet (M25). */
+function touchScreen(hover: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(hover: none)" ? !hover : hover, addEventListener: () => {}, removeEventListener: () => {} }));
+}
+
+function world() {
+  const server = new FakeServer();
+  const me = server.addUser("alice");
+  const bob = server.addUser("bob");
+  const channel = server.createChannel("general", me.id);
+  server.join(channel.id, bob.id);
+  const store = new Store();
+  store.setMe(me as unknown as UserMe);
+  store.upsertUser(me);
+  store.upsertUser(bob);
+  const mine = server.post(channel.id, me.id, "自分の投稿").message;
+  const theirs = server.post(channel.id, bob.id, "相手の投稿").message;
+  store.upsertMessage(mine);
+  store.upsertMessage(theirs);
+  store.upsertChannel(server.channels.get(channel.id)!.channel, { isMember: true, syncedSeq: 2, oldestLoadedSeq: 0, lastReadSeq: 2 });
+  const controller = {
+    store, engine: null, api: null, version: 0, setError: vi.fn(), messageFocus: null, editing: null as string | null, isAdmin: false, sendKey: "shift-enter",
+    linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {}, subscribe: () => () => {},
+    copyMessageText: vi.fn(async () => {}), toggleReaction: vi.fn(async () => {}), setEditing: vi.fn(),
+  };
+  function View() {
+    useSyncExternalStore((l) => store.subscribe(l), () => store.version);
+    return <Timeline controller={controller as unknown as AppController} channel={store.getChannel(channel.id)!} onOpenThread={() => {}} />;
+  }
+  render(<View />);
+  return { controller, mine, theirs };
+}
+
+function longPress(element: HTMLElement) {
+  fireEvent.touchStart(element, { touches: [{ clientX: 10, clientY: 10 }] });
+  act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+}
+
+describe("the long-press sheet (M25)", () => {
+  it("opens on a long press with the actions in the phone apps' order", () => {
+    touchScreen(false);
+    vi.useFakeTimers();
+    const w = world();
+    longPress(document.getElementById(`timeline-${w.mine.id}`)!);
+    const sheet = screen.getByRole("dialog", { name: "メッセージの操作" });
+    const labels = within(sheet).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
+    expect(labels).toEqual([
+      "👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "🎉 でリアクション", "👀 でリアクション", "✅ でリアクション", "その他のリアクション",
+      "スレッドで返信", "編集", "テキストをコピー", "あとで見る (保存)", "リマインド…", "ここから未読にする", "リンクをコピー", "別のチャンネルに共有…", "チャンネルにピン留め", "削除",
+    ]);
+    // The finger that opened it lifts over it: that is not a choice.
+    fireEvent.click(within(sheet).getByText("リンクをコピー"));
+    expect(screen.getByRole("dialog", { name: "メッセージの操作" })).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(400); });
+    fireEvent.click(within(sheet).getByText("テキストをコピー"));
+    expect(w.controller.copyMessageText).toHaveBeenCalledWith("自分の投稿");
+    expect(screen.queryByRole("dialog", { name: "メッセージの操作" })).toBeNull();
+
+    // Someone else's message: no edit, no delete.
+    longPress(document.getElementById(`timeline-${w.theirs.id}`)!);
+    const other = within(screen.getByRole("dialog", { name: "メッセージの操作" })).getAllByRole("button").map((b) => b.textContent?.trim());
+    expect(other).not.toContain("編集");
+    expect(other).not.toContain("削除");
+  });
+
+  it("a short tap, a scroll or a mouse does not open it", () => {
+    vi.useFakeTimers();
+    touchScreen(false);
+    const w = world();
+    const row = document.getElementById(`timeline-${w.mine.id}`)!;
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    fireEvent.touchEnd(row);
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    fireEvent.touchMove(row, { touches: [{ clientX: 10, clientY: 60 }] });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(screen.queryByRole("dialog", { name: "メッセージの操作" })).toBeNull();
+    cleanup();
+    touchScreen(true);
+    const desk = world();
+    longPress(document.getElementById(`timeline-${desk.mine.id}`)!);
+    expect(screen.queryByRole("dialog", { name: "メッセージの操作" })).toBeNull();
+  });
+});
