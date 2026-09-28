@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { AppController } from "../state/app";
 import { hostLabel, type WorkspaceEntry, workspaceColor, workspaceInitials } from "../state/workspaces";
-import { overlayTitleBar } from "../platform/env";
+import { overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 
 const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
@@ -18,8 +18,8 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
       aria-label="ワークスペース"
       data-tauri-drag-region
       className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-[color-mix(in_srgb,var(--sidebar)_78%,black)] py-3"
-      // macOS: the window buttons sit over the top of the rail (overlay title bar).
-      style={overlayTitleBar() ? { paddingTop: 48 } : undefined}
+      // macOS: keep all three overlay window buttons inside the rail, with space below them.
+      style={overlayTitleBar() ? { paddingTop: 48, width: TRAFFIC_LIGHTS_INSET } : undefined}
     >
       {controller.workspaces.map((entry, index) => (
         <WorkspaceTile key={entry.serverUrl} controller={controller} entry={entry} index={index} onLeave={() => setLeaving(entry)} />

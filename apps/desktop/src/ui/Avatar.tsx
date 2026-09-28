@@ -4,7 +4,7 @@ import { avatarHue, initials } from "./format";
 import { cn } from "./primitives";
 
 /** The profile picture when the user has one (M14a), else initials on a colour derived from the id. `presence` adds the status dot. */
-export function Avatar({ id, name, size = 36, className, presence }: { id: string; name: string; size?: number; className?: string; presence?: PresenceStatus }) {
+export function Avatar({ id, name, size = 36, className, presence, presenceClassName }: { id: string; name: string; size?: number; className?: string; presence?: PresenceStatus; presenceClassName?: string }) {
   const hue = avatarHue(id);
   const dot = Math.max(8, Math.round(size * 0.3));
   const picture = useAvatarUrl(id);
@@ -23,7 +23,7 @@ export function Avatar({ id, name, size = 36, className, presence }: { id: strin
       )}
       {presence && presence !== "offline" && (
         <span
-          className={cn("absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-canvas", presence === "online" ? "bg-success" : "bg-warning")}
+          className={cn("absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-canvas", presence === "online" ? "bg-success" : "bg-warning", presenceClassName)}
           style={{ width: dot, height: dot }}
           title={presenceLabel(presence)}
         />
