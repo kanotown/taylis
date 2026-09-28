@@ -85,6 +85,26 @@ class ChannelsTest {
         assertEquals(listOf("d2"), sections.dms.map { it.id })
     }
 
+    @Test fun aFoldedSectionKeepsUnreadAndTheOpenConversation() { // M26 (Slack)
+        val rows = listOf(channel("read"), channel("unread", unread = 2), channel("open"), channel("dm", type = "dm", unread = 1))
+        assertEquals(rows, Channels.shown(rows, collapsed = false, meId = "me", now = now))
+        assertEquals(listOf("unread", "open", "dm"), Channels.shown(rows, collapsed = true, meId = "me", currentId = "open", now = now).map { it.id })
+        // A muted conversation with posts but no mention is not unread, so it folds away too.
+        val muted = channel("muted", unread = 3, level = "none")
+        assertEquals(emptyList<ChannelState>(), Channels.shown(listOf(muted), collapsed = true, meId = "me", now = now))
+    }
+
+    @Test fun defaultSectionsFoldOnThisDevice() { // M26
+        val prefs = MemoryStore()
+        assertEquals(emptySet<String>(), jp.chikuwachat.android.ui.FoldedSections.read(prefs))
+        assertEquals(setOf("dms"), jp.chikuwachat.android.ui.FoldedSections.toggle(prefs, "dms"))
+        assertEquals(setOf("channels", "dms"), jp.chikuwachat.android.ui.FoldedSections.toggle(prefs, "channels"))
+        assertEquals(setOf("channels", "dms"), jp.chikuwachat.android.ui.FoldedSections.read(prefs))
+        assertEquals(setOf("channels"), jp.chikuwachat.android.ui.FoldedSections.toggle(prefs, "dms"))
+        assertEquals(emptySet<String>(), jp.chikuwachat.android.ui.FoldedSections.toggle(prefs, "channels"))
+        assertNull(prefs.values["sidebar.folded"]) // nothing folded: nothing stored
+    }
+
     /** One conversation seen by "me" (apps/shared/unread-rules.json, SYNC_PROTOCOL.md §10.5). */
     @Serializable
     private data class UnreadCase(

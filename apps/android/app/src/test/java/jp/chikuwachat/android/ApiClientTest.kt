@@ -202,6 +202,29 @@ class ApiClientTest {
         assertTrue(status.enabled); assertEquals(7, status.recoveryCodesLeft)
     }
 
+    @Test fun sectionsCarryTheirIconAndFoldAndTakeConversationsWhenMade() = runBlocking { // M26
+        val sent = ArrayList<Pair<String, String>>()
+        val list = """[{"id":"s1","name":"研究","emoji":":chikuwa:","collapsed":true,"position":0,"channel_ids":["c1","c2"]},
+            {"id":"s2","name":"古い","position":1,"channel_ids":[]}]"""
+        val client = ApiClient("http://server", stubbed { request ->
+            val buffer = okio.Buffer(); request.body?.writeTo(buffer); sent.add("${request.method} ${request.url.encodedPath}" to buffer.readUtf8())
+            200 to list
+        })
+        client.accessToken = "a"
+        val rows = client.createSidebarSection("研究", ":chikuwa:", listOf("c1", "c2"))
+        assertEquals(":chikuwa:", rows[0].emoji); assertTrue(rows[0].collapsed); assertEquals(listOf("c1", "c2"), rows[0].channelIds)
+        assertNull(rows[1].emoji); assertFalse(rows[1].collapsed) // a server before M26 sends neither
+        client.editSidebarSection("s1", "研究室", null)
+        client.updateSidebarSection("s1", collapsed = false)
+        client.createSidebarSection("空")
+        assertEquals("POST /api/v1/sidebar/sections", sent[0].first)
+        assertTrue(sent[0].second, sent[0].second.contains("\"emoji\":\":chikuwa:\"") && sent[0].second.contains("\"channel_ids\":[\"c1\",\"c2\"]"))
+        assertEquals("PATCH /api/v1/sidebar/sections/s1", sent[1].first)
+        assertTrue(sent[1].second, sent[1].second.contains("\"emoji\":null")) // explicit null takes the icon off
+        assertEquals("""{"collapsed":false}""", sent[2].second)
+        assertFalse(sent[3].second, sent[3].second.contains("emoji"))
+    }
+
     @Test fun requestsWithoutATokenShareOneRefresh() = runBlocking { // WORKSPACES.md §8: a background workspace
         var refreshes = 0
         val gate = CountDownLatch(1)

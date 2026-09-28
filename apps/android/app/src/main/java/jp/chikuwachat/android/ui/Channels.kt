@@ -1,7 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.SidebarSectionOut
-
+import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
 import java.time.Instant
 
@@ -84,5 +84,30 @@ object Channels {
             dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
             browse = if (unreadOnly) emptyList() else all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
         )
+    }
+
+    /** M26 (Slack): a folded section still shows what is unread, and the open conversation. */
+    fun shown(rows: List<ChannelState>, collapsed: Boolean, meId: String?, currentId: String? = null, now: Instant = Instant.now()): List<ChannelState> =
+        if (!collapsed) rows else rows.filter { it.id == currentId || hasUnread(it, meId, now) }
+}
+
+/**
+ * M26: which default sections (favorites, channels, times, dms) are folded on this device. My own sections fold on all
+ * my devices through the server (`SidebarSectionOut.collapsed`); these are a per-device convenience, like the web's.
+ */
+object FoldedSections {
+    private const val KEY = "sidebar.folded"
+    const val FAVORITES = "favorites"
+    const val CHANNELS = "channels"
+    const val TIMES = "times"
+    const val DMS = "dms"
+
+    fun read(store: KeyValueStore): Set<String> = store.getString(KEY)?.split("\n")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+    /** Folds `key` if it is open, opens it if it is folded; returns the new set. */
+    fun toggle(store: KeyValueStore, key: String): Set<String> {
+        val next = read(store).let { if (key in it) it - key else it + key }
+        store.putString(KEY, next.sorted().joinToString("\n").ifEmpty { null })
+        return next
     }
 }
