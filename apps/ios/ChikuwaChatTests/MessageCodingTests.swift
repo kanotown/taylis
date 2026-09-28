@@ -31,4 +31,21 @@ final class MessageCodingTests: XCTestCase {
         XCTAssertEqual(persisted.acks.map(\.userId), ["u3"])
         XCTAssertEqual(MessageOut(persisted)?.acks, message.acks)
     }
+
+    /// §10.1 12.: a held row keeps its type, so counts made from held rows leave system rows out as the server does.
+    /// Rows persisted before M17 have none and are user rows.
+    func testTypeSurvivesPersistence() throws {
+        var message = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(wire.utf8))
+        message.type = "system"
+        let persisted = try JSON.plainDecoder.decode(MessageState.self, from: JSON.plainEncoder.encode(MessageState(message)))
+        XCTAssertEqual(persisted.type, "system")
+        XCTAssertEqual(MessageOut(persisted)?.type, "system")
+        XCTAssertFalse(persisted.countsAsUnread(meId: "someone else"))
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: JSON.plainEncoder.encode(MessageState(message))) as? [String: Any])
+        old["type"] = nil
+        let legacy = try JSON.plainDecoder.decode(MessageState.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertEqual(legacy.type, "user")
+        XCTAssertTrue(legacy.countsAsUnread(meId: "someone else"))
+        XCTAssertFalse(legacy.countsAsUnread(meId: "u1")) // my own
+    }
 }

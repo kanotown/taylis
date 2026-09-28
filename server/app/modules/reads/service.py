@@ -21,11 +21,21 @@ async def initialize_in_tx(
     await repo.initialize(db, user_id, channel_id, last_seq)
 
 
+async def _state(
+    db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, last_read_seq: int
+) -> ReadStateOut:
+    unread, mentions, first_unread_at = await repo.counts(db, user_id, channel_id, last_read_seq)
+    return ReadStateOut(
+        last_read_seq=last_read_seq,
+        unread_count=unread,
+        mention_count=mentions,
+        first_unread_at=first_unread_at,
+    )
+
+
 async def state_for(db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID) -> ReadStateOut:
     row = await repo.get(db, user_id, channel_id)
-    last_read_seq = row.last_read_seq if row else 0
-    unread, mentions = await repo.counts(db, user_id, channel_id, last_read_seq)
-    return ReadStateOut(last_read_seq=last_read_seq, unread_count=unread, mention_count=mentions)
+    return await _state(db, user_id, channel_id, row.last_read_seq if row else 0)
 
 
 async def states_for_user(
@@ -34,11 +44,7 @@ async def states_for_user(
     positions = await repo.states_for_user(db, user_id, channel_ids)
     result: dict[uuid.UUID, ReadStateOut] = {}
     for channel_id in channel_ids:
-        last_read_seq = positions.get(channel_id, 0)
-        unread, mentions = await repo.counts(db, user_id, channel_id, last_read_seq)
-        result[channel_id] = ReadStateOut(
-            last_read_seq=last_read_seq, unread_count=unread, mention_count=mentions
-        )
+        result[channel_id] = await _state(db, user_id, channel_id, positions.get(channel_id, 0))
     return result
 
 
@@ -77,8 +83,7 @@ async def _state_after_change(
     changed: bool,
     reason: Literal["advance", "set"],
 ) -> ReadStateOut:
-    unread, mentions = await repo.counts(db, user_id, channel_id, last_read_seq)
-    state = ReadStateOut(last_read_seq=last_read_seq, unread_count=unread, mention_count=mentions)
+    state = await _state(db, user_id, channel_id, last_read_seq)
     if changed:
         await write_outbox(
             db,

@@ -17,6 +17,8 @@ struct ChannelState: Codable, Identifiable, Equatable {
     /// §7.3: the oldest seq of the timeline window read contiguously from the newest page (0 = all of it; nil = no
     /// window yet). Older rows that arrive on their own are stored but neither shown nor used for paging.
     var oldestLoadedSeq: Int?
+    /// §10.1 (M17): created_at of the oldest unread message, for the unread banner's 「… 以降」; replaced with the counts.
+    var firstUnreadAt: String?
 
     var id: String { channel.id }
     var hasUnread: Bool { unreadCount > 0 }
@@ -36,10 +38,12 @@ struct ChannelState: Codable, Identifiable, Equatable {
         !channel.isAnnouncement || isAdmin || channel.membership?.role == "owner"
     }
 
-    enum CodingKeys: String, CodingKey { case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder, oldestLoadedSeq }
+    enum CodingKeys: String, CodingKey {
+        case channel, isMember, syncedSeq, lastSeq, lastReadSeq, unreadCount, mentionCount, hasOlder, oldestLoadedSeq, firstUnreadAt
+    }
 
     init(channel: ChannelOut, isMember: Bool, syncedSeq: Int?, lastSeq: Int, lastReadSeq: Int = 0, unreadCount: Int = 0, mentionCount: Int = 0, hasOlder: Bool,
-         oldestLoadedSeq: Int? = nil) {
+         oldestLoadedSeq: Int? = nil, firstUnreadAt: String? = nil) {
         self.channel = channel
         self.isMember = isMember
         self.syncedSeq = syncedSeq
@@ -49,6 +53,7 @@ struct ChannelState: Codable, Identifiable, Equatable {
         self.mentionCount = mentionCount
         self.hasOlder = hasOlder
         self.oldestLoadedSeq = oldestLoadedSeq
+        self.firstUnreadAt = firstUnreadAt
     }
 
     /// Rows persisted before M8b carry a local `seenSeq` instead of the server read state.
@@ -63,6 +68,7 @@ struct ChannelState: Codable, Identifiable, Equatable {
         mentionCount = try c.decodeIfPresent(Int.self, forKey: .mentionCount) ?? 0
         hasOlder = try c.decode(Bool.self, forKey: .hasOlder)
         oldestLoadedSeq = try c.decodeIfPresent(Int.self, forKey: .oldestLoadedSeq)
+        firstUnreadAt = try c.decodeIfPresent(String.self, forKey: .firstUnreadAt)
     }
 }
 
@@ -80,6 +86,9 @@ struct MessageState: Codable, Identifiable, Equatable {
     var deleted: Bool
     var pending: Bool
     var failed: Bool
+    /// "user", or "system" for rows the server writes itself (never counted as unread, §10.1 12.). Rows persisted
+    /// before M17 lack it.
+    var type = "user"
     var reactions: [ReactionOut] = []
     var mentionedUserIds: [String] = []
     var mentionAll: Bool = false
@@ -100,7 +109,7 @@ struct MessageState: Codable, Identifiable, Equatable {
     var acks: [AckOut] = []
 
     enum CodingKeys: String, CodingKey {
-        case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed
+        case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
         case priority, ackRequested, acks
     }
@@ -112,6 +121,8 @@ struct MessageState: Codable, Identifiable, Equatable {
     var isReply: Bool { parentId != nil }
     /// The channel timeline shows top-level messages and replies also sent to the channel (M15c).
     var inTimeline: Bool { parentId == nil || alsoInChannel }
+    /// Counted in unread_count the way the server counts it (§10.1 12.): someone else's user message in the timeline.
+    func countsAsUnread(meId: String?) -> Bool { senderId != meId && type == "user" && inTimeline && !deleted && !pending }
 
     init(_ message: MessageOut) {
         id = message.id
@@ -126,6 +137,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         deleted = message.deleted
         pending = false
         failed = false
+        type = message.type
         reactions = message.reactions
         mentionedUserIds = message.mentionedUserIds
         mentionAll = message.mentionAll
@@ -157,6 +169,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         deleted = try c.decode(Bool.self, forKey: .deleted)
         pending = try c.decode(Bool.self, forKey: .pending)
         failed = try c.decode(Bool.self, forKey: .failed)
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? "user"
         reactions = try c.decodeIfPresent([ReactionOut].self, forKey: .reactions) ?? []
         mentionedUserIds = try c.decodeIfPresent([String].self, forKey: .mentionedUserIds) ?? []
         mentionAll = try c.decodeIfPresent(Bool.self, forKey: .mentionAll) ?? false
@@ -208,7 +221,7 @@ extension MessageOut {
         guard let seq = state.seq, !state.pending else { return nil }
         self.init(id: state.id, channelId: state.channelId, senderId: state.senderId, seq: seq, updatedSeq: state.updatedSeq,
                   clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
-                  mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
+                  type: state.type, mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks)
@@ -477,7 +490,8 @@ final class Store {
             unreadCount: read?.unreadCount ?? existing?.unreadCount ?? 0,
             mentionCount: read?.mentionCount ?? existing?.mentionCount ?? 0,
             hasOlder: existing?.hasOlder ?? true,
-            oldestLoadedSeq: existing?.oldestLoadedSeq
+            oldestLoadedSeq: existing?.oldestLoadedSeq,
+            firstUnreadAt: read != nil ? read?.firstUnreadAt : existing?.firstUnreadAt
         )
         channels[channel.id] = merged
         persist { try $0.saveChannel(merged) }

@@ -118,8 +118,12 @@ data class MembershipOut(val role: String, val joinedAt: String)
 @Serializable
 data class NotificationPreferenceOut(val channelId: String, val level: String, val mutedUntil: String? = null)
 
+/**
+ * `firstUnreadAt`: created_at of the oldest message counted in unreadCount, null when nothing is unread or the
+ * server predates M17; only the unread banner's 「… 以降」 uses it (SYNC_PROTOCOL.md §10.1).
+ */
 @Serializable
-data class ReadStateOut(val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int)
+data class ReadStateOut(val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int, val firstUnreadAt: String? = null)
 
 @Serializable
 data class ChannelOut(
@@ -292,7 +296,7 @@ data class FavoriteStateOut(val channelId: String, val favorite: Boolean)
 
 /** One row of POST /channels/read-all (M12a). */
 @Serializable
-data class ChannelReadStateOut(val channelId: String, val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int)
+data class ChannelReadStateOut(val channelId: String, val lastReadSeq: Int, val unreadCount: Int, val mentionCount: Int, val firstUnreadAt: String? = null)
 
 @Serializable
 data class BookmarkStateOut(val messageId: String, val bookmarked: Boolean)

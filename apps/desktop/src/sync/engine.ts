@@ -9,6 +9,7 @@ import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, Del
 import type { Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
+import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
 /**
  * The message mentions me: by name, group or @channel, or by one of my notification keywords (M12g).
@@ -121,6 +122,13 @@ export class SyncEngine {
   private readonly unsentThreadReads = new Map<string, number>();
   /** Threads whose replies were loaded here: their live replies are kept even without a timeline (§7.4). */
   private readonly loadedThreads = new Set<string>();
+  /**
+   * §10.2: parent → channel of the threads whose GET replies succeeded, so every older reply is held. Visible-range
+   * thread marks wait for it; dropped when the channel's local messages are (a §7.3 reload, leaving it, sign-out).
+   */
+  private readonly completeThreads = new Map<string, string>();
+  /** §7.3 reloads per channel: an open view drops its anchor when its rows were replaced (§10.1 2.). */
+  private readonly reloads = new Map<string, number>();
   private threadRefreshCancel: (() => void) | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
@@ -194,6 +202,11 @@ export class SyncEngine {
 
   private setStatus(status: EngineStatus): void {
     this.status = status;
+    this.notify();
+  }
+
+  /** Engine state the store does not carry changed (the status, a hold): views re-render. */
+  private notify(): void {
     for (const listener of this.listeners) listener();
   }
 
@@ -350,6 +363,7 @@ export class SyncEngine {
 
   private signOut(): void {
     this.connection += 1;
+    this.completeThreads.clear();
     this.cancelSendRetry();
     this.dropSocket();
     this.setStatus("signed_out");
@@ -457,7 +471,7 @@ export class SyncEngine {
       store.upsertChannel(channel, channel.read_state ? { isMember: true, lastReadSeq: channel.read_state.last_read_seq } : { isMember: true });
     }
     for (const channel of [...store.channels.values()]) {
-      if (channel.isMember && !seen.has(channel.id)) store.removeChannel(channel.id); // no longer a member
+      if (channel.isMember && !seen.has(channel.id)) this.removeChannel(channel.id); // no longer a member
     }
     this.reapplyUnsentReads();
     if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
@@ -520,7 +534,7 @@ export class SyncEngine {
         if (!store.getChannel(channel.id)) store.upsertChannel(channel, { isMember: false });
       }
       for (const channel of [...store.channels.values()]) {
-        if (!channel.isMember && !listedIds.has(channel.id)) store.removeChannel(channel.id);
+        if (!channel.isMember && !listedIds.has(channel.id)) this.removeChannel(channel.id);
       }
     } catch (err) {
       console.warn("could not load public channels", err);
@@ -540,7 +554,7 @@ export class SyncEngine {
         const data = frame.data as { channel: ChannelOut; member_ids: string[] };
         const isMember = store.me !== null && data.member_ids.includes(store.me.id);
         if (isMember || data.channel.type === "public") store.upsertChannel(data.channel, { isMember });
-        else if (store.getChannel(data.channel.id)) store.removeChannel(data.channel.id); // made private (M15b)
+        else if (store.getChannel(data.channel.id)) this.removeChannel(data.channel.id); // made private (M15b)
         return;
       }
       case "channel.archived": {
@@ -558,7 +572,7 @@ export class SyncEngine {
       case "channel.member_removed": {
         const data = frame.data as { channel_id: string; user_id: string };
         if (store.me && data.user_id === store.me.id) {
-          store.removeChannel(data.channel_id);
+          this.removeChannel(data.channel_id);
           return;
         }
         const channel = store.getChannel(data.channel_id);
@@ -631,7 +645,7 @@ export class SyncEngine {
         // THREADS.md §4: the row (if loaded) takes the new state now; the badge and the list are
         // refreshed from the server shortly after, which also covers threads we do not hold.
         const data = frame.data as ThreadUpdated;
-        store.applyThreadState(data);
+        store.applyThreadState(this.withFloor(data));
         this.scheduleThreadRefresh();
         return;
       }
@@ -692,6 +706,19 @@ export class SyncEngine {
     // seq <= syncedSeq: already applied.
   }
 
+  /**
+   * The channel and its messages leave this device; its threads are no longer complete (§10.2). Callers outside
+   * the engine (leaving a channel) use this rather than the store, or the threads would stay complete.
+   */
+  removeChannel(channelId: string): void {
+    this.forgetThreads(channelId);
+    this.deps.store.removeChannel(channelId);
+  }
+
+  private forgetThreads(channelId: string): void {
+    for (const [parentId, owner] of [...this.completeThreads]) if (owner === channelId) this.completeThreads.delete(parentId);
+  }
+
   /** Rows this device already holds, or a reply in a thread it opened: kept current without a timeline (§7.4). */
   private holds(channelId: string, message: MessageOut): boolean {
     const store = this.deps.store;
@@ -708,25 +735,23 @@ export class SyncEngine {
     this.deps.store.updateChannel(channelId, { last_message_at: message.created_at });
   }
 
-  /** §7.4 / §10: someone else's timeline message is unread until read.updated says otherwise; my own post reads the channel. */
+  /**
+   * §7.4 / §10.1 12.: a row the server counts is unread until read.updated says otherwise. My own rows never are, and
+   * their events leave the read position alone (11.): this device's POST moves it, another device's post brings a
+   * read.updated, and a scheduled send (M12d) reads nothing on the server either.
+   */
   private countUnread(message: MessageOut): void {
     const store = this.deps.store;
     const me = store.me;
     const channel = store.getChannel(message.channel_id);
-    if (!me || !channel) return;
-    if (message.parent_id && !message.also_in_channel) return; // replies are not unread items unless also in the channel (M15c)
-    if (message.sender_id === me.id) {
-      // A top-level post reads the conversation (the server does the same); my replies, even those also
-      // sent to the channel, leave the channel's read position alone (§10).
-      if (!message.parent_id) {
-        this.unreadHold.delete(channel.id);
-        store.updateChannel(channel.id, { lastReadSeq: Math.max(channel.lastReadSeq, message.seq), unreadCount: 0, mentionCount: 0 });
-      }
-      return;
-    }
-    if (message.seq <= channel.lastReadSeq) return;
+    if (!me || !channel || !countsAsUnread(message, me.id) || message.seq <= channel.lastReadSeq) return;
     const mentioned = mentionsMe(message, me);
-    store.updateChannel(channel.id, { unreadCount: channel.unreadCount + 1, mentionCount: channel.mentionCount + (mentioned ? 1 : 0) });
+    store.updateChannel(channel.id, {
+      unreadCount: channel.unreadCount + 1,
+      mentionCount: channel.mentionCount + (mentioned ? 1 : 0),
+      // §10.1: the first unread message starts the banner's 「… 以降」; later ones leave it.
+      ...(channel.unreadCount === 0 ? { firstUnreadAt: message.created_at } : {}),
+    });
   }
 
   private applyReadState(channelId: string, state: ReadStateOut, allowDecrease = false): void {
@@ -739,6 +764,7 @@ export class SyncEngine {
       lastReadSeq: allowDecrease ? state.last_read_seq : Math.max(channel.lastReadSeq, state.last_read_seq),
       unreadCount: state.unread_count,
       mentionCount: state.mention_count,
+      firstUnreadAt: state.first_unread_at ?? null,
       ...(reached ? { pendingReadSeq: null } : {}),
     });
     if (state.unread_count === 0) this.deps.onRead?.(channelId);
@@ -784,15 +810,23 @@ export class SyncEngine {
     const channel = store.getChannel(channelId);
     if (!channel || !channel.isMember || seq < 1) return;
     const target = seq - 1;
+    // §10.1 10.: forward only while every unread row in between is held, or it would read all of them unseen on every
+    // device. Otherwise the position stays and only the hold (no visible-range reads) takes effect.
+    if (target > channel.lastReadSeq && !rangeReady(channel)) {
+      this.unreadHold.set(channelId, channel.lastReadSeq);
+      this.notify();
+      return;
+    }
     this.unreadHold.set(channelId, target);
     this.readCancels.get(channelId)?.();
     const me = store.me;
-    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && m.sender_id !== me?.id);
+    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > target && countsAsUnread(m, me?.id));
     store.updateChannel(channelId, {
       pendingReadSeq: null, // an unsent advance must not undo this
       lastReadSeq: target,
       unreadCount: later.length,
       mentionCount: me ? later.filter((m) => mentionsMe(m, me)).length : 0,
+      firstUnreadAt: later[0]?.created_at ?? null,
     });
     this.trackRead(channelId, (async () => {
       try {
@@ -808,6 +842,8 @@ export class SyncEngine {
    * §10: move the local position at once (monotonic), then PUT after a debounce; the server's answer
    * wins. Until the server confirms it the mark stays in `pendingReadSeq` (persisted), so a failed PUT
    * or quitting during the debounce is sent again after reconnecting.
+   * §10.1: a visible-range mark does nothing while the unread rows are not all held, older or newer (it would skip
+   * unread messages never shown); `force` (Esc, the banner's 「既読にする」) reads regardless.
    */
   markRead(channelId: string, seq: number, options: { force?: boolean } = {}): void {
     if (this.status !== "online" || this.deps.isActive?.() === false) return;
@@ -816,7 +852,8 @@ export class SyncEngine {
     const store = this.deps.store;
     const channel = store.getChannel(channelId);
     if (!channel || !channel.isMember || seq <= channel.lastReadSeq) return;
-    store.updateChannel(channelId, seq >= channel.lastSeq ? { lastReadSeq: seq, pendingReadSeq: seq, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: seq, pendingReadSeq: seq });
+    if (!options.force && !rangeReady(channel)) return;
+    store.updateChannel(channelId, seq >= channel.lastSeq ? { lastReadSeq: seq, pendingReadSeq: seq, unreadCount: 0, mentionCount: 0, firstUnreadAt: null } : { lastReadSeq: seq, pendingReadSeq: seq });
     this.debounceRead(channelId, () => this.sendRead(channelId));
   }
 
@@ -870,7 +907,7 @@ export class SyncEngine {
       const pending = channel.pendingReadSeq;
       if (pending === null) continue;
       if (!channel.isMember || pending <= channel.lastReadSeq) store.updateChannel(channel.id, { pendingReadSeq: null });
-      else store.updateChannel(channel.id, pending >= channel.lastSeq ? { lastReadSeq: pending, unreadCount: 0, mentionCount: 0 } : { lastReadSeq: pending });
+      else store.updateChannel(channel.id, pending >= channel.lastSeq ? { lastReadSeq: pending, unreadCount: 0, mentionCount: 0, firstUnreadAt: null } : { lastReadSeq: pending });
     }
   }
 
@@ -896,7 +933,8 @@ export class SyncEngine {
       const cursor = options.more && store.threadsFilter === filter ? store.threadsCursor : null;
       if (options.more && !cursor) return;
       const page = await this.deps.api.threads({ filter, cursor, limit: this.opts.threadPageSize });
-      store.setThreadPage(filter, page.items, page.next_cursor ?? null, { append: cursor !== null, pageSize: this.opts.threadPageSize });
+      const items = page.items.map((item) => ({ ...item, state: this.withFloor(item.state) }));
+      store.setThreadPage(filter, items, page.next_cursor ?? null, { append: cursor !== null, pageSize: this.opts.threadPageSize });
       store.setThreadSummary(page.summary);
     });
   }
@@ -905,15 +943,26 @@ export class SyncEngine {
   loadThreadState(parentId: string, parent?: MessageOut): Promise<void> {
     return this.enqueue(async () => {
       if (this.status !== "online") return;
-      const state = await this.deps.api.threadState(parentId);
-      const floor = this.threadReadFloor.get(parentId) ?? 0;
-      this.deps.store.applyThreadState(floor > state.last_read_seq ? { ...state, last_read_seq: floor } : state, parent);
+      this.deps.store.applyThreadState(this.withFloor(await this.deps.api.threadState(parentId)), parent);
     });
   }
 
-  /** The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce. */
+  /**
+   * §10.2: a server state, but never behind what this device has read in the thread (the PUT may be debounced, in
+   * flight or waiting to be resent). Lowering it would put the first unread reply above the screen again.
+   */
+  private withFloor<T extends ThreadState>(state: T): T {
+    const floor = this.threadReadFloor.get(state.parent_id) ?? 0;
+    return floor > state.last_read_seq ? { ...state, last_read_seq: floor } : state;
+  }
+
+  /**
+   * The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce.
+   * §10.2: ignored until the whole thread was fetched here, or it could skip older unread replies never loaded.
+   */
   markThreadRead(parentId: string, seq: number): void {
     if (this.status !== "online" || this.deps.isActive?.() === false) return;
+    if (!this.completeThreads.has(parentId)) return;
     const store = this.deps.store;
     const entry = store.threads.get(parentId);
     const floor = this.threadReadFloor.get(parentId) ?? 0;
@@ -939,7 +988,7 @@ export class SyncEngine {
     try {
       const state = await this.deps.api.markThreadRead(parentId, target);
       if ((this.unsentThreadReads.get(parentId) ?? 0) <= target) this.unsentThreadReads.delete(parentId);
-      await this.enqueue(async () => this.deps.store.applyThreadState(state));
+      await this.enqueue(async () => this.deps.store.applyThreadState(this.withFloor(state)));
     } catch (err) {
       if (isRetryable(err) || (err instanceof ApiError && err.isAuth)) {
         console.warn("thread read mark not sent; retried after reconnecting", err);
@@ -954,7 +1003,7 @@ export class SyncEngine {
     return this.enqueue(async () => {
       if (this.status !== "online") return;
       const state = await this.deps.api.setThreadFollow(parentId, following);
-      this.deps.store.applyThreadState(state);
+      this.deps.store.applyThreadState(this.withFloor(state));
     });
   }
 
@@ -999,6 +1048,8 @@ export class SyncEngine {
     let channel = store.getChannel(channelId);
     if (!channel) return;
     if (channel.syncedSeq !== null && channel.lastSeq - channel.syncedSeq > this.opts.gapLimit) {
+      this.reloads.set(channelId, this.reloadCount(channelId) + 1);
+      this.forgetThreads(channelId);
       store.clearMessages(channelId);
       channel = store.updateChannel(channelId, { syncedSeq: null, oldestLoadedSeq: null, hasOlder: true }) ?? channel;
       this.stats.reloads += 1;
@@ -1040,6 +1091,45 @@ export class SyncEngine {
     });
   }
 
+  /** How many §7.3 reloads replaced the channel's rows since start-up (an open view compares it, §10.1 2.). */
+  reloadCount(channelId: string): number {
+    return this.reloads.get(channelId) ?? 0;
+  }
+
+  /** §10.1: visible rows may move the read position (nothing unread, or every unread row is held). */
+  readRangeReady(channelId: string): boolean {
+    const channel = this.deps.store.getChannel(channelId);
+    return !!channel && rangeReady(channel);
+  }
+
+  /**
+   * 「最初の未読へ」 (§10.1): pages backwards from the loaded range, like loadOlder, until it reaches the read
+   * position as it was when pressed (at most JUMP_MAX_PAGES pages of JUMP_PAGE_SIZE). The range stays one
+   * contiguous block, so nothing else changes. True once the first unread row is held; a false result leaves
+   * the banner, and pressing again goes on from there. Errors reach the caller.
+   */
+  async loadFirstUnread(channelId: string): Promise<boolean> {
+    const target = this.deps.store.getChannel(channelId)?.lastReadSeq ?? 0;
+    let reached = false;
+    await this.enqueue(async () => {
+      const store = this.deps.store;
+      let channel = store.getChannel(channelId);
+      if (!channel || channel.oldestLoadedSeq === null) return; // the first page has not arrived
+      let pages = 0;
+      while (
+        !covers(channel.oldestLoadedSeq, target) && channel.hasOlder && (channel.oldestLoadedSeq ?? 0) > 0 &&
+        pages < JUMP_MAX_PAGES && this.status === "online" && this.currentChannelId === channelId
+      ) {
+        const page = await this.deps.api.history(channelId, channel.oldestLoadedSeq, JUMP_PAGE_SIZE);
+        for (const message of page.messages) store.upsertMessage(message);
+        channel = store.updateChannel(channelId, loadedRange(page)) ?? channel;
+        pages += 1;
+      }
+      reached = covers(channel.oldestLoadedSeq, target);
+    });
+    return reached;
+  }
+
   // --- §9 optimistic send ---------------------------------------------------------------
 
   send(channelId: string, body: string, clientMsgId?: string, parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions = {}): Promise<void> {
@@ -1074,13 +1164,25 @@ export class SyncEngine {
     return this.flushOutbox();
   }
 
-  /** Opening a thread: fetch its replies (live ones keep arriving as timeline events, §7.4). */
-  loadReplies(_channelId: string, parentId: string): Promise<void> {
+  /**
+   * Opening a thread: fetch its replies (live ones keep arriving as timeline events, §7.4). True only when
+   * the GET succeeded: the thread is then complete (§10.2); offline gives false, errors reach the caller.
+   */
+  async loadReplies(channelId: string, parentId: string): Promise<boolean> {
     this.loadedThreads.add(parentId);
-    return this.enqueue(async () => {
+    let loaded = false;
+    await this.enqueue(async () => {
       if (this.status !== "online") return;
       for (const reply of await this.deps.api.replies(parentId)) this.deps.store.upsertMessage(reply);
+      this.completeThreads.set(parentId, channelId);
+      loaded = true;
     });
+    return loaded;
+  }
+
+  /** §10.2: every reply of the thread is held (GET replies succeeded and nothing cleared them since). */
+  threadComplete(parentId: string): boolean {
+    return this.completeThreads.has(parentId);
   }
 
   retryFailed(): Promise<void> {
@@ -1140,6 +1242,7 @@ export class SyncEngine {
         store.upsertMessage(result.message);
         store.removeOutbox(item.client_msg_id);
         this.sendAttempt = 0;
+        if (!item.parent_id && result.created) this.readOwnPost(item.channel_id, result.message.seq);
       } catch (err) {
         if (isRetryable(err)) {
           this.scheduleSendRetry();
@@ -1150,6 +1253,40 @@ export class SyncEngine {
         store.markOutboxFailed(item.client_msg_id, err instanceof ApiError ? err.code : "failed");
       }
     }
+  }
+
+  /**
+   * §10.1 11.: my top-level post went through, and the server read the channel up to it in the same transaction. Only
+   * here, never on my own message.created: a scheduled send (M12d) does not read, and a position moved by its event
+   * would let the next visible row skip unread rows never shown. Replies leave the channel's position alone.
+   * Only for a post created by this POST (the caller checks): a replay whose first answer was lost reads nothing, and
+   * bootstrap or read.updated already brought what the first one read. Zeroing the count there would let the view
+   * anchor with unread rows never shown.
+   */
+  private readOwnPost(channelId: string, seq: number): void {
+    const store = this.deps.store;
+    const channel = store.getChannel(channelId);
+    if (!channel) return;
+    this.unreadHold.delete(channelId);
+    const position = Math.max(channel.lastReadSeq, seq);
+    if (seq >= channel.lastSeq) {
+      store.updateChannel(channelId, { lastReadSeq: position, unreadCount: 0, mentionCount: 0, firstUnreadAt: null });
+      return;
+    }
+    // Rows from others came after my post, before its answer: they stay unread. Counted again here only when every one
+    // of them is held; otherwise the count is left to the server's values (read.updated, bootstrap).
+    if (!covers(channel.oldestLoadedSeq, position) || !caughtUp(channel)) {
+      store.updateChannel(channelId, { lastReadSeq: position });
+      return;
+    }
+    const me = store.me;
+    const later = store.messages(channelId).filter((m) => m.seq !== null && m.seq > position && countsAsUnread(m, me?.id));
+    store.updateChannel(channelId, {
+      lastReadSeq: position,
+      unreadCount: later.length,
+      mentionCount: me ? later.filter((m) => mentionsMe(m, me)).length : 0,
+      firstUnreadAt: later[0]?.created_at ?? null,
+    });
   }
 
   private scheduleSendRetry(): void {

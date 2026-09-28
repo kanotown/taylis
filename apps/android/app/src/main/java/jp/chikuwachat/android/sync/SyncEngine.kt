@@ -171,6 +171,8 @@ class SyncEngine(
         private set
     var reloads = 0
         private set
+    /** §7.3 reloads per channel: an open view re-opens after one (its rows, and the read anchor, are gone). */
+    private val reloadsByChannel = HashMap<String, Int>()
     var reconnects = 0
         private set
 
@@ -198,6 +200,10 @@ class SyncEngine(
     private val threadReadFloor = HashMap<String, Int>()
     /** §10: thread read marks the server has not confirmed (PUT failed or still debouncing); resent after reconnecting. */
     private val unsentThreadReads = HashMap<String, Int>()
+    /** §10.2: parent id → channel id of threads whose whole reply list was fetched; dropped with the channel's rows. */
+    private val completeThreads = HashMap<String, String>()
+    /** Threads on screen, whose ThreadState a GET /threads refresh must not drop (§10.2). */
+    private val shownThreads = HashSet<String>()
     private var threadRefresh: Job? = null
     /** "channel[:parent]" → when the last typing frame went out. */
     private val typingSent = HashMap<String, Long>()
@@ -470,7 +476,7 @@ class SyncEngine(
             seen.add(channel.id)
             store.upsertChannel(channel, isMember = true)
         }
-        store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { store.removeChannel(it.id) }
+        store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { dropChannel(it.id) }
         bootstrap.threads?.let { store.setThreadSummary(it) }
         store.setLimits(bootstrap.limits)
         store.replacePresence(bootstrap.presence)
@@ -501,7 +507,9 @@ class SyncEngine(
     suspend fun markAllRead() {
         val states = api.readAll()
         enqueue {
-            states.forEach { applyReadState(it.channelId, ReadStateOut(lastReadSeq = it.lastReadSeq, unreadCount = it.unreadCount, mentionCount = it.mentionCount)) }
+            states.forEach {
+                applyReadState(it.channelId, ReadStateOut(lastReadSeq = it.lastReadSeq, unreadCount = it.unreadCount, mentionCount = it.mentionCount, firstUnreadAt = it.firstUnreadAt))
+            }
         }
     }
 
@@ -531,7 +539,7 @@ class SyncEngine(
         val listed = runCatching { api.publicChannels() }.getOrNull() ?: return
         val ids = listed.map { it.id }.toSet()
         listed.filter { store.channel(it.id) == null }.forEach { store.upsertChannel(it, isMember = false) }
-        store.channels.values.toList().filter { !it.isMember && it.id !in ids }.forEach { store.removeChannel(it.id) }
+        store.channels.values.toList().filter { !it.isMember && it.id !in ids }.forEach { dropChannel(it.id) }
     }
 
     private suspend fun applyEvent(frame: EventFrame) {
@@ -583,7 +591,7 @@ class SyncEngine(
                 val memberIds = (frame.data["member_ids"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
                 val isMember = store.me?.id?.let { it in memberIds } ?: false
                 if (isMember || channel.type == "public") store.upsertChannel(channel, isMember = isMember)
-                else if (store.channel(channel.id) != null) store.removeChannel(channel.id) // made private (M15b)
+                else if (store.channel(channel.id) != null) dropChannel(channel.id) // made private (M15b)
             }
             "channel.archived" -> frame.data.str("channel_id")?.let { id ->
                 store.updateChannel(id) { it.copy(channel = it.channel.copy(archived = true)) }
@@ -596,7 +604,7 @@ class SyncEngine(
                 val me = store.me ?: return
                 val id = frame.data.str("channel_id") ?: return
                 if (frame.data.str("user_id") == me.id) {
-                    store.removeChannel(id)
+                    dropChannel(id)
                 } else {
                     store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = maxOf(0, it - 1))) } ?: state }
                 }
@@ -645,8 +653,9 @@ class SyncEngine(
             }
             seq > synced + 1 -> {
                 store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
-                catchUp(channelId)
-                if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }
+                // The rows the catch-up brings after the last seq known before this event (this one too) were never counted.
+                catchUp(channelId, countedTo = channel.lastSeq)
+                if (isNew) { store.clearTyping(message.channelId, message.parentId, message.senderId); maybeNotify(message, channel, thread) }
             }
             // seq <= synced: already applied
         }
@@ -673,25 +682,30 @@ class SyncEngine(
         return if (a != null && b != null) a.isAfter(b) else time > than
     }
 
-    /** §7.4 / §10: my own top-level post reads the channel; someone else's message is unread until read.updated says otherwise. */
+    /**
+     * §7.4 / §10.1 rule 12: someone else's message is unread until read.updated says otherwise, and only where the
+     * server counts it. My own never moves the read position here (rule 11): a post from this device moves it with
+     * its POST response ([readByOwnPost]), one from another device is followed by read.updated, and a scheduled send
+     * (M12d) does not read the channel at all, so moving here would put the position ahead of the server's.
+     */
     private fun countUnread(message: MessageOut) {
         store.clearTyping(message.channelId, message.parentId, message.senderId) // their message arrived: no longer typing
+        countAsUnread(message)
+    }
+
+    private fun countAsUnread(message: MessageOut) {
         val me = store.me ?: return
-        if (message.senderId == me.id) {
-            // Only a top-level post reads the conversation (the server does the same); a thread reply moves
-            // the thread's read position, never the channel's.
-            if (message.parentId == null) {
-                unreadHold.remove(message.channelId)
-                store.updateChannel(message.channelId) {
-                    it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unreadCount = 0, mentionCount = 0, unsentReadSeq = it.unsentReadSeq?.takeIf { s -> s > message.seq })
-                }
-            }
-            return
-        }
+        if (message.deleted || message.senderId == me.id) return
         if (message.isReply && !message.alsoInChannel) return // replies are not unread items unless also sent to the channel (M15c)
+        if (message.type != "user") return // nor are system messages (the server counts the same way)
         store.updateChannel(message.channelId) { channel ->
-            if (message.seq <= channel.lastReadSeq) channel
-            else channel.copy(unreadCount = channel.unreadCount + 1, mentionCount = channel.mentionCount + if (message.mentions(me.id, me.notifyKeywords)) 1 else 0)
+            if (!channel.isMember || message.seq <= channel.lastReadSeq) channel // a public channel only browsed has no read state
+            else channel.copy(
+                unreadCount = channel.unreadCount + 1,
+                mentionCount = channel.mentionCount + if (message.mentions(me.id, me.notifyKeywords)) 1 else 0,
+                // §10.1: the banner's 「… 以降」 starts at the first unread; later ones keep it.
+                firstUnreadAt = if (channel.unreadCount == 0) message.createdAt else channel.firstUnreadAt,
+            )
         }
     }
 
@@ -703,6 +717,7 @@ class SyncEngine(
                 lastReadSeq = if (allowDecrease) state.lastReadSeq else maxOf(it.lastReadSeq, state.lastReadSeq),
                 unreadCount = state.unreadCount,
                 mentionCount = state.mentionCount,
+                firstUnreadAt = state.firstUnreadAt,
                 unsentReadSeq = if (allowDecrease) null else it.unsentReadSeq?.takeIf { s -> s > state.lastReadSeq },
             )
         } ?: return
@@ -727,11 +742,37 @@ class SyncEngine(
      * Opening a thread: fetch its replies. Live ones keep arriving as timeline events, also in a channel
      * whose timeline is not loaded (§7.4), because the parent (from the threads list) and the replies are held.
      */
-    suspend fun loadReplies(channelId: String, parentId: String) = enqueue {
-        if (_status.value != EngineStatus.ONLINE) return@enqueue
-        store.threads[parentId]?.parent?.let { store.upsertMessage(it) }
-        api.replies(parentId).forEach { store.upsertMessage(it) }
+    suspend fun loadReplies(channelId: String, parentId: String): Boolean {
+        var loaded = false
+        enqueue {
+            if (_status.value != EngineStatus.ONLINE) return@enqueue
+            store.threads[parentId]?.parent?.let { store.upsertMessage(it) }
+            api.replies(parentId).forEach { store.upsertMessage(it) }
+            completeThreads[parentId] = channelId
+            loaded = true
+        }
+        return loaded
     }
+
+    /**
+     * §10.2: the whole thread was fetched here. Until then only some replies may be held (the new ones that
+     * arrived live), so reading the visible ones could skip older unread replies never loaded.
+     */
+    fun threadComplete(parentId: String): Boolean = parentId in completeThreads
+
+    /** A channel's local rows are gone (§7.3 reload, removed from it): its threads must be fetched again. */
+    private fun forgetThreads(channelId: String) {
+        completeThreads.values.removeAll { it == channelId }
+    }
+
+    /** The channel leaves this device (I left it, it was made private, it is no longer browsable). */
+    fun dropChannel(channelId: String) {
+        forgetThreads(channelId)
+        store.removeChannel(channelId)
+    }
+
+    /** How many §7.3 reloads replaced the channel's local rows; the open view keys its position on it. */
+    fun reloadCount(channelId: String): Int = reloadsByChannel[channelId] ?: 0
 
     // --- §7.3 catch_up --------------------------------------------------------------------------
 
@@ -747,21 +788,32 @@ class SyncEngine(
         }
     }
 
-    /** 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once. */
-    fun markUnread(channelId: String, seq: Int) {
-        if (_status.value != EngineStatus.ONLINE || seq < 1) return
-        val channel = store.channel(channelId) ?: return
-        if (!channel.isMember) return
+    /**
+     * 「ここから未読にする」: seq - 1 becomes the position here and on the server (mode=set) at once. Returns the
+     * position it holds (the divider goes there), null when nothing happened.
+     */
+    fun markUnread(channelId: String, seq: Int): Int? {
+        if (_status.value != EngineStatus.ONLINE || seq < 1) return null
+        val channel = store.channel(channelId) ?: return null
+        if (!channel.isMember) return null
+        // §10.1: moving forward would read the rows before `seq`, and unread rows this device never loaded may be
+        // among them (the row can also be a search hit's context). They and this row stay unread; reading pauses.
+        if (!ReadGate.markUnreadOffered(channel, seq)) {
+            unreadHold[channelId] = channel.lastReadSeq
+            return channel.lastReadSeq
+        }
         val target = seq - 1
         unreadHold[channelId] = target
         pendingReads.remove(channelId)?.cancel()
         val me = store.me
-        val later = store.messages(channelId).filter { (it.seq ?: 0) > target && it.senderId != me?.id }
+        // The rows the server counts (rule 12): store.messages holds timeline rows only (top-level or also_in_channel).
+        val later = store.messages(channelId).filter { (it.seq ?: 0) > target && it.senderId != me?.id && it.type == "user" }
         store.updateChannel(channelId) {
             it.copy(
                 lastReadSeq = target,
                 unreadCount = later.size,
                 mentionCount = later.count { m -> me != null && (m.mentionAll || me.id in m.mentionedUserIds || hitsKeyword(m.body, me.notifyKeywords)) },
+                firstUnreadAt = later.firstOrNull()?.createdAt,
                 unsentReadSeq = null, // the set replaces a mark not sent yet
             )
         }
@@ -769,6 +821,7 @@ class SyncEngine(
             val state = try { api.setReadPosition(channelId, target) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
             if (state != null) post { applyReadState(channelId, state, allowDecrease = true) }
         }
+        return target
     }
 
     /**
@@ -780,13 +833,19 @@ class SyncEngine(
         if (_status.value != EngineStatus.ONLINE || !isActive()) return
         if (force) unreadHold.remove(channelId) else if (unreadHold.containsKey(channelId)) return
         val channel = store.channel(channelId) ?: return
+        // §10.1: a visible row past unread rows this device never loaded does not read them; only an explicit
+        // read (Esc, 「既読にする」) goes to the end regardless.
+        if (!force && !ReadGate.readRangeReady(channel)) return
         if (!channel.isMember || seq <= channel.lastReadSeq) return
         store.updateChannel(channelId) {
-            val moved = if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else it.copy(lastReadSeq = seq)
+            val moved = if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0, firstUnreadAt = null) else it.copy(lastReadSeq = seq)
             moved.copy(unsentReadSeq = maxOf(it.unsentReadSeq ?: 0, seq))
         }
         sendRead(channelId, debounce = true)
     }
+
+    /** §10.1: every unread row of the channel is held, so visible-range reads can move the position. */
+    fun readRangeReady(channelId: String): Boolean = store.channel(channelId)?.let { ReadGate.readRangeReady(it) } ?: false
 
     /** PUT the channel's unconfirmed read mark; a temporary failure keeps it for the next reconnect. */
     private fun sendRead(channelId: String, debounce: Boolean) {
@@ -830,8 +889,16 @@ class SyncEngine(
         val cursor = if (more && store.threadsFilter == filter) store.threadsCursor else null
         if (more && cursor == null) return@enqueue
         val page = api.threads(filter, cursor, options.threadPageSize)
-        store.setThreadPage(filter, page.items, page.nextCursor, append = cursor != null, pageSize = options.threadPageSize)
+        // §10.2: a list refresh (every thread.updated schedules one) must not lower a position read here and still on
+        // its way, nor drop the state of a thread on screen (its read gate needs it).
+        val items = page.items.map { it.copy(state = withFloor(it.state)) }
+        store.setThreadPage(filter, items, page.nextCursor, append = cursor != null, pageSize = options.threadPageSize, keep = shownThreads)
         store.setThreadSummary(page.summary)
+    }
+
+    /** A ThreadPane shows the thread (or no longer does): a list refresh keeps its state even when the server no longer lists it. */
+    fun threadShown(parentId: String, shown: Boolean) {
+        if (shown) shownThreads.add(parentId) else shownThreads.remove(parentId)
     }
 
     /** A thread opened from a channel: fetch my relation to it (follow flag, read position). */
@@ -849,6 +916,7 @@ class SyncEngine(
     /** The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce. */
     fun markThreadRead(parentId: String, seq: Int) {
         if (_status.value != EngineStatus.ONLINE || !isActive()) return
+        if (!threadComplete(parentId)) return // §10.2: older unread replies may not be loaded yet
         val current = maxOf(store.threads[parentId]?.state?.lastReadSeq ?: 0, threadReadFloor[parentId] ?: 0)
         if (seq <= current) return
         threadReadFloor[parentId] = seq
@@ -905,11 +973,31 @@ class SyncEngine(
         flushReads()
     }
 
-    suspend fun catchUp(channelId: String) {
+    /**
+     * §7.3. The unread count covers the rows up to `countedTo` (the last seq known from bootstrap and counted live
+     * events). The rows the catch-up brings past it, up to the new synced seq, are counted here: their events, if they
+     * come at all, are stale by then (a gap, a post during the reconnect's bootstrap). A row past the synced seq
+     * (committed while the page was read, §4.3) is left to its event, which still applies in order.
+     */
+    suspend fun catchUp(channelId: String, countedTo: Int? = null) {
         catchUps += 1
-        var channel = store.channel(channelId) ?: return
+        val channel = store.channel(channelId) ?: return
+        val counted = countedTo ?: channel.lastSeq
+        val brought = LinkedHashMap<String, MessageOut>() // by id: a row changed between two delta pages counts once, as it is now
+        try {
+            catchUpRows(channelId, channel, brought)
+        } finally {
+            val synced = store.channel(channelId)?.syncedSeq ?: counted
+            brought.values.filter { it.seq > counted && it.seq <= synced }.sortedBy { it.seq }.forEach { countAsUnread(it) }
+        }
+    }
+
+    private suspend fun catchUpRows(channelId: String, start: ChannelState, brought: MutableMap<String, MessageOut>) {
+        var channel = start
         val synced = channel.syncedSeq
         if (synced != null && channel.lastSeq - synced > options.gapLimit) {
+            forgetThreads(channelId)
+            reloadsByChannel[channelId] = reloadCount(channelId) + 1 // before the rows go, so a view never sees them gone unannounced
             store.clearMessages(channelId)
             channel = store.updateChannel(channelId) { it.copy(syncedSeq = null, hasOlder = true, oldestLoadedSeq = null) } ?: channel
             reloads += 1
@@ -917,7 +1005,7 @@ class SyncEngine(
         var since = channel.syncedSeq
         if (since == null) {
             val page = api.history(channelId, null, options.pageSize)
-            page.messages.forEach { store.upsertMessage(it) }
+            page.messages.forEach { store.upsertMessage(it); brought[it.id] = it }
             store.updateChannel(channelId) {
                 it.copy(
                     syncedSeq = page.channelLastSeq, lastSeq = maxOf(it.lastSeq, page.channelLastSeq), hasOlder = page.hasMore,
@@ -928,7 +1016,7 @@ class SyncEngine(
         }
         while (true) {
             val delta = api.delta(channelId, since!!, options.deltaLimit)
-            delta.messages.forEach { store.upsertMessage(it) }
+            delta.messages.forEach { store.upsertMessage(it); brought[it.id] = it }
             since = delta.nextSinceSeq
             store.updateChannel(channelId) { it.copy(syncedSeq = delta.nextSinceSeq, lastSeq = maxOf(it.lastSeq, delta.nextSinceSeq)) }
             if (!delta.hasMore) return
@@ -948,6 +1036,33 @@ class SyncEngine(
         val page = api.history(channelId, before, options.pageSize)
         page.messages.forEach { store.upsertMessage(it) }
         store.updateChannel(channelId) { it.copy(hasOlder = page.hasMore, oldestLoadedSeq = oldestOf(page)) }
+    }
+
+    /**
+     * 「最初の未読へ」 (§10.1 rule 6): pages backwards from the loaded range, like [loadOlder] but 200 rows at a time,
+     * until it reaches the read position as it was when pressed. At most JUMP_MAX_PAGES pages per call; true once
+     * covered (pressing again goes on from where it stopped). Paging backwards keeps the one contiguous range.
+     */
+    suspend fun loadFirstUnread(channelId: String): Boolean {
+        val target = store.channel(channelId)?.lastReadSeq ?: return false
+        var covered = false
+        enqueue {
+            var pages = 0
+            while (true) {
+                val channel = store.channel(channelId) ?: return@enqueue
+                val oldest = channel.oldestLoadedSeq
+                if (ReadGate.covers(oldest, target)) break
+                // null: the latest page has not arrived yet (catch_up comes first on this queue).
+                if (oldest == null || oldest <= 0 || !channel.hasOlder || pages >= ReadGate.JUMP_MAX_PAGES) break
+                if (_status.value != EngineStatus.ONLINE || currentChannelId != channelId) break
+                val page = api.history(channelId, oldest, ReadGate.JUMP_PAGE_SIZE)
+                page.messages.forEach { store.upsertMessage(it) }
+                store.updateChannel(channelId) { it.copy(hasOlder = page.hasMore, oldestLoadedSeq = oldestOf(page)) }
+                pages += 1
+            }
+            covered = ReadGate.covers(store.channel(channelId)?.oldestLoadedSeq, target)
+        }
+        return covered
     }
 
     /** The oldest seq a history page reaches; 0 once nothing older is left. */
@@ -1010,10 +1125,13 @@ class SyncEngine(
         while (_status.value == EngineStatus.ONLINE) {
             val item = store.outbox.firstOrNull { it.failed == null } ?: return true
             try {
-                val (message, _) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds,
+                val (message, created) = api.postMessage(item.channelId, item.clientMsgId, item.body, item.parentId, item.attachmentIds,
                     SendOptions(item.alsoInChannel, item.priority, item.ackRequested))
                 store.upsertMessage(message)
                 store.removeOutbox(item.clientMsgId)
+                // A replay (200) read nothing now: the server read the channel when it first stored the post, and its
+                // read.updated or a bootstrap since then already carries the position.
+                if (message.parentId == null && created) readByOwnPost(message)
                 outboxFailures = 0
             } catch (e: CancellationException) {
                 throw e
@@ -1028,6 +1146,21 @@ class SyncEngine(
             }
         }
         return true // offline: the reconnect flushes again
+    }
+
+    /**
+     * §10.1 rule 11: the server read the channel in the same transaction as my top-level post, so the accepted POST
+     * moves the local position and ends a 「ここから未読にする」 hold. A thread reply (also_in_channel too) never does.
+     * Nothing is unread any more only when the post is the newest row: the response can come after later rows from
+     * others were counted, and the server's read.updated for the post precedes those on the socket, so the count kept
+     * then is already right (at worst too high until the next server value, never too low).
+     */
+    private fun readByOwnPost(message: MessageOut) {
+        unreadHold.remove(message.channelId)
+        store.updateChannel(message.channelId) {
+            val moved = it.copy(lastReadSeq = maxOf(it.lastReadSeq, message.seq), unsentReadSeq = it.unsentReadSeq?.takeIf { s -> s > message.seq })
+            if (message.seq >= it.lastSeq) moved.copy(unreadCount = 0, mentionCount = 0, firstUnreadAt = null) else moved
+        }
     }
 
     private fun scheduleOutboxRetry() {

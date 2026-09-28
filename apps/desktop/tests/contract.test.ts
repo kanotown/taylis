@@ -62,8 +62,12 @@ class Scenario {
         return;
       }
       case "client.read":
-        this.engine!.markRead(this.channelId, Number(step["seq"]));
+        // A visible-range mark, or with force an explicit one (Esc, 「既読にする」, §10.1).
+        this.engine!.markRead(this.channelId, Number(step["seq"]), { force: step["force"] === true });
         await this.engine!.flushReads();
+        return;
+      case "client.load_first_unread":
+        await this.engine!.loadFirstUnread(this.channelId);
         return;
       case "edit": {
         const user = this.server.userByName(step["as"] as string);

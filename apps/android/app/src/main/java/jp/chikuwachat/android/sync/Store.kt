@@ -40,6 +40,8 @@ data class ChannelState(
     val lastReadSeq: Int = 0,
     val unreadCount: Int = 0,
     val mentionCount: Int = 0,
+    /** §10.1: created_at of the oldest unread message (the banner's 「… 以降」); null when none or not known. */
+    val firstUnreadAt: String? = null,
     val hasOlder: Boolean = true,
     /**
      * §7.3: the oldest seq of the timeline loaded contiguously (latest page + 「以前を読み込む」); 0 = from the
@@ -90,6 +92,8 @@ data class MessageState(
     val priority: String? = null,
     val ackRequested: Boolean = false,
     val acks: List<AckOut> = emptyList(),
+    /** "user", or a system row, which is never unread (§10.1 rule 12); rows persisted earlier lack it. */
+    val type: String = "user",
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
 
@@ -107,7 +111,7 @@ data class MessageState(
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
             parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
-            priority = message.priority, ackRequested = message.ackRequested, acks = message.acks,
+            priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
         )
 
         fun placeholder(
@@ -188,7 +192,7 @@ fun MessageState.toOut(): MessageOut? {
         id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
-        pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks,
+        pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
     )
 }
 
@@ -391,6 +395,7 @@ class Store(private val persistence: Persistence? = null) {
             lastReadSeq = read?.lastReadSeq ?: existing?.lastReadSeq ?: 0,
             unreadCount = read?.unreadCount ?: existing?.unreadCount ?: 0,
             mentionCount = read?.mentionCount ?: existing?.mentionCount ?: 0,
+            firstUnreadAt = if (read != null) read.firstUnreadAt else existing?.firstUnreadAt,
             hasOlder = existing?.hasOlder ?: true,
             oldestLoadedSeq = existing?.oldestLoadedSeq,
             unsentReadSeq = existing?.unsentReadSeq,
@@ -470,14 +475,14 @@ class Store(private val persistence: Persistence? = null) {
     /**
      * A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
      * refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
-     * elsewhere) are dropped.
+     * elsewhere) are dropped, except those in `keep` (threads on screen).
      */
-    fun setThreadPage(filter: String, items: List<ThreadItem>, cursor: String?, append: Boolean, pageSize: Int) {
+    fun setThreadPage(filter: String, items: List<ThreadItem>, cursor: String?, append: Boolean, pageSize: Int, keep: Set<String> = emptySet()) {
         if (!append) {
             val listed = items.map { it.parent.id }.toSet()
             val oldest = if (items.size >= pageSize) items.last().state.lastReplyAt ?: "" else ""
             threads.entries.removeAll { (id, entry) ->
-                id !in listed && entry.state.following &&
+                id !in listed && id !in keep && entry.state.following &&
                     !(filter == "unread" && entry.state.unreadCount == 0) &&
                     (entry.state.lastReplyAt ?: "") >= oldest
             }

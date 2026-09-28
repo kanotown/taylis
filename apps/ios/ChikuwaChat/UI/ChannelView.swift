@@ -18,6 +18,15 @@ struct ChannelView: View {
     @State private var unreadMark: Int?
     /// Newest seq the reader has had on screen at the bottom; later messages from others are "new".
     @State private var seenSeq: Int?
+    /// §10.1: the first unread row has been on screen with every unread row held; only then do visible rows mark read.
+    @State private var anchor = ReadAnchor()
+    /// 「最初の未読へ」 is loading the rows above the window.
+    @State private var jumping = false
+    /// The reader dragged the list before it was placed: it is left where it is.
+    @State private var userScrolled = false
+    /// The catch-up the placement waits for did not come (a failed request while online): place with the rows held.
+    @State private var syncWaitOver = false
+    @State private var cover = CoverProbe()
 
     enum ChannelSheet: Identifiable {
         case info, addMember, pins
@@ -36,39 +45,151 @@ struct ChannelView: View {
         }
         return controller.store.messages(channelId)
     }
+    /// The 「新着メッセージ」 divider's position, when every row after it is held (§10.1 3.); none in the search context.
+    private var dividerMark: Int? {
+        guard focus == nil else { return nil }
+        return ReadGate.dividerMark(held: controller.engine?.unreadHold[channelId], captured: unreadMark, oldestLoadedSeq: channel?.oldestLoadedSeq)
+    }
     private var items: [TimelineItem] {
-        Timeline.build(messages, firstUnreadAfterSeq: controller.engine?.unreadHold[channelId] ?? unreadMark, meId: controller.store.me?.id)
+        Timeline.build(messages, firstUnreadAfterSeq: dividerMark, meId: controller.store.me?.id)
+    }
+    private var unreadBanner: ReadGate.Banner? {
+        guard let channel else { return nil }
+        let status = controller.engine?.status
+        // Rows are looked at only while a catch-up is on its way (the only case the banner needs them for).
+        let firstUnreadHeld = !ReadGate.catchingUp(channel, status: status)
+            || ReadGate.firstUnreadRow(messages, afterSeq: channel.lastReadSeq, meId: controller.store.me?.id) != nil
+        return ReadGate.banner(channel, focused: focus != nil, positioned: positioned, anchored: anchor.hidesBanner,
+                               held: controller.engine?.unreadHold[channelId] != nil, jumping: jumping, status: status, firstUnreadHeld: firstUnreadHeld)
+    }
+    /// What re-evaluates the anchor: another device's read, a mark-as-unread and its hold, the window's reach (§10.1 2.).
+    private struct ReadWatch: Equatable {
+        var lastRead = 0, unread = 0, oldest: Int?, synced: Int?, last = 0
+        var held: Int?
+    }
+    private var readWatch: ReadWatch {
+        ReadWatch(lastRead: channel?.lastReadSeq ?? 0, unread: channel?.unreadCount ?? 0, oldest: channel?.oldestLoadedSeq, synced: channel?.syncedSeq,
+                  last: channel?.lastSeq ?? 0, held: controller.engine?.unreadHold[channelId])
     }
     private var unseenBelow: Int {
-        guard focus == nil, let seenSeq else { return 0 }
-        let me = controller.store.me?.id
-        return messages.filter { ($0.seq ?? 0) > seenSeq && $0.senderId != me }.count
+        guard focus == nil else { return 0 }
+        return ReadGate.newBelow(messages, seenSeq: seenSeq, meId: controller.store.me?.id)
     }
+    /// At the bottom: the newest row counts as seen, once the view is placed and not landing (§10.1 7.).
     private func markSeen() {
-        let newest = messages.compactMap(\.seq).max() ?? 0
-        if newest > (seenSeq ?? 0) { seenSeq = newest }
+        seenSeq = ReadGate.seenAtBottom(seenSeq, rows: messages, placed: positioned && anchor.landing == nil)
     }
 
-    private func markRead() {
-        guard positioned, focus == nil, thread == nil, scenePhase == .active else { return }
-        let seq = messages.compactMap { message -> Int? in
-            guard let frame = visibleFrames[message.id], frame.maxY > 0,
-                  frame.minY < viewportHeight,
-                  (frame.minY >= 0 && frame.maxY <= viewportHeight || frame.height > viewportHeight) else { return nil }
-            return message.seq
-        }.max()
-        if let seq { controller.engine?.markRead(channelId, seq: seq) }
+    /// Visible rows mark the channel read once anchored (§10.1 2.); the anchor itself is re-evaluated on every call,
+    /// even while a sheet covers the timeline (nothing on screen then), so it drops as soon as the range stops being
+    /// held. `send` is false right after the position went down: a mark-as-unread must not be undone by rows that were
+    /// already on screen before it.
+    private func markRead(send: Bool = true) {
+        guard positioned, focus == nil, let channel else { return }
+        let rows = messages
+        // Under any sheet (the thread, channel info, a message's menu sheets, MainView's search or settings) the list
+        // still follows the bottom; rows arriving there are not seen.
+        let looking = thread == nil && sheet == nil && scenePhase == .active && !cover.covered
+        let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
+        let onScreen = looking ? Set(visibleFrames.compactMap { partlyShown($0.value) ? $0.key : nil }) : []
+        var next = anchor
+        let seq = next.observe(unreadCount: channel.unreadCount, ready: ReadGate.readRangeReady(channel),
+                               firstUnread: ReadGate.firstUnreadRow(rows, afterSeq: channel.lastReadSeq, meId: controller.store.me?.id),
+                               visible: visible, onScreenIds: onScreen)
+        if next != anchor { anchor = next }
+        if send, let seq { controller.engine?.markRead(channelId, seq: seq) }
     }
 
+    /// Back from one of this view's sheets: the rows that arrived under it are judged from the screen once UIKit has
+    /// finished taking the sheet away (onDismiss comes while it still counts as covering the list, §10.1 2.-4).
+    private func sheetClosed() {
+        Task {
+            for _ in 0..<20 where cover.covered { try? await Task.sleep(nanoseconds: 100_000_000) }
+            markRead()
+        }
+    }
+
+    /// Shown in full, or taller than the viewport and filling it.
+    private func fullyShown(_ frame: CGRect?) -> Bool {
+        guard let frame, partlyShown(frame) else { return false }
+        return frame.minY >= 0 && frame.maxY <= viewportHeight || frame.height > viewportHeight
+    }
+
+    private func partlyShown(_ frame: CGRect) -> Bool { frame.maxY > 0 && frame.minY < viewportHeight }
+
+    /// §10.1 4.: a search / permalink hit in the middle, the divider's row at the top, or the bottom. A channel whose
+    /// window has not caught up to last_seq waits for its catch-up (the divider's row may be in it), unless none can
+    /// come or the reader has already scrolled.
     private func position(_ proxy: ScrollViewProxy) {
         guard !positioned, !messages.isEmpty else { return }
-        let targetId = focus.map { $0.parentId ?? $0.messageId }
-            ?? messages.first(where: { message in unreadMark.map { (message.seq ?? 0) > $0 } ?? false })?.id
-        // Rows are keyed by rowKey; a target is named by its message id.
-        let target = targetId.map { id in messages.first(where: { $0.id == id })?.rowKey ?? id }
-        if let target { proxy.scrollTo(target, anchor: focus == nil ? .top : .center) }
-        else { proxy.scrollTo("bottom", anchor: .bottom) }
+        if focus == nil, let channel,
+           ReadGate.placementWaits(channel, status: controller.engine?.status, userScrolled: userScrolled, waitOver: syncWaitOver) { return }
         positioned = true
+        if focus == nil && userScrolled {
+            seenSeq = ReadGate.seenLeftInPlace(messages, dividerMark: dividerMark)
+            return
+        }
+        let mark = dividerMark
+        switch ReadGate.openTarget(messages, focusId: focus.map { $0.parentId ?? $0.messageId }, mark: mark, meId: controller.store.me?.id) {
+        case .center(let key): proxy.scrollTo(key, anchor: .center)
+        case .top(let key):
+            // Placed by the landing task; the banner stays hidden meanwhile, so it does not flash.
+            if let row = messages.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
+            seenSeq = mark // §10.1 7.: 「新着 N 件」 counts every unread row below the divider
+        case .bottom:
+            proxy.scrollTo("bottom", anchor: .bottom)
+            markSeen() // §10.1 7.: the rows on screen now are not 「新着」
+        }
+    }
+
+    /// Scrolls the landing row to the top (with the divider above it when it has one), again while LazyVStack's
+    /// estimated heights leave it off screen, then lets the anchor judge from the frames where it ended (§10.1 4./6.).
+    private func land(_ landing: ReadAnchor.Landing, _ proxy: ScrollViewProxy) async {
+        let items = items
+        let index = items.firstIndex { if case .message(let message, _) = $0 { message.id == landing.rowId } else { false } }
+        let dividerAbove = index.map { $0 > 0 && items[$0 - 1].id == TimelineItem.unread.id } ?? false
+        for _ in 0..<3 {
+            proxy.scrollTo(dividerAbove ? TimelineItem.unread.id : landing.rowKey, anchor: .top)
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            if fullyShown(visibleFrames[landing.rowId]) { break }
+        }
+        guard anchor.landing == landing else { return }
+        anchor.landed()
+        // A short unread region lands clamped at the bottom, where atBottom never changes: its rows are seen (§10.1 7.).
+        if atBottom { markSeen() }
+        markRead()
+    }
+
+    /// 「最初の未読へ」 (§10.1 6.): load back to the read position, then show its first unread row at the top like an open.
+    private func jumpToFirstUnread() {
+        guard !jumping, let engine = controller.engine else { return }
+        jumping = true
+        Task {
+            do {
+                let covered = try await engine.loadFirstUnread(channelId)
+                jumping = false
+                guard covered, focus == nil, engine.currentChannelId == channelId, let channel else { return } // not yet: the banner stays
+                unreadMark = channel.lastReadSeq
+                seenSeq = channel.lastReadSeq // 「新着 N 件」 counts every unread row below again: they are all held now
+                if let row = ReadGate.firstUnreadRow(messages, afterSeq: channel.lastReadSeq, meId: controller.store.me?.id) {
+                    anchor.land(on: row) // anchored only once the row is really on screen
+                } else {
+                    markRead()
+                }
+            } catch {
+                jumping = false
+                controller.error = controller.describe(error)
+            }
+        }
+    }
+
+    /// 「ここから未読にする」 for a row, when it is offered (§10.1 10.).
+    private func markUnreadAction(_ message: MessageState) -> (() -> Void)? {
+        guard let seq = message.seq, let channel, ReadGate.markUnreadOffered(channel, seq: seq) else { return nil }
+        return {
+            if let held = controller.engine?.markUnread(channelId, seq: seq) { unreadMark = held }
+        }
     }
 
     private func loadOlder() {
@@ -87,8 +208,23 @@ struct ChannelView: View {
                 HStack {
                     Text("検索位置の前後の会話").font(.caption)
                     Spacer()
-                    Button("最新の会話へ") { controller.messageFocus = nil; unreadMark = nil }
+                    Button("最新の会話へ") { controller.messageFocus = nil }
                 }.padding(10)
+            }
+            if let banner = unreadBanner, let channel {
+                HStack(spacing: 12) {
+                    Text(banner.text).font(.caption).lineLimit(2)
+                    Spacer(minLength: 0)
+                    if banner.loading {
+                        Text("読み込み中…").font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        if banner.jump { Button("最初の未読へ", action: jumpToFirstUnread).fixedSize() }
+                        Button("既読にする") { controller.engine?.markRead(channelId, seq: channel.lastSeq, force: true) }.fixedSize()
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .disabled(!banner.enabled)
+                .padding(10)
             }
             ScrollViewReader { proxy in
                 GeometryReader { viewport in
@@ -115,14 +251,11 @@ struct ChannelView: View {
                                 case .date(let label, _):
                                     DaySeparator(label: label)
                                 case .unread:
-                                    UnreadSeparator()
+                                    UnreadSeparator().id(item.id)
                                 case .message(let message, let compact):
                                     MessageRow(message: message, controller: controller, compact: compact,
                                                onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
-                                               onMarkUnread: message.seq.map { seq in {
-                                                   controller.engine?.markUnread(channelId, seq: seq)
-                                                   unreadMark = seq - 1
-                                               } })
+                                               onMarkUnread: markUnreadAction(message))
                                         .id(message.rowKey)
                                         .background(GeometryReader { geometry in
                                             Color.clear.preference(key: VisibleMessageFrames.self,
@@ -138,7 +271,9 @@ struct ChannelView: View {
                         .padding(.vertical, 8)
                     }
                     .coordinateSpace(name: "conversation")
-                    .defaultScrollAnchor(.bottom)
+                    .onUserScroll { if !positioned && !messages.isEmpty { userScrolled = true } }
+                    .background(CoverProbe.Marker(probe: cover))
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
                     .scrollDismissesKeyboard(.interactively)
                     .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                         // The keyboard shrinks the viewport: keep the newest message in view when we were at the bottom.
@@ -169,23 +304,48 @@ struct ChannelView: View {
                     }
                     .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
                     .onChange(of: messages.last?.rowKey) { _, _ in
-                        // Arrivals while at the bottom, and my own sends from anywhere, show the newest message.
-                        let last = messages.last
-                        let mine = last.map { $0.senderId == controller.store.me?.id && ($0.pending || $0.seq == channel?.lastSeq) } ?? false
-                        if positioned && focus == nil && (atBottom || mine) {
+                        // Arrivals while at the bottom, and my own top-level send from this device, show the newest
+                        // message. A landing on the first unread row is not overridden by someone else's arrival.
+                        let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
+                        if positioned && focus == nil && (mine || atBottom && anchor.landing == nil) {
+                            if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
                             withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                             markSeen()
                         }
                     }
-                    .task(id: messages.count) { await Task.yield(); position(proxy) }
-                    .onChange(of: focus?.messageId) { _, _ in
-                        positioned = false
+                    .task(id: "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)") { await Task.yield(); position(proxy) }
+                    .task(id: focus == nil) {
+                        // Opened, or back from the search context: the placement waits for a catch-up at most this long.
+                        guard (try? await Task.sleep(nanoseconds: 3_000_000_000)) != nil else { return }
+                        syncWaitOver = true
                         position(proxy)
+                    }
+                    .task(id: anchor.landing) {
+                        if let landing = anchor.landing { await land(landing, proxy) }
+                    }
+                    .onChange(of: focus?.messageId) { _, id in
+                        if id == nil, let channel {
+                            // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).
+                            unreadMark = ReadGate.openMark(channel)
+                            seenSeq = channel.lastReadSeq
+                            syncWaitOver = false
+                        }
+                        positioned = false
+                        userScrolled = false
+                        anchor.reset()
+                        position(proxy)
+                    }
+                    .onChange(of: readWatch) { old, new in
+                        // Lower than before (a mark-as-unread here or elsewhere), or a hold gone without a read: the new
+                        // first unread row has to be seen first, and rows already on screen do not undo it.
+                        let lowered = new.lastRead < old.lastRead || old.held != nil && new.held == nil
+                        if lowered { anchor.positionLowered() }
+                        markRead(send: !lowered)
                     }
                     .onChange(of: controller.engine?.status) { _, _ in markRead() }
                     .onChange(of: scenePhase) { _, _ in markRead() }
                     .onAppear {
-                        if unreadMark == nil, let channel, channel.unreadCount > 0 { unreadMark = channel.lastReadSeq }
+                        if unreadMark == nil, let channel { unreadMark = ReadGate.openMark(channel) }
                         if seenSeq == nil { seenSeq = channel?.lastReadSeq ?? 0 }
                     }
                 }
@@ -247,7 +407,7 @@ struct ChannelView: View {
                 Button("チャンネル情報", systemImage: "info.circle") { sheet = .info }
             }
         }
-        .sheet(item: $sheet) { which in
+        .sheet(item: $sheet, onDismiss: sheetClosed) { which in
             switch which {
             case .info: ChannelInfoView(controller: controller, channelId: channelId)
             case .pins: PinsView(controller: controller, channelId: channelId) { message in
@@ -262,7 +422,7 @@ struct ChannelView: View {
             case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
             }
         }
-        .sheet(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .sheet(item: $thread, onDismiss: sheetClosed) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {
                 thread = ThreadTarget(id: id)
@@ -330,6 +490,71 @@ struct DaySeparator: View {
             Rectangle().fill(Color(.separator)).frame(height: 1)
         }
         .padding(.vertical, 10)
+    }
+}
+
+extension View {
+    /// Runs `action` when the reader drags the list, not when it moves by itself (rows inserted above, the keyboard,
+    /// scrollTo).
+    func onUserScroll(_ action: @escaping () -> Void) -> some View { modifier(UserScrollDetector(action: action)) }
+}
+
+private struct UserScrollDetector: ViewModifier {
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { _, phase in if phase == .interacting { action() } }
+        } else {
+            content.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { _ in action() })
+        }
+    }
+}
+
+/// A conversation list starts at the bottom, a short one sits at the bottom, and size changes keep the bottom where it
+/// is, except while a landing scroll is on its way (§10.1 4./6.): LazyVStack settling the heights of the rows below the
+/// divider then pulled the list back towards the bottom, and it never landed (2026-09-28, iOS 18–27).
+struct TimelineScrollAnchor: ViewModifier {
+    let landing: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.bottom, for: .alignment)
+                .defaultScrollAnchor(landing ? nil : .bottom, for: .sizeChanges)
+        } else {
+            content.defaultScrollAnchor(landing ? nil : .bottom)
+        }
+    }
+}
+
+/// Whether a view is under a presentation (a sheet, a full-screen cover, an alert), wherever it was presented from:
+/// its rows are not being looked at, so they do not mark anything read (§10 「表示できた」). A view that is itself in
+/// a sheet counts as uncovered while that sheet is the top one.
+@MainActor
+final class CoverProbe {
+    weak var view: UIView?
+
+    var covered: Bool {
+        guard let view, let window = view.window, var top = window.rootViewController else { return true }
+        // Bounded, and never loads a view: this runs on every frame change, also in the middle of a presentation.
+        var seen: Set<ObjectIdentifier> = [ObjectIdentifier(top)]
+        while let presented = top.presentedViewController, seen.insert(ObjectIdentifier(presented)).inserted { top = presented }
+        guard let topView = top.viewIfLoaded else { return true }
+        return !view.isDescendant(of: topView)
+    }
+
+    /// Placed behind the view it reports on.
+    struct Marker: UIViewRepresentable {
+        let probe: CoverProbe
+        func makeUIView(context: Context) -> UIView {
+            let view = UIView()
+            view.isUserInteractionEnabled = false
+            probe.view = view
+            return view
+        }
+        func updateUIView(_ view: UIView, context: Context) { probe.view = view }
     }
 }
 

@@ -117,6 +117,17 @@ class FakeServer {
         val postFailures = ArrayDeque<Throwable>()
         /** When set, the next POST /messages waits for it (a send still in flight). */
         var postGate: CompletableDeferred<Unit>? = null
+        /** When set, the next POST /messages is stored at once but its response waits for it (its events and later ones overtake it). */
+        var postResponseGate: CompletableDeferred<Unit>? = null
+        /** When set, the next GET /sync waits for it (a catch-up still on its way, §10.1). */
+        var deltaGate: CompletableDeferred<Unit>? = null
+        /** When set, the next PUT thread read waits for it (a thread read still in flight, §10.2). */
+        var threadReadGate: CompletableDeferred<Unit>? = null
+        /** Requests made, for tests that count them: GET history (before_seq, limit), PUT read (advance, set), PUT thread read. */
+        val historyCalls = ArrayList<Pair<Int?, Int>>()
+        val readCalls = ArrayList<Int>()
+        val setCalls = ArrayList<Int>()
+        val threadReadCalls = ArrayList<Int>()
 
         private fun maybeFail() {
             pendingFailure?.let { pendingFailure = null; throw it }
@@ -127,15 +138,25 @@ class FakeServer {
             bootstrapGate?.let { gate -> bootstrapGate = null; gate.await() }
             return this@FakeServer.bootstrap(userId)
         }
-        override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut { maybeFail(); return this@FakeServer.history(userId, channelId, beforeSeq, limit) }
-        override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut { maybeFail(); return this@FakeServer.delta(userId, channelId, sinceSeq, limit) }
+        override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
+            maybeFail()
+            historyCalls.add(beforeSeq to limit)
+            return this@FakeServer.history(userId, channelId, beforeSeq, limit)
+        }
+        override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut {
+            maybeFail()
+            deltaGate?.let { gate -> deltaGate = null; gate.await() }
+            return this@FakeServer.delta(userId, channelId, sinceSeq, limit)
+        }
         override suspend fun postMessage(
             channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, options: SendOptions,
         ): Pair<MessageOut, Boolean> {
             maybeFail()
             postFailures.removeFirstOrNull()?.let { throw it }
             postGate?.let { gate -> postGate = null; gate.await() }
-            return post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options)
+            val stored = post(channelId, userId, body, clientMsgId, parentId, attachmentIds, options)
+            postResponseGate?.let { gate -> postResponseGate = null; gate.await() }
+            return stored
         }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
@@ -143,16 +164,29 @@ class FakeServer {
             requireMember(record.channel.id, userId)
             return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }
         }
-        override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq) }
+        override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut {
+            maybeFail()
+            readCalls.add(lastReadSeq)
+            return this@FakeServer.markRead(userId, channelId, lastReadSeq)
+        }
         override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
         override suspend fun listScheduled(): List<ScheduledOut> { maybeFail(); return scheduled[userId]?.toList() ?: emptyList() }
         override suspend fun listReminders(): List<ReminderOut> { maybeFail(); return reminders[userId]?.toList() ?: emptyList() }
-        override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut { maybeFail(); return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set") }
+        override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut {
+            maybeFail()
+            setCalls.add(lastReadSeq)
+            return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set")
+        }
         override suspend fun publicChannels(): List<ChannelOut> =
             channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
         override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut { maybeFail(); return this@FakeServer.threads(userId, filter, cursor, limit) }
         override suspend fun threadState(messageId: String): ThreadState { maybeFail(); return this@FakeServer.threadState(userId, messageId) }
-        override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState { maybeFail(); return this@FakeServer.markThreadRead(userId, messageId, lastReadSeq) }
+        override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState {
+            maybeFail()
+            threadReadCalls.add(lastReadSeq)
+            threadReadGate?.let { gate -> threadReadGate = null; gate.await() }
+            return this@FakeServer.markThreadRead(userId, messageId, lastReadSeq)
+        }
         override suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState { maybeFail(); return this@FakeServer.setThreadFollow(userId, messageId, following) }
     }
 
@@ -207,9 +241,11 @@ class FakeServer {
     fun readState(userId: String, channelId: String): ReadStateOut {
         val record = channels.getValue(channelId)
         val position = readPositions["$userId:$channelId"] ?: 0
-        // My own posts are never unread (the server excludes them, like replies not sent to the channel).
-        val unread = record.messages.filter { it.seq > position && !it.deleted && (it.parentId == null || it.alsoInChannel) && it.senderId != userId }
-        return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) })
+        // My own posts are never unread (the server excludes them, like replies not sent to the channel and system rows).
+        val unread = record.messages.filter {
+            it.seq > position && !it.deleted && (it.parentId == null || it.alsoInChannel) && it.senderId != userId && it.type == "user"
+        }
+        return ReadStateOut(position, unread.size, unread.count { it.mentions(userId) }, unread.minByOrNull { it.seq }?.createdAt)
     }
 
     /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
@@ -223,6 +259,7 @@ class FakeServer {
             val state = readState(userId, channelId)
             emit(setOf(userId), event("read.updated", channelId, null, buildJsonObject { put("reason", mode)
                 put("channel_id", channelId); put("last_read_seq", state.lastReadSeq); put("unread_count", state.unreadCount); put("mention_count", state.mentionCount)
+                put("first_unread_at", state.firstUnreadAt?.let { JsonPrimitive(it) } ?: JsonNull)
             }))
             return state
         }
@@ -334,7 +371,7 @@ class FakeServer {
     fun readAll(userId: String): List<ChannelReadStateOut> =
         channels.values.filter { userId in it.members }.map { record ->
             val state = markRead(userId, record.channel.id, record.channel.lastSeq)
-            ChannelReadStateOut(record.channel.id, state.lastReadSeq, state.unreadCount, state.mentionCount)
+            ChannelReadStateOut(record.channel.id, state.lastReadSeq, state.unreadCount, state.mentionCount, state.firstUnreadAt)
         }
 
     fun setBookmark(userId: String, messageId: String, on: Boolean) {
@@ -476,9 +513,13 @@ class FakeServer {
         return record
     }
 
+    /**
+     * `type` other than "user" is a system row: in the timeline, never unread (the server's reads.counts rule).
+     * `scheduled`: a scheduled send going out (M12d), which does not read the channel for its sender.
+     */
     fun post(
         channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(),
-        options: SendOptions = SendOptions(),
+        options: SendOptions = SendOptions(), type: String = "user", scheduled: Boolean = false,
     ): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
@@ -495,7 +536,7 @@ class FakeServer {
         val message = MessageOut(
             id = nextId(), channelId = channelId, senderId = senderId, parentId = parentId, alsoInChannel = options.alsoInChannel && parentId != null,
             priority = if (parentId == null) options.priority else null, ackRequested = parentId == null && options.ackRequested,
-            seq = seq, updatedSeq = seq, clientMsgId = key, body = body,
+            seq = seq, updatedSeq = seq, clientMsgId = key, body = body, type = type,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
             attachments = attachmentIds.map { AttachmentOut(it, "file-$it", "application/octet-stream", 1, status = "attached", createdAt = now()) },
         )
@@ -515,7 +556,7 @@ class FakeServer {
             if (thread != null) put("parent_thread", Codec.snake.encodeToJsonElement(ParentThread.serializer(), thread))
         }))
         // §10: a top-level post reads the channel for its sender; a thread reply moves only the thread's position.
-        if (parentId == null) markRead(senderId, channelId, seq)
+        if (parentId == null && !scheduled) markRead(senderId, channelId, seq)
         if (thread != null) emitThread(thread.id, followers(thread.id), "reply")
         return message to true
     }
@@ -590,6 +631,17 @@ class FakeServer {
         pending.forEach { (ids, frame) -> emit(ids, frame) }
     }
 
+    /** Delivers held frames up to the next `count` that reach a connected socket (a test looks between two events). */
+    fun releaseNext(count: Int = 1) {
+        var left = count
+        while (left > 0) {
+            val (ids, frame) = held.removeFirstOrNull() ?: return
+            val targets = sockets.toList().filter { it.userId in ids }
+            targets.forEach { it.deliver(frame) }
+            if (targets.isNotEmpty()) left -= 1
+        }
+    }
+
     /** PATCH /channels/{id} as the real server announces it (M15): to the members, to everyone for a conversion. */
     fun updateChannel(channelId: String, postingPolicy: String? = null, type: String? = null) {
         val record = channels[channelId] ?: return
@@ -647,9 +699,13 @@ class FakeServer {
         return HistoryOut(channelLastSeq, rows.take(limit), rows.size > limit)
     }
 
+    /** Runs once between reading the cursor and the rows of the next GET /sync: a post committed in between (§4.3). */
+    var beforeDeltaRows: (() -> Unit)? = null
+
     fun delta(userId: String, channelId: String, sinceSeq: Int, limit: Int): DeltaOut {
         val record = requireMember(channelId, userId)
-        val channelLastSeq = record.channel.lastSeq
+        val channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
+        beforeDeltaRows?.let { beforeDeltaRows = null; it() }
         val rows = record.messages.filter { it.updatedSeq > sinceSeq }.sortedBy { it.updatedSeq }
         val page = rows.take(limit)
         val hasMore = rows.size > limit

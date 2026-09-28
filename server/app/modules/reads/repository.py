@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -87,10 +88,13 @@ async def states_for_user(
 
 async def counts(
     db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID, last_read_seq: int
-) -> tuple[int, int]:
-    """(unread, mentions) derived from seq ranges (DATA_MODEL.md: no counters to keep in sync)."""
+) -> tuple[int, int, datetime | None]:
+    """(unread, mentions, first_unread_at) derived from seq ranges (DATA_MODEL.md: no counters).
+
+    first_unread_at is the oldest counted message's created_at, from the same aggregate.
+    """
     mentioned = mentions_of(Message, user_id)
-    stmt = select(func.count(), func.count().filter(mentioned)).where(
+    stmt = select(func.count(), func.count().filter(mentioned), func.min(Message.created_at)).where(
         Message.channel_id == channel_id,
         Message.seq > last_read_seq,
         Message.sender_id != user_id,  # my own posts are never unread (replies no longer read)
@@ -98,5 +102,5 @@ async def counts(
         Message.deleted_at.is_(None),
         Message.type == "user",
     )
-    unread, mentions = (await db.execute(stmt)).one()
-    return int(unread), int(mentions)
+    unread, mentions, first_unread_at = (await db.execute(stmt)).one()
+    return int(unread), int(mentions), first_unread_at

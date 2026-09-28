@@ -325,6 +325,7 @@ class SyncEngineTest {
         val w = world()
         w.engine.isActive = { true }
         w.server.post(w.channelId, w.alice, "m1"); w.server.post(w.channelId, w.alice, "m2")
+        w.engine.openChannel(w.channelId) // §10.1: visible-range reads need the unread rows loaded
         w.engine.start(); settle(w.engine)
         assertEquals(2, w.store.channel(w.channelId)?.unreadCount)
         w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
@@ -816,6 +817,7 @@ class SyncEngineTest {
         val (reply, _) = w.server.post(w.channelId, w.alice, "reply", parentId = parent.id)
         w.engine.flushThreads(); settle(w.engine)
         w.engine.loadThreadState(parent.id)
+        assertTrue(w.engine.loadReplies(w.channelId, parent.id)) // §10.2: only a fully loaded thread is read
         w.api.pendingFailure = ApiException.Network(IOException("lost"))
         w.engine.markThreadRead(parent.id, reply.seq); w.engine.flushReads(); settle(w.engine)
         assertEquals(0, w.server.threadState(w.bob, parent.id).lastReadSeq)

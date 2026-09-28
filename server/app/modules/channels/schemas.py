@@ -82,3 +82,4 @@ class ChannelReadStateOut(BaseModel):
     last_read_seq: int
     unread_count: int
     mention_count: int
+    first_unread_at: datetime | None = None

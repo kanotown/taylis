@@ -133,6 +133,8 @@ struct ReadStateOut: Codable, Equatable {
     let lastReadSeq: Int
     let unreadCount: Int
     let mentionCount: Int
+    /// M17: created_at of the oldest message counted in unread_count (nil when nothing is unread, or an older server).
+    var firstUnreadAt: String? = nil
 }
 
 /// A poll on a message (M14b): who voted for each option; counts and "mine" are derived here.
@@ -402,6 +404,7 @@ struct ChannelReadStateOut: Codable, Equatable {
     let lastReadSeq: Int
     let unreadCount: Int
     let mentionCount: Int
+    var firstUnreadAt: String? = nil
 }
 
 struct BookmarkStateOut: Codable, Equatable {

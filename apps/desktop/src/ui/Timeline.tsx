@@ -2,10 +2,11 @@ import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, For
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
+import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { AttachmentList } from "./Attachments";
 import { Avatar } from "./Avatar";
-import { buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
+import { bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
@@ -42,13 +43,18 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const [loadingOlder, setLoadingOlder] = useState(false);
   const anchor = useRef<{ height: number; top: number } | null>(null);
 
-  // The "new messages" divider stays where it was when the channel was opened.
-  const unreadMark = useRef<{ channelId: string; seq: number | null }>({ channelId: "", seq: null });
-  if (unreadMark.current.channelId !== channel.id) {
-    unreadMark.current = { channelId: channel.id, seq: channel.unreadCount > 0 ? channel.lastReadSeq : null };
+  // The "new messages" divider stays where it was when the channel was opened, or the search context was left (that
+  // works like opening, §10.1 4.), or 「最初の未読へ」 reached it.
+  const markKey = `${channel.id}:${focus?.messageId ?? ""}`;
+  const unreadMark = useRef<{ key: string; seq: number | null }>({ key: "", seq: null });
+  if (unreadMark.current.key !== markKey) {
+    unreadMark.current = { key: markKey, seq: channel.unreadCount > 0 ? channel.lastReadSeq : null };
   }
   const heldUnread = engine?.unreadHold.get(channel.id);
-  const items = buildTimeline(messages, { firstUnreadAfterSeq: heldUnread ?? unreadMark.current.seq, meId: me?.id ?? null });
+  // §10.1: drawn only when the loaded range reaches it (above the oldest loaded row it would be a lie); never
+  // in a search context.
+  const mark = focus ? null : dividerMark(heldUnread, unreadMark.current.seq, channel.oldestLoadedSeq);
+  const items = buildTimeline(messages, { firstUnreadAfterSeq: mark, meId: me?.id ?? null });
   const last = messages[messages.length - 1];
   const lastId = last ? rowKey(last) : undefined;
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
@@ -58,11 +64,63 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   };
 
   const positioned = useRef(false);
+  const [isPositioned, setIsPositioned] = useState(false);
+  /** Newest seq present when the view last positioned itself or followed new rows. */
+  const followedSeq = useRef(0);
+  /** The last row when the view positioned itself, until the follow effect below has seen that commit. */
+  const openedWith = useRef<{ lastId: string | undefined } | null>(null);
+  /**
+   * §10.1 2.: the read position just went down. Rows already on screen must not undo that, so visible rows read nothing
+   * until the view really changes: the reader's own input, rows added, the window back in front, the connection. The
+   * banner appearing is no such change (it shrinks the scroller, and a reader at the bottom is kept there).
+   */
+  const quiet = useRef(false);
+  const divider = useRef<HTMLDivElement>(null);
+  // §10.1 anchored: the first unread row has been on screen since this view opened (or nothing is unread).
+  // Visible rows mark read only then: rows loaded above the viewport were never shown.
+  const anchoredRef = useRef(false);
+  const [anchored, setAnchoredState] = useState(false);
+  const setAnchored = (value: boolean) => {
+    anchoredRef.current = value;
+    setAnchoredState(value);
+  };
+  /** Re-evaluated from the latest rows and channel state, taken at the same moment (§10.1 2.); `seen` is the screen. */
+  const reanchor = (seen: ScreenRows = NOTHING_SEEN): boolean => {
+    const current = store.getChannel(channel.id) ?? channel;
+    const first = firstUnreadRow(store.messages(channel.id), current.lastReadSeq, me?.id);
+    const next = nextAnchored(anchoredRef.current, current.unreadCount, readRangeReady(current), first, seen.shown, passedUnseen(first, seen.seqs, seen.partly));
+    if (next !== anchoredRef.current) setAnchored(next);
+    return next;
+  };
+  /** The first unread row at the top, with 「新着メッセージ」 above it on screen when the divider precedes it (SYNC_PROTOCOL.md §10.1 4.). */
+  const showFromRow = (row: MessageState) => {
+    const element = document.getElementById(`timeline-${row.id}`);
+    const before = divider.current && divider.current.nextElementSibling === element ? divider.current : element;
+    before?.scrollIntoView({ block: "start" });
+  };
+  // The channel whose 「最初の未読へ」 is loading (the view outlives channel switches).
+  const [jumping, setJumping] = useState<string | null>(null);
+  const jumpingFor = useRef<string | null>(null);
+  const [jumpRequest, setJumpRequest] = useState(0);
+  const shownChannel = useRef(channel.id);
+  shownChannel.current = channel.id;
+  const shownFocus = useRef(focus);
+  shownFocus.current = focus;
   const content = useRef<HTMLDivElement>(null);
   // Scroll the container itself (scrollIntoView would also move scrollable ancestors).
   const scrollToBottom = () => {
     const el = container.current;
     if (el) el.scrollTop = el.scrollHeight;
+  };
+  /** From where the view is now: at the bottom (everything loaded counts as seen) and the bottom button. */
+  const measureScroll = () => {
+    const el = container.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    atBottom.current = distance < 48;
+    setShowJump(distance > 240);
+    // Before positioning the list sits at its initial place (the bottom): what is below the divider is still new (7.).
+    if (atBottom.current && positioned.current) markSeen();
   };
   // Images loading, the composer growing or the window resizing change heights after we positioned:
   // stay pinned to the bottom when the reader was there.
@@ -77,16 +135,27 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     observer.observe(inner);
     return () => observer.disconnect();
   }, []);
+  // Input of the reader's own on the list (not scrolling done by the view, nor the banner resizing it).
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const input = () => {
+      quiet.current = false;
+    };
+    const events = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
+    for (const name of events) el.addEventListener(name, input, { passive: true });
+    return () => {
+      for (const name of events) el.removeEventListener(name, input);
+    };
+  }, []);
   const markVisible = () => {
     const el = container.current;
-    if (!el || focus || !positioned.current || !document.hasFocus()) return;
-    const bounds = el.getBoundingClientRect();
-    const visible = [...el.querySelectorAll<HTMLElement>("article[data-seq]")].filter((row) => {
-      const box = row.getBoundingClientRect();
-      return box.bottom <= bounds.bottom + 1 && box.bottom > bounds.top && (box.top >= bounds.top || box.height > bounds.height);
-    });
-    const seq = Math.max(0, ...visible.map((row) => Number(row.dataset.seq)));
-    if (seq > 0) engine?.markRead(channel.id, seq);
+    // Not while 「最初の未読へ」 loads either: the view is about to land elsewhere (§10.1 4.).
+    if (!el || focus || !positioned.current || quiet.current || jumpingFor.current === channel.id || !document.hasFocus()) return;
+    const seen = screenRows(el, "article[data-seq]", "timeline-");
+    const nowAnchored = reanchor(seen);
+    const seq = Math.max(0, ...seen.seqs);
+    if (nowAnchored && seq > 0) engine?.markRead(channel.id, seq);
   };
 
   useLayoutEffect(() => {
@@ -100,37 +169,157 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
 
   useLayoutEffect(() => {
     positioned.current = false;
+    setIsPositioned(false);
+    setAnchored(false);
+    quiet.current = false;
     atBottom.current = false;
     setSeenSeq(channel.lastReadSeq);
   }, [channel.id, focus?.messageId]);
 
+  // Once per open (or focus change): the search hit centred; else the divider and the row after it at the top, so
+  // the reader starts where unread starts (anchored at once, no banner flash); else the newest message (§10.1).
   useLayoutEffect(() => {
-    if (positioned.current || messages.length === 0) return;
-    const target = focus?.parentId ?? focus?.messageId ?? messages.find((m) => m.seq !== null && unreadMark.current.seq !== null && m.seq > unreadMark.current.seq)?.id;
-    if (target) document.getElementById(`timeline-${target}`)?.scrollIntoView({ block: focus ? "center" : "start" });
+    // Not on my placeholders alone (a failed send is kept): the rows they follow have not arrived yet.
+    if (positioned.current || messages.length === 0 || (!focus && channel.oldestLoadedSeq === null)) return;
+    const unread = !focus && mark !== null ? firstUnreadRow(messages, mark, me?.id) : null;
+    const target = focus ? (focus.parentId ?? focus.messageId) : unread?.id;
+    if (unread) showFromRow(unread);
+    else if (target) document.getElementById(`timeline-${target}`)?.scrollIntoView({ block: "center" });
     else scrollToBottom();
     positioned.current = true;
+    followedSeq.current = maxSeq;
+    openedWith.current = { lastId };
+    setIsPositioned(true);
+    if (!focus) {
+      if (target) setAnchored(true);
+      else reanchor();
+    }
     const el = container.current;
     atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setShowJump(!atBottom.current);
     if (atBottom.current) markSeen();
   }, [channel.id, focus?.messageId, messages.length]);
 
-  useEffect(() => {
+  // New messages while at the bottom, and a top-level post sent from this device, show the newest message. A layout
+  // effect, so the ResizeObserver never pins the bottom first. Only that post reads the channel (§10.1 11.), so only it
+  // may carry the view past rows from others; my replies (also sent to the channel), my posts from other devices and
+  // scheduled sends follow like anyone's.
+  useLayoutEffect(() => {
+    const since = followedSeq.current;
+    followedSeq.current = maxSeq;
+    // The commit that opened the view (or left the search context) placed it already: following too would carry it from
+    // the divider to the bottom whenever my own placeholder (a failed send stays one) is the last row.
+    const opened = openedWith.current !== null && openedWith.current.lastId === lastId;
+    openedWith.current = null;
     const last = messages[messages.length - 1];
-    const mine = !!last && last.sender_id === me?.id && (last.pending || last.seq === channel.lastSeq);
-    if (!focus && positioned.current && (atBottom.current || mine)) {
-      // New messages while at the bottom, and my own sends from anywhere, show the newest message.
-      atBottom.current = true;
-      scrollToBottom();
-      markSeen();
+    const mine = !!last && last.pending === true && last.sender_id === me?.id && !last.parent_id;
+    if (opened || focus || !positioned.current || !(atBottom.current || mine)) return;
+    scrollToBottom();
+    // A batch taller than the screen (the catch-up after reconnecting, or when a held channel opens) would put its
+    // unread rows above the viewport unseen, and reading at the bottom would then skip them: its first unread row
+    // goes to the top instead, as on opening (§10.1). Only when every row after the mark is held: after a §7.3 reload
+    // the oldest row loaded is no place to start (「以前を読み込む」 would run at once above it), so the view stays at
+    // the bottom and rule 2 and the banner take over.
+    const current = store.getChannel(channel.id) ?? channel;
+    const after = Math.max(since, current.lastReadSeq);
+    const first = mine || !covers(current.oldestLoadedSeq, after) ? null : firstUnreadRow(messages, after, me?.id);
+    const row = first ? document.getElementById(`timeline-${first.id}`) : null;
+    const el = container.current;
+    if (first && row && el && row.getBoundingClientRect().top < el.getBoundingClientRect().top) {
+      showFromRow(first);
+      measureScroll();
+      // A landing (§10.1 4.): when that row is the first unread one and the range is ready, anchored now, as when
+      // opening. Rows and channel state both taken live (§10.1 2.).
+      if (readRangeReady(current) && firstUnreadRow(store.messages(channel.id), current.lastReadSeq, me?.id)?.id === first.id) setAnchored(true);
+      return;
     }
+    atBottom.current = true;
+    markSeen();
   }, [lastId]);
+
+  const reloads = engine?.reloadCount(channel.id) ?? 0;
+  const status = engine?.status;
+  /** The channel and the view as the effect below last saw them. */
+  const lastSeen = useRef({ channelId: channel.id, lastReadSeq: channel.lastReadSeq, held: heldUnread, reloads, rows: messages.length, status });
   useEffect(() => {
+    const before = lastSeen.current;
+    lastSeen.current = { channelId: channel.id, lastReadSeq: channel.lastReadSeq, held: heldUnread, reloads, rows: messages.length, status };
+    const same = before.channelId === channel.id;
+    // §10.1 2.: the position went down (another device's 「ここから未読にする」, a lower bootstrap value) or a hold ended
+    // without a read. Rows already on screen must not undo that: this evaluation sends nothing, and neither does any
+    // until the view changes (quiet above).
+    const lowered = same && (channel.lastReadSeq < before.lastReadSeq || (before.held !== undefined && heldUnread === undefined && channel.lastReadSeq <= before.lastReadSeq));
+    // A §7.3 reload replaced the rows, perhaps with no evaluation while they were gone (in the background).
+    const reloaded = same && reloads !== before.reloads;
+    if (before.rows !== messages.length || before.status !== status) quiet.current = false;
+    if (lowered) quiet.current = true;
+    // A read.updated or the catch-up can make the range stop reaching the read position: anchored drops then too,
+    // even while the window is in the background.
+    if (positioned.current && !focus) {
+      if (lowered || reloaded) setAnchored(false);
+      else reanchor();
+    }
     markVisible();
-    window.addEventListener("focus", markVisible);
-    return () => window.removeEventListener("focus", markVisible);
-  }, [channel.id, channel.lastSeq, engine?.status, focus?.messageId, messages.length]);
+    const backInFront = () => {
+      quiet.current = false;
+      markVisible();
+    };
+    window.addEventListener("focus", backInFront);
+    return () => window.removeEventListener("focus", backInFront);
+  }, [channel.id, channel.lastSeq, channel.syncedSeq, channel.lastReadSeq, channel.unreadCount, channel.oldestLoadedSeq, status, focus?.messageId, messages.length, heldUnread, reloads]);
+
+  // 「最初の未読へ」 (§10.1): page back until the range reaches the read position, then start there like opening.
+  const jumpToFirstUnread = async () => {
+    if (!engine || jumping) return;
+    const id = channel.id;
+    setJumping(id);
+    jumpingFor.current = id;
+    let reached = false;
+    try {
+      reached = await engine.loadFirstUnread(id);
+    } catch (error) {
+      controller.setError(error);
+    } finally {
+      setJumping(null);
+      jumpingFor.current = null;
+    }
+    if (!reached || shownChannel.current !== id || shownFocus.current) return; // the banner stays; pressing again goes on
+    unreadMark.current = { key: `${id}:`, seq: store.getChannel(id)?.lastReadSeq ?? null };
+    setJumpRequest((n) => n + 1);
+  };
+  useLayoutEffect(() => {
+    if (jumpRequest === 0 || focus) return;
+    const current = store.getChannel(channel.id) ?? channel;
+    const at = dividerMark(engine?.unreadHold.get(channel.id), unreadMark.current.seq, current.oldestLoadedSeq);
+    const row = at === null ? null : firstUnreadRow(store.messages(channel.id), at, me?.id);
+    if (!row || at === null) return;
+    showFromRow(row);
+    // As when opening there: what follows the divider is new for the bottom button (「新着 N 件」).
+    setSeenSeq(at);
+    measureScroll();
+    setAnchored(true);
+    quiet.current = false; // the reader pressed it
+    markVisible(); // already there when the row was at the top: no scroll event follows
+  }, [jumpRequest]);
+
+  // 「既読にする」: like Esc, the whole conversation regardless of the loaded range.
+  const readToEnd = () => {
+    const current = store.getChannel(channel.id) ?? channel;
+    engine?.markRead(channel.id, current.lastSeq, { force: true });
+  };
+  const online = engine?.status === "online";
+  // Not while a catch-up (connecting or online) is bringing the unread rows and none of them is held yet: the first of
+  // them then goes to the top, and a banner would only flash (§10.1 5.).
+  const rowsComing = (online || engine?.status === "connecting") && !caughtUp(channel) && firstUnreadRow(messages, channel.lastReadSeq, me?.id) === null;
+  // Nor while my top-level post is on its way: it reads the channel when it goes through (§10.1 11.). Following it to the
+  // bottom may have dropped the anchor, which stays dropped (rows passed on the way are not read by the view).
+  const sending = !!last && last.pending === true && !last.failed && last.sender_id === me?.id && !last.parent_id;
+  const showBanner = !!engine && !focus && isPositioned && channel.unreadCount > 0 && !anchored && heldUnread === undefined && !rowsComing && !sending;
+  // The banner changes the scroller's height: a reader at the bottom stays there. Before the scroll event that
+  // opening at the bottom queued, which would otherwise measure the old bottom and leave the view above it.
+  useLayoutEffect(() => {
+    if (atBottom.current && positioned.current) scrollToBottom();
+  }, [showBanner]);
 
   const loadOlder = () => {
     const el = container.current;
@@ -143,22 +332,41 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const onScroll = () => {
     const el = container.current;
     if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    atBottom.current = distance < 48;
-    setShowJump(distance > 240);
-    if (atBottom.current) markSeen();
+    measureScroll();
     markVisible();
     if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") loadOlder();
   };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Above the scroller, not in it: hiding it then only makes the scroller taller and never moves the rows under
+          the reader (WebKit has no scroll anchoring), so the first unread row stays at the top (§10.1). */}
+      {showBanner && (
+        <div className="unread-banner mx-4 mt-2 flex shrink-0 items-center justify-between gap-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
+          <span className="min-w-0 truncate">{bannerText(channel.unreadCount, channel.firstUnreadAt, new Date())}</span>
+          {jumping === channel.id ? (
+            <span className="shrink-0 text-muted">読み込み中…</span>
+          ) : (
+            <span className="flex shrink-0 items-center gap-2">
+              {jumpButtonShown(readRangeReady(channel), channel.unreadCount) && (
+                <Button variant="link" size="sm" disabled={!online} onClick={() => void jumpToFirstUnread()}>
+                  最初の未読へ
+                </Button>
+              )}
+              <Button variant="link" size="sm" disabled={!online} onClick={readToEnd}>
+                既読にする
+              </Button>
+            </span>
+          )}
+        </div>
+      )}
       <div className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
             <span>検索位置の前後の会話</span>
-            <Button variant="link" size="sm" onClick={() => { controller.clearMessageFocus(); requestAnimationFrame(scrollToBottom); }}>
+            {/* The conversation then opens like any other (first unread row or the newest), see the positioning above. */}
+            <Button variant="link" size="sm" onClick={() => controller.clearMessageFocus()}>
               最新の会話に戻る
             </Button>
           </div>
@@ -193,7 +401,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           }
           if (item.kind === "unread") {
             return (
-              <div key={item.key} className="my-2 flex items-center gap-3 text-xs font-semibold text-rose-500">
+              <div key={item.key} ref={divider} className="my-2 flex items-center gap-3 text-xs font-semibold text-rose-500">
                 <span className="h-px flex-1 bg-rose-400/70" />
                 <span>新着メッセージ</span>
                 <span className="h-px flex-1 bg-rose-400/70" />
@@ -208,7 +416,10 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
       {!focus && showJump && (
         <button
           type="button"
-          onClick={scrollToBottom}
+          onClick={() => {
+            quiet.current = false; // the reader's own move
+            scrollToBottom();
+          }}
           className={cn(
             "absolute bottom-3 right-6 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg transition-colors",
             unseenBelow > 0 ? "border-accent bg-accent text-white hover:bg-accent/90" : "border-line bg-canvas text-ink hover:bg-panel",
@@ -220,6 +431,38 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
       )}
     </div>
   );
+}
+
+/** What one look at the screen found (§10.1 2.): the rows shown (message ids, §10.3, and seqs), and those at least partly on screen. */
+export interface ScreenRows {
+  shown: ReadonlySet<string>;
+  seqs: readonly number[];
+  partly: ReadonlySet<string>;
+}
+
+const NOTHING_SEEN: ScreenRows = { shown: new Set(), seqs: [], partly: new Set() };
+
+/**
+ * The `selector` rows of a scroller on screen. Shown = the §10 criterion (the bottom edge on screen, and the top edge
+ * too unless the row is taller than the screen). Rows are matched by message id (`idPrefix` + id), never by React key.
+ */
+export function screenRows(scroller: HTMLElement, selector: string, idPrefix: string): ScreenRows {
+  const bounds = scroller.getBoundingClientRect();
+  const shown = new Set<string>();
+  const partly = new Set<string>();
+  const seqs: number[] = [];
+  for (const row of scroller.querySelectorAll<HTMLElement>(selector)) {
+    const box = row.getBoundingClientRect();
+    if (box.bottom <= bounds.top || box.top >= bounds.bottom) continue;
+    const id = row.id.slice(idPrefix.length);
+    partly.add(id);
+    // One pixel of slack at both edges: a row scrolled to the top can sit half a pixel above it (fractional row heights).
+    if (box.bottom <= bounds.bottom + 1 && (box.top >= bounds.top - 1 || box.height > bounds.height)) {
+      shown.add(id);
+      seqs.push(Number(row.dataset["seq"]));
+    }
+  }
+  return { shown, seqs, partly };
 }
 
 /** The start of a conversation (M11h): what the channel is for, who made it, how many are in it. */
@@ -279,6 +522,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
   const threadParent = !thread && message.parent_id ? store.getMessage(message.channel_id, message.parent_id) : undefined;
   const threadId = message.parent_id ?? message.id;
+  // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
+  const conversation = store.getChannel(message.channel_id);
+  const unreadOffered = !thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation);
   return (
     <article
       key={rowKey(message)}
@@ -296,7 +542,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       title={compact ? fullTimestamp(message.created_at) : undefined}
       onClick={(event) => {
         // Alt+click marks the conversation unread from this message (Mattermost).
-        if (event.altKey && !thread && message.seq !== null && !message.pending) engine?.markUnread(message.channel_id, message.seq);
+        if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
       }}
     >
       <div className="flex justify-center pt-0.5">
@@ -468,7 +714,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
           <IconButton label={message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め"} className={cn("h-7 w-7 hover:text-ink", message.pinned_at ? "text-warning" : "text-muted")} onClick={() => void controller.togglePin(message)}>
             {message.pinned_at ? <PinOff size={15} /> : <Pin size={15} />}
           </IconButton>
-          {!thread && message.seq !== null && (
+          {unreadOffered && (
             <IconButton label="ここから未読にする (Alt+クリック)" className="h-7 w-7 text-muted hover:text-ink" onClick={() => engine?.markUnread(message.channel_id, message.seq!)}>
               <Mail size={15} />
             </IconButton>

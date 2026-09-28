@@ -147,8 +147,13 @@ class Scenario:
         )
 
     async def op_client_read(self, step: dict[str, Any]) -> None:
+        """A visible-range read; ``force`` is an explicit one (Esc, 「既読にする」, §10.1)."""
         assert self.client is not None
-        await self.client.mark_read(int(step["seq"]))
+        await self.client.mark_read(int(step["seq"]), force=bool(step.get("force", False)))
+
+    async def op_client_load_first_unread(self, step: dict[str, Any]) -> None:
+        assert self.client is not None
+        await self.client.load_first_unread()
 
     async def op_client_send(self, step: dict[str, Any]) -> None:
         assert self.client is not None

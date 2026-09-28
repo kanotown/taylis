@@ -1,14 +1,34 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
 
-/** Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data. */
+/**
+ * Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data.
+ * The timeline renders every row it holds, so the preview is asked for only once the row comes within a screen of the
+ * viewport: 「最初の未読へ」 can add 800 rows at once, and asking for all of them hits the server's rate limit (429),
+ * after which no card shows for the rest of the session (SYNC_PROTOCOL.md §10.1 6.).
+ */
 export function LinkPreviewCard({ controller, url }: { controller: AppController; url: string }) {
-  const preview = controller.linkPreview(url);
+  const preview = controller.linkPreviews.get(url);
+  const probe = useRef<HTMLSpanElement>(null);
+  const known = controller.linkPreviews.has(url);
   useEffect(() => {
-    if (preview === undefined) controller.linkPreview(url);
-  }, [url]);
+    const element = probe.current;
+    if (known || !element) return;
+    if (typeof IntersectionObserver === "undefined") {
+      controller.linkPreview(url);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      controller.linkPreview(url);
+    }, { root: scrollParent(element), rootMargin: "100% 0px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [url, known]);
+  if (!known) return <span ref={probe} aria-hidden className="block h-0" />;
   if (!preview) return null;
   return (
     <a
@@ -26,4 +46,13 @@ export function LinkPreviewCard({ controller, url }: { controller: AppController
       {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-md object-cover" />}
     </a>
   );
+}
+
+/** The nearest scrolling ancestor: the observer's root, so its margin reaches rows just outside the scroller's view. */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+  }
+  return null;
 }

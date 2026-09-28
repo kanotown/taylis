@@ -14,6 +14,16 @@ import httpx
 import websockets
 
 LOCAL_PREFIX = "local:"
+# §10.1 「最初の未読へ」: backward pages of this size, at most this many per press.
+JUMP_PAGE_SIZE = 200
+JUMP_MAX_PAGES = 4
+
+
+def _loaded_range(page: dict[str, Any]) -> dict[str, Any]:
+    """oldest_loaded_seq / has_older after a history page (0 = the channel's start is held)."""
+    if not page["has_more"] or not page["messages"]:
+        return {"oldest_loaded_seq": 0, "has_older": False}
+    return {"oldest_loaded_seq": min(int(m["seq"]) for m in page["messages"]), "has_older": True}
 
 
 class ReferenceClient:
@@ -42,6 +52,9 @@ class ReferenceClient:
                 "last_read_seq": 0,
                 "unread_count": 0,
                 "mention_count": 0,
+                # §10.1: the held timeline is the contiguous range seq >= oldest_loaded_seq.
+                "oldest_loaded_seq": None,
+                "has_older": True,
             },
             "messages": {},  # id -> message (server shape) or local placeholder
             "me": None,
@@ -130,6 +143,8 @@ class ReferenceClient:
                 # §7.3 cutoff: too far behind, reload the latest page instead.
                 self.store["messages"] = {}
                 channel["synced_seq"] = None
+                channel["oldest_loaded_seq"] = None
+                channel["has_older"] = True
                 self.reloads += 1
             if channel["synced_seq"] is None:
                 page = (
@@ -140,6 +155,7 @@ class ReferenceClient:
                 ).json()
                 for message in page["messages"]:
                     self.upsert(message)
+                channel.update(_loaded_range(page))
                 channel["synced_seq"] = page["channel_last_seq"]
                 channel["last_seq"] = max(channel["last_seq"], page["channel_last_seq"])
                 return
@@ -204,13 +220,20 @@ class ReferenceClient:
         channel["mention_count"] = int(state["mention_count"])
 
     def _count_unread(self, message: dict[str, Any]) -> None:
-        """§7.4: a live message from someone else is unread until read.updated says otherwise."""
+        """§7.4: a live message from someone else is unread until read.updated says otherwise.
+
+        §10.1 11.: my own message never moves the read position here. A send from this client
+        moves it with the POST response (``send``); one from another device is followed by the
+        server's read.updated, and a scheduled send (M12d) does not read the channel at all.
+        §10.1 12.: only rows the server counts.
+        """
         channel = self.store["channel"]
         me = self.store.get("me")
         if message.get("sender_id") == me:
-            channel["last_read_seq"] = max(int(channel["last_read_seq"]), int(message["seq"]))
-            channel["unread_count"] = 0
-            channel["mention_count"] = 0
+            return
+        if message.get("parent_id") is not None and not message.get("also_in_channel"):
+            return
+        if message.get("type", "user") != "user":
             return
         if int(message["seq"]) <= int(channel["last_read_seq"]):
             return
@@ -218,9 +241,33 @@ class ReferenceClient:
         if message.get("mention_all") or me in (message.get("mentioned_user_ids") or []):
             channel["mention_count"] += 1
 
-    async def mark_read(self, seq: int) -> dict[str, Any]:
-        """PUT /channels/{id}/read; the local position moves first (optimistic, monotonic)."""
+    def covers(self, seq: int) -> bool:
+        """§10.1: every timeline row after ``seq`` is held."""
+        oldest = self.store["channel"]["oldest_loaded_seq"]
+        return oldest == 0 or (oldest is not None and int(oldest) <= seq + 1)
+
+    def caught_up(self) -> bool:
+        """§10.1: every timeline row up to last_seq is held (no catch-up is still on its way)."""
         channel = self.store["channel"]
+        synced = channel["synced_seq"]
+        return synced is not None and int(synced) >= int(channel["last_seq"])
+
+    def read_range_ready(self) -> bool:
+        channel = self.store["channel"]
+        return int(channel["unread_count"]) == 0 or (
+            self.covers(int(channel["last_read_seq"])) and self.caught_up()
+        )
+
+    async def mark_read(self, seq: int, *, force: bool = False) -> dict[str, Any] | None:
+        """PUT /channels/{id}/read; the local position moves first (optimistic, monotonic).
+
+        §10.1: a visible-range read (not ``force``) does nothing while an unread row may be missing
+        (the first one not held, or a catch-up still on its way), so it cannot skip unread
+        messages never loaded.
+        """
+        channel = self.store["channel"]
+        if not force and not self.read_range_ready():
+            return None
         channel["last_read_seq"] = max(int(channel["last_read_seq"]), seq)
         async with self._http() as http:
             response = await http.put(
@@ -230,6 +277,33 @@ class ReferenceClient:
         state: dict[str, Any] = response.json()
         self.apply_read_state(state)
         return state
+
+    async def load_first_unread(self) -> bool:
+        """§10.1 「最初の未読へ」: page backwards until the held range reaches the read position."""
+        channel = self.store["channel"]
+        target = int(channel["last_read_seq"])
+        pages = 0
+        async with self._http() as http:
+            while (
+                not self.covers(target)
+                and channel["has_older"]
+                and (channel["oldest_loaded_seq"] or 0) > 0
+                and pages < JUMP_MAX_PAGES
+            ):
+                page = (
+                    await http.get(
+                        f"/api/v1/channels/{self.channel_id}/messages",
+                        params={
+                            "before_seq": channel["oldest_loaded_seq"],
+                            "limit": JUMP_PAGE_SIZE,
+                        },
+                    )
+                ).json()
+                for message in page["messages"]:
+                    self.upsert(message)
+                channel.update(_loaded_range(page))
+                pages += 1
+        return self.covers(target)
 
     async def _apply_frame(self, frame: dict[str, Any]) -> None:
         if frame["channel_id"] != self.channel_id:
@@ -281,7 +355,8 @@ class ReferenceClient:
         assert response.status_code in (200, 201), response.text
         message: dict[str, Any] = response.json()
         self.upsert(message)
-        # §10: the server marks my own message read inside the send transaction; mirror it.
+        # §10.1 11.: the server read the channel inside the send transaction; this response (not
+        # the event) mirrors it.
         channel = self.store["channel"]
         channel["last_read_seq"] = max(int(channel["last_read_seq"]), int(message["seq"]))
         channel["unread_count"] = 0

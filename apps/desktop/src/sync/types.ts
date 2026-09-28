@@ -19,6 +19,11 @@ export interface ChannelState extends ChannelOut {
   unreadCount: number;
   mentionCount: number;
   /**
+   * §10.1: created_at of the oldest message counted in unreadCount (the banner's 「… 以降」); null when nothing
+   * is unread or the server did not say. Replaced together with unreadCount.
+   */
+  firstUnreadAt: string | null;
+  /**
    * A read position shown here that the server has not confirmed yet (a failed PUT, or the app closed
    * during the debounce); sent again after reconnecting (§10). null when there is none.
    */
