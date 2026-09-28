@@ -85,7 +85,11 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           )}
         >
           {isDmChannel(channel) ? (
-            other ? <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={18} className="rounded-md text-[9px]" presence={store.presenceOf(other)} /> : <AtSign size={15} className="shrink-0 opacity-70" />
+            other ? <Avatar
+              id={other} name={store.users.get(other)?.display_name ?? "?"} size={18} className="rounded-md text-[9px]"
+              presence={store.presenceOf(other)}
+              presenceClassName="border border-sidebar"
+            /> : <AtSign size={15} className="shrink-0 opacity-70" />
           ) : channel.type === "private" ? (
             <Lock size={15} className="shrink-0 opacity-70" />
           ) : (
