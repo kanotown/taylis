@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,7 +51,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
@@ -138,13 +142,18 @@ fun MessageMenu(
     }
 }
 
-/** Reaction chips under a message; tapping toggles my reaction. */
+/**
+ * Reaction chips under a message; tapping toggles my reaction. M25: a 「＋」 chip after them adds another one without
+ * the long press (as on the web, Timeline.tsx).
+ */
 @Composable
 fun ReactionChips(
     message: MessageState,
     store: Store,
     onToggle: (String) -> Unit,
     onNeedEmojiImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null,
+    /** The 「＋」 chip: the picker the sheet's 「その他のリアクション」 opens. Null = no chip. */
+    onAdd: (() -> Unit)? = null,
     /** The Store's version: custom emoji images land in the Store, not in `message` (strong skipping). */
     @Suppress("UNUSED_PARAMETER") version: Int = 0,
 ) {
@@ -172,6 +181,22 @@ fun ReactionChips(
                 } else {
                     Text("${reaction.emoji} ${reaction.count}", style = MaterialTheme.typography.labelLarge)
                 }
+            }
+        }
+        if (onAdd != null) {
+            val shape = RoundedCornerShape(12.dp)
+            // As tall as a count chip (one labelLarge line + its padding) at any font scale.
+            val lineHeight = MaterialTheme.typography.labelLarge.lineHeight.takeIf { it.isSp } ?: 20.sp
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .heightIn(min = with(LocalDensity.current) { lineHeight.toDp() } + 6.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                    .clip(shape)
+                    .clickable(role = Role.Button, onClick = onAdd)
+                    .padding(horizontal = 8.dp),
+            ) {
+                Icon(Icons.Outlined.AddReaction, contentDescription = "リアクションを追加", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }
     }

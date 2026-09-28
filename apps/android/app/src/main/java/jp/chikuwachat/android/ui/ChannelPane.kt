@@ -446,7 +446,15 @@ fun MessageRow(
     var pickingReaction by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
+    // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
+    // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
+    val rowClick = Modifier.combinedClickable(
+        onClickLabel = if (!compact) null else if (showTime) "時刻を隠す" else "時刻を表示",
+        onLongClickLabel = "メッセージの操作",
+        onLongClick = if (message.pending) null else ({ menuOpen = true }),
+        onClick = { if (compact) showTime = !showTime },
+    )
+    Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             // Grouped under the previous message: its time where the avatar would be, so where one message ends and the
             // next begins shows (testers, 2026-09-28; the same on iOS and the web).
@@ -512,7 +520,10 @@ fun MessageRow(
                 if (message.ackRequested && !message.pending) AckBar(message, store, controller, version)  // M15e
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
-                ReactionChips(message, store, onToggle = onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version)
+                ReactionChips(
+                    message, store, onToggle = onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
+                    onAdd = if (message.pending) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
+                )
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
                         Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(14.dp))

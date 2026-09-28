@@ -30,7 +30,9 @@
 		31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */; };
 		33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC121C06BFAA7AB89AC54106 /* DNDTests.swift */; };
 		34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */; };
+		366C98EBC4A19B3450E5B7EE /* OlderPagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1CDECCB37A118143D382F0 /* OlderPagingTests.swift */; };
 		380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCAE33D55025EFA146CADC2 /* MentionsView.swift */; };
+		401A7BAA18FCD2DC54E6F2D9 /* MessageRowAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235F4C3E16ABCCEF1B647BFF /* MessageRowAccessibilityTests.swift */; };
 		4445EC17948BAF11C3A7DCF7 /* KeyboardBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */; };
 		4516C9968AF6F1EEDAFBD299 /* MessageActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B42F0BDEFE3B98EEFF6C089 /* MessageActions.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
@@ -151,8 +153,10 @@
 		20149D2520CFB689B293AEB2 /* ApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClient.swift; sourceTree = "<group>"; };
 		22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsoDatesTests.swift; sourceTree = "<group>"; };
 		234BE2448E1022BD0D1D55EB /* TypingLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLine.swift; sourceTree = "<group>"; };
+		235F4C3E16ABCCEF1B647BFF /* MessageRowAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRowAccessibilityTests.swift; sourceTree = "<group>"; };
 		24269094945450CF90BCAC33 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		25EC40A71175595521F5E564 /* DraftsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftsView.swift; sourceTree = "<group>"; };
+		2F1CDECCB37A118143D382F0 /* OlderPagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OlderPagingTests.swift; sourceTree = "<group>"; };
 		342A0B1BCD9379AB86C4B521 /* Emoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Emoji.swift; sourceTree = "<group>"; };
 		39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTests.swift; sourceTree = "<group>"; };
@@ -360,6 +364,8 @@
 				13B6130C50876B86E11534F6 /* LiveBackendTests.swift */,
 				57F79027247AC5F2ACC79DFE /* MentionsTests.swift */,
 				5B4A789666614090C341ED42 /* MessageCodingTests.swift */,
+				235F4C3E16ABCCEF1B647BFF /* MessageRowAccessibilityTests.swift */,
+				2F1CDECCB37A118143D382F0 /* OlderPagingTests.swift */,
 				6C0AE2256346242EC86282BF /* PermalinkTests.swift */,
 				3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */,
 				E07A0F52A69CE44C46D2213A /* ReadAnchorTests.swift */,
@@ -595,6 +601,8 @@
 				1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */,
 				73256CC2F95C92D250D34D1B /* MentionsTests.swift in Sources */,
 				F1DF4502E645742E45499BC4 /* MessageCodingTests.swift in Sources */,
+				401A7BAA18FCD2DC54E6F2D9 /* MessageRowAccessibilityTests.swift in Sources */,
+				366C98EBC4A19B3450E5B7EE /* OlderPagingTests.swift in Sources */,
 				D260C8E32D5C94D44912611D /* PermalinkTests.swift in Sources */,
 				7062DBC701415D5A49D00848 /* PushTests.swift in Sources */,
 				96C9628A91945A999FBF1930 /* ReadAnchorTests.swift in Sources */,

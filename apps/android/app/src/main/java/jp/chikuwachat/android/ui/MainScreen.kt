@@ -51,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -73,7 +74,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
@@ -334,19 +338,32 @@ fun MainScreen(controller: AppController) {
                         val openId = threadId
                         val threadState = openId?.let { store.threads[it]?.state }
                         if (openId != null && threadState != null && selectedChannel?.isMember == true) {
-                            FilterChip(
-                                selected = threadState.following,
-                                onClick = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } },
-                                label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
-                                leadingIcon = {
-                                    Icon(
-                                        if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
-                                modifier = Modifier.padding(end = 4.dp),
-                            )
+                            // M25: the labelled chip only where 「スレッド」 still fits beside it (ConversationBar), else the bell alone.
+                            val measurer = rememberTextMeasurer()
+                            val density = LocalDensity.current
+                            val labelled = with(density) {
+                                ConversationBar.followLabelFits(
+                                    barWidth = LocalWindowInfo.current.containerSize.width.toDp().value,
+                                    title = measurer.measure("スレッド", MaterialTheme.typography.titleMedium).size.width.toDp().value,
+                                    label = measurer.measure("フォロー中", MaterialTheme.typography.labelLarge).size.width.toDp().value,
+                                )
+                            }
+                            val bell = if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone
+                            val toggle = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } }
+                            if (labelled) {
+                                FilterChip(
+                                    selected = threadState.following,
+                                    onClick = { toggle() },
+                                    label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
+                                    leadingIcon = { Icon(bell, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    modifier = Modifier.padding(end = 4.dp),
+                                )
+                            } else {
+                                // A toggle: TalkBack says 「スレッドをフォロー」 with on / off.
+                                IconToggleButton(checked = threadState.following, onCheckedChange = { toggle() }) {
+                                    Icon(bell, contentDescription = "スレッドをフォロー")
+                                }
+                            }
                         }
                         // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
                         // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
@@ -522,6 +539,22 @@ fun MainScreen(controller: AppController) {
     }
     channelMenuFor?.let { id -> ChannelSectionDialog(controller, id, onDismiss = { channelMenuFor = null }) }
     sectionMenuFor?.let { (section, index) -> SectionActionsDialog(controller, section, index, controller.store.sidebarSections.size, onDismiss = { sectionMenuFor = null }) }
+}
+
+/**
+ * M25 (MUI-1): the thread's app bar at phone widths. At 360 dp the labelled 「フォロー中」 chip cut the title to
+ * 「スレ…」 (emulator, 2026-09-28), so the chip keeps its label only where the title still fits beside it. Widths in
+ * dp, the fixed parts as Material 3's TopAppBar lays them out (measured on the emulator).
+ */
+object ConversationBar {
+    /** The back button with the bar's start padding (4 + 48) and the title's own padding (4 + 4). */
+    private const val START = 52f + 8f
+    /** The connection dot (26, a 30 spinner while connecting), search and ⋮ (48 + 48), the bar's end padding (4). */
+    private const val END = 30f + 96f + 4f
+    /** The FilterChip around its label (paddings 8 + 8 + 16 and the 16 bell) and its end padding (4). */
+    private const val CHIP = 48f + 4f
+
+    fun followLabelFits(barWidth: Float, title: Float, label: Float): Boolean = barWidth - START - END - CHIP - label >= title
 }
 
 @Composable
