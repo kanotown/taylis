@@ -126,3 +126,17 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 @keyframes rx-drop-in { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .rx-drop[data-state="open"] { animation: rx-drop-in 140ms ease-out; }
 [cmdk-group-heading] { padding: 8px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-fg); }
+
+/* M25: on a touch screen a long press on a message opens its action sheet, not the browser's text selection or link
+   callout (「テキストをコピー」 is in the sheet). The inline editor stays selectable. */
+@media (hover: none) {
+  article.message {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  article.message textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}

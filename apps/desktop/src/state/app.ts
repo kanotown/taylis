@@ -571,6 +571,17 @@ export class AppController {
     }
   }
 
+  /** M25: 「テキストをコピー」 from the phone action sheet: the body with mentions as names (as the phone apps copy it). */
+  async copyMessageText(body: string): Promise<void> {
+    try {
+      await copyText(mentionsToNames(body, this.store.users, this.store.groups));
+      this.setNotice("テキストをコピーしました");
+    } catch (error) {
+      console.warn("copy failed", error);
+      this.setError("クリップボードに書き込めませんでした");
+    }
+  }
+
   /** A permalink tapped in a body: fetch the message (membership is checked there) and reveal it. */
   async openPermalink(messageId: string): Promise<boolean> {
     if (!this.api) return false;

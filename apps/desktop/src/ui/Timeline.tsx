@@ -24,6 +24,7 @@ import { StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle } from "./MainScreen";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
+import { LONG_PRESS_MS, MessageActionsSheet } from "./MessageActionsSheet";
 import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
@@ -595,6 +596,17 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [chipPicker, setChipPicker] = useState(false);
+  // M25: the long-press sheet on touch screens (a mouse has the hover bar), and where it opens.
+  const [sheet, setSheet] = useState<"actions" | "emoji" | null>(null);
+  const press = useRef<{ timer: number; x: number; y: number } | null>(null);
+  /** The press became a long press: the finger lifting must not tap the sheet item now under it. */
+  const pressed = useRef(false);
+  const cancelPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  const touchScreen = () => typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
 
   const sender = store.users.get(message.sender_id);
   const senderName = sender?.display_name ?? (message.pending ? me?.display_name : undefined) ?? "unknown";
@@ -624,6 +636,33 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         // Alt+click marks the conversation unread from this message (Mattermost).
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
       }}
+      onTouchStart={(event) => {
+        if (message.pending || !touchScreen() || event.touches.length !== 1) return;
+        const touch = event.touches[0]!;
+        cancelPress();
+        press.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          timer: window.setTimeout(() => {
+            press.current = null;
+            pressed.current = true;
+            (document.activeElement as HTMLElement | null)?.blur?.(); // the keyboard goes, as on iOS / Android
+            navigator.vibrate?.(10);
+            setSheet("actions");
+          }, LONG_PRESS_MS),
+        };
+      }}
+      onTouchMove={(event) => {
+        const touch = event.touches[0];
+        if (press.current && touch && Math.hypot(touch.clientX - press.current.x, touch.clientY - press.current.y) > 10) cancelPress();
+      }}
+      onTouchEnd={(event) => {
+        cancelPress();
+        if (pressed.current) event.preventDefault(); // no click from this touch
+        pressed.current = false;
+      }}
+      onTouchCancel={cancelPress}
+      onContextMenu={(event) => { if (touchScreen()) event.preventDefault(); }}
     >
       <div className="flex justify-center pt-0.5">
         {compact ? (
@@ -726,6 +765,26 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                 </button>
               );
             })}
+            {/* M25: add another reaction right there (the picker on a mouse, the sheet's picker on a phone). */}
+            <PopoverRoot open={chipPicker} onOpenChange={(open) => { if (open && touchScreen()) setSheet("emoji"); else setChipPicker(open); }}>
+              <PopoverTrigger asChild>
+                <button type="button" aria-label="リアクションを追加" title="リアクションを追加" className="inline-flex h-6 items-center rounded-full border border-line bg-panel px-1.5 text-muted hover:border-accent/50 hover:text-ink">
+                  <SmilePlus size={14} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-3">
+                <EmojiPicker
+                  recent={readRecentEmoji()}
+                  custom={[...store.customEmoji.values()]}
+                  controller={controller}
+                  onPick={(entry) => {
+                    setChipPicker(false);
+                    rememberEmoji(entry.glyph);
+                    void controller.toggleReaction(message, entry.glyph);
+                  }}
+                />
+              </PopoverContent>
+            </PopoverRoot>
           </div>
         )}
       </div>
@@ -831,6 +890,19 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
+      {sheet && (
+        <MessageActionsSheet
+          controller={controller}
+          message={message}
+          initialView={sheet}
+          onClose={() => setSheet(null)}
+          onOpenThread={onOpenThread}
+          onShare={() => setShareOpen(true)}
+          unreadOffered={unreadOffered}
+          saved={saved}
+          isAdmin={isAdmin}
+        />
+      )}
     </article>
   );
 });
