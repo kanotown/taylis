@@ -581,14 +581,14 @@ final class AppController {
         return "\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown) (上限 \(formatSize(Int64(limit))))"
     }
 
-    /// Fetch the bytes with the bearer token into a temporary file (shared through the system sheet).
+    /// Fetch with authentication into a per-attachment temporary file for preview / sharing.
     func downloadAttachment(_ attachment: AttachmentOut) async -> URL? {
         guard let api else { return nil }
         do {
             let data = try await api.fetchData("/api/v1/attachments/\(attachment.id)/content")
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = dir.appendingPathComponent(attachment.filename.replacingOccurrences(of: "/", with: "_"))
+            let url = AttachmentFileCache.destination(for: attachment, in: dir)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
             return url
         } catch {
