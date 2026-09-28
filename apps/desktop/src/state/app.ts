@@ -409,6 +409,13 @@ export class AppController {
 
   readonly linkPreviews = new Map<string, LinkPreviewOut | null>();
   private readonly previewLoads = new Map<string, Promise<void>>();
+  /** The cards waiting for a preview (M21): a preview arriving re-renders them only, not the whole app. */
+  private readonly previewListeners = new Set<() => void>();
+
+  subscribeLinkPreviews(listener: () => void): () => void {
+    this.previewListeners.add(listener);
+    return () => this.previewListeners.delete(listener);
+  }
 
   /** The cached preview for a URL (null = failed / none); starts a fetch when unknown. */
   linkPreview(url: string): LinkPreviewOut | null | undefined {
@@ -425,7 +432,7 @@ export class AppController {
       })
       .finally(() => {
         this.previewLoads.delete(url);
-        this.emit();
+        for (const listener of this.previewListeners) listener();
       });
     this.previewLoads.set(url, load);
     return undefined;

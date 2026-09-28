@@ -3,11 +3,13 @@ import { useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
+import { useStoreUpdates } from "./hooks";
 import { Button, cn, Modal, Textarea } from "./primitives";
 
 /** 「別のチャンネルに共有」(M13c): pick a conversation, add a comment, post the quote and permalink there. */
 export function ShareDialog({ controller, message, onClose }: { controller: AppController; message: MessageState; onClose: () => void }) {
   const store = controller.store;
+  useStoreUpdates(controller); // opened from a memoized row: the list of conversations follows the store itself
   const me = store.me?.id;
   const targets = [...store.channels.values()]
     .filter((c) => c.isMember && !c.archived && c.id !== message.channel_id)

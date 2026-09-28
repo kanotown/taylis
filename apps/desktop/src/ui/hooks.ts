@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { AppController } from "../state/app";
 import type { EngineStatus } from "../sync/engine";
@@ -12,6 +12,19 @@ export function useAppVersion(controller: AppController): number {
     },
     () => controller.store.version + controller.version * 1_000 + (controller.engine ? 1 : 0) + screenIndex(controller.screen) * 1_000_000_000,
   );
+}
+
+/**
+ * The same, for a part the app's re-render no longer reaches: a dialog or a popover inside a memoized message row
+ * (M21), which shows more than the row's own props (channels, presence). Only while `enabled` (the popover is open).
+ */
+export function useStoreUpdates(controller: AppController, enabled = true): void {
+  const subscribe = useCallback((listener: () => void) => {
+    if (!enabled) return () => {};
+    const unsubscribers = [controller.subscribe(listener), controller.store.subscribe(listener)];
+    return () => unsubscribers.forEach((u) => u());
+  }, [controller, enabled]);
+  useSyncExternalStore(subscribe, () => (enabled ? controller.store.version + controller.version * 1_000 : 0));
 }
 
 function screenIndex(screen: string): number {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
@@ -10,9 +10,12 @@ import type { AppController } from "../state/app";
  * after which no card shows for the rest of the session (SYNC_PROTOCOL.md §10.1 6.).
  */
 export function LinkPreviewCard({ controller, url }: { controller: AppController; url: string }) {
-  const preview = controller.linkPreviews.get(url);
+  // Its own subscription (M21): the rows are memoized, and a preview arriving re-renders only the cards.
+  const subscribe = useCallback((listener: () => void) => controller.subscribeLinkPreviews(listener), [controller]);
+  // undefined: not fetched yet; null: the page had no preview.
+  const preview = useSyncExternalStore(subscribe, () => controller.linkPreviews.get(url));
   const probe = useRef<HTMLSpanElement>(null);
-  const known = controller.linkPreviews.has(url);
+  const known = preview !== undefined;
   useEffect(() => {
     const element = probe.current;
     if (known || !element) return;

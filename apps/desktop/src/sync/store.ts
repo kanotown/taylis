@@ -87,6 +87,12 @@ export class Store {
   /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
   sidebarSections: SidebarSectionOut[] = [];
   version = 0;
+  /**
+   * Moves with what every message row may show besides its own message (M21): me, the users, the groups, the custom
+   * emoji. The rows are memoized on it (ui/Timeline.tsx): a change elsewhere (typing, a draft, another channel's
+   * unread count) re-renders none of them.
+   */
+  rowsVersion = 0;
   private readonly drafts = new Map<string, Draft>();
   private readonly uploads = new Map<string, number>();
   private writeQueue = Promise.resolve();
@@ -181,7 +187,7 @@ export class Store {
   async load(): Promise<void> {
     if (!this.persistence) return;
     this.restore(await this.persistence.loadAll());
-    this.emit();
+    this.emitRows();
   }
 
   /** Rows as persisted: older rows are normalised, the cache is trimmed (a corrupt `me` is dropped). */
@@ -242,6 +248,12 @@ export class Store {
     for (const listener of this.listeners) listener();
   }
 
+  /** A change the message rows show (see rowsVersion). */
+  private emitRows(): void {
+    this.rowsVersion += 1;
+    this.emit();
+  }
+
   private persist(work: (p: Persistence) => Promise<void>): void {
     const persistence = this.persistence;
     if (persistence && !this.closed) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => console.error("persist failed", err));
@@ -252,13 +264,13 @@ export class Store {
   setMe(me: UserMe | null): void {
     this.me = me;
     this.persist((p) => p.saveMeta("me", me ? JSON.stringify(me) : null));
-    this.emit();
+    this.emitRows();
   }
 
   upsertUser(user: UserPublic): void {
     this.users.set(user.id, user);
     this.persist((p) => p.saveUser(user));
-    this.emit();
+    this.emitRows();
   }
 
   // --- channels ---------------------------------------------------------------------------
@@ -447,13 +459,13 @@ export class Store {
   replaceCustomEmoji(rows: CustomEmojiOut[]): void {
     this.customEmoji.clear();
     for (const row of rows) this.customEmoji.set(row.name, row);
-    this.emit();
+    this.emitRows();
   }
 
   applyCustomEmoji(row: CustomEmojiOut, deleted: boolean): void {
     if (deleted) this.customEmoji.delete(row.name);
     else this.customEmoji.set(row.name, row);
-    this.emit();
+    this.emitRows();
   }
 
   // --- sidebar sections (M14f) -------------------------------------------------------------
@@ -473,13 +485,13 @@ export class Store {
   replaceGroups(rows: GroupOut[]): void {
     this.groups.clear();
     for (const row of rows) this.groups.set(row.id, row);
-    this.emit();
+    this.emitRows();
   }
 
   applyGroup(row: GroupOut, deleted: boolean): void {
     if (deleted) this.groups.delete(row.id);
     else this.groups.set(row.id, row);
-    this.emit();
+    this.emitRows();
   }
 
   // --- reminders (M12e) --------------------------------------------------------------------
