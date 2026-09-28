@@ -42,6 +42,34 @@ final class BrowserSnapshotTests: XCTestCase {
                    mentionedUserIds: ["me"], mentionAll: body.contains("<!channel>"), parentId: nil, replyCount: 0, lastReplyAt: nil)
     }
 
+    func testMemberLoadFailureRenders() throws {
+        let controller = AppController()
+        controller.store.upsertUser(UserPublic(id: "yamada", username: "yamada", displayName: "山田 太郎", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+        _ = try render(AddMemberView(controller: controller, channelId: "c1"), size: CGSize(width: 393, height: 600), name: "I1-ios.png")
+    }
+
+    func testMemberLoadFailureIsNotAnEmptySuccessfulList() async {
+        let loader = MemberListLoader()
+        await loader.load(fetch: { throw URLError(.notConnectedToInternet) }, describe: { _ in "offline" })
+        XCTAssertNil(loader.members)
+        XCTAssertEqual(loader.error, "offline")
+        await loader.load(fetch: { [] }, describe: { _ in "offline" })
+        XCTAssertEqual(loader.members, [])
+        XCTAssertNil(loader.error)
+    }
+
+    func testMemberLoadIgnoresAnOldFailure() async {
+        let loader = MemberListLoader()
+        var oldResponse: CheckedContinuation<[MemberOut], Error>?
+        let old = Task { await loader.load(fetch: { try await withCheckedThrowingContinuation { oldResponse = $0 } }, describe: { _ in "old failure" }) }
+        while oldResponse == nil { await Task.yield() }
+        await loader.load(fetch: { [] }, describe: { _ in "failure" })
+        oldResponse?.resume(throwing: URLError(.networkConnectionLost))
+        await old.value
+        XCTAssertEqual(loader.members, [])
+        XCTAssertNil(loader.error)
+    }
+
     func testBrowserIntroMentionsAndDraftsRender() throws {
         let controller = AppController()
         let store = controller.store
