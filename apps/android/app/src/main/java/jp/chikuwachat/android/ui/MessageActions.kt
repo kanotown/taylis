@@ -203,14 +203,14 @@ fun ReactionChips(
 }
 
 @Composable
-fun EditMessageDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("メッセージを編集") },
-        text = { OutlinedTextField(text, { text = it }, maxLines = 8) },
-        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onSave(text.trim()) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        text = { OutlinedTextField(text, { text = it }, maxLines = 8, enabled = !saving) },
+        confirmButton = { TextButton(enabled = text.isNotBlank() && !saving, onClick = { onSave(text.trim()) }) { Text(if (saving) "保存中…" else "保存") } },
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("キャンセル") } },
     )
 }
 

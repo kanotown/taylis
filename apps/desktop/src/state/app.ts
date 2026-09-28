@@ -387,12 +387,15 @@ export class AppController {
 
   // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated ---
 
-  async editMessage(messageId: string, body: string): Promise<void> {
-    if (!this.api) return;
+  /** True once the server took the edit; the editor stays open until then (a failure keeps the text). */
+  async editMessage(messageId: string, body: string): Promise<boolean> {
+    if (!this.api) return false;
     try {
       this.store.upsertMessage(await this.api.editMessage(messageId, body));
+      return true;
     } catch (error) {
       this.setError(error);
+      return false;
     }
   }
 

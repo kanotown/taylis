@@ -912,14 +912,19 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
   const store = controller.store;
   const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users, store.groups));
   const composing = useRef(false);
+  const [saving, setSaving] = useState(false);
   const finish = () => {
     controller.setEditing(null);
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   };
-  const save = () => {
+  // Codex audit C4: closed only once the server took the edit; a failure (offline) keeps the text and the editor open.
+  const save = async () => {
     const body = encodeMentions(draft.trim(), store.users.values(), store.groups.values());
-    finish();
-    if (body && body !== message.body) void controller.editMessage(message.id, body);
+    if (!body || body === message.body) return finish();
+    setSaving(true);
+    const saved = await controller.editMessage(message.id, body);
+    setSaving(false);
+    if (saved) finish();
   };
   return (
     <div className="mt-1 space-y-2">
@@ -942,13 +947,13 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
             finish();
           } else if (isSendKey(e, controller.sendKey ?? "shift-enter") && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
             e.preventDefault();
-            if (draft.trim()) save();
+            if (draft.trim() && !saving) void save();
           }
         }}
       />
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={save} disabled={!draft.trim()}>
-          保存
+        <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
+          {saving ? "保存中…" : "保存"}
         </Button>
         <Button size="sm" variant="secondary" onClick={finish}>
           キャンセル
