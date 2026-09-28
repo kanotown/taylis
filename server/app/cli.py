@@ -348,6 +348,18 @@ async def _import_mattermost(args: argparse.Namespace) -> int:
     print("counts:")
     for key, value in sorted(report.counts.items()):
         print(f"  {key}: {value}")
+    if report.unmatched_emoji:
+        # Names a custom emoji can take (NAME in app.modules.emoji.service) show up once added.
+        from app.modules.emoji.service import NAME
+
+        print("reactions without an emoji image (add a custom emoji of the same name to show it):")
+        for name, count in report.unmatched_emoji.most_common():
+            note = "" if NAME.match(name) else "  (not a valid custom emoji name)"
+            print(f"  :{name}: {count} times{note}")
+    if report.dropped_emoji:
+        print("reactions not imported (the name is not a valid reaction):")
+        for name, count in report.dropped_emoji.most_common():
+            print(f"  {name} {count} times")
     if report.warnings:
         print(f"warnings ({len(report.warnings)}):")
         for line in report.warnings[:200]:

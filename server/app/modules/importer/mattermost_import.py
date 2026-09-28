@@ -98,6 +98,11 @@ class Report:
     people: list[str] = field(default_factory=list)  # "@mm → @chikuwa (how)"
     counts: Counter[str] = field(default_factory=Counter)
     warnings: list[str] = field(default_factory=list)
+    # Reaction names kept as ":name:" text with no image yet: a custom emoji of that name added
+    # later (before or after the import) is shown for them.
+    unmatched_emoji: Counter[str] = field(default_factory=Counter)
+    # Reaction names that cannot be stored at all (not a valid reaction), with how often.
+    dropped_emoji: Counter[str] = field(default_factory=Counter)
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
@@ -622,9 +627,13 @@ class MattermostImport:
         for r in post["reactions"]:
             person = self.people.get(r["user_id"])
             emoji = self.reaction_emoji(r["emoji_name"])
+            if emoji is None:
+                self.report.dropped_emoji[r["emoji_name"]] += 1
             if person is None or emoji is None or (person.id, emoji) in seen:
                 self.report.counts["reactions_skipped"] += 1
                 continue
+            if emoji.startswith(":") and emoji[1:-1] not in self.custom_emoji:
+                self.report.unmatched_emoji[emoji[1:-1]] += 1
             seen.add((person.id, emoji))
             self.children.append(
                 Reaction(
