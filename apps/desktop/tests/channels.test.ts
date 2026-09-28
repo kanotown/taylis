@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
+import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, isQuietChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -38,14 +39,14 @@ describe("sidebar unread rules", () => {
   it("treats muted channels as unread only when mentioned", () => {
     const muted = channel("a", { notificationLevel: "none", unreadCount: 5 });
     expect(isMutedChannel(muted, now)).toBe(true);
-    expect(hasUnread(muted, now)).toBe(false);
+    expect(hasUnread(muted, null, now)).toBe(false);
     expect(badgeCount(muted, now)).toBe(0);
     const mentioned = channel("b", { mutedUntil: "2026-09-26T20:00:00Z", unreadCount: 5, mentionCount: 2 });
-    expect(hasUnread(mentioned, now)).toBe(true);
+    expect(hasUnread(mentioned, null, now)).toBe(true);
     expect(badgeCount(mentioned, now)).toBe(2);
     const expired = channel("c", { mutedUntil: "2026-09-26T01:00:00Z", unreadCount: 1 });
     expect(isMutedChannel(expired, now)).toBe(false);
-    expect(hasUnread(expired, now)).toBe(true);
+    expect(hasUnread(expired, null, now)).toBe(true);
     const dm = channel("d", { type: "dm", unreadCount: 3 });
     expect(badgeCount(dm, now)).toBe(3);
   });
@@ -123,5 +124,48 @@ describe("conversation titles (sidebar and notifications)", () => {
     expect(conversationTitle(channel("c", { name: "general" }), users, "me")).toBe("#general");
     expect(conversationTitle(channel("g", { type: "group_dm", name: null, dm_user_ids: ["me", "a", "b"] }), users, "me")).toBe("Alice, Bob");
     expect(conversationTitle(channel("s", { type: "dm", name: null, dm_user_ids: ["me"] }), users, "me")).toBe("自分へのメモ");
+  });
+});
+
+/** SYNC_PROTOCOL.md §10.5: the vectors the server and the phone apps test against too. */
+interface UnreadCase {
+  name: string;
+  type: "public" | "private" | "dm" | "group_dm";
+  times: "mine" | "others" | null;
+  level: "all" | "mentions" | "none" | null;
+  muted: boolean;
+  unread: number;
+  mentions: number;
+  expect: { has_unread: boolean; badge: number; quiet: boolean };
+}
+const vectors = JSON.parse(readFileSync(new URL("../../shared/unread-rules.json", import.meta.url), "utf8")) as { cases: UnreadCase[] };
+
+describe("unread rules (§10.5, M24 quiet unread)", () => {
+  it.each(vectors.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const row = channel("c", {
+      type: c.type,
+      times_owner_id: c.times === "mine" ? "me" : c.times === "others" ? "someone" : null,
+      notificationLevel: c.level,
+      mutedUntil: c.muted ? "2026-09-27T00:00:00Z" : null,
+      unreadCount: c.unread,
+      mentionCount: c.mentions,
+    });
+    expect(hasUnread(row, "me", now)).toBe(c.expect.has_unread);
+    expect(badgeCount(row, now)).toBe(c.expect.badge);
+    expect(isQuietChannel(row, "me", now)).toBe(c.expect.quiet);
+  });
+
+  it("puts times channels in their own section, mine first", () => {
+    const all = [
+      channel("general"),
+      channel("times-zed", { name: "times-zed", times_owner_id: "zed" }),
+      channel("times-me", { name: "times-me", times_owner_id: "me" }),
+      channel("times-amy", { name: "times-amy", times_owner_id: "amy", unreadCount: 3 }),
+    ];
+    const sections = sectionChannels(all, (c) => c.name ?? "", { meId: "me", now });
+    expect(sections.channels.map((c) => c.id)).toEqual(["general"]);
+    expect(sections.times.map((c) => c.id)).toEqual(["times-me", "times-amy", "times-zed"]);
+    // Quiet unread stays out of the unread filter.
+    expect(sectionChannels(all, (c) => c.name ?? "", { meId: "me", now, unreadOnly: true }).times).toEqual([]);
   });
 });

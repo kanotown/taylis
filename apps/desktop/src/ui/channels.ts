@@ -26,10 +26,18 @@ export function isMutedChannel(channel: ChannelState, now: Date = new Date()): b
   return !Number.isNaN(until) && until > now.getTime();
 }
 
-/** Slack / Mattermost rule: a muted channel only counts as unread when I am mentioned. */
-export function hasUnread(channel: ChannelState, now?: Date): boolean {
+/**
+ * M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a faint dot
+ * otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
+ */
+export function isQuietChannel(channel: ChannelState, meId: string | null, now?: Date): boolean {
+  return !!channel.times_owner_id && channel.times_owner_id !== meId && channel.notificationLevel !== "all" && !isMutedChannel(channel, now);
+}
+
+/** Slack / Mattermost rule: a muted channel only counts as unread when I am mentioned; so does a quiet one (M24). */
+export function hasUnread(channel: ChannelState, meId: string | null, now?: Date): boolean {
   if (!channel.isMember) return false;
-  return isMutedChannel(channel, now) ? channel.mentionCount > 0 : channel.unreadCount > 0;
+  return isMutedChannel(channel, now) || isQuietChannel(channel, meId, now) ? channel.mentionCount > 0 : channel.unreadCount > 0;
 }
 
 /** Badge number: mentions for channels and muted conversations, every message for DMs. */
@@ -51,6 +59,8 @@ export interface ChannelSections {
   /** My own sections (M14f), in order; their conversations are left out of `channels` / `dms`. */
   custom: Array<{ section: SidebarSectionOut; channels: ChannelState[] }>;
   channels: ChannelState[];
+  /** M24: times channels I am in, mine first; left out of `channels`. */
+  times: ChannelState[];
   dms: ChannelState[];
   browse: ChannelState[];
 }
@@ -59,11 +69,14 @@ export interface ChannelSections {
 export function sectionChannels(
   all: ChannelState[],
   title: (channel: ChannelState) => string,
-  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[] } = {},
+  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[]; meId?: string | null } = {},
 ): ChannelSections {
+  const meId = options.meId ?? null;
   const byTitle = (a: ChannelState, b: ChannelState) => title(a).localeCompare(title(b), "ja");
   const byRecency = (a: ChannelState, b: ChannelState) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "");
-  const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, options.now);
+  const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, meId, options.now);
+  const isTimes = (channel: ChannelState) => !!channel.times_owner_id;
+  const mineFirst = (a: ChannelState, b: ChannelState) => Number(b.times_owner_id === meId) - Number(a.times_owner_id === meId) || byTitle(a, b);
   const starred = (channel: ChannelState) => options.favorites?.has(channel.id) ?? false;
   const placed = new Map<string, string>();
   for (const section of options.sections ?? []) for (const id of section.channel_ids) placed.set(id, section.id);
@@ -75,7 +88,8 @@ export function sectionChannels(
       const members = all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id);
       return { section, channels: [...members.filter((c) => !isDmChannel(c)).sort(byTitle), ...members.filter(isDmChannel).sort(byRecency)] };
     }),
-    channels: all.filter((c) => visible(c) && !isDmChannel(c) && loose(c)).sort(byTitle),
+    channels: all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)).sort(byTitle),
+    times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
     dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(byRecency),
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byTitle),
   };
@@ -86,14 +100,14 @@ export function stepChannel(
   order: ChannelState[],
   currentId: string | null,
   delta: 1 | -1,
-  options: { unreadOnly?: boolean; now?: Date } = {},
+  options: { unreadOnly?: boolean; now?: Date; meId?: string | null } = {},
 ): ChannelState | undefined {
   if (order.length === 0) return undefined;
   const index = order.findIndex((c) => c.id === currentId);
   for (let step = 1; step <= order.length; step++) {
     const candidate = order[(index + delta * step + order.length * step) % order.length];
     if (!candidate || candidate.id === currentId) continue;
-    if (!options.unreadOnly || hasUnread(candidate, options.now)) return candidate;
+    if (!options.unreadOnly || hasUnread(candidate, options.meId ?? null, options.now)) return candidate;
   }
   return undefined;
 }

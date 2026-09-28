@@ -226,6 +226,10 @@ function ChannelsTab({ controller }: { controller: AppController }) {
   const [renaming, setRenaming] = useState<ChannelState | null>(null);
   const [name, setName] = useState("");
   const [archiving, setArchiving] = useState<ChannelState | null>(null);
+  // M24: whose times a channel is (for channels made before times existed, e.g. a Mattermost import).
+  const [marking, setMarking] = useState<ChannelState | null>(null);
+  const [timesOwner, setTimesOwner] = useState("");
+  const people = [...store.users.values()].filter((u) => !u.deactivated_at && u.role !== "guest" && u.role !== "bot").sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
   const [busy, setBusy] = useState(false);
 
   const rename = async (event: FormEvent) => {
@@ -249,6 +253,7 @@ function ChannelsTab({ controller }: { controller: AppController }) {
                 <span className="truncate font-medium">{channel.name}</span>
                 {channel.archived && <Badge>アーカイブ済み</Badge>}
                 {!channel.isMember && <Badge>未参加</Badge>}
+                {channel.times_owner_id && <Badge tone="accent">{store.users.get(channel.times_owner_id)?.display_name ?? "?"} の times</Badge>}
               </div>
               {channel.topic && <div className="truncate text-xs text-muted">{channel.topic}</div>}
             </div>
@@ -262,6 +267,9 @@ function ChannelsTab({ controller }: { controller: AppController }) {
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setRenaming(channel); setName(channel.name ?? ""); }}>
                   <Pencil size={14} /> 名前を変更
                 </Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setMarking(channel); setTimesOwner(channel.times_owner_id ?? ""); }}>
+                  times
+                </Button>
                 <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setArchiving(channel)}>
                   <Archive size={14} /> アーカイブ
                 </Button>
@@ -271,6 +279,30 @@ function ChannelsTab({ controller }: { controller: AppController }) {
         ))}
         {channels.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">チャンネルがありません</li>}
       </ul>
+      {marking && (
+        <Modal onClose={() => setMarking(null)} title={`#${marking.name} を times にする`} className="w-[420px]">
+          <form
+            className="mt-3 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setBusy(true);
+              void controller.setTimesOwner(marking.id, timesOwner || null).then((ok) => { setBusy(false); if (ok) setMarking(null); });
+            }}
+          >
+            <p className="text-xs text-muted">その人の作業ログとして扱います。他の人には静かな未読 (メンションのときだけ通知) になり、その人はチャンネルのオーナーになります。1 人 1 つまでです。</p>
+            <Field label="誰の times か">
+              <select value={timesOwner} onChange={(e) => setTimesOwner(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
+                <option value="">times にしない</option>
+                {people.map((u) => <option key={u.id} value={u.id}>{u.display_name} (@{u.username})</option>)}
+              </select>
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setMarking(null)}>キャンセル</Button>
+              <Button type="submit" disabled={busy || timesOwner === (marking.times_owner_id ?? "")}>保存</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {renaming && (
         <Modal onClose={() => setRenaming(null)} title="チャンネル名を変更" className="w-[440px]">
           <form className="mt-4 space-y-4" onSubmit={rename}>

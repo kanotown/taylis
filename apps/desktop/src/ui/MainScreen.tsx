@@ -311,8 +311,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const navigationOrder = () => {
       const all = [...controller.store.channels.values()];
       const store = controller.store;
-      const sections = sectionChannels(all, (c) => channelTitle(c, controller), { favorites: store.favorites, sections: store.sidebarSections });
-      return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.dms];
+      const sections = sectionChannels(all, (c) => channelTitle(c, controller), { favorites: store.favorites, sections: store.sidebarSections, meId: store.me?.id ?? null });
+      return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.times, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {
       // An open menu or popover (Radix) has already used this Esc to close itself.
@@ -347,7 +347,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setDialog((d) => (d === "shortcuts" ? null : "shortcuts"));
       } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();
-        const next = stepChannel(navigationOrder(), s.currentId, event.key === "ArrowDown" ? 1 : -1, { unreadOnly: event.shiftKey });
+        const next = stepChannel(navigationOrder(), s.currentId, event.key === "ArrowDown" ? 1 : -1, { unreadOnly: event.shiftKey, meId: controller.store.me?.id ?? null });
         if (next) open(next.id);
       } else if (event.key === "Escape") {
         if (s.switcher) setSwitcher(false);
@@ -360,7 +360,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         else if (s.currentId) {
           // Nothing to close: Esc marks the open conversation read (Mattermost).
           const channel = controller.store.getChannel(s.currentId);
-          if (channel && hasUnread(channel)) controller.engine?.markRead(channel.id, channel.lastSeq, { force: true });
+          // Anything unread, also quiet (M24) or muted rows without a mention.
+          if (channel && channel.unreadCount > 0) controller.engine?.markRead(channel.id, channel.lastSeq, { force: true });
         }
       }
     };
@@ -430,6 +431,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onJoin={(id) => void join(id)}
       onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
       onNewChannel={() => setDialog("channel")}
+      onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
       onSettings={() => setDialog("settings")}
       onThreads={openThreads}
       threadsActive={view === "threads"}
@@ -457,7 +459,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
       {canManage && !current.archived && (
         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
-          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : "投稿をオーナーと管理者に限る"}
+          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : current.times_owner_id ? "他の人はスレッドでだけ返信できるようにする" : "投稿をオーナーと管理者に限る"}
         </MenuItem>
       )}
       {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}

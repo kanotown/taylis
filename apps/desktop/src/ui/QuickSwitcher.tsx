@@ -15,7 +15,7 @@ export function QuickSwitcher({ controller, onOpen, onClose }: { controller: App
   const me = store.me?.id;
   const channels: ChannelState[] = [...store.channels.values()]
     .filter((c) => c.isMember && !c.archived)
-    .sort((a, b) => Number(hasUnread(b)) - Number(hasUnread(a)) || channelTitle(a, controller).localeCompare(channelTitle(b, controller), "ja"));
+    .sort((a, b) => Number(hasUnread(b, me ?? null)) - Number(hasUnread(a, me ?? null)) || channelTitle(a, controller).localeCompare(channelTitle(b, controller), "ja"));
 
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -52,7 +52,7 @@ export function QuickSwitcher({ controller, onOpen, onClose }: { controller: App
                     )}
                     <span className="flex-1 truncate">{title.replace(/^#/, "")}</span>
                     {channel.topic && !isDmChannel(channel) && <span className="max-w-[40%] truncate text-xs text-muted">{channel.topic}</span>}
-                    {hasUnread(channel) && (badge > 0 ? <Badge tone="danger">{badge}</Badge> : <span className="h-2 w-2 rounded-full bg-accent" />)}
+                    {hasUnread(channel, me ?? null) && (badge > 0 ? <Badge tone="danger">{badge}</Badge> : <span className="h-2 w-2 rounded-full bg-accent" />)}
                   </Command.Item>
                 );
               })}
