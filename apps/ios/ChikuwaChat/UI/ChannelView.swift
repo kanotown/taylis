@@ -388,7 +388,10 @@ struct ChannelView: View {
                 if let channel {
                     Button { sheet = .info } label: {
                         VStack(spacing: 0) {
-                            Text(channelTitle(channel, store: controller.store)).font(.headline).lineLimit(1)
+                            HStack(spacing: 4) {
+                                if isMuted(channel) { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
+                                Text(channelTitle(channel, store: controller.store)).font(.headline).lineLimit(1)
+                            }
                             if let subtitle = headerSubtitle(channel) {
                                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
@@ -398,19 +401,22 @@ struct ChannelView: View {
                     .accessibilityLabel("チャンネル情報")
                 }
             }
-            if let channel, channel.isMember {
-                ToolbarItem(placement: .topBarTrailing) {
-                    let starred = controller.store.isFavorite(channelId)
-                    Button(starred ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred ? "star.fill" : "star") {
-                        Task { await controller.toggleFavorite(channelId) }
-                    }
-                    .tint(starred ? .yellow : nil)
-                }
-                ToolbarItem(placement: .topBarTrailing) { Button("ピン留め", systemImage: "pin") { sheet = .pins } }
-                ToolbarItem(placement: .topBarTrailing) { NotificationMenu(controller: controller, channel: channel) }
-            }
+            // One ⋯ for the rest (testers, 2026-09-28): four buttons left the channel's name almost no room.
             ToolbarItem(placement: .topBarTrailing) {
-                Button("チャンネル情報", systemImage: "info.circle") { sheet = .info }
+                Menu {
+                    if let channel, channel.isMember {
+                        let starred = controller.store.isFavorite(channelId)
+                        Button(starred ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred ? "star.fill" : "star") {
+                            Task { await controller.toggleFavorite(channelId) }
+                        }
+                        Button("ピン留め", systemImage: "pin") { sheet = .pins }
+                        NotificationMenu(controller: controller, channel: channel)
+                    }
+                    Button("チャンネル情報", systemImage: "info.circle") { sheet = .info }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("チャンネルのメニュー")
             }
         }
         .sheet(item: $sheet, onDismiss: sheetClosed) { which in
@@ -451,13 +457,20 @@ struct ChannelView: View {
     }
 }
 
-/// Bell in the channel toolbar: notification level plus a timed mute (PUSH_NOTIFICATIONS.md §4).
+/// The channel's notification level plus a timed mute (PUSH_NOTIFICATIONS.md §4), a submenu of the header's ⋯.
 struct NotificationMenu: View {
     @Bindable var controller: AppController
     let channel: ChannelState
 
     private var level: String { channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions") }
     private var muteLabel: String? { Timeline.muteLabel(channel.channel.notification?.mutedUntil) }
+    private var levelName: String {
+        switch level {
+        case "all": "すべて"
+        case "none": "通知しない"
+        default: "メンションのみ"
+        }
+    }
 
     var body: some View {
         Menu {
@@ -480,7 +493,7 @@ struct NotificationMenu: View {
                 }
             }
         } label: {
-            Image(systemName: isMuted(channel) ? "bell.slash" : "bell")
+            Label(muteLabel.map { "通知 (\($0)までミュート)" } ?? "通知: \(levelName)", systemImage: isMuted(channel) ? "bell.slash" : "bell")
         }
         .accessibilityLabel("通知設定")
     }
@@ -575,7 +588,7 @@ struct UnreadSeparator: View {
     }
 }
 
-let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
+let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀"]
 
 struct MessageRow: View {
     let message: MessageState
@@ -595,6 +608,15 @@ struct MessageRow: View {
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
     private var isMine: Bool { store.me?.id == message.senderId }
+    /// A menu action that changes this row (a reaction, a pin, the saved mark) lands once the long-press menu has
+    /// closed: the menu flies its picture of the row back into place, and a row that had grown meanwhile was drawn
+    /// over its neighbour for a moment (testers, 2026-09-28).
+    private func afterMenu(_ work: @escaping @MainActor () async -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            await work()
+        }
+    }
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
@@ -620,7 +642,12 @@ struct MessageRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             if compact {
-                Color.clear.frame(width: 36, height: 1)
+                // Grouped under the previous message: its time, small, where the avatar would be, so where one message
+                // ends and the next begins shows (testers, 2026-09-28; the same on Android and the web).
+                Text(Timeline.timeLabel(message.createdAt))
+                    .font(.system(size: 10)).monospacedDigit().foregroundStyle(.tertiary)
+                    .frame(width: 36, alignment: .center)
+                    .padding(.top, 3)
             } else {
                 AvatarView(id: message.senderId, name: senderName)
                     .onTapGesture { if !message.pending { showingProfile = true } }
@@ -714,23 +741,33 @@ struct MessageRow: View {
                 }
             }
         }
-        .padding(.vertical, compact ? 1 : 5)
+        .padding(.vertical, compact ? 4 : 5)
         .opacity(message.pending && !message.failed ? 0.6 : 1)
         .background(controller.messageFocus?.messageId == message.id ? Color.yellow.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { if compact { showTime.toggle() } }
         .contextMenu {
             if !message.pending {
-                ForEach(reactionPalette, id: \.self) { emoji in
-                    Button(emoji) { Task { await controller.toggleReaction(message, emoji: emoji) } }
+                ControlGroup {
+                    ForEach(reactionPalette, id: \.self) { emoji in
+                        Button(emoji) { afterMenu { await controller.toggleReaction(message, emoji: emoji) } }
+                    }
+                    Button("その他のリアクション", systemImage: "face.smiling") { pickingReaction = true }
                 }
-                Button("その他のリアクション…", systemImage: "face.smiling") { pickingReaction = true }
+                .controlGroupStyle(.palette)
+                .menuActionDismissBehavior(.enabled) // a palette keeps the menu open otherwise
                 if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
+                if isMine { Button("編集", systemImage: "pencil") { editing = true } }
+                if !message.body.isEmpty {
+                    Button("テキストをコピー", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = Mentions.decode(message.body, users: store.users, groups: store.groups)
+                    }
+                }
                 Button(store.isBookmarked(message.id) ? "保存を解除" : "あとで見る (保存)", systemImage: store.isBookmarked(message.id) ? "bookmark.slash" : "bookmark") {
-                    Task { await controller.toggleBookmark(message.id) }
+                    afterMenu { await controller.toggleBookmark(message.id) }
                 }
                 Button(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", systemImage: message.pinnedAt != nil ? "pin.slash" : "pin") {
-                    Task { await controller.togglePin(message) }
+                    afterMenu { await controller.togglePin(message) }
                 }
                 Button("リンクをコピー", systemImage: "link") { controller.copyPermalink(message.id) }
                 Button("別のチャンネルに共有…", systemImage: "arrowshape.turn.up.right") { sharing = true }
@@ -740,7 +777,6 @@ struct MessageRow: View {
                     }
                 }
                 if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
-                if isMine { Button("編集", systemImage: "pencil") { editing = true } }
                 if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
             }
         }

@@ -101,16 +101,13 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
    where there is a real hover: iOS Safari keeps a tapped row "hovered", and its actions popped up after a tap that was
    only meant to close the keyboard (touch screens show them on focus, below). */
 .message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
-.message .time-hover { visibility: hidden; }
 @media (hover: hover) {
   .message:hover .row-actions { opacity: 1; pointer-events: auto; }
-  .message:hover .time-hover { visibility: visible; }
 }
 /* Touch screens have no hover: a tap focuses the message (tabIndex), which shows its actions and time. */
 @media (hover: none) {
   .message:focus-within { background-color: var(--panel); }
   .message:focus-within .row-actions { opacity: 1; pointer-events: auto; }
-  .message:focus-within .time-hover { visibility: visible; }
 }
 /* A phone has no room for the thirteen actions over the row: they float at the bottom of the screen, wrapped,
    with finger-sized buttons, until the message loses focus. */

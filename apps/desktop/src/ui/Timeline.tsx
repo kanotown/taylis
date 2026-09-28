@@ -560,7 +560,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       className={cn(
         "message group relative -mx-2 grid gap-x-2.5 rounded-lg px-2 outline-none transition-colors hover:bg-panel focus-visible:ring-2 focus-visible:ring-accent/40",
         thread ? "grid-cols-[30px_minmax(0,1fr)]" : "grid-cols-[36px_minmax(0,1fr)]",
-        compact ? "py-0.5" : "mt-1 py-1.5",
+        compact ? "py-1" : "mt-1 py-1.5",
         highlighted && "highlighted",
         message.pending && "opacity-60",
         message.failed && "opacity-100 shadow-[inset_3px_0_0_var(--danger)]",
@@ -573,7 +573,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
     >
       <div className="flex justify-center pt-0.5">
         {compact ? (
-          <span className="time-hover pt-1 text-[10px] leading-4 text-muted">{timeLabel(message.created_at)}</span>
+          // Grouped under the previous message: its time, faint, where the avatar would be, so where one message ends
+          // and the next begins shows (testers, 2026-09-28; the same on iOS and Android).
+          <span className="pt-1 text-[10px] leading-4 text-muted/70 tabular-nums">{timeLabel(message.created_at)}</span>
         ) : (
           <UserPopover controller={controller} userId={message.sender_id} className="rounded-lg">
             <Avatar id={message.sender_id} name={senderName} size={size} />

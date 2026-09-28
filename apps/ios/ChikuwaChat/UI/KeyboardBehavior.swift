@@ -5,7 +5,7 @@ import UIKit
 /// - when the list's height changes (the keyboard coming or going, the input growing to several lines, the typing
 ///   line, the candidate row of a Japanese keyboard) its bottom edge stays: at the end of the conversation the newest
 ///   messages stay just above the input instead of going behind it, and higher up the row that was just above the
-///   input stays there (`keepsBottomOnResize`);
+///   input stays there (`keepsBottomOnResize`); at the end, rows growing (a reaction, an image) keep the end in view;
 /// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`); dragging the list down closes it too
 ///   (`.scrollDismissesKeyboard(.interactively)`).
 /// A swipe back is left to UIKit, which slides the keyboard away with the screen: closing it as the swipe starts
@@ -55,10 +55,18 @@ private struct KeepsBottom: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content.onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
-                guard enabled, abs(old.containerSize.height - new.containerSize.height) > 0.5 else { return }
+                guard enabled else { return }
                 let below = KeyboardBehavior.distanceToEnd(contentHeight: old.contentSize.height, insets: old.contentInsets,
                                                           offset: old.contentOffset.y, containerHeight: old.containerSize.height)
-                restore(old.containerSize.height, below <= KeyboardBehavior.nearEnd)
+                if abs(old.containerSize.height - new.containerSize.height) > 0.5 {
+                    restore(old.containerSize.height, below <= KeyboardBehavior.nearEnd)
+                } else if new.contentSize.height > old.contentSize.height + 0.5, below <= KeyboardBehavior.nearEnd {
+                    // The content grew at the end (a reaction on the last rows, an image loading): the end stays in view
+                    // instead of going under the input.
+                    let now = KeyboardBehavior.distanceToEnd(contentHeight: new.contentSize.height, insets: new.contentInsets,
+                                                             offset: new.contentOffset.y, containerHeight: new.containerSize.height)
+                    if now > below + 0.5 { restore(new.containerSize.height, true) }
+                }
             }
         } else {
             // iOS 17: the keyboard coming up at least keeps the newest message in view.
