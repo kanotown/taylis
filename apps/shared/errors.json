@@ -79,6 +79,7 @@
     "session_not_found": "セッションが見つかりません",
     "session_revoked": "ログアウトされました。もう一度ログインしてください",
     "thumbnail_not_found": "サムネイルがありません",
+    "times_exists": "この人の times はすでにあります",
     "token_expired": "ログインし直してください",
     "too_many_attachments": "添付は 10 件までです",
     "too_many_drafts": "下書きが多すぎます。不要な下書きを削除してください",

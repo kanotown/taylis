@@ -31,6 +31,8 @@ class ChannelUpdate(BaseModel):
     posting_policy: PostingPolicy | None = None
     # M15b: public → private (owner or admin), private → public (admin only).
     type: Literal["public", "private"] | None = None
+    # M24: administrators mark a channel as someone's times, or null to unmark it.
+    times_owner_id: UUID | None = None
 
 
 class MembershipOut(BaseModel):
@@ -59,6 +61,8 @@ class ChannelOut(BaseModel):
     member_count: int | None = None
     # M15a: "owners" = an announcement channel (only owners / admins start top-level posts).
     posting_policy: PostingPolicy = "everyone"
+    # M24: whose times this is; others see it as quiet unread (SYNC_PROTOCOL.md §10.5).
+    times_owner_id: UUID | None = None
 
 
 class MemberOut(BaseModel):

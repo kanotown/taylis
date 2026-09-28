@@ -166,13 +166,27 @@ CREATE TABLE channels (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   archived_at      timestamptz,
   posting_policy   varchar(16) NOT NULL DEFAULT 'everyone', -- M15a: 'everyone' | 'owners' (アナウンス)
+  times_owner_id   uuid REFERENCES users(id),  -- M24: この人の times (1 人 1 つ、DM には付けない)
   CHECK ((type IN ('public', 'private')) = (name IS NOT NULL)),
   CHECK ((type IN ('dm', 'group_dm')) = (dm_key IS NOT NULL)),
   CHECK (posting_policy IN ('everyone', 'owners'))
 );
 CREATE UNIQUE INDEX channels_name_uniq   ON channels (name)   WHERE name IS NOT NULL;
 CREATE UNIQUE INDEX channels_dm_key_uniq ON channels (dm_key) WHERE dm_key IS NOT NULL;
+CREATE UNIQUE INDEX channels_times_owner_uniq ON channels (times_owner_id) WHERE times_owner_id IS NOT NULL;
 ```
+
+**times (M24)**: 一人ひとりの作業ログ用のチャンネル (Slack の times 文化)。研究室以外でも使える汎用機能。
+
+- `POST /times` で自分の times を作る (冪等: あればそれを返す 200、作れば 201)。公開チャンネル `times-{username}`
+  (名前が使われていれば `-2`, `-3` …)。作った本人が owner。名簿 (M23) の指導教員は自動でメンバーになる。
+  後から指導教員が付いたときも、その学生の times に加える。
+- admin は既存のチャンネル (Mattermost から取り込んだ times など) を誰かの times に指定・解除できる
+  (`PATCH /channels/{id}` の `times_owner_id`。DM は不可、1 人 1 つで重なれば 409 `times_exists`、guest は不可)。
+- 誰でも書き込める。owner は「他の人はスレッドだけ」(`posting_policy = owners`、M15a と同じ) に切り替えられる。
+- **静かな未読** (SYNC_PROTOCOL.md §10.5): 他人の times は、その人が通知レベルを `all` にしていない限り、
+  未読があっても太字にせず「未読あり」にも数えない (メンションのときだけ未読・バッジ・プッシュ)。自分の times と、
+  `all` にした他人の times は普通のチャンネルと同じ。
 
 ### DM と通常チャンネルの違い
 
@@ -186,6 +200,7 @@ CREATE UNIQUE INDEX channels_dm_key_uniq ON channels (dm_key) WHERE dm_key IS NO
 | 投稿制限 (M15a) | 可 | 可 | 不可 | 不可 |
 | 種類の変換 (M15b) | → private (owner / admin) | → public (admin) | 不可 | 不可 |
 | 通知の既定 | mentions | mentions | all | all |
+| times (M24) | 可 | 可 | 不可 | 不可 |
 | メッセージ / 既読 / 同期 / 検索 | すべて共通 | | | |
 
 `dm_key` は `sha256(",".join(sorted(user_ids)))` の hex。作成は `INSERT ... ON CONFLICT (dm_key) DO NOTHING`

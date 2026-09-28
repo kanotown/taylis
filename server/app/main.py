@@ -36,6 +36,7 @@ from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
 from app.modules.groups.router import router as groups_router
 from app.modules.invites.router import router as invites_router
+from app.modules.lab import service as lab_service
 from app.modules.lab.router import router as lab_router
 from app.modules.link_previews.fetcher import build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
@@ -248,6 +249,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # M19: how many searches may run at once in this process (search/service.py).
     app.state.search_gate = asyncio.Semaphore(settings.search_max_concurrent)
+    # M24: who joins a new times (the owner's supervisors on the lab roster); channels does not
+    # depend on lab, so the lookup is handed to its router here.
+    app.state.times_followers = lab_service.supervisor_ids_for
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),

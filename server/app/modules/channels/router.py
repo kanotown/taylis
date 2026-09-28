@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
@@ -81,6 +81,18 @@ async def add_member(channel_id: UUID, user: CurrentUser, body: MemberAdd, db: D
 @router.delete("/channels/{channel_id}/members/{user_id}", status_code=204)
 async def remove_member(channel_id: UUID, user_id: UUID, user: CurrentUser, db: Db) -> None:
     await service.remove_member(db, user, channel_id, user_id)
+
+
+@router.post("/times", response_model=ChannelOut)
+async def ensure_times(
+    user: CurrentUser, db: Db, request: Request, response: Response
+) -> ChannelOut:
+    """My times (M24): made on the first call (201), returned afterwards (200). The supervisors on
+    the lab roster join it (the lookup is injected by main.py: channels does not depend on lab)."""
+    followers = await request.app.state.times_followers(db, user.id)
+    channel, created = await service.ensure_times(db, user, followers)
+    response.status_code = 201 if created else 200
+    return channel
 
 
 @router.post("/dms", response_model=ChannelOut)

@@ -477,6 +477,23 @@ reconcile(client_msg_id, message):
   進める (自分の `message.created` では動かさない、§10.1 11.)。
 - 既読位置を端末別に持つ要件は現時点では無い (DATA_MODEL.md §6)。
 
+### 10.5 静かな未読 (M24、times)
+
+会話ごとの「未読あり」(太字、未読フィルタ、未読の会話への移動、ワークスペースの未読の点) とバッジの数は、サーバの
+`GET /sync/summary` と 3 端末で同じ規則で決める。検証ベクトルは `apps/shared/unread-rules.json` (サーバと 3 端末の
+テストが同じファイルを読む)。
+
+```
+muted(c)      = level == "none" or muted_until > now
+quiet(c)      = c.times_owner_id != null and c.times_owner_id != me and level != "all" and not muted(c)
+has_unread(c) = member and (muted(c) or quiet(c) ? mention_count > 0 : unread_count > 0)
+badge(c)      = muted(c) ? mention_count : (DM ? unread_count : mention_count)
+```
+
+- 静かな未読の会話は、メンションが無ければ太字にしない。未読があることは名前の横の控えめな点で示す (ミュートは
+  何も示さない、という違い)。プッシュはチャンネルの既定 (`mentions`) どおりメンションのときだけ。
+- 通知レベルを `all` にすると普通のチャンネルと同じになる (太字、全件のプッシュ)。
+
 ### 10.1 最初の未読が読み込まれていないとき (M17)
 
 最新ページ (50 件) より未読が多い会話は、開いても最初の未読が手元に無いことがある (その端末で初めて開く、

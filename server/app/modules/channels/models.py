@@ -45,6 +45,8 @@ class Channel(Base):
     posting_policy: Mapped[str] = mapped_column(
         String(16), default="everyone", server_default="everyone"
     )
+    # M24: whose times this is (one per person); quiet unread for the others (SYNC_PROTOCOL §10.5).
+    times_owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
     __table_args__ = (
         CheckConstraint(
@@ -60,6 +62,12 @@ class Channel(Base):
             "dm_key",
             unique=True,
             postgresql_where=text("dm_key IS NOT NULL"),
+        ),
+        Index(
+            "channels_times_owner_uniq",
+            "times_owner_id",
+            unique=True,
+            postgresql_where=text("times_owner_id IS NOT NULL"),
         ),
     )
 

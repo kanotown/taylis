@@ -17,6 +17,7 @@ from app.core.errors import AppError, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.audit import service as audit
+from app.modules.channels import service as channels
 from app.modules.groups import service as groups
 from app.modules.lab import repository as repo
 from app.modules.lab.events import ROSTER_UPDATED, RosterUpdatedData
@@ -99,10 +100,14 @@ async def put(
     if row is None:
         row = LabProfile(user_id=user_id)
         db.add(row)
+    new_supervisor = data.supervisor_id is not None and data.supervisor_id != row.supervisor_id
     row.affiliation = data.affiliation
     row.rank = data.rank
     row.grade = data.grade
     row.supervisor_id = data.supervisor_id
+    if new_supervisor and data.supervisor_id is not None:
+        # M24: a supervisor follows their student's times (and one made later, supervisor_ids_for).
+        await channels.follow_times_in_tx(db, user_id, data.supervisor_id)
     if "research_topic" in data.model_fields_set:
         row.research_topic = _clean(data.research_topic)
     if "reading" in data.model_fields_set:
@@ -155,6 +160,12 @@ async def remove(db: AsyncSession, actor: User, user_id: uuid.UUID) -> None:
         target_id=user_id,
     )
     await db.commit()
+
+
+async def supervisor_ids_for(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Who joins a new times of this person (M24, injected into channels by main.py)."""
+    row = await repo.get(db, user_id)
+    return [row.supervisor_id] if row is not None and row.supervisor_id is not None else []
 
 
 async def forget_in_tx(db: AsyncSession, actor: User | None, user_id: uuid.UUID) -> None:

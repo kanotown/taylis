@@ -16,6 +16,11 @@ async def get_channel_by_name(db: AsyncSession, name: str) -> Channel | None:
     return result.scalar_one_or_none()
 
 
+async def get_times_of(db: AsyncSession, owner_id: uuid.UUID) -> Channel | None:
+    result = await db.execute(select(Channel).where(Channel.times_owner_id == owner_id))
+    return result.scalar_one_or_none()
+
+
 async def get_by_dm_key(db: AsyncSession, dm_key: str) -> Channel | None:
     result = await db.execute(select(Channel).where(Channel.dm_key == dm_key))
     return result.scalar_one_or_none()
