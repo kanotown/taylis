@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.Icons
 import android.content.Intent
@@ -10,12 +12,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +35,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import jp.chikuwachat.android.api.AttachmentOut
@@ -59,6 +67,7 @@ fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) 
 @Composable
 private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController) {
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
+    var viewing by remember(attachment.id) { mutableStateOf(false) }
     LaunchedEffect(attachment.id) {
         bitmap = runCatching {
             val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/thumbnail")
@@ -67,12 +76,13 @@ private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController)
     }
     val image = bitmap
     val shape = RoundedCornerShape(8.dp)
-    val modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp).clip(shape).clickable { controller.openAttachment(attachment) }
+    val modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp).clip(shape).clickable { viewing = true }
     if (image != null) {
         Image(image, contentDescription = attachment.filename, contentScale = ContentScale.Fit, modifier = modifier)
     } else {
         Text(attachment.filename, modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape).padding(12.dp))
     }
+    if (viewing) ImageViewer(attachment, controller, onDismiss = { viewing = false })
 }
 
 @Composable
@@ -94,12 +104,14 @@ private fun FileRow(attachment: AttachmentOut, controller: AppController) {
 @Composable
 fun PendingAttachments(items: List<AttachmentOut>, onRemove: (AttachmentOut) -> Unit) {
     if (items.isEmpty()) return
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items.forEach { item ->
-            Text(
-                "${item.filename} ✕",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp)).clickable { onRemove(item) }.padding(horizontal = 10.dp, vertical = 4.dp),
+    LazyRow(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(items, key = { it.id }) { item ->
+            InputChip(
+                selected = false,
+                onClick = { onRemove(item) },
+                label = { Text(item.filename, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = null) },
+                modifier = Modifier.widthIn(max = 260.dp).semantics { contentDescription = "${item.filename} を取り消す" },
             )
         }
     }

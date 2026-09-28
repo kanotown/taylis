@@ -2,13 +2,27 @@ package jp.chikuwachat.android.ui
 
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 
 /** 「後で送信」 presets and labels (M12d). Times are local; the server stores UTC. */
 object Schedule {
     data class Preset(val key: String, val label: String, val at: ZonedDateTime)
+
+    // Material's calendar encodes a calendar day as midnight UTC, not a local instant.
+    fun pickerMillis(date: LocalDate): Long = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    fun pickerDate(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+
+    /** Reject a nonexistent local time at a daylight-saving transition rather than silently shifting it. */
+    fun atDateTime(date: LocalDate, time: LocalTime, zone: ZoneId = ZoneId.systemDefault()): ZonedDateTime? {
+        val local = date.atTime(time.withSecond(0).withNano(0))
+        if (zone.rules.getValidOffsets(local).isEmpty()) return null
+        return local.atZone(zone)
+    }
 
     /** Slack-like choices that are always in the future relative to `now`. */
     fun presets(now: ZonedDateTime = ZonedDateTime.now()): List<Preset> {

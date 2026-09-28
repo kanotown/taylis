@@ -12,7 +12,7 @@ object Mentions {
     private val USER_TOKEN = Regex("""<@([0-9a-f-]{36})>""")
     private val ALL_TOKEN = Regex("""<!(channel|here)>""")
     private val GROUP_TOKEN = Regex("""<@group:([0-9a-f-]{36})>""")
-    private val QUERY = Regex("""(^|[\s(])@([A-Za-z0-9._-]*)$""")
+    private val QUERY = Regex("""(^|[\s(])@([\p{L}\p{M}\p{N}._-]*)$""")
 
     /** `kind` (M12k): "group" notifies the members; "all" is @channel / @here. */
     data class Candidate(val username: String, val label: String, val kind: String = "user")

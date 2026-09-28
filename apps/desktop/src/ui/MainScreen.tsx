@@ -1,5 +1,5 @@
 import { ArrowLeft, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
@@ -26,7 +26,7 @@ import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
-import { overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
@@ -37,6 +37,9 @@ import { TypingIndicator } from "./Typing";
 import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
+import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
+import { useNavigationHistory } from "./navigationHistory";
+import { focusChatRegion } from "./messageKeyboard";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
@@ -53,7 +56,7 @@ function readUnreadOnly(): boolean {
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
-  const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
+  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -77,7 +80,40 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [paneWidth, setPaneWidth] = useState(readPaneWidth);
   // Phones: one column at a time, the conversation list first; a conversation or a view covers it until 「戻る」.
   const compact = useCompact();
+  const desktopRoot = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(() => window.innerWidth);
+  useLayoutEffect(() => {
+    const root = desktopRoot.current;
+    if (!root) return;
+    const measure = () => setAvailableWidth(root.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [compact]);
+  const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
+  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch };
+  const focus = controller.messageFocus;
+  const navigationKey = JSON.stringify({ ...navigation, focus: focus?.messageId ?? null });
+  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current }, (previous) => {
+    controller.messageFocus = previous.focus;
+    controller.setEditing(null);
+    setCurrentId(previous.currentId);
+    setView(previous.view);
+    setThreadId(previous.threadId);
+    setThreadChannelId(previous.threadChannelId);
+    setPinsOpen(previous.pinsOpen);
+    setPane(previous.pane);
+    setFilesChannelId(previous.filesChannelId);
+    setSearch(previous.search);
+    setSearchTab(previous.searchTab);
+    setBackToSearch(previous.backToSearch);
+    searchSnapshot.current = previous.results;
+    setSearchOpen(false);
+    setDialog(null);
+    setSwitcher(false);
+  }, isWeb());
   // The sidebar's views toggle back to the conversation on a desktop; on a phone a tap always opens them.
   const compactRef = useRef(compact);
   compactRef.current = compact;
@@ -98,10 +134,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = sidebarWidth;
+    const startWidth = columns.sidebarWidth;
     let width = startWidth;
     const move = (e: PointerEvent) => {
-      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
+      width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, availableWidth - CONVERSATION_MIN), Math.max(SIDEBAR_MIN, startWidth + e.clientX - startX));
       setSidebarWidth(width);
     };
     const up = () => {
@@ -121,8 +157,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const startPaneResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = paneWidth;
-    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, window.innerWidth - sidebarWidth - 360));
+    const startWidth = columns.paneWidth;
+    const max = Math.max(PANE_MIN, Math.min(PANE_MAX, availableWidth - columns.sidebarWidth - CONVERSATION_MIN));
     let width = startWidth;
     const move = (e: PointerEvent) => {
       width = Math.min(max, Math.max(PANE_MIN, startWidth - (e.clientX - startX)));
@@ -320,7 +356,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
-      if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
+      if (event.key === "F6" && !mod && !event.altKey && !s.dialog && !s.switcher && !s.searchOpen) {
+        if (focusChatRegion(event.shiftKey)) event.preventDefault();
+      } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
         // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack).
         event.preventDefault();
         controller.switchToIndex(Number(event.key) - 1);
@@ -744,8 +782,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   return (
     <div
+      ref={desktopRoot}
       className="grid h-full grid-cols-[var(--sidebar-w)_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas text-ink"
-      style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+      style={{ "--sidebar-w": `${columns.sidebarWidth}px` } as React.CSSProperties}
     >
       {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
           row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
@@ -774,10 +813,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
           }}
           className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-accent/40 active:bg-accent/60"
         />
-        {centre}
+        {sidePane && columns.replaceCentre ? <div className="flex min-h-0 flex-1">{sidePane}</div> : centre}
       </main>
-      {sidePane ? (
-        <div className="relative flex min-h-0" style={{ width: paneWidth }}>
+      {sidePane && !columns.replaceCentre ? (
+        <div className="relative flex min-h-0" style={{ width: columns.paneWidth }}>
           <div
             role="separator"
             aria-orientation="vertical"

@@ -2,6 +2,18 @@ import XCTest
 @testable import ChikuwaChat
 
 final class MentionsTests: XCTestCase {
+    func testJapaneseDisplayNameCompletionKeepsTheWireFormat() {
+        let yamada = UserPublic(id: alice.id, username: "yamada", displayName: "山田 太郎", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "")
+        let query = Mentions.query("確認 @山田")
+        XCTAssertEqual(query, "山田")
+        let candidate = Mentions.candidates(query ?? "", users: [yamada]).first!
+        let completed = Mentions.complete("確認 @山田", username: candidate.username)
+        XCTAssertEqual(completed, "確認 @yamada ")
+        XCTAssertEqual(Mentions.encode(completed, users: [yamada]), "確認 <@\(yamada.id)> ")
+        for name in ["やまだ", "ヤマダ", "か\u{3099}", "田中１"] { XCTAssertEqual(Mentions.query("@" + name), name) }
+        for text in ["@山田 ", "@山田、", "mail@山田"] { XCTAssertNil(Mentions.query(text)) }
+        XCTAssertEqual(Mentions.encode("@山田", users: [yamada]), "@山田")
+    }
     private let alice = UserPublic(id: "00000000-0000-7000-8000-000000000001", username: "alice", displayName: "Alice", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "")
     private let bob = UserPublic(id: "00000000-0000-7000-8000-000000000002", username: "bob.k", displayName: "Bob K", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "")
     private var users: [UserPublic] { [alice, bob] }

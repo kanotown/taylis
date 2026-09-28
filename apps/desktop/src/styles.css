@@ -100,7 +100,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 /* Hover shows the action bar; keyboard focus keeps it, but a mouse click on one of its buttons must not pin it. Only
    where there is a real hover: iOS Safari keeps a tapped row "hovered", and its actions popped up after a tap that was
    only meant to close the keyboard (touch screens show them on focus, below). */
-.message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
+.message:focus-visible .row-actions, .message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
 @media (hover: hover) {
   .message:hover .row-actions { opacity: 1; pointer-events: auto; }
 }

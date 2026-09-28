@@ -18,6 +18,19 @@ const bob = user("00000000-0000-7000-8000-000000000002", "bob.k", "Bob K");
 const users = [alice, bob];
 
 describe("mentions", () => {
+  it("finds Japanese display names without changing the wire encoding", () => {
+    const yamada = user(alice.id, "yamada", "山田 太郎");
+    const query = mentionQuery("確認 @山田", 6)!;
+    expect(query).toEqual({ start: 3, query: "山田" });
+    const candidate = mentionCandidates(query.query, [yamada])[0]!;
+    expect(candidate.username).toBe("yamada");
+    expect(encodeMentions(`@${candidate.username} `, [yamada])).toBe(`<@${yamada.id}> `);
+    for (const name of ["やまだ", "ヤマダ", "か\u3099", "田中１"]) {
+      expect(mentionQuery(`@${name}`, name.length + 1)?.query).toBe(name);
+    }
+    for (const text of ["@山田 ", "@山田、", "mail@山田"]) expect(mentionQuery(text, text.length)).toBeNull();
+    expect(encodeMentions("@山田", [yamada])).toBe("@山田");
+  });
   it("encodes handles to tokens and leaves unknown ones alone", () => {
     expect(encodeMentions("hi @bob.k and @channel, mail me@x.io @nobody", users)).toBe(`hi <@${bob.id}> and <!channel>, mail me@x.io @nobody`);
     expect(encodeMentions("@Alice", users)).toBe(`<@${alice.id}>`);

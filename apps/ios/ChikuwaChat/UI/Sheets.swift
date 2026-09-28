@@ -100,24 +100,57 @@ struct NewChannelView: View {
     }
 }
 
+@MainActor @Observable
+final class MemberListLoader {
+    var members: Set<String>?
+    var error: String?
+    private var request = UUID()
+
+    func load(fetch: () async throws -> [MemberOut], describe: (Error) -> String) async {
+        let current = UUID()
+        request = current
+        members = nil
+        error = nil
+        do {
+            let list = try await fetch()
+            try Task.checkCancellation()
+            guard request == current else { return }
+            members = Set(list.map(\.userId))
+        } catch {
+            guard !Task.isCancelled, request == current else { return }
+            self.error = describe(error)
+        }
+    }
+}
+
 struct AddMemberView: View {
     @Bindable var controller: AppController
     let channelId: String
     @Environment(\.dismiss) private var dismiss
-    @State private var members: Set<String>?
+    @State private var loader = MemberListLoader()
+    @State private var attempt = 0
+    @State private var adding = false
     @State private var selected = Set<String>()
     @State private var error: String?
 
     private var candidates: [UserPublic] {
         controller.store.users.values
-            .filter { $0.id != controller.store.me?.id && $0.deactivatedAt == nil && !(members?.contains($0.id) ?? true) }
+            .filter { $0.id != controller.store.me?.id && $0.deactivatedAt == nil && !(loader.members?.contains($0.id) ?? true) }
             .sorted { $0.displayName < $1.displayName }
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if members == nil {
+                if let loadError = loader.error {
+                    ContentUnavailableView {
+                        Label("メンバー一覧を読み込めませんでした", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(loadError)
+                    } actions: {
+                        Button("再試行") { attempt += 1 }.buttonStyle(.bordered)
+                    }
+                } else if loader.members == nil {
                     ProgressView()
                 } else if candidates.isEmpty {
                     Text("追加できるユーザーはいません").foregroundStyle(.secondary)
@@ -131,20 +164,32 @@ struct AddMemberView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("追加") {
+                        guard loader.members != nil, !adding, !selected.isEmpty else { return }
+                        adding = true
+                        error = nil
                         Task {
+                            defer { adding = false }
                             guard let api = controller.api else { return }
                             do {
-                                for userId in selected { _ = try await api.addMember(channelId: channelId, userId: userId) }
+                                for userId in selected {
+                                    _ = try await api.addMember(channelId: channelId, userId: userId)
+                                    loader.members?.insert(userId)
+                                    selected.remove(userId)
+                                }
                                 dismiss()
                             } catch { self.error = controller.describe(error) }
                         }
                     }
-                    .disabled(selected.isEmpty)
+                    .disabled(loader.members == nil || selected.isEmpty || adding)
                 }
             }
-            .task {
-                let list = (try? await controller.api?.members(channelId: channelId)) ?? []
-                members = Set(list.map(\.userId))
+            .task(id: "\(channelId):\(attempt)") {
+                selected = []
+                error = nil
+                await loader.load(fetch: {
+                    guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
+                    return try await api.members(channelId: channelId)
+                }, describe: controller.describe)
             }
             if let error { Text(error).foregroundStyle(.red).font(.footnote).padding() }
         }
