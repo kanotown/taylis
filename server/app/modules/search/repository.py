@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import Select, exists, func, literal_column, or_, select
+from sqlalchemy import Select, Subquery, exists, func, literal_column, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.modules.attachments.models import Attachment
 from app.modules.messages.models import Message, Reaction
@@ -34,10 +35,12 @@ class Scope:
 def _apply_flags(stmt: Select[Any], has: Sequence[str], is_thread: bool) -> Select[Any]:
     """M15h: has:file / link / pin / reaction / poll; is:thread = replies and their parents."""
     if "file" in has:
+        # Its own alias: in the file-name branch (M19) the outer query reads attachments too.
+        attached = aliased(Attachment)
         stmt = stmt.where(
             exists(
-                select(Attachment.id).where(
-                    Attachment.message_id == Message.id, Attachment.status == "attached"
+                select(attached.id).where(
+                    attached.message_id == Message.id, attached.status == "attached"
                 )
             )
         )
@@ -70,19 +73,70 @@ def _scoped(stmt: Select[Any], scope: Scope) -> Select[Any]:
     return _apply_flags(stmt, scope.has, scope.is_thread)
 
 
-def _matching(stmt: Select[Any], query: str | None, escaped: bool) -> Select[Any]:
-    """Body or attachment file name. `&@~` takes Groonga query syntax (AND, OR, -, quotes)."""
-    if not query:
-        return stmt
-    needle = func.pgroonga_query_escape(query) if escaped else query
-    filename_match = exists(
-        select(Attachment.id).where(
-            Attachment.message_id == Message.id,
-            Attachment.status == "attached",
-            Attachment.filename.op("&@~")(needle),
+def _needle(query: str, escaped: bool) -> Any:
+    return func.pgroonga_query_escape(query) if escaped else query
+
+
+def _hits(query: str, scope: Scope, escaped: bool, *, sort: Sort | None, take: int) -> Subquery:
+    """Messages whose body or an attached file's name matches, with their best PGroonga score.
+
+    Two branches in a UNION, each on its own PGroonga index (M19): one condition `body &@~ q OR
+    EXISTS (filename &@~ q)` could use neither, read every message in scope (1.4-6 s on 465k
+    messages, even with no hit) and left every score at 0, so 「関連度順」 was really 「新しい順」.
+    `&@~` takes Groonga query syntax (AND, OR, -, quotes). Each branch keeps only its first `take`
+    rows in `sort` order (any rows when counting): a common word matches tens of thousands of
+    messages, and only a page (or TOTAL_CAP + 1) of them is ever needed.
+    """
+    needle = _needle(query, escaped)
+    # Sorted by an expression, not the column: with messages_created_idx the planner would walk the
+    # messages newest first and test each against the words, instead of asking PGroonga for the hits
+    # (174 ms and scores of 0 for a rare word on 465k messages, and worse the rarer the word). The
+    # hits are found by the index, then sorted.
+    newest = (Message.created_at + literal_column("interval '0'")).desc()
+
+    def branch(score: Any, stmt: Select[Any]) -> Select[Any]:
+        stmt = _scoped(
+            stmt.add_columns(score.label("score"), Message.created_at.label("created_at")), scope
         )
+        if sort == "relevance":
+            stmt = stmt.order_by(score.desc(), newest)
+        elif sort == "newest":
+            stmt = stmt.order_by(newest)
+        return stmt.limit(take)
+
+    body = branch(
+        func.pgroonga_score(literal_column("messages.tableoid"), literal_column("messages.ctid")),
+        select(Message.id.label("id")).where(Message.body.op("&@~")(needle)),
     )
-    return stmt.where(or_(Message.body.op("&@~")(needle), filename_match))
+    # The file names on their own, as a materialized step with the name as its only condition:
+    # joined to messages, or with the status beside it, the planner tested each attachment's name
+    # instead of asking the attachments' PGroonga index, and scored every file 0.
+    named = (
+        select(
+            Attachment.message_id.label("message_id"),
+            Attachment.status.label("status"),
+            func.pgroonga_score(
+                literal_column("attachments.tableoid"), literal_column("attachments.ctid")
+            ).label("score"),
+        )
+        .where(Attachment.filename.op("&@~")(needle))
+        .cte("named_files")
+        .prefix_with("MATERIALIZED")
+    )
+    files = branch(
+        func.max(named.c.score),
+        select(Message.id.label("id"))
+        .select_from(named)
+        .join(Message, Message.id == named.c.message_id)
+        .where(named.c.status == "attached")
+        .group_by(Message.id, Message.created_at),
+    )
+    both = union_all(body, files).subquery("both_hits")
+    return (
+        select(both.c.id, func.max(both.c.score).label("score"))
+        .group_by(both.c.id)
+        .subquery("hits")
+    )
 
 
 async def search_messages(
@@ -98,16 +152,14 @@ async def search_messages(
     """Ranked hits (DATA_MODEL.md "検索"), or newest first when `sort` asks for it."""
     if not scope.channel_ids:
         return []
-    score = func.pgroonga_score(
-        literal_column("messages.tableoid"), literal_column("messages.ctid")
-    ).label("score")
+    hits = _hits(query, scope, escaped, sort=sort, take=offset + limit)
     order = (
-        (score.desc(), Message.created_at.desc())
+        (hits.c.score.desc(), Message.created_at.desc())
         if sort == "relevance"
         else (Message.created_at.desc(),)
     )
-    stmt = _matching(_scoped(select(Message, score), scope), query, escaped)
-    rows = (await db.execute(stmt.order_by(*order).limit(limit).offset(offset))).all()
+    stmt = select(Message, hits.c.score).join(hits, hits.c.id == Message.id)
+    rows = (await db.execute(stmt.order_by(*order, Message.id).limit(limit).offset(offset))).all()
     return [(row[0], float(row[1] or 0.0)) for row in rows]
 
 
@@ -125,12 +177,16 @@ async def count(db: AsyncSession, *, query: str | None, scope: Scope, escaped: b
     """How many messages match, counting at most TOTAL_CAP + 1 of them."""
     if not scope.channel_ids:
         return 0
-    stmt = _matching(_scoped(select(Message.id), scope), query, escaped).limit(TOTAL_CAP + 1)
+    if query:
+        stmt = select(_hits(query, scope, escaped, sort=None, take=TOTAL_CAP + 1).c.id).limit(
+            TOTAL_CAP + 1
+        )
+    else:
+        stmt = _scoped(select(Message.id), scope).limit(TOTAL_CAP + 1)
     return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
 
 
 async def extract_keywords(db: AsyncSession, query: str, *, escaped: bool) -> list[str]:
-    needle = func.pgroonga_query_escape(query) if escaped else query
-    result = await db.execute(select(func.pgroonga_query_extract_keywords(needle)))
+    result = await db.execute(select(func.pgroonga_query_extract_keywords(_needle(query, escaped))))
     keywords: list[str] | None = result.scalar_one()
     return [str(k) for k in (keywords or [])]

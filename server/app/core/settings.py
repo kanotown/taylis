@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     log_json: bool = True
 
     database_url: str = "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa"
+    # M19: database connections per process (the pool) and how many more a burst may open.
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
 
     # Empty means "not configured". In development an ephemeral key is generated at startup;
     # in production the application refuses to start (see app.main).
@@ -80,6 +83,12 @@ class Settings(BaseSettings):
     attachment_thumbnail_px: int = 512
     upload_rate_limit_per_user: int = 20
     search_rate_limit_per_user: int = 30
+    # M19: a search running longer is cancelled (503 search_timeout, the client may retry), and at
+    # most this many run at once per process (a search waiting longer than the timeout for a turn
+    # gets 503 search_busy): searches never hold every database connection while posts and syncs
+    # wait.
+    search_timeout_ms: int = 5000
+    search_max_concurrent: int = 4
     # Link previews (M11g, SECURITY.md §14): bounded fetches of public pages, cached.
     link_preview_rate_limit_per_user: int = 60
     # SECURITY.md §5: posts per user per minute, and WebSocket sockets / attempts.

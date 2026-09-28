@@ -19,8 +19,12 @@ from sqlalchemy.ext.asyncio import (
 
 
 class Database:
-    def __init__(self, url: str, *, echo: bool = False) -> None:
-        self.engine: AsyncEngine = create_async_engine(url, echo=echo, pool_pre_ping=True)
+    def __init__(
+        self, url: str, *, echo: bool = False, pool_size: int = 5, max_overflow: int = 10
+    ) -> None:
+        self.engine: AsyncEngine = create_async_engine(
+            url, echo=echo, pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
+        )
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def dispose(self) -> None:
