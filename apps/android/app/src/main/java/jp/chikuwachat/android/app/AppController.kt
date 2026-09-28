@@ -1364,7 +1364,9 @@ class AppController(private val app: Application) {
     }.getOrElse { error = describe(it); false }
 
     suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): Boolean = attempt {
-        store.upsertMessage(api!!.postPoll(channelId, parentId, question, options, multiple)); true
+        val message = api!!.postPoll(channelId, parentId, question, options, multiple)
+        engine?.postedFromHere(message) ?: store.upsertMessage(message)
+        true
     }.getOrElse { error = describe(it); false }
 
     // --- slash commands (M13b) ---------------------------------------------------------------

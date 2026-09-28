@@ -1209,6 +1209,16 @@ class SyncEngine(
     }
 
     /**
+     * §10.1 rule 11: a top-level post this device made through an endpoint of its own rather than the outbox (a poll,
+     * M14b) reads the channel like a send: the server read it up to the post in the same transaction. Before, the
+     * position waited for read.updated, as for a post from another device.
+     */
+    fun postedFromHere(message: MessageOut) {
+        store.upsertMessage(message)
+        if (message.parentId == null) readByOwnPost(message)
+    }
+
+    /**
      * §10.1 rule 11: the server read the channel in the same transaction as my top-level post, so the accepted POST
      * moves the local position and ends a 「ここから未読にする」 hold. A thread reply (also_in_channel too) never does.
      * Nothing is unread any more only when the post is the newest row: the response can come after later rows from

@@ -55,4 +55,17 @@ final class TimelineTests: XCTestCase {
         XCTAssertNil(Timeline.muteLabel("2020-01-01T00:00:00Z", now: now))
         XCTAssertNotNil(Timeline.muteLabel("2026-09-26T10:00:00Z", now: now))
     }
+
+    /// The reactions wrap into lines as wide as the row instead of running past the screen's edge.
+    func testChipsGoOnTheNextLineWhenTheyDoNotFit() {
+        let chip = CGSize(width: 40, height: 22), plus = CGSize(width: 44, height: 22)
+        let frames = ChipsLayout.frames(Array(repeating: chip, count: 7) + [plus], width: 200, spacing: 6)
+        XCTAssertEqual(frames.map(\.minX), [0, 46, 92, 138, 0, 46, 92, 138])
+        XCTAssertEqual(frames.map(\.minY), [0, 0, 0, 0, 28, 28, 28, 28])
+        XCTAssertLessThanOrEqual(frames.map(\.maxX).max() ?? 0, 200)
+        // Few enough for one line: one line, as before.
+        XCTAssertEqual(ChipsLayout.frames([chip, chip, plus], width: 200, spacing: 6).map(\.minY), [0, 0, 0])
+        // A chip wider than the row still gets a line of its own.
+        XCTAssertEqual(ChipsLayout.frames([chip, CGSize(width: 260, height: 22)], width: 200, spacing: 6).map(\.minY), [0, 28])
+    }
 }

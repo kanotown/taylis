@@ -1334,7 +1334,8 @@ export class AppController {
     try {
       const message = await this.api.postPoll(channelId, parentId, { question, options, multiple });
       this.postedHere = message.id;
-      this.store.upsertMessage(message);
+      if (this.engine) this.engine.postedFromHere(message);
+      else this.store.upsertMessage(message);
       return true;
     } catch (error) {
       this.setError(error);

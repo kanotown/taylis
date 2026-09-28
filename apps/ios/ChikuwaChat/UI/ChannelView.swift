@@ -36,6 +36,11 @@ struct ChannelView: View {
     /// The reader touched the list while it was landing on the first unread row: the landing stops scrolling.
     @State private var landingInterrupted = false
     @State private var cover = CoverProbe()
+    /// The list's UIScrollView, for keeping its bottom edge on iOS 18 (KeepsBottom), and whether it is doing that.
+    @State private var scroller = ScrollViewProbe()
+    @State private var resizing = false
+    /// A message's sheet, presented here rather than by its row (MessageSheet).
+    @State private var messageSheet: MessageSheet?
 
     enum ChannelSheet: Identifiable {
         case info, addMember, pins
@@ -303,8 +308,9 @@ struct ChannelView: View {
                                     UnreadSeparator().id(item.id)
                                 case .message(let message, let compact):
                                     MessageRow(message: message, controller: controller, compact: compact,
+                                               highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
                                                onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
-                                               onMarkUnread: markUnreadAction(message))
+                                               present: { messageSheet = $0 })
                                         .equatable() // unchanged messages skip their body (M20)
                                         .id(message.rowKey)
                                         .background(GeometryReader { geometry in
@@ -319,6 +325,7 @@ struct ChannelView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
+                        .background(ScrollViewProbe.Marker(probe: scroller))
                     }
                     .coordinateSpace(name: "conversation")
                     .onUserScroll {
@@ -332,12 +339,13 @@ struct ChannelView: View {
                         if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                     }
                     .background(CoverProbe.Marker(probe: cover))
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing))
                     .scrollDismissesKeyboard(.interactively)
                     .dismissesKeyboardOnTap()
                     // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
                     // Not while the list is being placed or lands on the first unread row (§10.1 4.).
-                    .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil, atEnd: atBottom) { height, atEnd in
+                    .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil, atEnd: atBottom, scroller: scroller,
+                                         resizing: { resizing = $0 }) { height, atEnd in
                         if atEnd {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
@@ -390,6 +398,14 @@ struct ChannelView: View {
                         }
                     }
                     .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
+                    .onChange(of: controller.engine?.postedHere) { _, id in
+                        // A post of mine made through its own endpoint (a poll): shown like one from the outbox, whichever
+                        // came first, its response or its event (§10.1 11.).
+                        guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
+                        if anchor.landing != nil { anchor.landed() }
+                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        markSeen()
+                    }
                     .onChange(of: messages.last?.rowKey) { _, _ in
                         // Arrivals while at the bottom, and my own top-level send from this device, show the newest
                         // message. A landing on the first unread row is not overridden by someone else's arrival.
@@ -520,6 +536,8 @@ struct ChannelView: View {
             }
         }
         .sheet(item: $thread, onDismiss: sheetClosed) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .messageSheets(controller, sheet: $messageSheet, openThread: { thread = ThreadTarget(id: $0.parentId ?? $0.id) },
+                       markUnread: markUnreadAction, onClosed: sheetClosed)
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {
                 thread = ThreadTarget(id: id)
@@ -656,16 +674,19 @@ private struct UserScrollDetector: ViewModifier {
 
 /// A conversation list starts at the bottom, a short one sits at the bottom, and size changes keep the bottom where it
 /// is, except while a landing scroll is on its way (§10.1 4./6.): LazyVStack settling the heights of the rows below the
-/// divider then pulled the list back towards the bottom, and it never landed (2026-09-28, iOS 18–27).
+/// divider then pulled the list back towards the bottom, and it never landed (2026-09-28, iOS 18–27). Nor while the
+/// list's height follows the keyboard frame by frame (iOS 18, KeepsBottom): LazyVStack's re-estimates then passed for
+/// the end, and the list went there from the middle of the conversation.
 struct TimelineScrollAnchor: ViewModifier {
     let landing: Bool
+    var resizing = false
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
                 .defaultScrollAnchor(.bottom, for: .alignment)
-                .defaultScrollAnchor(landing ? nil : .bottom, for: .sizeChanges)
+                .defaultScrollAnchor(landing || resizing ? nil : .bottom, for: .sizeChanges)
         } else {
             content.defaultScrollAnchor(landing ? nil : .bottom)
         }
@@ -718,34 +739,24 @@ struct MessageRow: View {
     let message: MessageState
     @Bindable var controller: AppController
     var compact = false
+    /// The message whose actions are open: it stays highlighted where it is (Slack).
+    var highlighted = false
     var onOpenThread: (() -> Void)? = nil
-    /// 「ここから未読にする」; nil for thread replies and pending rows.
-    var onMarkUnread: (() -> Void)? = nil
-    @State private var editing = false
-    @State private var confirmingDelete = false
-    @State private var showingProfile = false
-    @State private var pickingReaction = false
-    @State private var sharing = false
-    @State private var showingRevisions = false
-    @State private var showingActions = false
-    @State private var followUp: MessageFollowUp?
+    /// Asks the conversation for one of the message's sheets (`messageSheets`); the row presents nothing itself.
+    var present: ((MessageSheet) -> Void)? = nil
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
     private var isMine: Bool { store.me?.id == message.senderId }
 
-    /// After the action sheet is gone: the sheet or dialog an action asked for.
-    private func runFollowUp() {
-        let next = followUp
-        followUp = nil
-        switch next {
-        case .thread: onOpenThread?()
-        case .edit: editing = true
-        case .moreReactions: pickingReaction = true
-        case .share: sharing = true
-        case .delete: confirmingDelete = true
-        case nil: break
-        }
+    private func show(_ kind: MessageSheet.Kind) { present?(MessageSheet(kind: kind, message: message)) }
+
+    /// The action sheet (a long press, or VoiceOver's action); the keyboard goes first, as in Slack.
+    private func openActions(haptic: Bool) {
+        guard !message.pending, present != nil else { return }
+        if haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+        KeyboardBehavior.dismiss()
+        show(.actions)
     }
 
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
@@ -781,7 +792,7 @@ struct MessageRow: View {
                     .padding(.top, 3)
             } else {
                 AvatarView(id: message.senderId, name: senderName)
-                    .onTapGesture { if !message.pending { showingProfile = true } }
+                    .onTapGesture { if !message.pending { show(.profile) } }
             }
             VStack(alignment: .leading, spacing: 2) {
                 if message.isReply { replyLine }  // M15c
@@ -797,7 +808,7 @@ struct MessageRow: View {
                 }
                 if !compact {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(senderName).bold().onTapGesture { if !message.pending { showingProfile = true } }
+                        Text(senderName).bold().onTapGesture { if !message.pending { show(.profile) } }
                         if store.users[message.senderId]?.role == "bot" {
                             Text("BOT").font(.caption2).bold().foregroundStyle(.secondary)
                                 .padding(.horizontal, 4).padding(.vertical, 1).background(Color.secondary.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 3))
@@ -806,7 +817,7 @@ struct MessageRow: View {
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if message.editedAt != nil {
                             if isMine {
-                                Button { showingRevisions = true } label: { Text("(編集済み)").font(.caption).underline() }
+                                Button { show(.revisions) } label: { Text("(編集済み)").font(.caption).underline() }
                                     .buttonStyle(.plain).foregroundStyle(.secondary)
                             } else {
                                 Text("(編集済み)").font(.caption).foregroundStyle(.secondary)
@@ -833,7 +844,7 @@ struct MessageRow: View {
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller) }  // M14b
                 if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller) }  // M15e
                 if !message.reactions.isEmpty {
-                    HStack(spacing: 6) {
+                    ChipsLayout(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in
                             let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
                             Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
@@ -856,7 +867,7 @@ struct MessageRow: View {
                         }
                         // M25: one more reaction right there (Slack; the web's 「＋」): the picker the action sheet's
                         // smiley opens.
-                        Button { pickingReaction = true } label: {
+                        Button { show(.reactions) } label: {
                             HStack(spacing: 1) {
                                 Image(systemName: "plus").font(.system(size: 8, weight: .bold))
                                 Image(systemName: "face.smiling").font(.caption)
@@ -885,77 +896,115 @@ struct MessageRow: View {
             }
         }
         .padding(.vertical, compact ? 4 : 5)
+        // The row is as wide as the list: a press right of a short message is on it. It was only as wide as its text,
+        // and a press beside that went to whichever row was nearest, often the one above (testers, 2026-09-29).
+        .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(message.pending && !message.failed ? 0.6 : 1)
         .background(controller.messageFocus?.messageId == message.id ? Color.yellow.opacity(0.18) : Color.clear)
-        .background(showingActions ? Color(.systemGray5) : Color.clear) // the message whose actions are open (Slack)
+        .background(highlighted ? Color(.systemGray5) : Color.clear) // the message whose actions are open (Slack)
         .contentShape(Rectangle())
-        // Slack: a tap does nothing (a tap on the list closes the keyboard); a long press opens the actions from the
-        // bottom (MessageActions.swift).
-        .onLongPressGesture(minimumDuration: 0.35) {
-            guard !message.pending else { return }
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            KeyboardBehavior.dismiss()
-            showingActions = true
-        }
+        // Slack: a tap does nothing (a tap on the list closes the keyboard); a long press anywhere on the row opens the
+        // actions from the bottom (MessageActions.swift). Before the buttons in it: a press on or near the name, a
+        // reaction or 「N 件の返信」 went to that control instead (the chip looked pressed, then toggled as the finger
+        // lifted; the name opened the profile). Their taps still come once the press is too short to be this one.
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in openActions(haptic: true) })
         // M25: VoiceOver has no long press on a row: the same sheet is an action (the actions rotor) of every element
         // of the message, which keeps its own links and buttons.
         .accessibilityActions {
-            if !message.pending {
-                Button("メッセージの操作") {
-                    KeyboardBehavior.dismiss()
-                    showingActions = true
-                }
+            if !message.pending && present != nil {
+                Button("メッセージの操作") { openActions(haptic: false) }
             }
-        }
-        .sheet(isPresented: $showingActions, onDismiss: runFollowUp) {
-            MessageActionsSheet(message: message, controller: controller, canThread: onOpenThread != nil, canMarkUnread: onMarkUnread != nil,
-                                onMarkUnread: { onMarkUnread?() }, followUp: { followUp = $0 })
-        }
-        .sheet(isPresented: $pickingReaction) {
-            EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }
-        }
-        .sheet(isPresented: $sharing) { ShareMessageSheet(controller: controller, message: message) }
-        .sheet(isPresented: $showingRevisions) { RevisionsView(controller: controller, message: message) }
-        .sheet(isPresented: $showingProfile) {
-            ProfileSheet(controller: controller, userId: message.senderId) { id in
-                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
-            }
-        }
-        .sheet(isPresented: $editing) {
-            EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups)) { body in
-                Task { await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values))) }
-            }
-        }
-        .confirmationDialog("メッセージを削除しますか？", isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button("削除", role: .destructive) { Task { await controller.deleteMessage(message.id) } }
         }
     }
 }
 
+/// Chips in lines as wide as the row, as many lines as they need. The reactions were an HStack: with many of them it
+/// was wider than the screen, the chips squeezed empty and the 「＋」 past the edge, and the list laid every row out as
+/// wide as that one, so text near it was cut off at the right (testers, 2026-09-29).
+struct ChipsLayout: Layout {
+    var spacing: CGFloat = 6
+
+    /// Where each chip goes, from the top leading corner: a chip that does not fit after the others starts a line.
+    static func frames(_ sizes: [CGSize], width: CGFloat, spacing: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0
+        for size in sizes {
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += lineHeight + spacing
+                lineHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        return frames
+    }
+
+    private func frames(_ subviews: Subviews, width: CGFloat?) -> [CGRect] {
+        Self.frames(subviews.map { $0.sizeThatFits(.unspecified) }, width: width ?? .infinity, spacing: spacing)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let frames = frames(subviews, width: proposal.width)
+        return CGSize(width: frames.map(\.maxX).max() ?? 0, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, frames(subviews, width: bounds.width)) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
+        }
+    }
+}
+
+/// C4 (Codex audit): the editor stays open, with the text, until the server has the edit. It closed as 保存 was
+/// pressed, and a failed save (offline) lost the text.
 struct EditMessageView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
-    let onSave: (String) -> Void
+    @State private var saving = false
+    @State private var failure: String?
+    /// Saves the text: nil once the server took it, else why not (shown here, the editor stays).
+    let onSave: (String) async -> String?
 
-    init(initial: String, onSave: @escaping (String) -> Void) {
+    init(initial: String, onSave: @escaping (String) async -> String?) {
         _text = State(initialValue: initial)
         self.onSave = onSave
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    private func save() {
+        saving = true
+        failure = nil
+        Task {
+            let error = await onSave(trimmed)
+            saving = false
+            if let error { failure = error } else { dismiss() }
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            TextEditor(text: $text)
-                .padding()
-                .navigationTitle("メッセージを編集")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("保存") { onSave(trimmed); dismiss() }.disabled(trimmed.isEmpty)
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                if let failure {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote).foregroundStyle(.red)
+                        .padding([.horizontal, .top])
                 }
+                TextEditor(text: $text)
+                    .disabled(saving)
+                    .padding()
+            }
+            .navigationTitle("メッセージを編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "保存中…" : "保存", action: save).disabled(trimmed.isEmpty || saving)
+                }
+            }
+            .interactiveDismissDisabled(saving)
         }
     }
 }
@@ -1319,11 +1368,12 @@ final class RowFrames {
     var keptTries = 0
 }
 
-/// A row redraws when its message or its grouping changes; what it reads from the store (names, custom emoji, the saved
-/// mark) redraws it through observation. Before (M20), every row ran its body on every change of the conversation.
+/// A row redraws when its message, its grouping or its highlight changes; what it reads from the store (names, custom
+/// emoji, the saved mark) redraws it through observation. Before (M20), every row ran its body on every change of the
+/// conversation.
 extension MessageRow: Equatable {
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
-        lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.controller === rhs.controller
-            && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.onMarkUnread == nil) == (rhs.onMarkUnread == nil)
+        lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.highlighted == rhs.highlighted && lhs.controller === rhs.controller
+            && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.present == nil) == (rhs.present == nil)
     }
 }

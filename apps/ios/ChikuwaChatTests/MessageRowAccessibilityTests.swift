@@ -4,8 +4,9 @@ import XCTest
 @testable import ChikuwaChat
 
 /// M25: VoiceOver reaches a message's action sheet (it has no long press), and the 「＋」 chip after its reactions.
-/// SwiftUI builds its accessibility elements only while assistive technology is on, so the test turns it on the way
-/// the accessibility snapshot tools do; it is skipped where that switch is missing.
+/// The conversation presents what a row asks for (MessageSheet), also what the action sheet's choice leads to, and the
+/// editor waits for its save (C4). SwiftUI builds its accessibility elements only while assistive technology is on, so
+/// the test turns it on the way the accessibility snapshot tools do; it is skipped where that switch is missing.
 @MainActor
 final class MessageRowAccessibilityTests: XCTestCase {
     private typealias Switch = @convention(c) (Bool) -> Void
@@ -33,8 +34,8 @@ final class MessageRowAccessibilityTests: XCTestCase {
         return controller
     }
 
-    private func message(pending: Bool = false) -> MessageState {
-        var message = MessageState(placeholderFor: "k1", channelId: "c1", senderId: pending ? "me" : "u2", body: "見てください https://example.com/page",
+    private func message(pending: Bool = false, mine: Bool = false) -> MessageState {
+        var message = MessageState(placeholderFor: "k1", channelId: "c1", senderId: pending || mine ? "me" : "u2", body: "見てください https://example.com/page",
                                    createdAt: "2026-09-27T01:10:00Z")
         if !pending {
             message.id = "m1"
@@ -46,34 +47,64 @@ final class MessageRowAccessibilityTests: XCTestCase {
         return message
     }
 
-    /// The row's accessibility elements, rendered in the test host's window.
-    private func elements(_ row: MessageRow) -> (host: UIViewController, elements: [NSObject]) {
-        let size = CGSize(width: 393, height: 400)
+    /// A row in a conversation that presents what it asks for, as ChannelView and ThreadView do.
+    private struct Conversation: View {
+        let message: MessageState
+        let controller: AppController
+        @State private var sheet: MessageSheet?
+
+        var body: some View {
+            VStack {
+                MessageRow(message: message, controller: controller, highlighted: sheet?.kind == .actions, present: { sheet = $0 })
+                Spacer()
+            }
+            .padding()
+            .messageSheets(controller, sheet: $sheet, openThread: { _ in })
+        }
+    }
+
+    /// `view` rendered in the test host's window.
+    private func render(_ view: some View, height: CGFloat = 400) -> UIViewController {
+        let size = CGSize(width: 393, height: height)
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(origin: .zero, size: size))
         window.frame = CGRect(origin: .zero, size: size)
-        let host = UIHostingController(rootView: VStack { row; Spacer() }.padding())
+        let host = UIHostingController(rootView: view)
         window.rootViewController = host
         window.makeKeyAndVisible()
         self.window = window
         host.view.frame = window.bounds
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        return host
+    }
+
+    /// The accessibility elements under `view` (a sheet's navigation bar is UIKit's: its views are walked too).
+    private func accessibilityElements(_ view: UIView, depth limit: Int = 20) -> [NSObject] {
         var found: [NSObject] = []
         func walk(_ element: NSObject, depth: Int) {
-            guard depth < 20 else { return }
+            guard depth < limit, found.count < 400 else { return }
             if element.isAccessibilityElement { found.append(element) }
             let count = element.accessibilityElementCount()
-            guard count > 0, count != NSNotFound else { return }
-            for index in 0..<count { if let child = element.accessibilityElement(at: index) as? NSObject { walk(child, depth: depth + 1) } }
+            if count > 0, count != NSNotFound {
+                for index in 0..<count { if let child = element.accessibilityElement(at: index) as? NSObject { walk(child, depth: depth + 1) } }
+            } else if let view = element as? UIView, !element.isAccessibilityElement {
+                for child in view.subviews { walk(child, depth: depth + 1) }
+            }
         }
-        walk(host.view, depth: 0)
-        return (host, found)
+        walk(view, depth: 0)
+        return found
+    }
+
+    /// The row's accessibility elements, rendered in the test host's window.
+    private func elements(_ message: MessageState, _ controller: AppController) -> (host: UIViewController, elements: [NSObject]) {
+        let host = render(Conversation(message: message, controller: controller))
+        return (host, accessibilityElements(host.view))
     }
 
     func testEveryElementOfAMessageOffersItsActionsAndKeepsItsOwn() throws {
         let controller = controller()
-        let (host, elements) = elements(MessageRow(message: message(), controller: controller))
+        let (host, elements) = elements(message(), controller)
         let labels = elements.compactMap(\.accessibilityLabel)
         XCTAssertTrue(labels.contains("Toru"), "\(labels)")
         XCTAssertTrue(labels.contains { $0.contains("見てください") }, "\(labels)")
@@ -94,7 +125,7 @@ final class MessageRowAccessibilityTests: XCTestCase {
     }
 
     func testThePlusChipOpensTheEmojiPicker() throws {
-        let (host, elements) = elements(MessageRow(message: message(), controller: controller()))
+        let (host, elements) = elements(message(), controller())
         let add = try XCTUnwrap(elements.first { $0.accessibilityLabel == "リアクションを追加" })
         XCTAssertTrue(add.accessibilityActivate())
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
@@ -111,8 +142,63 @@ final class MessageRowAccessibilityTests: XCTestCase {
         XCTAssertFalse(labels.contains("スレッドで返信"), "the picker, not the action sheet: \(labels.prefix(20))")
     }
 
+    /// 編集 in the action sheet: the editor comes once the sheet is gone, from the conversation.
+    func testEditInTheActionSheetOpensTheEditorOnceTheSheetIsGone() throws {
+        let (host, elements) = elements(message(mine: true), controller())
+        let action = try XCTUnwrap(elements.first?.accessibilityCustomActions?.first)
+        XCTAssertTrue(action.actionHandler?(action) ?? false)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        let sheet = try XCTUnwrap(host.presentedViewController, "the action sheet")
+        let inSheet = accessibilityElements(sheet.view, depth: 40)
+        let edit = try XCTUnwrap(inSheet.first { $0.accessibilityLabel == "編集" }, "\(inSheet.compactMap(\.accessibilityLabel))")
+        XCTAssertTrue(edit.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(2.0))
+        let editor = try XCTUnwrap(host.presentedViewController, "the editor")
+        XCTAssertFalse(editor === sheet)
+        let found = accessibilityElements(editor.view, depth: 40)
+        XCTAssertTrue(found.contains { ($0.accessibilityValue ?? "").contains("見てください") }, "\(found.compactMap(\.accessibilityLabel))")
+    }
+
+    /// C4: a save that fails keeps the editor, its text and the reason; one that goes through closes it.
+    func testTheEditorStaysOpenUntilTheSaveGoesThrough() throws {
+        final class Server {
+            var answers: [String?] = ["ネットワークに接続できません", nil]
+            var saved: [String] = []
+        }
+        struct Host: View {
+            let server: Server
+            @State private var editing = true
+            var body: some View {
+                Color.clear.sheet(isPresented: $editing) {
+                    EditMessageView(initial: "直す前の本文") { body in
+                        server.saved.append(body)
+                        return server.answers.removeFirst()
+                    }
+                }
+            }
+        }
+        let server = Server()
+        let host = render(Host(server: server), height: 800)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        let editor = try XCTUnwrap(host.presentedViewController, "the editor")
+        let before = accessibilityElements(editor.view, depth: 40)
+        let save = try XCTUnwrap(before.first { $0.accessibilityLabel == "保存" }, "\(before.compactMap(\.accessibilityLabel))")
+        XCTAssertTrue(save.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertTrue(host.presentedViewController === editor, "still open after the failure")
+        let after = accessibilityElements(editor.view, depth: 40)
+        XCTAssertTrue(after.contains { ($0.accessibilityLabel ?? "").contains("ネットワークに接続できません") }, "\(after.compactMap(\.accessibilityLabel))")
+        XCTAssertTrue(after.contains { ($0.accessibilityValue ?? "").contains("直す前の本文") }, "the text is kept")
+
+        let again = try XCTUnwrap(after.first { $0.accessibilityLabel == "保存" })
+        XCTAssertTrue(again.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(2.0))
+        XCTAssertNil(host.presentedViewController, "closed once saved")
+        XCTAssertEqual(server.saved, ["直す前の本文", "直す前の本文"])
+    }
+
     func testAnUnsentMessageHasNoActions() {
-        let (_, elements) = elements(MessageRow(message: message(pending: true), controller: controller()))
+        let (_, elements) = elements(message(pending: true), controller())
         XCTAssertFalse(elements.isEmpty)
         for element in elements { XCTAssertEqual(element.accessibilityCustomActions?.map(\.name) ?? [], [], element.accessibilityLabel ?? "") }
         XCTAssertFalse(elements.contains { $0.accessibilityLabel == "リアクションを追加" })

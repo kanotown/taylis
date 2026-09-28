@@ -255,6 +255,14 @@ class UnreadRangeTest {
         w.close()
     }
 
+    @Test fun v9_aPollOfMineReadsTheChannelFromItsResponse() = runBlocking { // M14b: its own endpoint, not the outbox
+        val w = twoThousandUnread()
+        val (poll, _) = w.server.post(w.channelId, w.bob, "poll")
+        w.engine.postedFromHere(poll) // before its event or read.updated
+        assertEquals(Triple(poll.seq, 0, null), w.channel.let { Triple(it.lastReadSeq, it.unreadCount, it.firstUnreadAt) })
+        w.close()
+    }
+
     @Test fun v10_aGapReloadMakesTheRangeUnreadyAgain() = runBlocking {
         val w = World()
         w.post(130); w.server.markRead(w.bob, w.channelId, 100)

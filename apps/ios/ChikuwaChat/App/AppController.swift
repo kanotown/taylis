@@ -599,9 +599,13 @@ final class AppController {
 
     // MARK: message actions (M8a): apply the server's answer at once; the WS event is deduplicated
 
-    func editMessage(_ messageId: String, body: String) async {
-        guard let api else { return }
-        do { _ = store.upsertMessage(try await api.editMessage(id: messageId, body: body)) } catch { self.error = describe(error) }
+    /// nil once saved, else the error: the editor shows it and keeps the text (C4).
+    func editMessage(_ messageId: String, body: String) async -> String? {
+        guard let api else { return ErrorMessages.unknown }
+        do {
+            _ = store.upsertMessage(try await api.editMessage(id: messageId, body: body))
+            return nil
+        } catch { return describe(error) }
     }
 
     func deleteMessage(_ messageId: String) async {
@@ -1064,7 +1068,8 @@ final class AppController {
     func createPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool) async -> Bool {
         guard let api else { return false }
         do {
-            store.upsertMessage(try await api.postPoll(channelId: channelId, parentId: parentId, question: question, options: options, multiple: multiple))
+            let message = try await api.postPoll(channelId: channelId, parentId: parentId, question: question, options: options, multiple: multiple)
+            if let engine { engine.postedFromHere(message) } else { store.upsertMessage(message) }
             return true
         } catch { self.error = describe(error); return false }
     }

@@ -66,6 +66,15 @@ describe("the first unread row not loaded (§10.1, M17)", () => {
     w.engine.stop();
   });
 
+  it("V9 for a poll of mine (M14b): made through its own endpoint, not the outbox, it reads the channel from its response", async () => {
+    const w = world({ posts: 3000, lastRead: 1000 });
+    await openFirst(w);
+    const { message } = w.server.post(w.channelId, w.bob.id, "poll");
+    w.engine.postedFromHere(message); // before its event or read.updated
+    expect(state(w)).toMatchObject({ unreadCount: 0, firstUnreadAt: null, lastReadSeq: message.seq });
+    w.engine.stop();
+  });
+
   it("V4: 「最初の未読へ」 pages back 200 at a time until the range reaches the read position, then reading moves it", async () => {
     const w = world({ posts: 1300, lastRead: 1000 });
     await openFirst(w);
