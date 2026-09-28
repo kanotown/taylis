@@ -1,12 +1,14 @@
 """GET /search/messages: full-text search limited to the caller's channels (SECURITY.md §3)."""
 
+import asyncio
 import logging
 import uuid
 
+from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request
+from app.core.errors import AppError, bad_request
 from app.modules.channels import service as channels
 from app.modules.messages import service as messages
 from app.modules.messages.models import Message
@@ -19,7 +21,65 @@ from app.modules.users.models import User
 log = logging.getLogger("app.search")
 
 
-async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOut:
+async def search(
+    db: AsyncSession,
+    actor: User,
+    params: SearchQuery,
+    *,
+    timeout_ms: int | None = None,
+    gate: asyncio.Semaphore | None = None,
+) -> SearchOut:
+    """At most `gate`'s count of searches at once, each cancelled after `timeout_ms` (M19): a slow
+    search returns a temporary error instead of holding a database connection while posts and
+    syncs wait."""
+    if gate is None:
+        return await _search(db, actor, params, timeout_ms)
+    try:
+        await asyncio.wait_for(gate.acquire(), timeout=(timeout_ms or 5000) / 1000)
+    except TimeoutError as exc:
+        raise AppError(503, "search_busy", "Search is busy, try again in a moment") from exc
+    try:
+        return await _search(db, actor, params, timeout_ms)
+    finally:
+        gate.release()
+
+
+async def _limit_time(db: AsyncSession, timeout_ms: int | None) -> None:
+    """For the rest of this transaction: PostgreSQL cancels a statement running longer than
+    `timeout_ms`, and reads messages through the indexes. PGroonga scores only what its index
+    finds: on a small table the planner preferred reading it whole, and every hit scored 0."""
+    await db.execute(text("SET LOCAL enable_seqscan = off"))
+    if timeout_ms:
+        await db.execute(text(f"SET LOCAL statement_timeout = {int(timeout_ms)}"))
+
+
+def _cancelled(exc: DBAPIError) -> bool:
+    """The statement ran past statement_timeout (SQLSTATE 57014, query_canceled)."""
+    for error in (exc.orig, getattr(exc.orig, "__cause__", None)):
+        if getattr(error, "sqlstate", None) == "57014" or getattr(error, "pgcode", None) == "57014":
+            return True
+    return False
+
+
+async def _search(
+    db: AsyncSession, actor: User, params: SearchQuery, timeout_ms: int | None
+) -> SearchOut:
+    try:
+        return await _search_in_time(db, actor, params, timeout_ms)
+    except DBAPIError as exc:
+        if not _cancelled(exc):
+            raise
+        await db.rollback()
+        log.warning("search cancelled after %s ms", timeout_ms)
+        raise AppError(
+            503, "search_timeout", "The search took too long, try fewer or more specific words"
+        ) from exc
+
+
+async def _search_in_time(
+    db: AsyncSession, actor: User, params: SearchQuery, timeout_ms: int | None
+) -> SearchOut:
+    await _limit_time(db, timeout_ms)
     mine = await channels.list_channels(db, actor, include_public=False)
     if params.channel_id is not None:
         await channels.require_member(db, actor.id, params.channel_id)
@@ -85,9 +145,12 @@ async def search(db: AsyncSession, actor: User, params: SearchQuery) -> SearchOu
         try:
             rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=False)
         except DBAPIError as exc:
+            if _cancelled(exc):
+                raise
             # Groonga rejected the syntax (unbalanced quotes / parentheses): search it literally.
             log.info("search query fell back to escaped form: %s", exc.orig)
             await db.rollback()
+            await _limit_time(db, timeout_ms)  # the rollback ended the transaction, and its limit
             rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=True)
     else:
         # Modifiers only (e.g. from:@alice on:2026-09-26): newest first, no ranking.

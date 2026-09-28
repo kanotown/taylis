@@ -46,4 +46,7 @@ async def search_messages(
         limit=limit,
         offset=offset,
     )
-    return await service.search(db, user, params)
+    settings = request.app.state.settings
+    return await service.search(
+        db, user, params, timeout_ms=settings.search_timeout_ms, gate=request.app.state.search_gate
+    )

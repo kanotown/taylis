@@ -238,7 +238,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     # SQL echo prints bound parameters (hashes, tokens): development only.
     echo_sql = settings.debug and settings.environment != "production"
-    app.state.db = Database(settings.database_url, echo=echo_sql)
+    app.state.db = Database(
+        settings.database_url,
+        echo=echo_sql,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+    )
+    # M19: how many searches may run at once in this process (search/service.py).
+    app.state.search_gate = asyncio.Semaphore(settings.search_max_concurrent)
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),

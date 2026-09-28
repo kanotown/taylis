@@ -581,6 +581,14 @@ CREATE INDEX messages_channel_updated_seq_idx  ON messages (channel_id, updated_
 CREATE INDEX messages_parent_idx               ON messages (parent_id, seq) WHERE parent_id IS NOT NULL;
 CREATE INDEX messages_pinned_idx               ON messages (channel_id, pinned_at) WHERE pinned_at IS NOT NULL;
 -- M9: CREATE INDEX messages_body_pgroonga_idx ON messages USING pgroonga (body);
+-- M19 (検索と一覧): 語の無い検索 (on: / after: / before: / from:) と /mentions
+CREATE INDEX messages_created_idx         ON messages (created_at) WHERE deleted_at IS NULL;
+CREATE INDEX messages_sender_created_idx  ON messages (sender_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX messages_mentioned_gin       ON messages USING gin (mentioned_user_ids);
+CREATE INDEX messages_keyword_hits_gin    ON messages USING gin (keyword_user_ids);
+CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention_all AND deleted_at IS NULL;
+-- attachments: CREATE INDEX attachments_listing_idx ON attachments (attached_at DESC, id)
+--              WHERE status = 'attached' AND deleted_at IS NULL;   -- GET /files の並び
 ```
 
 本文の形式: プレーンテキスト。メンションは `<@{user_id}>`、グループは `<@group:{group_id}>` (M12k)、全体メンションは `<!channel>` / `<!here>` の
@@ -864,21 +872,42 @@ ORDER BY updated_seq ASC LIMIT $limit;
 差分の応答には reactions と attachments を JOIN して埋める。履歴・差分どちらも、応答に含める
 `channel.last_seq` は **メッセージより先に読む** (SYNC_PROTOCOL.md §4.3)。
 
-検索 (M9。権限フィルタは必ず付ける):
+検索 (M9、M19 で書き換え。権限フィルタは必ず付ける)。本文と添付のファイル名は別々の枝で、それぞれの PGroonga
+索引で探し、UNION ALL でまとめる (1 つの条件 `body &@~ q OR EXISTS (filename &@~ q)` ではどちらの索引も使えず、
+46.5 万件で 1.4〜6 秒かかり、点数が常に 0 で「関連度順」が新しい順になっていた。書き換え後は 7〜140 ms):
 
 ```sql
-SELECT m.*, pgroonga_score(m.tableoid, m.ctid) AS score
-FROM messages m
-WHERE m.body &@~ $q
-  AND m.deleted_at IS NULL
-  AND m.channel_id IN (SELECT channel_id FROM channel_members WHERE user_id = $me)
-  AND ($channel IS NULL OR m.channel_id = $channel)
-  AND ($from IS NULL OR m.sender_id = $from)
-  AND ($after IS NULL OR m.created_at >= $after)
-  AND ($before IS NULL OR m.created_at < $before)
-ORDER BY score DESC, m.created_at DESC
+SET LOCAL enable_seqscan = off;              -- PGroonga は索引で見つけた行にしか点数を付けない
+SET LOCAL statement_timeout = 5000;          -- 設定 search_timeout_ms。超えたら 503 search_timeout
+WITH named_files AS MATERIALIZED (           -- ファイル名だけを条件に、attachments の PGroonga 索引で
+  SELECT message_id, status, pgroonga_score(tableoid, ctid) AS score
+  FROM attachments WHERE filename &@~ $q
+)
+SELECT m.*, hits.score FROM (
+  SELECT id, max(score) AS score FROM (
+    (SELECT m.id, pgroonga_score(m.tableoid, m.ctid) AS score, m.created_at
+       FROM messages m WHERE m.body &@~ $q AND <範囲>
+       ORDER BY score DESC, m.created_at + interval '0' DESC LIMIT $offset + $limit)
+    UNION ALL
+    (SELECT m.id, max(f.score), m.created_at
+       FROM named_files f JOIN messages m ON m.id = f.message_id
+       WHERE f.status = 'attached' AND <範囲> GROUP BY m.id, m.created_at
+       ORDER BY 2 DESC, m.created_at + interval '0' DESC LIMIT $offset + $limit)
+  ) both_hits GROUP BY id
+) hits JOIN messages m ON m.id = hits.id
+ORDER BY hits.score DESC, m.created_at DESC, m.id      -- sort=newest なら m.created_at DESC
 LIMIT $limit OFFSET $offset;
+-- <範囲> = m.channel_id IN (自分のチャンネル) AND m.deleted_at IS NULL AND m.type = 'user'
+--          AND 修飾子 (from / after / before / has / is:thread)
 ```
+
+- 各枝は 1 ページ分 (`offset + limit` 件) だけ取る。よくある語は数万件に当たるが、使うのは 1 ページか件数の
+  上限 (1,000 + 1) まで。件数も各枝を 1,001 件で打ち切って数える。
+- 並べ替えは `created_at` そのものではなく式で行う。`messages_created_idx` を使って新しい順に 1 件ずつ語を
+  試す計画になると、まれな語ほど遅くなり点数も 0 になるため (まれな語で 174 ms → 67 ms)。
+- 同時に走る検索は 1 プロセスあたり `search_max_concurrent` (既定 4) まで。順番を `search_timeout_ms` 待っても
+  取れなければ 503 `search_busy`。遅い検索が DB 接続を使い切って投稿や同期を待たせないため (接続は
+  `db_pool_size` 20 + `db_max_overflow` 10)。
 
 検索語の修飾子 (Slack / Mattermost と同じ書き方) はサーバが解釈する: `from:@user`、`in:#channel`、
 `before:YYYY-MM-DD`、`after:YYYY-MM-DD`、`on:YYYY-MM-DD`。日付は呼び出し側のタイムゾーン

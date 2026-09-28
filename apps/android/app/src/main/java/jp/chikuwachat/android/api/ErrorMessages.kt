@@ -70,6 +70,8 @@ object ErrorMessages {
         "reply_depth" to "返信への返信はできません",
         "reuse_detected" to "安全のためログアウトしました。もう一度ログインしてください",
         "scheduled_not_found" to "予約送信が見つかりません",
+        "search_busy" to "検索が混み合っています。少し待ってからお試しください",
+        "search_timeout" to "検索に時間がかかりすぎました。語を増やすか、期間や人で絞ってお試しください",
         "section_not_found" to "セクションが見つかりません",
         "send_at_too_far" to "予約送信は 1 年以内で設定してください",
         "send_at_too_soon" to "予約送信は 1 分以上先に設定してください",
