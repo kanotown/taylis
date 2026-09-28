@@ -614,17 +614,20 @@ export class AppController {
     }
   }
 
-  /** A new section at the end; with `channelId`, that conversation moves into it. */
-  async createSection(name: string, channelId: string | null): Promise<boolean> {
-    const before = new Set(this.store.sidebarSections.map((s) => s.id));
-    if (!(await this.sidebarChange((api) => api.createSidebarSection(name)))) return false;
-    const created = this.store.sidebarSections.find((s) => !before.has(s.id));
-    if (channelId && created) return this.moveToSection(channelId, created.id);
-    return true;
+  /** A new section at the end (M26: with its icon), and the conversations that move into it. */
+  createSection(name: string, emoji: string | null, channelIds: string[]): Promise<boolean> {
+    return this.sidebarChange((api) => api.createSidebarSection({ name, emoji, channel_ids: channelIds }));
   }
 
-  renameSection(sectionId: string, name: string): Promise<boolean> {
-    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { name }));
+  /** M26: the name and the icon (null: none). */
+  editSection(sectionId: string, name: string, emoji: string | null): Promise<boolean> {
+    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { name, emoji }));
+  }
+
+  /** M26: folds a section up (or opens it) at once here; sidebar.updated brings it to my other devices. */
+  setSectionCollapsed(sectionId: string, collapsed: boolean): Promise<boolean> {
+    this.store.replaceSidebar(this.store.sidebarSections.map((s) => (s.id === sectionId ? { ...s, collapsed } : s)));
+    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { collapsed }));
   }
 
   moveSection(sectionId: string, position: number): Promise<boolean> {

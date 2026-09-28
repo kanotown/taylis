@@ -1,4 +1,5 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, Compass, FileText, Files, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, ChevronDown, ChevronRight, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -6,7 +7,8 @@ import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels } from "./channels";
 import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
-import { ChannelContextMenu, SectionHeaderMenu } from "./SidebarMenus";
+import { SectionIcon } from "./SectionDialog";
+import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
 
 interface Props {
@@ -59,6 +61,15 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
   // M24: offer to make my times until I have one.
   const hasMyTimes = !!me && channels.some((c) => c.times_owner_id === me.id);
+  // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).
+  const [folded, toggleFolded] = useFoldedDefaults();
+  const [newSection, setNewSection] = useState(false);
+  // A folded section still shows what is unread and the open conversation (Slack).
+  const shown = (rows: ChannelState[], collapsed: boolean) => (collapsed ? rows.filter((c) => c.id === currentId || hasUnread(c, me?.id ?? null)) : rows);
+  // Dropped on a default section: out of my own section (the conversation goes back where it belongs by kind).
+  const backToDefault = (channelId: string) => {
+    if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
+  };
   const status = controller.engine?.status ?? "idle";
 
   const item = (channel: ChannelState) => {
@@ -75,6 +86,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         <ChannelContextMenu controller={controller} channel={channel}>
         <button
           type="button"
+          // M26: dragged onto a section's header (or list) it moves there (Slack).
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData(CHANNEL_DRAG, channel.id);
+            event.dataTransfer.effectAllowed = "move";
+          }}
           onClick={() => onOpen(channel.id)}
           title={channelTitle(channel, controller)}
           className={cn(
@@ -270,18 +287,29 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       )}
 
       {sections.favorites.length > 0 && (
-        <Section title="お気に入り">
-          <ul className="space-y-px">{sections.favorites.map(item)}</ul>
+        <Section title="お気に入り" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}>
+          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites")).map(item)}</ul>
         </Section>
       )}
       {sections.custom.map(({ section, channels: members }, index) => (
-        <Section key={section.id} title={section.name} action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}>
-          <ul className="space-y-px">{members.map(item)}</ul>
-          {members.length === 0 && !unreadOnly && <Hint>会話を右クリック →「セクションに移動」</Hint>}
+        <Section
+          key={section.id}
+          title={section.name}
+          icon={<SectionIcon controller={controller} emoji={section.emoji} />}
+          collapsed={section.collapsed}
+          onToggle={() => void controller.setSectionCollapsed(section.id, !section.collapsed)}
+          onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
+          action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
+        >
+          <ul className="space-y-px">{shown(members, section.collapsed).map(item)}</ul>
+          {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>会話をここへドラッグ、または右クリック →「セクションに移動」</Hint>}
         </Section>
       ))}
       <Section
         title="チャンネル"
+        collapsed={folded.has("channels")}
+        onToggle={() => toggleFolded("channels")}
+        onDropChannel={backToDefault}
         action={
           <span className="flex items-center">
             {onReadAll && (
@@ -294,6 +322,9 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 <Compass size={14} />
               </IconButton>
             )}
+            <IconButton tone="sidebar" label="新しいセクション" className="h-6 w-6" onClick={() => setNewSection(true)}>
+              <FolderPlus size={14} />
+            </IconButton>
             {!controller.isGuest && (
               <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
                 <Plus size={14} />
@@ -302,12 +333,15 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </span>
         }
       >
-        <ul className="space-y-px">{sections.channels.map(item)}</ul>
+        <ul className="space-y-px">{shown(sections.channels, folded.has("channels")).map(item)}</ul>
         {sections.channels.length === 0 && <Hint>{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</Hint>}
       </Section>
       {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
         <Section
           title="Times"
+          collapsed={folded.has("times")}
+          onToggle={() => toggleFolded("times")}
+          onDropChannel={backToDefault}
           action={
             onCreateTimes && !hasMyTimes && !controller.isGuest ? (
               <IconButton tone="sidebar" label="自分の times を作る" className="h-6 w-6" onClick={onCreateTimes}>
@@ -316,12 +350,15 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             ) : undefined
           }
         >
-          <ul className="space-y-px">{sections.times.map(item)}</ul>
+          <ul className="space-y-px">{shown(sections.times, folded.has("times")).map(item)}</ul>
           {sections.times.length === 0 && <Hint>+ から自分の times (作業ログ) を作れます</Hint>}
         </Section>
       )}
       <Section
         title="ダイレクトメッセージ"
+        collapsed={folded.has("dms")}
+        onToggle={() => toggleFolded("dms")}
+        onDropChannel={backToDefault}
         action={
           <span className="flex items-center">
             {onDirectory && (
@@ -335,7 +372,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </span>
         }
       >
-        <ul className="space-y-px">{sections.dms.map(item)}</ul>
+        <ul className="space-y-px">{shown(sections.dms, folded.has("dms")).map(item)}</ul>
         {sections.dms.length === 0 && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
       </Section>
       {sections.browse.length > 0 && (
@@ -357,15 +394,84 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </ul>
         </Section>
       )}
+      {newSection && <NewSectionDialog controller={controller} onClose={() => setNewSection(false)} />}
     </nav>
   );
 }
 
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+const FOLDED_KEY = "chikuwa.sidebar.folded";
+
+/** Which default sections are folded on this device (favorites, channels, times, dms); a per-viewer convenience. */
+function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void] {
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]");
+      return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggle = (key: string) =>
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
+      } catch {
+        /* folding still works for this session */
+      }
+      return next;
+    });
+  return [folded, toggle];
+}
+
+/** The data type a dragged conversation row carries (M26); files dragged in from outside have none of it. */
+const CHANNEL_DRAG = "application/x-chikuwa-channel";
+
+/**
+ * A sidebar section. M26 (Slack): the header folds it (`onToggle`), with an icon before the title; a conversation row
+ * dropped on it goes to `onDropChannel`.
+ */
+function Section({ title, icon, action, children, collapsed = false, onToggle, onDropChannel }: {
+  title: string;
+  icon?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  onDropChannel?: (channelId: string) => void;
+}) {
+  const [over, setOver] = useState(false);
+  const accepts = (event: React.DragEvent) => !!onDropChannel && event.dataTransfer.types.includes(CHANNEL_DRAG);
   return (
-    <section className="mt-3">
-      <h2 className="mb-1 flex h-6 items-center justify-between px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-fg/70">
-        {title}
+    <section
+      className={cn("mt-3 rounded-lg transition-colors", over && "bg-white/10 ring-1 ring-white/25")}
+      onDragOver={(event) => {
+        if (!accepts(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        if (!over) setOver(true);
+      }}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); }}
+      onDrop={(event) => {
+        setOver(false);
+        const id = accepts(event) ? event.dataTransfer.getData(CHANNEL_DRAG) : "";
+        if (!id) return;
+        event.preventDefault();
+        onDropChannel?.(id);
+      }}
+    >
+      <h2 className="mb-1 flex h-6 items-center justify-between gap-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-fg/70">
+        {onToggle ? (
+          <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="-ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left uppercase hover:text-sidebar-fg">
+            {collapsed ? <ChevronRight size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+            {icon}
+            <span className="truncate">{title}</span>
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1 truncate">{icon}{title}</span>
+        )}
         {action}
       </h2>
       {children}

@@ -523,11 +523,13 @@ export class ApiClient {
 
   // --- sidebar sections (M14f): every call returns my whole list ---------------------------
 
-  createSidebarSection(name: string): Promise<SidebarSectionOut[]> {
-    return this.request("POST", "/api/v1/sidebar/sections", { name });
+  /** M26: with its icon and the conversations to put in it (moved from other sections). */
+  createSidebarSection(body: { name: string; emoji?: string | null; channel_ids?: string[] }): Promise<SidebarSectionOut[]> {
+    return this.request("POST", "/api/v1/sidebar/sections", body);
   }
 
-  updateSidebarSection(sectionId: string, patch: { name?: string; position?: number }): Promise<SidebarSectionOut[]> {
+  /** Only what is sent changes; `emoji: null` takes the icon off. */
+  updateSidebarSection(sectionId: string, patch: { name?: string; emoji?: string | null; collapsed?: boolean; position?: number }): Promise<SidebarSectionOut[]> {
     return this.request("PATCH", `/api/v1/sidebar/sections/${sectionId}`, patch);
   }
 
