@@ -17,6 +17,7 @@ import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
+import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.MessageOut
@@ -296,6 +297,17 @@ class FakeServer {
     fun emitEmoji(row: CustomEmojiOut, deleted: Boolean) {
         if (deleted) customEmoji.remove(row.name) else customEmoji[row.name] = row
         emit(users.keys.toSet(), event("emoji.updated", null, null, buildJsonObject { put("emoji", Codec.snake.encodeToJsonElement(CustomEmojiOut.serializer(), row)); put("deleted", deleted) }))
+    }
+
+    /** M23: the lab roster by user id (bootstrap `roster`, roster.updated to everyone). */
+    val roster = LinkedHashMap<String, LabProfileOut>()
+
+    fun setRosterLine(userId: String, profile: LabProfileOut?) {
+        if (profile != null) roster[userId] = profile else roster.remove(userId)
+        emit(users.keys.toSet(), event("roster.updated", null, null, buildJsonObject {
+            put("user_id", userId)
+            put("profile", profile?.let { Codec.snake.encodeToJsonElement(LabProfileOut.serializer(), it) } ?: JsonNull)
+        }))
     }
 
     /** "user" → open reminders (M12e). */
@@ -689,6 +701,7 @@ class FakeServer {
             bookmarks[userId]?.toList() ?: emptyList(),
             favorites = (favorites[userId] ?: emptyList()).filter { id -> channels[id]?.members?.contains(userId) == true },
             customEmoji = customEmoji.values.toList(),
+            roster = roster.values.toList(),
             drafts = draftsOf(userId),
         )
     }

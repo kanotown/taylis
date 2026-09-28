@@ -42,11 +42,15 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** The profile card (M11d): display name, @username, title, custom status, presence, and 「メッセージを送る」. */
+/**
+ * The profile card (M11d): display name, @username, title, custom status, presence, and 「メッセージを送る」; for people on
+ * the lab roster (M23) also 「M1 · 指導教員: …」 and the research topic.
+ */
 @Composable
 fun ProfileDialog(controller: AppController, userId: String, onDismiss: () -> Unit, onOpenDm: (String) -> Unit) {
     val store = controller.store
     val user = store.users[userId]
+    val line = store.roster[userId]
     val isMe = store.me?.id == userId
     val presence = store.presenceOf(userId)
     val status = activeStatus(user)
@@ -71,6 +75,16 @@ fun ProfileDialog(controller: AppController, userId: String, onDismiss: () -> Un
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (Dnd.isActive(user)) {
                             Text("🔕 通知を一時停止中" + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (line != null) {
+                    Column(Modifier.padding(top = 12.dp)) {
+                        Roster.summary(line, store.users).takeIf { it.isNotEmpty() }?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        }
+                        line.researchTopic?.takeIf { it.isNotBlank() }?.let {
+                            Text("研究テーマ: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

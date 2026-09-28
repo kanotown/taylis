@@ -569,6 +569,17 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         try await request("DELETE", "/api/v1/sidebar/channels/\(channelId)")
     }
 
+    // MARK: lab roster (M23)
+
+    /// My research topic and reading; nil clears a field (404 roster_entry_not_found while I am not on the roster).
+    /// Both are always sent, as the desktop does; the rest of the line is the administrators'.
+    func updateMyRosterLine(researchTopic: String?, reading: String?) async throws -> LabProfileOut {
+        try await request("PATCH", "/api/v1/lab/roster/me", body: .object([
+            "research_topic": researchTopic.map(JSONValue.string) ?? .null,
+            "reading": reading.map(JSONValue.string) ?? .null,
+        ]))
+    }
+
     // MARK: polls (M14b)
 
     func vote(messageId: String, option: Int, present: Bool) async throws -> MessageOut {

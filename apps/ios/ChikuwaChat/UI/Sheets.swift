@@ -183,6 +183,14 @@ struct ChannelInfoView: View {
         do { members = try await api.members(channelId: channelId) } catch { controller.error = controller.describe(error) }
     }
 
+    /// M23: roster order when either person is on the lab roster, else by name (members not in the store go last).
+    private func sortedMembers(_ members: [MemberOut]) -> [MemberOut] {
+        let store = controller.store
+        let known = Roster.sorted(members.compactMap { store.users[$0.userId] }, store.roster) { $0.displayName < $1.displayName }
+        let byId = Dictionary(members.map { ($0.userId, $0) }, uniquingKeysWith: { first, _ in first })
+        return known.compactMap { byId[$0.id] } + members.filter { store.users[$0.userId] == nil }
+    }
+
     private var convertTitle: String {
         channel?.channel.type == "public" ? "非公開チャンネルに変換しますか？" : "公開チャンネルに変換しますか？"
     }
@@ -318,7 +326,7 @@ struct ChannelInfoView: View {
                     }
                     Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
                         if let members {
-                            ForEach(members.sorted { (store.users[$0.userId]?.displayName ?? "") < (store.users[$1.userId]?.displayName ?? "") }, id: \.userId) { member in
+                            ForEach(sortedMembers(members), id: \.userId) { member in
                                 let user = store.users[member.userId]
                                 let presence = store.presenceOf(member.userId)
                                 Button { profileUserId = member.userId } label: {
@@ -333,6 +341,7 @@ struct ChannelInfoView: View {
                                         }
                                         Spacer()
                                         if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
+                                        if let line = store.roster[member.userId] { RosterBadge(profile: line) }
                                         if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
                                     }
                                 }
@@ -398,6 +407,19 @@ struct SettingsView: View {
         Array(keywords.split(whereSeparator: { $0 == "," || $0 == "、" || $0 == "\n" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(20))
     }
     private var keywordsChanged: Bool { parsedKeywords != (controller.store.me?.notifyKeywords ?? []) }
+    // M23: my research topic and reading, when an administrator has put me on the lab roster (the rest of the line is
+    // theirs). Trimmed and empty-as-nil, as the server stores them.
+    @State private var topic = ""
+    @State private var reading = ""
+    private var rosterLine: LabProfileOut? { me.flatMap { controller.store.roster[$0.id] } }
+    private static func cleaned(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+    private var lineChanged: Bool {
+        guard let line = rosterLine else { return false }
+        return Self.cleaned(topic) != line.researchTopic || Self.cleaned(reading) != line.reading
+    }
     @State private var nameSaved = false
     @State private var editingStatus = false
     @State private var avatarItem: PhotosPickerItem?
@@ -481,6 +503,18 @@ struct SettingsView: View {
                             .onChange(of: displayName) { _, _ in nameSaved = false }
                         TextField("肩書 (任意)", text: $title)
                             .onChange(of: title) { _, _ in nameSaved = false }
+                        if rosterLine != nil {
+                            // Labelled: a filled よみ alone ("たなか") would not say what it is. The server's limits
+                            // (MyLabProfileUpdate): 200 and 80 characters.
+                            LabeledContent("研究テーマ") {
+                                TextField("任意", text: $topic)
+                                    .onChange(of: topic) { _, value in nameSaved = false; if value.count > 200 { topic = String(value.prefix(200)) } }
+                            }
+                            LabeledContent("よみ") {
+                                TextField("任意、名簿の並び順に使います", text: $reading)
+                                    .onChange(of: reading) { _, value in nameSaved = false; if value.count > 80 { reading = String(value.prefix(80)) } }
+                            }
+                        }
                         TextField("通知キーワード (任意、コンマ区切り)", text: $keywords)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .onChange(of: keywords) { _, _ in nameSaved = false }
@@ -494,11 +528,12 @@ struct SettingsView: View {
                                     if name != me.displayName { ok = await controller.updateDisplayName(name) }
                                     if ok, (newTitle.isEmpty ? nil : newTitle) != me.title { ok = await controller.updateProfile(title: .some(newTitle.isEmpty ? nil : newTitle)) }
                                     if ok, keywordsChanged { ok = await controller.updateProfile(notifyKeywords: parsedKeywords) }
+                                    if ok, lineChanged { ok = await controller.updateMyRosterLine(researchTopic: Self.cleaned(topic), reading: Self.cleaned(reading)) }
                                     nameSaved = ok
                                     busy = false
                                 }
                             }
-                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || (displayName.trimmingCharacters(in: .whitespaces) == me.displayName && (title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : title.trimmingCharacters(in: .whitespaces)) == me.title && !keywordsChanged))
+                            .disabled(busy || displayName.trimmingCharacters(in: .whitespaces).isEmpty || (displayName.trimmingCharacters(in: .whitespaces) == me.displayName && (title.trimmingCharacters(in: .whitespaces).isEmpty ? nil : title.trimmingCharacters(in: .whitespaces)) == me.title && !keywordsChanged && !lineChanged))
                             if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
                         }
                     }
@@ -582,7 +617,16 @@ struct SettingsView: View {
                     Task { _ = await controller.uploadAvatar(data: jpeg, contentType: "image/jpeg") }
                 }
             }
-            .onAppear { displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ") }
+            .onAppear {
+                displayName = me?.displayName ?? ""; title = me?.title ?? ""; keywords = (me?.notifyKeywords ?? []).joined(separator: ", ")
+                topic = rosterLine?.researchTopic ?? ""; reading = rosterLine?.reading ?? ""
+            }
+            .onChange(of: rosterLine) { old, new in
+                // The line came with a later bootstrap or changed on another device: a field not edited here follows it,
+                // so saving the rest of the profile never writes an old value back.
+                if Self.cleaned(topic) == old?.researchTopic { topic = new?.researchTopic ?? "" }
+                if Self.cleaned(reading) == old?.reading { reading = new?.reading ?? "" }
+            }
         }
     }
 }

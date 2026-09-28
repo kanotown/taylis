@@ -216,6 +216,17 @@ class ApiClient(
     /** M11d: profile card fields; JsonNull clears a field, omitted fields keep their value. */
     suspend fun updateProfile(fields: JsonObject): UserMe = request("PATCH", "/api/v1/users/me", fields)
 
+    /**
+     * M23: my research topic and reading on the lab roster (404 roster_entry_not_found while I am not on it). Both are
+     * always sent, null as JSON null: an omitted field keeps its value on the server, and a data class body would lose
+     * its nulls to `explicitNulls = false`.
+     */
+    suspend fun updateMyRosterLine(researchTopic: String?, reading: String?): LabProfileOut =
+        request("PATCH", "/api/v1/lab/roster/me", buildJsonObject {
+            put("research_topic", researchTopic)
+            put("reading", reading)
+        })
+
     suspend fun members(channelId: String): List<MemberOut> = request("GET", "/api/v1/channels/$channelId/members")
 
     suspend fun addMember(channelId: String, userId: String): MemberOut =

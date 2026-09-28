@@ -233,7 +233,11 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                 SectionLabel("メンバー" + (members?.let { " (${it.size})" } ?: ""))
                 when (val list = members) {
                     null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else -> list.sortedBy { store.users[it.userId]?.displayName ?: "" }.forEach { member ->
+                    // M23: people on the lab roster first in roster order (with their label), then the others by name
+                    // (someone not loaded yet as a nameless member off the roster).
+                    else -> list.sortedWith(compareBy(Roster.listOrder(store.roster, compareBy { it.displayName })) {
+                        store.users[it.userId] ?: UserPublic(it.userId, "", "", "member", createdAt = "", updatedAt = "")
+                    }).forEach { member ->
                         val user = store.users[member.userId]
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             val presence = store.presenceOf(member.userId)
@@ -242,6 +246,7 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(user?.displayName ?: "?")
                                     StatusEmoji(user, modifier = Modifier.padding(start = 6.dp))
+                                    store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
                                 }
                                 Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -336,6 +341,12 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
     var keywords by remember { mutableStateOf((me?.notifyKeywords ?: emptyList()).joinToString(", ")) }
     val parsedKeywords: List<String> = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
     val keywordsChanged = parsedKeywords != (me?.notifyKeywords ?: emptyList<String>())
+    // M23: my research topic and reading, only when an administrator has put me on the lab roster (keyed on that, so
+    // the fields start from my line whenever it appears).
+    val line = me?.let { controller.store.roster[it.id] }
+    var topic by remember(line == null) { mutableStateOf(line?.researchTopic ?: "") }
+    var reading by remember(line == null) { mutableStateOf(line?.reading ?: "") }
+    val lineChanged = line != null && (topic.trim().ifEmpty { null } != line.researchTopic || reading.trim().ifEmpty { null } != line.reading)
     var nameSaved by remember { mutableStateOf(false) }
     var editingStatus by remember { mutableStateOf(false) }
     if (editingStatus) {
@@ -400,10 +411,20 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                 SectionLabel("プロフィール")
                 OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(title, { title = it.take(80); nameSaved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                if (line != null) {
+                    OutlinedTextField(
+                        topic, { topic = it.take(200); nameSaved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    )
+                    OutlinedTextField(
+                        reading, { reading = it.take(80); nameSaved = false }, label = { Text("よみ (任意、名簿の並び順に使います)") }, placeholder = { Text("例: かのう とおる") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    )
+                }
                 OutlinedTextField(keywords, { keywords = it; nameSaved = false }, label = { Text("通知キーワード (任意、コンマ区切り)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
-                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title || keywordsChanged),
+                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title || keywordsChanged || lineChanged),
                         onClick = {
                             scope.launch {
                                 busy = true
@@ -411,6 +432,7 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                                 if (displayName.trim() != me?.displayName) ok = controller.updateDisplayName(displayName)
                                 if (ok && title.trim().ifEmpty { null } != me?.title) ok = controller.updateProfile(mapOf("title" to title.trim().ifEmpty { null }))
                                 if (ok && keywordsChanged) ok = controller.updateProfileJson(buildJsonObject { put("notify_keywords", buildJsonArray { parsedKeywords.forEach { add(JsonPrimitive(it)) } }) })
+                                if (ok && lineChanged) ok = controller.updateMyRosterLine(topic.trim().ifEmpty { null }, reading.trim().ifEmpty { null })
                                 nameSaved = ok
                                 busy = false
                             }

@@ -920,6 +920,17 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    /// M23: my research topic and reading on the lab roster; the store takes the saved line at once (roster.updated
+    /// brings it to my other devices).
+    func updateMyRosterLine(researchTopic: String?, reading: String?) async -> Bool {
+        guard let api else { return false }
+        do {
+            let line = try await api.updateMyRosterLine(researchTopic: researchTopic, reading: reading)
+            store.applyRoster(line.userId, line)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
     /// Open (or create) the DM with one user; returns its channel id.
     func openDmWith(_ userId: String) async -> String? {
         guard let api else { return nil }

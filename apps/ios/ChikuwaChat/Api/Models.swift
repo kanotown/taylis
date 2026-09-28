@@ -329,6 +329,8 @@ struct BootstrapOut: Codable {
     var customEmoji: [CustomEmojiOut]? = nil
     /// User groups (M12k): every group with its members; changes arrive as group.updated.
     var groups: [GroupOut]? = nil
+    /// The lab roster (M23) in roster order; changes arrive as roster.updated. Missing from older servers.
+    var roster: [LabProfileOut]? = nil
     /// My sidebar sections (M14f); changes arrive as sidebar.updated.
     var sidebarSections: [SidebarSectionOut]? = nil
     /// My drafts shared by my devices (M15d); changes arrive as draft.updated.
@@ -378,6 +380,41 @@ struct GroupOut: Codable, Identifiable, Equatable {
     var memberIds: [String] = []
     let createdBy: String
     let createdAt: String
+    let updatedAt: String
+    /// M23: kept from the lab roster by the server (faculty, students, m1 …); administrators cannot edit it by hand.
+    var managed: Bool = false
+
+    enum CodingKeys: String, CodingKey { case id, name, description, memberIds, createdBy, createdAt, updatedAt, managed }
+}
+
+extension GroupOut {
+    /// `managed` (M23) is missing from older servers; a synthesized decoder would reject the whole bootstrap for it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        memberIds = try c.decodeIfPresent([String].self, forKey: .memberIds) ?? []
+        createdBy = try c.decode(String.self, forKey: .createdBy)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        updatedAt = try c.decode(String.self, forKey: .updatedAt)
+        managed = try c.decodeIfPresent(Bool.self, forKey: .managed) ?? false
+    }
+}
+
+/// One line of the lab roster (M23, DATA_MODEL.md lab_profiles): for display and grouping only, never for permissions.
+/// `affiliation` (faculty | student | alumni | other), `rank` (faculty only) and `grade` (students only) stay strings so
+/// a value a newer server adds still decodes; Roster sorts it after the known ones.
+struct LabProfileOut: Codable, Equatable {
+    let userId: String
+    let affiliation: String
+    var rank: String? = nil
+    var grade: String? = nil
+    /// The supervising teacher (someone on the roster as faculty).
+    var supervisorId: String? = nil
+    /// 研究テーマ and よみ: the person edits these on their own line (PATCH /lab/roster/me).
+    var researchTopic: String? = nil
+    var reading: String? = nil
     let updatedAt: String
 }
 
