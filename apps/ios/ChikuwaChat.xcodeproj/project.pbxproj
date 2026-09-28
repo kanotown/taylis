@@ -30,6 +30,7 @@
 		33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC121C06BFAA7AB89AC54106 /* DNDTests.swift */; };
 		34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */; };
 		380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCAE33D55025EFA146CADC2 /* MentionsView.swift */; };
+		4445EC17948BAF11C3A7DCF7 /* KeyboardBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */; };
 		48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523DFDB1261A9B828CA81605 /* MainView.swift */; };
 		48C7FDA6E58AED3E9E04985A /* Mentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E494C7AA73C2DCB826BFF98 /* Mentions.swift */; };
 		4A200550DAB5D48B6138873E /* ChannelLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A98B6538AD4A468120DB91A /* ChannelLinks.swift */; };
@@ -67,6 +68,7 @@
 		96C9628A91945A999FBF1930 /* ReadAnchorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E07A0F52A69CE44C46D2213A /* ReadAnchorTests.swift */; };
 		96F9C758ED3FAB648F703260 /* DraftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EC40A71175595521F5E564 /* DraftsView.swift */; };
 		995E4F17B336663DCCF7D424 /* RevisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411D0F28175679909161F694 /* RevisionsView.swift */; };
+		9A431502E494454B5949098C /* KeyboardBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D44C8BF1DDCB4820DC752 /* KeyboardBehavior.swift */; };
 		9E7035C4099857904103250B /* AttachmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0331E3481EE3CCEC391E1E4 /* AttachmentsView.swift */; };
 		9FBA5F10614875FDAE440DCC /* ScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */; };
 		A03EA59917F14D6087656DE5 /* DND.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0979C692C57AD564B5051EAC /* DND.swift */; };
@@ -148,6 +150,7 @@
 		342A0B1BCD9379AB86C4B521 /* Emoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Emoji.swift; sourceTree = "<group>"; };
 		39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteStore.swift; sourceTree = "<group>"; };
 		3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTests.swift; sourceTree = "<group>"; };
+		3D8D44C8BF1DDCB4820DC752 /* KeyboardBehavior.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehavior.swift; sourceTree = "<group>"; };
 		3F7662F23ED981268EBFB0F8 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
 		411D0F28175679909161F694 /* RevisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevisionsView.swift; sourceTree = "<group>"; };
 		41D8FE044BFBF564E1DC7816 /* LinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinksTests.swift; sourceTree = "<group>"; };
@@ -218,6 +221,7 @@
 		BC121C06BFAA7AB89AC54106 /* DNDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNDTests.swift; sourceTree = "<group>"; };
 		C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChikuwaChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1B1B9CFD4F32337DCDC0CCA /* contract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = contract; path = ../../server/tests/contract; sourceTree = SOURCE_ROOT; };
+		C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehaviorTests.swift; sourceTree = "<group>"; };
 		C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCache.swift; sourceTree = "<group>"; };
 		C5B17C0044CEFA7773C29BDC /* Permalink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permalink.swift; sourceTree = "<group>"; };
 		CA98EE4F635D9C1BC5DA1661 /* Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Search.swift; sourceTree = "<group>"; };
@@ -342,6 +346,7 @@
 				AEEE327A40F68B8450858B9E /* EmojiTests.swift */,
 				048A41BC92EAD6644AFA7294 /* FakeServer.swift */,
 				0FB071937EF97C9E53923BC8 /* InviteTests.swift */,
+				C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */,
 				41D8FE044BFBF564E1DC7816 /* LinksTests.swift */,
 				13B6130C50876B86E11534F6 /* LiveBackendTests.swift */,
 				57F79027247AC5F2ACC79DFE /* MentionsTests.swift */,
@@ -392,6 +397,7 @@
 				5396B11E764B50A589735215 /* ImageViewer.swift */,
 				44AD78A04AB0A93B55D3FBD1 /* Invite.swift */,
 				DD69D59780770BA776367B43 /* InviteView.swift */,
+				3D8D44C8BF1DDCB4820DC752 /* KeyboardBehavior.swift */,
 				EE53857316C0711ABC592BE3 /* LinkPreviewCard.swift */,
 				B6F932BF9BB0A8A14CD47EF7 /* LoginView.swift */,
 				523DFDB1261A9B828CA81605 /* MainView.swift */,
@@ -571,6 +577,7 @@
 				C3D7A8E5ED5B565412D4A51A /* EmojiTests.swift in Sources */,
 				870A22BBBA909116002B711D /* FakeServer.swift in Sources */,
 				8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */,
+				4445EC17948BAF11C3A7DCF7 /* KeyboardBehaviorTests.swift in Sources */,
 				DFB917EDBAFE20528E406E4C /* LinksTests.swift in Sources */,
 				1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */,
 				73256CC2F95C92D250D34D1B /* MentionsTests.swift in Sources */,
@@ -630,6 +637,7 @@
 				500A85FC8BEF5289D246D082 /* Invite.swift in Sources */,
 				6DC0827C57E10671F0A0B7E3 /* InviteView.swift in Sources */,
 				23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */,
+				9A431502E494454B5949098C /* KeyboardBehavior.swift in Sources */,
 				214B994514BE464424A29889 /* Keychain.swift in Sources */,
 				CB580DDF4A008845D30F4F2F /* LinkPreviewCard.swift in Sources */,
 				A08D418A6147AFDDCBB082B3 /* LoginView.swift in Sources */,

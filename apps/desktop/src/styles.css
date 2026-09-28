@@ -58,8 +58,9 @@
 }
 
 @layer base {
-  /* The app shell never scrolls as a page: only the sidebar, the timeline and the panes scroll. */
-  html, body, #root { height: 100%; overflow: hidden; }
+  /* The app shell never scrolls as a page: only the sidebar, the timeline and the panes scroll. On a phone it is as
+     tall as what the keyboard leaves (--app-height, platform/viewport.ts). */
+  html, body, #root { height: var(--app-height, 100%); overflow: hidden; }
   body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -96,10 +97,15 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 /* Highlight of a message revealed from search */
 @keyframes message-highlight { from { background: var(--mark); } to { background: transparent; } }
 .message.highlighted { animation: message-highlight 3s ease-out; }
-/* Hover shows the action bar; keyboard focus keeps it, but a mouse click on one of its buttons must not pin it. */
-.message:hover .row-actions, .message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
+/* Hover shows the action bar; keyboard focus keeps it, but a mouse click on one of its buttons must not pin it. Only
+   where there is a real hover: iOS Safari keeps a tapped row "hovered", and its actions popped up after a tap that was
+   only meant to close the keyboard (touch screens show them on focus, below). */
+.message:has(:focus-visible) .row-actions { opacity: 1; pointer-events: auto; }
 .message .time-hover { visibility: hidden; }
-.message:hover .time-hover { visibility: visible; }
+@media (hover: hover) {
+  .message:hover .row-actions { opacity: 1; pointer-events: auto; }
+  .message:hover .time-hover { visibility: visible; }
+}
 /* Touch screens have no hover: a tap focuses the message (tabIndex), which shows its actions and time. */
 @media (hover: none) {
   .message:focus-within { background-color: var(--panel); }

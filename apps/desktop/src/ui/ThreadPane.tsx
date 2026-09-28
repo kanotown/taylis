@@ -5,6 +5,7 @@ import type { MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { firstUnreadRow, passedUnseen } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
+import { tapClosesKeyboard } from "../platform/viewport";
 import { Composer } from "./Composer";
 import { rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
@@ -27,6 +28,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const state = entry?.state;
   const focused = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const [tapHandlers] = useState(() => tapClosesKeyboard());
   const lastReplyId = replies[replies.length - 1]?.id;
   const me = store.me?.id;
   // §10.2: ready once the whole thread was fetched here (the engine forgets that when the channel's messages are
@@ -177,7 +179,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <X size={18} />
         </IconButton>
       </header>
-      <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2" {...tapHandlers}>
         {parent ? (
           <>
             <MessageRow thread message={parent} controller={controller} />

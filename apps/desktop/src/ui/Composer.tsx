@@ -1,9 +1,10 @@
 import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, X } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState, SendOptions } from "../sync/types";
+import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
@@ -61,13 +62,28 @@ export function Composer({
   const composing = useRef(false);
   const composedAt = useRef(0);
   const area = useRef<HTMLTextAreaElement>(null);
-  // Grow with the draft (lists and code blocks span several lines) up to a cap, then scroll.
+  // Grow with the draft (lists and code blocks span several lines) up to a cap, then scroll. On a phone the cap follows
+  // what the keyboard leaves (platform/viewport.ts), also when the keyboard comes or goes.
+  const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height ?? 0);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => setViewportHeight(viewport.height);
+    viewport.addEventListener("resize", update);
+    return () => viewport.removeEventListener("resize", update);
+  }, []);
   useLayoutEffect(() => {
     const el = area.current;
     if (!el || preview) return;
+    // Measuring collapses the text area for a moment; its box keeps its height meanwhile, or the timeline above would
+    // grow, lose its bottom to the browser's clamping and jump on every keystroke.
+    const box = el.parentElement;
+    const held = box?.style.minHeight ?? "";
+    if (box) box.style.minHeight = `${box.offsetHeight}px`;
     el.style.height = "auto";
-    if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
-  }, [text, preview]);
+    if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
+    if (box) box.style.minHeight = held;
+  }, [text, preview, viewportHeight]);
   const query = mentionQuery(text, caret);
   const candidates = query ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
   // `:tada` completes to an emoji (M11f) when no mention is being typed.
