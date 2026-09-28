@@ -146,9 +146,15 @@ data class ChannelOut(
     val memberCount: Int? = null,
     /** M15a: "owners" = an announcement channel (only owners and admins start top-level posts). */
     val postingPolicy: String? = null,
+    /**
+     * M24: whose times (work log) this channel is; null for other channels. Channels persisted before M24 lack it
+     * and read as null until the next bootstrap or channel event brings the value.
+     */
+    val timesOwnerId: String? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
     val isAnnouncement: Boolean get() = postingPolicy == "owners"
+    val isTimes: Boolean get() = timesOwnerId != null
 }
 
 @Serializable

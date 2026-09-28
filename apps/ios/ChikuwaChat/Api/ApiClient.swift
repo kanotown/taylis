@@ -199,6 +199,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
 
     func joinChannel(id: String) async throws -> ChannelOut { try await request("POST", "/api/v1/channels/\(id)/join", body: .object([:])) }
 
+    /// M24: my times, made on the first call (201) and returned afterwards (200).
+    func ensureTimes() async throws -> ChannelOut { try await request("POST", "/api/v1/times", body: .object([:])) }
+
     func leaveChannel(id: String) async throws {
         _ = try await requestRaw("POST", "/api/v1/channels/\(id)/leave", body: .object([:]), auth: true, retry401: true)
     }

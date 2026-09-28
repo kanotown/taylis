@@ -179,6 +179,9 @@ class ApiClient(
 
     suspend fun joinChannel(id: String): ChannelOut = request("POST", "/api/v1/channels/$id/join", buildJsonObject {})
 
+    /** M24: my times, made on the first call (201) and returned afterwards (200); 403 for guests. */
+    suspend fun ensureTimes(): ChannelOut = request("POST", "/api/v1/times", buildJsonObject {})
+
     /** M11h: leaving answers 204, so nothing is decoded. */
     suspend fun leaveChannel(id: String) {
         requestRaw("POST", "/api/v1/channels/$id/leave", buildJsonObject {}, auth = true, retry401 = true)

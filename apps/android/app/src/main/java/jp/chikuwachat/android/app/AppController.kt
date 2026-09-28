@@ -916,6 +916,14 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
+    /**
+     * M24: my times (made on the first call; the supervisors on the roster join it); returns its id to open, or null
+     * with the reason in `error`. The server's channel.created follows and is merged into the same row.
+     */
+    suspend fun ensureTimes(): String? = attempt {
+        store.upsertChannel(api!!.ensureTimes(), isMember = true).id
+    }.getOrElse { error = describe(it); null }
+
     // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated -----
 
     suspend fun editMessage(messageId: String, body: String): Result<Unit> =

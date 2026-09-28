@@ -241,4 +241,38 @@ class ApiClientTest {
         assertEquals(listOf(jp.chikuwachat.android.api.MessageRevisionOut("old", "2026-09-27T00:00:00Z", "2026-09-27T00:05:00Z")), rows)
         assertEquals(listOf("/api/v1/messages/m1/revisions"), paths)
     }
+
+    @Test fun ensureTimesPostsAndDecodesMyTimes() = runBlocking { // M24
+        val calls = ArrayList<String>()
+        var made = false
+        val client = ApiClient("http://server", stubbed { request ->
+            calls.add(request.method + " " + request.url.encodedPath)
+            val status = if (made) 200 else 201 // made on the first call, returned afterwards
+            made = true
+            status to """{"id":"c9","type":"public","name":"times-alice","topic":null,"purpose":"Alice の作業ログ","archived":false,"created_by":"u",
+                "last_seq":0,"last_message_at":null,"created_at":"2026-09-28T00:00:00Z","updated_at":"2026-09-28T00:00:00Z",
+                "membership":{"role":"owner","joined_at":"2026-09-28T00:00:00Z"},"dm_user_ids":null,"member_count":2,"posting_policy":"everyone",
+                "times_owner_id":"u"}"""
+        })
+        client.accessToken = "a"
+        val first = client.ensureTimes()
+        val again = client.ensureTimes()
+        assertEquals(listOf("POST /api/v1/times", "POST /api/v1/times"), calls)
+        assertEquals("u", first.timesOwnerId)
+        assertEquals("owner", first.membership?.role)
+        assertEquals(first, again)
+
+        // The controller keeps it as a joined channel: it lands in the Times section, not among the channels.
+        val store = jp.chikuwachat.android.sync.Store()
+        store.upsertChannel(first, isMember = true)
+        val sections = jp.chikuwachat.android.ui.Channels.sections(store.channels.values, meId = "u")
+        assertEquals(listOf("c9"), sections.times.map { it.id })
+        assertTrue(sections.channels.isEmpty())
+    }
+
+    @Test fun ensureTimesRefusalIsAnApiError() = runBlocking { // M24: guests cannot have a times
+        val client = ApiClient("http://server", stubbed { 403 to """{"error":{"code":"guest_restricted","message":"Guests cannot do this","details":{}}}""" })
+        client.accessToken = "a"
+        try { client.ensureTimes(); fail("expected failure") } catch (e: ApiException.Api) { assertEquals("guest_restricted", e.code); assertEquals(403, e.status) }
+    }
 }

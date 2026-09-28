@@ -118,9 +118,12 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     var memberCount: Int? = nil
     /// M15a: "owners" = an announcement channel (only owners and admins start top-level posts).
     var postingPolicy: String? = nil
+    /// M24: whose times (work log) this is; nil for other channels, and from servers before M24 that omit it.
+    var timesOwnerId: String? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
     var isAnnouncement: Bool { postingPolicy == "owners" }
+    var isTimes: Bool { timesOwnerId != nil }
 }
 
 struct NotificationPreferenceOut: Codable, Equatable {
