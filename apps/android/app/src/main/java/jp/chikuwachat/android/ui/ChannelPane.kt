@@ -671,6 +671,13 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 Text("外す", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { priority = null; ackRequested = false })
             }
         }
+        // 「アンケートを作成」 (testers): from the attachment menu, or /poll alone.
+        var pollOpen by remember { mutableStateOf(false) }
+        if (pollOpen) PollDialog(
+            onDismiss = { pollOpen = false },
+            onCreate = { question, options, multiple -> controller.createPoll(channelId, parentId, question, options, multiple) },
+            launch = { work -> controller.scope.launch { work() } },
+        )
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             var attachmentMenu by remember { mutableStateOf(false) }
             Box {
@@ -681,6 +688,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                         mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                     })
                     DropdownMenuItem(text = { Text("ファイル") }, onClick = { attachmentMenu = false; picker.launch("*/*") })
+                    DropdownMenuItem(text = { Text("アンケート") }, onClick = { attachmentMenu = false; pollOpen = true })
                 }
             }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
@@ -752,6 +760,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     SlashCommands.parse(draft)?.let { command ->  // M13b
                         if (!command.known) { controller.error = "/${command.name} というコマンドはありません (/help で一覧)"; return@IconButton }
                         store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                        if (command.name == "poll" && command.args.isBlank()) { pollOpen = true; return@IconButton }
                         controller.scope.launch { controller.runCommand(command, channelId, parentId) }
                         return@IconButton
                     }
