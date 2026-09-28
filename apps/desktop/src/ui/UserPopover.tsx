@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
 import { useStoreUpdates } from "./hooks";
+import { rosterSummary } from "./roster";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
@@ -23,6 +24,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
   const me = store.me?.id === userId;
   const presence = store.presenceOf(userId);
   const status = activeStatus(user);
+  const line = store.roster.get(userId); // M23
   const openDm = async () => {
     const id = await controller.openDmWith(userId);
     if (id) {
@@ -51,6 +53,12 @@ export function UserPopover({ controller, userId, children, className }: { contr
             )}
           </div>
         </div>
+        {line && (
+          <div className="space-y-0.5 border-b border-line px-4 py-2.5 text-xs">
+            <div className="font-medium text-ink">{rosterSummary(line, store.users)}</div>
+            {line.research_topic && <div className="text-muted">研究テーマ: {line.research_topic}</div>}
+          </div>
+        )}
         {status && (
           <div className="border-b border-line px-4 py-2.5 text-sm">
             <span className="mr-1.5">{status.emoji}</span>

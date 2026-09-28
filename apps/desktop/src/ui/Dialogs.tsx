@@ -10,6 +10,7 @@ import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 import { type SendKey } from "./prefs";
+import { compareByRoster, rosterLabel } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
 interface DialogProps {
@@ -211,6 +212,7 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
     void controller.api.members(channel.id).then(setMembers, (error) => controller.setError(error));
   }, [controller, channel.id]);
   const users = controller.store.users;
+  const roster = controller.store.roster;
   return (
     <Modal onClose={onClose} title={`メンバー${members ? ` (${members.length})` : ""}`}>
       <div className="mt-4 space-y-3">
@@ -220,7 +222,8 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
           <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line">
             {members
               .map((m) => ({ member: m, user: users.get(m.user_id) }))
-              .sort((a, b) => (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja"))
+              // M23: roster order when either is on the lab roster, else by name.
+              .sort((a, b) => (a.user && b.user && (roster.has(a.user.id) || roster.has(b.user.id)) ? compareByRoster(a.user, b.user, roster) : (a.user?.display_name ?? "").localeCompare(b.user?.display_name ?? "", "ja")))
               .map(({ member, user }) => (
                 <li key={member.user_id} className="flex items-center gap-3 px-3 py-2 text-sm">
                   <UserPopover controller={controller} userId={member.user_id} className="flex min-w-0 flex-1 items-center gap-3">
@@ -234,6 +237,7 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
                   {controller.store.presenceOf(member.user_id) !== "offline" && (
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}
+                  {roster.get(member.user_id) && <Badge>{rosterLabel(roster.get(member.user_id)!)}</Badge>}
                   {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
                   {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>ゲスト</Badge>}
                   {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
@@ -324,6 +328,11 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   const [title, setTitle] = useState(me?.title ?? "");
   // M12g: notification keywords, edited as a comma-separated line.
   const [keywords, setKeywords] = useState((me?.notify_keywords ?? []).join(", "));
+  // M23: my research topic and reading, when an administrator has put me on the lab roster.
+  const line = me ? controller.store.roster.get(me.id) : undefined;
+  const [topic, setTopic] = useState(line?.research_topic ?? "");
+  const [reading, setReading] = useState(line?.reading ?? "");
+  const lineChanged = !!line && ((topic.trim() || null) !== (line.research_topic ?? null) || (reading.trim() || null) !== (line.reading ?? null));
   const parsedKeywords = keywords.split(/[,、\n]/).map((k) => k.trim()).filter(Boolean).slice(0, 20);
   const keywordsChanged = JSON.stringify(parsedKeywords) !== JSON.stringify(me?.notify_keywords ?? []);
   const [savedName, setSavedName] = useState(false);
@@ -347,7 +356,8 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
     setBusy(true);
     const ok = (displayName.trim() !== me?.display_name ? await controller.updateDisplayName(displayName) : true)
       && ((title.trim() || null) !== (me?.title ?? null) ? await controller.updateProfile({ title: title.trim() || null }) : true)
-      && (keywordsChanged ? await controller.updateProfile({ notify_keywords: parsedKeywords }) : true);
+      && (keywordsChanged ? await controller.updateProfile({ notify_keywords: parsedKeywords }) : true)
+      && (lineChanged ? await controller.updateMyRosterLine({ research_topic: topic.trim() || null, reading: reading.trim() || null }) : true);
     setBusy(false);
     setSavedName(ok);
   };
@@ -425,12 +435,22 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
           <Field label="肩書 (任意)">
             <Input value={title} maxLength={80} placeholder="例: 開発 / 営業" onChange={(e) => { setTitle(e.target.value); setSavedName(false); }} />
           </Field>
+          {line && (
+            <>
+              <Field label="研究テーマ (任意)">
+                <Input value={topic} maxLength={200} placeholder="例: 拡散モデルによる音声合成" onChange={(e) => { setTopic(e.target.value); setSavedName(false); }} />
+              </Field>
+              <Field label="よみ (任意、名簿の並び順に使います)">
+                <Input value={reading} maxLength={80} placeholder="例: かのう とおる" onChange={(e) => { setReading(e.target.value); setSavedName(false); }} />
+              </Field>
+            </>
+          )}
           <Field label="通知キーワード (任意、コンマ区切り・20 個まで)">
             <Input value={keywords} placeholder="例: 加納, kano, リリース" onChange={(e) => { setKeywords(e.target.value); setSavedName(false); }} />
             <div className="mt-1 text-xs text-muted">本文に含まれると @メンションと同じように知らせます (大文字小文字は区別しません)</div>
           </Field>
           <div className="flex items-center gap-3">
-            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (displayName.trim() === me?.display_name && (title.trim() || null) === (me?.title ?? null) && !keywordsChanged)}>
+            <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (displayName.trim() === me?.display_name && (title.trim() || null) === (me?.title ?? null) && !keywordsChanged && !lineChanged)}>
               プロフィールを保存
             </Button>
             {savedName && <span className="text-xs text-muted">保存しました</span>}

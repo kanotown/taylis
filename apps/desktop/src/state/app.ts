@@ -12,7 +12,7 @@ import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from 
 import { scheduleLabel } from "../ui/schedule";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -787,6 +787,18 @@ export class AppController {
       this.me = me;
       this.store.setMe(me);
       this.store.upsertUser(me);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M23: my research topic and reading on the lab roster (roster.updated confirms on every device). */
+  async updateMyRosterLine(patch: MyLabProfileUpdate): Promise<boolean> {
+    if (!this.api || !this.store.me) return false;
+    try {
+      this.store.applyRoster(this.store.me.id, await this.api.updateMyRosterLine(patch));
       return true;
     } catch (error) {
       this.setError(error);

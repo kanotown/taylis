@@ -44,18 +44,26 @@ export function GroupsTab({ controller }: { controller: AppController }) {
               <div className="flex items-center gap-2">
                 <span className="truncate font-medium">@{group.name}</span>
                 <Badge>{group.member_ids.length} 人</Badge>
+                {group.managed && <Badge tone="accent">名簿から自動</Badge>}
               </div>
               <div className="truncate text-[11px] text-muted">
                 {group.description ? `${group.description} · ` : ""}
                 {group.member_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ") || "メンバーなし"}
               </div>
             </div>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(group)}>
-              <Pencil size={14} /> 編集
-            </Button>
-            <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setDeleting(group)}>
-              <Trash2 size={14} /> 削除
-            </Button>
+            {/* M23: a managed group follows the lab roster (the server refuses edits with 409 group_managed). */}
+            {group.managed ? (
+              <span className="shrink-0 text-[11px] text-muted">「名簿」タブで変更</span>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(group)}>
+                  <Pencil size={14} /> 編集
+                </Button>
+                <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setDeleting(group)}>
+                  <Trash2 size={14} /> 削除
+                </Button>
+              </>
+            )}
           </li>
         ))}
         {groups.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">グループはまだありません</li>}

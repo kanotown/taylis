@@ -9,10 +9,11 @@ import { fullTimestamp } from "./format";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
 import { InvitesTab } from "./InvitesTab";
+import { RosterTab } from "./RosterTab";
 import { WebhooksTab } from "./WebhooksTab";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 
-type Tab = "users" | "groups" | "invites" | "webhooks" | "channels" | "emoji";
+type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" | "emoji";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -23,6 +24,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
         {(
           [
             ["users", "ユーザー"],
+            ["roster", "名簿"],
             ["groups", "グループ"],
             ["invites", "招待"],
             ["webhooks", "Webhook"],
@@ -42,7 +44,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
           </button>
         ))}
       </div>
-      {tab === "users" ? <UsersTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+      {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
     </Modal>
   );
 }

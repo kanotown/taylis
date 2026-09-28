@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic } from "../src/api/types";
+import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut } from "../src/api/types";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
 import type { ChannelState, EventFrame, MessageState, OutboxItem, SendOptions } from "../src/sync/types";
@@ -485,6 +485,15 @@ export class FakeServer {
     return row;
   }
 
+  /** M23: the lab roster by user id (bootstrap `roster`, roster.updated). */
+  readonly roster = new Map<string, LabProfileOut>();
+
+  setRosterLine(userId: string, profile: LabProfileOut | null): void {
+    if (profile) this.roster.set(userId, profile);
+    else this.roster.delete(userId);
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "roster.updated", ts: now(), channel_id: null, seq: null, data: { user_id: userId, profile } });
+  }
+
   emitEmoji(row: CustomEmojiOut, deleted: boolean): void {
     if (deleted) this.customEmoji.delete(row.name);
     else this.customEmoji.set(row.name, row);
@@ -669,7 +678,7 @@ export class FakeServer {
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           custom_emoji: [...this.customEmoji.values()],
           groups: [],
-          roster: [],
+          roster: [...this.roster.values()],
           sidebar_sections: [],
           drafts: this.draftsOf(userId),
         };
