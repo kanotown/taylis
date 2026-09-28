@@ -31,7 +31,7 @@ import jp.chikuwachat.android.sync.Store
 
 val REACTION_PALETTE = listOf("👍", "❤️", "😂", "🎉", "👀", "✅")
 
-/** Long-press menu on a message: quick reactions, edit (author) and delete (author / admin). */
+/** Long-press menu on a message: quick reactions, reply, edit (author), copy, …, delete (author / admin) last. */
 @Composable
 fun MessageMenu(
     expanded: Boolean,
@@ -51,6 +51,7 @@ fun MessageMenu(
     onCopyLink: (() -> Unit)? = null,
     onRemind: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onCopyText: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -61,13 +62,15 @@ fun MessageMenu(
         if (onMoreReactions != null) DropdownMenuItem(text = { Text("その他のリアクション…") }, onClick = { onDismiss(); onMoreReactions() })
         HorizontalDivider()
         if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
+        // Edit near the top, delete last (testers did not find them at the bottom of the long menu, 2026-09-28).
+        if (canEdit) DropdownMenuItem(text = { Text("編集") }, onClick = { onDismiss(); onEdit() })
+        if (onCopyText != null) DropdownMenuItem(text = { Text("テキストをコピー") }, onClick = { onDismiss(); onCopyText() })
         if (onBookmark != null) DropdownMenuItem(text = { Text(if (bookmarked) "保存を解除" else "あとで見る (保存)") }, onClick = { onDismiss(); onBookmark() })
         if (onCopyLink != null) DropdownMenuItem(text = { Text("リンクをコピー") }, onClick = { onDismiss(); onCopyLink() })
         if (onShare != null) DropdownMenuItem(text = { Text("別のチャンネルに共有…") }, onClick = { onDismiss(); onShare() })
         if (onRemind != null) DropdownMenuItem(text = { Text("リマインド…") }, onClick = { onDismiss(); onRemind() })
         if (onPin != null) DropdownMenuItem(text = { Text(if (pinned) "ピン留めを外す" else "チャンネルにピン留め") }, onClick = { onDismiss(); onPin() })
         if (onMarkUnread != null) DropdownMenuItem(text = { Text("ここから未読にする") }, onClick = { onDismiss(); onMarkUnread() })
-        if (canEdit) DropdownMenuItem(text = { Text("編集") }, onClick = { onDismiss(); onEdit() })
         if (canDelete) DropdownMenuItem(text = { Text("削除") }, onClick = { onDismiss(); onDelete() })
     }
 }

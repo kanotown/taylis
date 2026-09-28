@@ -82,6 +82,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
@@ -446,8 +447,16 @@ fun MessageRow(
     var sharing by remember { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).combinedClickable(onClick = { if (compact) showTime = !showTime }, onLongClick = { if (!message.pending) menuOpen = true })) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 1.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
-            if (compact) Spacer(Modifier.width(36.dp)) else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
+            // Grouped under the previous message: its time where the avatar would be, so where one message ends and the
+            // next begins shows (testers, 2026-09-28; the same on iOS and the web).
+            if (compact) {
+                Text(
+                    Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), textAlign = TextAlign.Center,
+                    modifier = Modifier.width(36.dp).padding(top = 3.dp),
+                )
+            } else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, onOpenThread)  // M15c
@@ -528,6 +537,7 @@ fun MessageRow(
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
             onCopyLink = { controller.copyPermalink(message.id) },
+            onCopyText = if (message.body.isNotEmpty()) ({ controller.copyText(message) }) else null,
             onRemind = { reminding = true },
             onShare = { sharing = true },
             onMoreReactions = { pickingReaction = true },

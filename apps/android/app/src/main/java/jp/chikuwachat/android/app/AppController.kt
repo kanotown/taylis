@@ -1040,6 +1040,13 @@ class AppController(private val app: Application) {
         notice = "リンクをコピーしました"
     }
 
+    /** 「テキストをコピー」: the body as it reads, mentions as @names. */
+    fun copyText(message: MessageState) {
+        val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("ChikuwaChat", jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups)))
+        notice = "テキストをコピーしました"
+    }
+
     /** A permalink tapped in a body: fetch the message (membership is checked there) and hand it to the screen. */
     suspend fun openPermalink(messageId: String) {
         val api = api ?: return

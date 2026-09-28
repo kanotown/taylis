@@ -347,23 +347,11 @@ fun MainScreen(controller: AppController) {
                                 modifier = Modifier.padding(end = 4.dp),
                             )
                         }
+                        // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
+                        // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
                         if (selectedChannel != null && selectedChannel.isMember && threadId == null) {
-                            val starred = store.isFavorite(selectedChannel.id)
-                            IconButton(onClick = { scope.launch { controller.toggleFavorite(selectedChannel.id) } }) {
-                                Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = if (starred) "お気に入りから外す" else "お気に入りに追加",
-                                     tint = if (starred) MaterialTheme.colorScheme.tertiary else LocalContentColor.current)
-                            }
-                            IconButton(onClick = { pinsOpen = !pinsOpen }) {
-                                Icon(if (pinsOpen) Icons.Filled.PushPin else Icons.Outlined.PushPin, contentDescription = "ピン留め")
-                            }
-                            IconButton(onClick = { filesChannelId = selectedChannel.id; showFiles = !showFiles; pinsOpen = false }) {
-                                Icon(if (showFiles) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = "ファイル")
-                            }
                             val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                             val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
-                            IconButton(onClick = { bellOpen = true }) {
-                                Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = "通知設定")
-                            }
                             DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
                                 listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
                                     DropdownMenuItem(
@@ -381,11 +369,39 @@ fun MainScreen(controller: AppController) {
                                     })
                                 }
                             }
-                            IconButton(onClick = { dialog = MainDialog.CHANNEL_INFO }) { Icon(Icons.Default.Info, contentDescription = "チャンネル情報") }
                         }
                         IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            if (selectedChannel != null && selectedChannel.isMember && threadId == null) {
+                                val starred = store.isFavorite(selectedChannel.id)
+                                DropdownMenuItem(
+                                    text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
+                                    leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
+                                    onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(selectedChannel.id) } },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("ピン留め") }, leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
+                                    onClick = { menuOpen = false; pinsOpen = true; showFiles = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("ファイル") }, leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
+                                    onClick = { menuOpen = false; filesChannelId = selectedChannel.id; showFiles = true; pinsOpen = false },
+                                )
+                                val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
+                                val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
+                                val levelName = when (level) { "all" -> "すべて"; "none" -> "通知しない"; else -> "メンションのみ" }
+                                DropdownMenuItem(
+                                    text = { Text(if (mute != null) "通知 ($mute までミュート)" else "通知: $levelName") },
+                                    leadingIcon = { Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
+                                    onClick = { menuOpen = false; bellOpen = true },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                    onClick = { menuOpen = false; dialog = MainDialog.CHANNEL_INFO },
+                                )
+                                HorizontalDivider()
+                            }
                             DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
                             DropdownMenuItem(text = { Text("メンバー") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
                             if (!controller.isGuest) {
