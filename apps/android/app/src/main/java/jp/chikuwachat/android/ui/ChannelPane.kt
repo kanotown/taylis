@@ -541,6 +541,7 @@ fun MessageRow(
             onRemind = { reminding = true },
             onShare = { sharing = true },
             onMoreReactions = { pickingReaction = true },
+            reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
         )
     }
     if (sharing) ShareDialog(controller, message, onDismiss = { sharing = false })

@@ -26,6 +26,8 @@ struct ChannelView: View {
     @State private var userScrolled = false
     /// The catch-up the placement waits for did not come (a failed request while online): place with the rows held.
     @State private var syncWaitOver = false
+    /// The reader touched the list while it was landing on the first unread row: the landing stops scrolling.
+    @State private var landingInterrupted = false
     @State private var cover = CoverProbe()
 
     enum ChannelSheet: Identifiable {
@@ -148,7 +150,9 @@ struct ChannelView: View {
         let items = items
         let index = items.firstIndex { if case .message(let message, _) = $0 { message.id == landing.rowId } else { false } }
         let dividerAbove = index.map { $0 > 0 && items[$0 - 1].id == TimelineItem.unread.id } ?? false
+        landingInterrupted = false
         for _ in 0..<3 {
+            if landingInterrupted { break }
             proxy.scrollTo(dividerAbove ? TimelineItem.unread.id : landing.rowKey, anchor: .top)
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
@@ -271,7 +275,10 @@ struct ChannelView: View {
                         .padding(.vertical, 8)
                     }
                     .coordinateSpace(name: "conversation")
-                    .onUserScroll { if !positioned && !messages.isEmpty { userScrolled = true } }
+                    .onUserScroll {
+                        if !positioned && !messages.isEmpty { userScrolled = true }
+                        if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
+                    }
                     .background(CoverProbe.Marker(probe: cover))
                     .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
                     .scrollDismissesKeyboard(.interactively)
@@ -588,7 +595,7 @@ struct UnreadSeparator: View {
     }
 }
 
-let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀"]
+let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
 
 struct MessageRow: View {
     let message: MessageState
@@ -599,24 +606,31 @@ struct MessageRow: View {
     var onMarkUnread: (() -> Void)? = nil
     @State private var editing = false
     @State private var confirmingDelete = false
-    @State private var showTime = false
     @State private var showingProfile = false
     @State private var pickingReaction = false
     @State private var sharing = false
     @State private var showingRevisions = false
+    @State private var showingActions = false
+    @State private var followUp: MessageFollowUp?
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
     private var isMine: Bool { store.me?.id == message.senderId }
-    /// A menu action that changes this row (a reaction, a pin, the saved mark) lands once the long-press menu has
-    /// closed: the menu flies its picture of the row back into place, and a row that had grown meanwhile was drawn
-    /// over its neighbour for a moment (testers, 2026-09-28).
-    private func afterMenu(_ work: @escaping @MainActor () async -> Void) {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            await work()
+
+    /// After the action sheet is gone: the sheet or dialog an action asked for.
+    private func runFollowUp() {
+        let next = followUp
+        followUp = nil
+        switch next {
+        case .thread: onOpenThread?()
+        case .edit: editing = true
+        case .moreReactions: pickingReaction = true
+        case .share: sharing = true
+        case .delete: confirmingDelete = true
+        case nil: break
         }
     }
+
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
@@ -682,7 +696,7 @@ struct MessageRow: View {
                             }
                         }
                     }
-                } else if showTime || message.editedAt != nil {
+                } else if message.editedAt != nil {
                     Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
@@ -744,41 +758,19 @@ struct MessageRow: View {
         .padding(.vertical, compact ? 4 : 5)
         .opacity(message.pending && !message.failed ? 0.6 : 1)
         .background(controller.messageFocus?.messageId == message.id ? Color.yellow.opacity(0.18) : Color.clear)
+        .background(showingActions ? Color(.systemGray5) : Color.clear) // the message whose actions are open (Slack)
         .contentShape(Rectangle())
-        .onTapGesture { if compact { showTime.toggle() } }
-        .contextMenu {
-            if !message.pending {
-                ControlGroup {
-                    ForEach(reactionPalette, id: \.self) { emoji in
-                        Button(emoji) { afterMenu { await controller.toggleReaction(message, emoji: emoji) } }
-                    }
-                    Button("その他のリアクション", systemImage: "face.smiling") { pickingReaction = true }
-                }
-                .controlGroupStyle(.palette)
-                .menuActionDismissBehavior(.enabled) // a palette keeps the menu open otherwise
-                if let onOpenThread { Button("スレッドで返信", systemImage: "bubble.left.and.bubble.right") { onOpenThread() } }
-                if isMine { Button("編集", systemImage: "pencil") { editing = true } }
-                if !message.body.isEmpty {
-                    Button("テキストをコピー", systemImage: "doc.on.doc") {
-                        UIPasteboard.general.string = Mentions.decode(message.body, users: store.users, groups: store.groups)
-                    }
-                }
-                Button(store.isBookmarked(message.id) ? "保存を解除" : "あとで見る (保存)", systemImage: store.isBookmarked(message.id) ? "bookmark.slash" : "bookmark") {
-                    afterMenu { await controller.toggleBookmark(message.id) }
-                }
-                Button(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", systemImage: message.pinnedAt != nil ? "pin.slash" : "pin") {
-                    afterMenu { await controller.togglePin(message) }
-                }
-                Button("リンクをコピー", systemImage: "link") { controller.copyPermalink(message.id) }
-                Button("別のチャンネルに共有…", systemImage: "arrowshape.turn.up.right") { sharing = true }
-                Menu("リマインド", systemImage: "alarm") {
-                    ForEach(Schedule.reminderPresets()) { preset in
-                        Button("\(preset.label) (\(Schedule.label(preset.at)))") { Task { _ = await controller.setReminder(messageId: message.id, at: preset.at) } }
-                    }
-                }
-                if let onMarkUnread { Button("ここから未読にする", systemImage: "envelope.badge") { onMarkUnread() } }
-                if isMine || controller.isAdmin { Button("削除", systemImage: "trash", role: .destructive) { confirmingDelete = true } }
-            }
+        // Slack: a tap does nothing (a tap on the list closes the keyboard); a long press opens the actions from the
+        // bottom (MessageActions.swift).
+        .onLongPressGesture(minimumDuration: 0.35) {
+            guard !message.pending else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            KeyboardBehavior.dismiss()
+            showingActions = true
+        }
+        .sheet(isPresented: $showingActions, onDismiss: runFollowUp) {
+            MessageActionsSheet(message: message, controller: controller, canThread: onOpenThread != nil, canMarkUnread: onMarkUnread != nil,
+                                onMarkUnread: { onMarkUnread?() }, followUp: { followUp = $0 })
         }
         .sheet(isPresented: $pickingReaction) {
             EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in Task { await controller.toggleReaction(message, emoji: glyph) } }

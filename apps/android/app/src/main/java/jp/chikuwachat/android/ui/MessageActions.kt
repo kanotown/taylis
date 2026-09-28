@@ -1,37 +1,68 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddReaction
+import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.BookmarkRemove
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.MarkEmailUnread
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
+import kotlinx.coroutines.launch
 
 val REACTION_PALETTE = listOf("👍", "❤️", "😂", "🎉", "👀", "✅")
 
-/** Long-press menu on a message: quick reactions, reply, edit (author), copy, …, delete (author / admin) last. */
+/**
+ * A message's actions, Slack-like (testers, 2026-09-28; the same sheet on iOS, MessageActions.swift): a long press opens
+ * them from the bottom. Reactions first as big buttons, then reply, edit (author), copy, …, delete (author / admin) last.
+ * An action that opens a dialog runs once the sheet is down.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageMenu(
     expanded: Boolean,
@@ -52,26 +83,58 @@ fun MessageMenu(
     onRemind: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onCopyText: (() -> Unit)? = null,
+    reacted: Set<String> = emptySet(),
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    if (!expanded) return
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val scope = rememberCoroutineScope()
+    fun close(then: () -> Unit) {
+        scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); then() }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
             REACTION_PALETTE.forEach { emoji ->
-                Text(emoji, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onReact(emoji); onDismiss() }.padding(6.dp))
+                Box(
+                    Modifier.size(46.dp).clip(CircleShape)
+                        .background(if (emoji in reacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { close { onReact(emoji) } },
+                    contentAlignment = Alignment.Center,
+                ) { Text(emoji, style = MaterialTheme.typography.titleLarge) }
+            }
+            if (onMoreReactions != null) {
+                Box(
+                    Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { close(onMoreReactions) },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.AddReaction, contentDescription = "その他のリアクション") }
             }
         }
-        if (onMoreReactions != null) DropdownMenuItem(text = { Text("その他のリアクション…") }, onClick = { onDismiss(); onMoreReactions() })
-        HorizontalDivider()
-        if (onReply != null) DropdownMenuItem(text = { Text("スレッドで返信") }, onClick = { onDismiss(); onReply() })
-        // Edit near the top, delete last (testers did not find them at the bottom of the long menu, 2026-09-28).
-        if (canEdit) DropdownMenuItem(text = { Text("編集") }, onClick = { onDismiss(); onEdit() })
-        if (onCopyText != null) DropdownMenuItem(text = { Text("テキストをコピー") }, onClick = { onDismiss(); onCopyText() })
-        if (onBookmark != null) DropdownMenuItem(text = { Text(if (bookmarked) "保存を解除" else "あとで見る (保存)") }, onClick = { onDismiss(); onBookmark() })
-        if (onCopyLink != null) DropdownMenuItem(text = { Text("リンクをコピー") }, onClick = { onDismiss(); onCopyLink() })
-        if (onShare != null) DropdownMenuItem(text = { Text("別のチャンネルに共有…") }, onClick = { onDismiss(); onShare() })
-        if (onRemind != null) DropdownMenuItem(text = { Text("リマインド…") }, onClick = { onDismiss(); onRemind() })
-        if (onPin != null) DropdownMenuItem(text = { Text(if (pinned) "ピン留めを外す" else "チャンネルにピン留め") }, onClick = { onDismiss(); onPin() })
-        if (onMarkUnread != null) DropdownMenuItem(text = { Text("ここから未読にする") }, onClick = { onDismiss(); onMarkUnread() })
-        if (canDelete) DropdownMenuItem(text = { Text("削除") }, onClick = { onDismiss(); onDelete() })
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 8.dp)) {
+            @Composable
+            fun item(label: String, icon: ImageVector, danger: Boolean = false, action: () -> Unit) {
+                val color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                Row(
+                    Modifier.fillMaxWidth().clickable { close(action) }.padding(horizontal = 24.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(18.dp))
+                    Text(label, color = color, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            if (onReply != null) item("スレッドで返信", Icons.Outlined.ChatBubbleOutline, action = onReply)
+            if (canEdit) item("編集", Icons.Outlined.Edit, action = onEdit)
+            if (onCopyText != null) item("テキストをコピー", Icons.Outlined.ContentCopy, action = onCopyText)
+            if (onBookmark != null) item(if (bookmarked) "保存を解除" else "あとで見る (保存)", if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
+            if (onRemind != null) item("リマインド…", Icons.Outlined.Alarm, action = onRemind)
+            if (onMarkUnread != null) item("ここから未読にする", Icons.Outlined.MarkEmailUnread, action = onMarkUnread)
+            if (onCopyLink != null) item("リンクをコピー", Icons.Outlined.Link, action = onCopyLink)
+            if (onShare != null) item("別のチャンネルに共有…", Icons.Outlined.Share, action = onShare)
+            if (onPin != null) item(if (pinned) "ピン留めを外す" else "チャンネルにピン留め", Icons.Outlined.PushPin, action = onPin)
+            if (canDelete) item("削除", Icons.Outlined.Delete, danger = true, action = onDelete)
+        }
     }
 }
 

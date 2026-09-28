@@ -238,7 +238,8 @@ struct MessageBodyView: View {
                 blockView(block)
             }
         }
-        .textSelection(.enabled)
+        // Not selectable: a long press on a message opens its actions (Slack), which copy the text; iOS's text selection
+        // took the long press first (2026-09-28).
     }
 
     @ViewBuilder
