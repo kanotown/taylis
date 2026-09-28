@@ -8,6 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -80,30 +84,63 @@ fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened:
 @Composable
 fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
     val store = controller.store
-    val users = remember { store.users.values.filter { it.id != store.me?.id && it.deactivatedAt == null }.sortedBy { it.displayName } }
+    val version by store.version.collectAsState()
+    val users = remember(store, version) { store.users.values.filter { it.id != store.me?.id && it.deactivatedAt == null }.sortedBy { it.displayName } }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var query by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    fun start(ids: List<String>) {
+        if (busy || ids.isEmpty()) return
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                controller.createDm(ids).onSuccess { onOpened(it); onDismiss() }.onFailure { error = controller.describe(it) }
+            } finally { busy = false }
+        }
+    }
+    // The server allows nine members including me, so at most eight recipients.
+    val maxRecipients = 8
+    val visible = users.filter { it.displayName.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true) }
+    val recipients = selected.filter { id -> users.any { it.id == id } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("ダイレクトメッセージ") },
         text = {
             Column {
+                Text("複数選ぶとグループ DM になります (相手は8人まで)", style = MaterialTheme.typography.bodySmall)
                 // A DM with only myself: notes to self (as in Slack).
                 store.me?.id?.let { me ->
-                    TextButton(onClick = {
-                        scope.launch { controller.createDm(listOf(me)).onSuccess { onOpened(it); onDismiss() }.onFailure { error = controller.describe(it) } }
-                    }) { Text("自分へのメモ (自分だけが見られる DM)") }
+                    TextButton(enabled = !busy, onClick = { start(listOf(me)) }) { Text("自分へのメモ (自分だけが見られる DM)") }
                 }
+                OutlinedTextField(query, { query = it }, label = { Text("名前で検索") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (users.isEmpty()) Text("相手になるユーザーがいません")
-                UserPicker(users) { user ->
-                    scope.launch {
-                        controller.createDm(listOf(user.id)).onSuccess { onOpened(it); onDismiss() }.onFailure { error = controller.describe(it) }
+                else if (visible.isEmpty()) Text("一致するユーザーがいません")
+                LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                    items(visible, key = { it.id }) { user ->
+                        val checked = user.id in selected
+                        val enabled = !busy && (checked || recipients.size < maxRecipients)
+                        Row(
+                            Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = {
+                                selected = if (checked) selected - user.id else selected + user.id
+                            }).padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(user.displayName)
+                                Text("@${user.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
+                Text("${recipients.size} / $maxRecipients 人を選択", style = MaterialTheme.typography.bodySmall)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = {},
+        confirmButton = { TextButton(enabled = !busy && recipients.isNotEmpty(), onClick = { start(recipients) }) { Text(if (busy) "開始中…" else "開始") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
     )
 }
