@@ -15,7 +15,7 @@ const HANDLE = /(^|[\s(])@([A-Za-z0-9._-]+)/g;
 const USER_TOKEN = /<@([0-9a-f-]{36})>/g;
 const ALL_TOKEN = /<!(channel|here)>/g;
 const GROUP_TOKEN = /<@group:([0-9a-f-]{36})>/g;
-const QUERY = /(^|[\s(])@([A-Za-z0-9._-]*)$/;
+const QUERY = /(^|[\s(])@([\p{L}\p{M}\p{N}._-]*)$/u;
 
 export function encodeMentions(text: string, users: Iterable<UserPublic>, groups: Iterable<GroupOut> = []): string {
   const byName = new Map<string, string>();
