@@ -1036,6 +1036,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lab/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Roster
+         * @description The lab roster in roster order (M23); also part of the bootstrap. Guests get only the people
+         *     they share a channel with (M13e).
+         */
+        get: operations["get_roster_api_v1_lab_roster_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lab/roster/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Line
+         * @description My research topic and reading (404 roster_entry_not_found while I am not on the roster).
+         */
+        patch: operations["update_my_line_api_v1_lab_roster_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/lab/roster/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Line
+         * @description Put someone on the roster or change their line; the managed groups follow.
+         */
+        put: operations["put_line_api_v1_lab_roster__user_id__put"];
+        post?: never;
+        /** Remove Line */
+        delete: operations["remove_line_api_v1_lab_roster__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/link-previews": {
         parameters: {
             query?: never;
@@ -1952,6 +2014,11 @@ export interface components {
              */
             presence: components["schemas"]["PresenceEntry"][];
             /**
+             * Roster
+             * @default []
+             */
+            roster: components["schemas"]["LabProfileOut"][];
+            /**
              * Server Time
              * Format: date-time
              */
@@ -2305,6 +2372,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Managed
+             * @default false
+             */
+            managed: boolean;
             /** Member Ids */
             member_ids: string[];
             /** Name */
@@ -2444,6 +2516,57 @@ export interface components {
             password_min_length: number;
             /** Role */
             role: string;
+        };
+        /** LabProfileOut */
+        LabProfileOut: {
+            /**
+             * Affiliation
+             * @enum {string}
+             */
+            affiliation: "faculty" | "student" | "alumni" | "other";
+            /** Grade */
+            grade: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Rank */
+            rank: ("professor" | "associate_professor" | "lecturer" | "assistant_professor") | null;
+            /** Reading */
+            reading: string | null;
+            /** Research Topic */
+            research_topic: string | null;
+            /** Supervisor Id */
+            supervisor_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LabProfilePut
+         * @description An administrator's line for someone (PUT /lab/roster/{user_id}). Affiliation, rank, grade and
+         *     supervisor are replaced as sent; the research topic and reading, which the person may edit
+         *     too, change only when sent.
+         */
+        LabProfilePut: {
+            /**
+             * Affiliation
+             * @enum {string}
+             */
+            affiliation: "faculty" | "student" | "alumni" | "other";
+            /** Grade */
+            grade?: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Rank */
+            rank?: ("professor" | "associate_professor" | "lecturer" | "assistant_professor") | null;
+            /** Reading */
+            reading?: string | null;
+            /** Research Topic */
+            research_topic?: string | null;
+            /** Supervisor Id */
+            supervisor_id?: string | null;
         };
         /** Limits */
         Limits: {
@@ -2689,6 +2812,16 @@ export interface components {
              * Format: date-time
              */
             written_at: string;
+        };
+        /**
+         * MyLabProfileUpdate
+         * @description What people change on their own line (PATCH /lab/roster/me); null clears.
+         */
+        MyLabProfileUpdate: {
+            /** Reading */
+            reading?: string | null;
+            /** Research Topic */
+            research_topic?: string | null;
         };
         /** NotificationPreferenceIn */
         NotificationPreferenceIn: {
@@ -5534,6 +5667,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_roster_api_v1_lab_roster_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabProfileOut"][];
+                };
+            };
+        };
+    };
+    update_my_line_api_v1_lab_roster_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyLabProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_line_api_v1_lab_roster__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabProfilePut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_line_api_v1_lab_roster__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
