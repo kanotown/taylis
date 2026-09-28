@@ -143,6 +143,7 @@ def _records(extra_posts: list[dict[str, Any]] | None = None) -> list[dict[str, 
                 {"user_id": "u-taro", "emoji_name": "hanpen_ok", "create_at": T0 + 2200},
                 {"user_id": "u-ebi", "emoji_name": "not_an_emoji_zz", "create_at": T0 + 2300},
                 {"user_id": "u-kano", "emoji_name": "thumbsup", "create_at": T0 + 2400},
+                {"user_id": "u-ebi", "emoji_name": "x" * 31, "create_at": T0 + 2500},
             ],
         ),
         _post(
@@ -282,6 +283,8 @@ async def test_import_maps_people_threads_mentions_files_and_reads(
         for r in (await db.execute(select(Reaction).where(Reaction.message_id == p2.id))).scalars()
     }
     assert reactions == {(kano, "👍"), (taro.id, ":hanpen_ok:"), (ebi, ":not_an_emoji_zz:")}
+    assert report.unmatched_emoji == {"not_an_emoji_zz": 1}
+    assert report.dropped_emoji == {"x" * 31: 1}  # longer than a reaction name may be
 
     (attachment,) = (
         await db.execute(select(Attachment).where(Attachment.message_id == p3.id))

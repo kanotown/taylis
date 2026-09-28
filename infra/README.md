@@ -478,6 +478,14 @@ rm -rf /srv/chikuwachat/import
 (`@kanotown → @kano (--user)` など)、件数 (`posts`、`replies`、`files`、`files_missing` など)、警告 (見つからない
 ファイル、名前の変更など) が出る。`files_over_upload_limit` はアップロードの上限を超えるが読み込んだファイルの数。
 
+リアクションの絵文字は、カスタム絵文字 (移行したもの・既にあるもの) なら `:名前:`、標準の絵文字なら絵文字そのものに
+なる。どちらでもない名前 (Mattermost で消されたカスタム絵文字、画像が見つからなかったものなど) は `:名前:` の
+文字のまま入り、結果の「reactions without an emoji image」に回数つきで出る。クライアントは表示のたびに
+カスタム絵文字の表を引くので、後から管理画面で同じ名前のカスタム絵文字を追加すれば、過去のリアクションと本文の
+`:名前:` もその画像で表示される (移行の前に追加しておいてもよい)。カスタム絵文字にできる名前は a-z・0-9 で始まる
+2〜32 文字 (a-z 0-9 _ + -) で、そうでない名前には「not a valid custom emoji name」と付く。31 文字以上など
+リアクションとして保存できない名前は「reactions not imported」に出る。
+
 ## 実機での動作確認 (iPhone)
 
 前提: `apps/ios/project.yml` の `DEVELOPMENT_TEAM` で自動署名できること (Xcode にそのチームの Apple ID を
