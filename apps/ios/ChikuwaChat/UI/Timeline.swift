@@ -361,3 +361,66 @@ struct ReadAnchor: Equatable {
         return next ? seqs.max() : nil
     }
 }
+
+/// M25: scrolling up to the top of the loaded range loads the page before it by itself, as on Android (its 「older」
+/// item), in place of the 「以前のメッセージを読み込む」 button; the reader's place is kept while the page goes in
+/// above. The rules are pure so their order can be tested.
+enum OlderPaging {
+    /// The progress row at the top of the list is on screen: its real frame in the list's visible coordinates (0 at the
+    /// top), not onAppear, which LazyVStack also sends for rows it builds just outside the screen.
+    static func topShown(_ frame: CGRect?, viewportHeight: CGFloat) -> Bool {
+        guard let frame, viewportHeight > 0 else { return false }
+        return frame.maxY > 0 && frame.minY < viewportHeight
+    }
+
+    /// Whether the page before the window loads now: there is one and the window has been read (§7.3), online, the
+    /// normal conversation (not the search context), the view placed and no landing on the first unread row on its way
+    /// (§10.1 4./6.: its frames would be judged from the wrong place, and rows put in above would move it), nothing else
+    /// loading, the list at rest (never under the reader's finger, nor while it glides), and the top row on screen. A
+    /// list that fills the screen and was not scrolled never has that row on screen, so opening a channel loads
+    /// nothing; a short one loads until it fills the screen or the channel has nothing older (Android does the same).
+    static func shouldLoad(_ channel: ChannelState?, topRow: CGRect?, viewportHeight: CGFloat, status: EngineStatus?, focused: Bool,
+                           placed: Bool, landing: Bool, busy: Bool, moving: Bool) -> Bool {
+        guard let channel, channel.hasOlder, channel.syncedSeq != nil, status == .online else { return false }
+        guard !focused, placed, !landing, !busy, !moving else { return false }
+        return topShown(topRow, viewportHeight: viewportHeight)
+    }
+
+    /// The row that stays where it is while a page goes in above it (its id for the frames, its list key to scroll to,
+    /// §10.3), where its top edge was, and the scrollTo anchor that puts it back there.
+    struct Kept: Equatable {
+        let rowId: String
+        let rowKey: String
+        let minY: CGFloat
+        let anchorY: CGFloat
+    }
+
+    /// The topmost message row on screen that is shown in full or covers the whole list (frames by message id, in the
+    /// list's visible coordinates). A UnitPoint anchor lines the row's point at `y` of its height up with the list's
+    /// point at `y` of its height, so y = minY / (viewport - row height) puts the row's top edge back at minY; for those
+    /// rows y is within 0...1 (a row cut by an edge would need an anchor outside it). `regrouped` is the row that was
+    /// first before the page (its id): the page's last row can take its name and time away (Timeline.build groups it),
+    /// which would move everything below it by a line, so it is kept only when no other row can be. Nil when none can.
+    static func keptRow(_ frames: [String: CGRect], rows: [MessageState], viewportHeight: CGFloat, regrouped: String? = nil) -> Kept? {
+        guard viewportHeight > 0 else { return nil }
+        let shown = rows.compactMap { row in frames[row.id].map { (id: row.id, key: row.rowKey, frame: $0) } }
+            .filter { $0.frame.maxY > 0 && $0.frame.minY < viewportHeight }
+            .sorted { $0.frame.minY < $1.frame.minY }
+        var fallback: Kept?
+        for (id, key, frame) in shown {
+            let room = viewportHeight - frame.height
+            let y: CGFloat
+            if abs(room) < 0.5 {
+                guard abs(frame.minY) < 0.5 else { continue }
+                y = 0
+            } else {
+                y = frame.minY / room
+                guard y >= 0 && y <= 1 else { continue }
+            }
+            let kept = Kept(rowId: id, rowKey: key, minY: frame.minY, anchorY: y)
+            if id != regrouped { return kept }
+            fallback = fallback ?? kept
+        }
+        return fallback
+    }
+}

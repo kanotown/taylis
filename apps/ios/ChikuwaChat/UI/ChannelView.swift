@@ -17,6 +17,10 @@ struct ChannelView: View {
     private var visibleFrames: [String: CGRect] { frames.byId }
     private var viewportHeight: CGFloat { frames.viewportHeight }
     @State private var loadingOlder = false
+    /// M25: the last load of older rows brought nothing (it failed, or could not start): no automatic one again until
+    /// the reader scrolls, the connection changes or the button that then replaces the progress row is pressed, so a
+    /// failing request is not repeated in a loop.
+    @State private var olderStalled = false
     /// Read position when the channel was opened; the 「新着メッセージ」 divider stays there.
     @State private var unreadMark: Int?
     /// Newest seq the reader has had on screen at the bottom; later messages from others are "new".
@@ -191,6 +195,16 @@ struct ChannelView: View {
         }
     }
 
+    /// M25: while a page of older rows settles, a layout that reports the kept row elsewhere scrolls it back. LazyVStack
+    /// places it from the page's estimated heights first; iOS 26 corrects that by itself a pass later, iOS 18 did not
+    /// (the rows stayed about a quarter screen off on the simulator). A few times at most, never during a landing.
+    private func keepOlderPlace(_ proxy: ScrollViewProxy) {
+        guard let kept = frames.kept, frames.keptTries < 4, anchor.landing == nil else { return }
+        if let frame = frames.byId[kept.rowId], abs(frame.minY - kept.minY) <= 1 { return }
+        frames.keptTries += 1
+        proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
+    }
+
     /// 「ここから未読にする」 for a row, when it is offered (§10.1 10.).
     private func markUnreadAction(_ message: MessageState) -> (() -> Void)? {
         guard let seq = message.seq, let channel, ReadGate.markUnreadOffered(channel, seq: seq) else { return nil }
@@ -199,12 +213,30 @@ struct ChannelView: View {
         }
     }
 
+    /// M25: the progress row at the top of the loaded range is on screen with the list at rest: the page before it
+    /// loads by itself (the rules are OlderPaging.shouldLoad). Called whenever one of them may have changed.
+    private func loadOlderIfShown() {
+        guard OlderPaging.shouldLoad(channel, topRow: frames.topRow, viewportHeight: viewportHeight, status: controller.engine?.status,
+                                     focused: focus != nil, placed: positioned, landing: anchor.landing != nil,
+                                     busy: loadingOlder || jumping || olderStalled, moving: frames.moving) else { return }
+        loadOlder()
+    }
+
+    /// The rows go in above with the row at the top kept where it is (the onChange of oldestLoadedSeq).
     private func loadOlder() {
-        guard !loadingOlder else { return }
+        guard !loadingOlder, let engine = controller.engine else { return }
+        let window = { (channel?.oldestLoadedSeq, channel?.hasOlder) }
+        let before = window()
         loadingOlder = true
+        olderStalled = false
         Task {
-            await controller.engine?.loadOlder(channelId)
+            await engine.loadOlder(channelId)
+            // The page settles (keepOlderPlace), and the next look at the top row waits for the frames of the layout
+            // with the page in: the ones from before would still show it on screen and load a page nobody scrolled to.
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            frames.kept = nil
             loadingOlder = false
+            if window() == before { olderStalled = true } else { loadOlderIfShown() }
         }
     }
 
@@ -239,12 +271,22 @@ struct ChannelView: View {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             if let channel {
                                 if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
-                                    Button(action: loadOlder) {
-                                        if loadingOlder { ProgressView().controlSize(.small) } else { Text("以前のメッセージを読み込む") }
+                                    // M25: on screen, it loads the page before (loadOlderIfShown). The button stays for
+                                    // when that cannot happen by itself: offline, or after a load that brought nothing.
+                                    Group {
+                                        if loadingOlder || controller.engine?.status == .online && !olderStalled {
+                                            ProgressView().controlSize(.small).accessibilityLabel("以前のメッセージを読み込み中")
+                                        } else {
+                                            Button("以前のメッセージを読み込む", action: loadOlder)
+                                        }
                                     }
                                     .frame(maxWidth: .infinity)
                                     .font(.footnote)
                                     .padding(.vertical, 8)
+                                    .background(GeometryReader { geometry in
+                                        Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
+                                    })
+                                    .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
                                 } else if messages.isEmpty {
                                     ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
                                                            description: Text("最初のメッセージを送ってみましょう。"))
@@ -282,6 +324,12 @@ struct ChannelView: View {
                     .onUserScroll {
                         if !positioned && !messages.isEmpty { userScrolled = true }
                         if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
+                        olderStalled = false // M25: the reader scrolled: the top row may try again
+                        frames.kept = nil // and the list is theirs
+                    }
+                    .onScrollMotion { moving in
+                        frames.moving = moving
+                        if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                     }
                     .background(CoverProbe.Marker(probe: cover))
                     .modifier(TimelineScrollAnchor(landing: anchor.landing != nil))
@@ -300,7 +348,29 @@ struct ChannelView: View {
                     .onPreferenceChange(VisibleMessageFrames.self) { frames in
                         self.frames.byId = frames
                         self.frames.viewportHeight = viewport.size.height
+                        keepOlderPlace(proxy)
                         markRead()
+                    }
+                    .onPreferenceChange(OlderRowFrame.self) { frame in
+                        frames.topRow = frame
+                        loadOlderIfShown()
+                    }
+                    .onChange(of: channel?.oldestLoadedSeq) { old, _ in
+                        // M25: a page of older rows went in above, in this very update. The list does not keep its place
+                        // by itself (LazyVStack's rows moved down by about the page's height), so the row at the top is
+                        // scrolled back to where it was, from the frames of the layout before the page, in the same update
+                        // (a scroll after it showed the page-sized jump), and again while it settles (keepOlderPlace).
+                        // Not during a landing (§10.1 4./6.).
+                        guard loadingOlder, anchor.landing == nil else { return }
+                        let formerFirst = old.flatMap { seq in messages.first { ($0.seq ?? -1) >= seq } }
+                        guard let kept = OlderPaging.keptRow(visibleFrames, rows: messages, viewportHeight: viewportHeight,
+                                                             regrouped: formerFirst?.id) else { return }
+                        frames.kept = kept
+                        frames.keptTries = 0
+                        proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
+                    }
+                    .onChange(of: positioned && anchor.landing == nil && !jumping) { _, ready in
+                        if ready { loadOlderIfShown() } // M25: placed, or a landing over, with the top row already on screen
                     }
                     .overlay(alignment: .bottomTrailing) {
                         if !atBottom && focus == nil {
@@ -359,7 +429,11 @@ struct ChannelView: View {
                         if lowered { anchor.positionLowered() }
                         markRead(send: !lowered)
                     }
-                    .onChange(of: controller.engine?.status) { _, _ in markRead() }
+                    .onChange(of: controller.engine?.status) { _, _ in
+                        markRead()
+                        olderStalled = false // M25: back online (or a new connection): the top row may try again
+                        loadOlderIfShown()
+                    }
                     .onChange(of: scenePhase) { _, _ in markRead() }
                     .onAppear {
                         if unreadMark == nil, let channel { unreadMark = ReadGate.openMark(channel) }
@@ -530,6 +604,10 @@ extension View {
     /// scrollTo).
     func onUserScroll(_ action: @escaping () -> Void) -> some View { modifier(UserScrollDetector(action: action)) }
 
+    /// M25: runs `action(moving)` when the list starts or stops moving: under the reader's finger, gliding, or scrolled
+    /// by code. iOS 17 has no scroll phase, so there the list always counts as at rest.
+    func onScrollMotion(_ action: @escaping (_ moving: Bool) -> Void) -> some View { modifier(ScrollMotionDetector(action: action)) }
+
     /// §7.7 (M22): the channel's rows are not trimmed to the cap while this view (a conversation, a thread) is on screen.
     func keepsChannelRows(_ engine: SyncEngine?, _ channelId: String) -> some View {
         modifier(ChannelRowsHold(engine: engine, channelId: channelId))
@@ -549,6 +627,18 @@ private struct ChannelRowsHold: ViewModifier {
                 release?()
                 release = nil
             }
+    }
+}
+
+private struct ScrollMotionDetector: ViewModifier {
+    let action: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { old, phase in if (old == .idle) != (phase == .idle) { action(phase != .idle) } }
+        } else {
+            content
+        }
     }
 }
 
@@ -764,6 +854,18 @@ struct MessageRow: View {
                             .tint(mine ? Color.accentColor : Color.secondary)
                             .controlSize(.mini)
                         }
+                        // M25: one more reaction right there (Slack; the web's 「＋」): the picker the action sheet's
+                        // smiley opens.
+                        Button { pickingReaction = true } label: {
+                            HStack(spacing: 1) {
+                                Image(systemName: "plus").font(.system(size: 8, weight: .bold))
+                                Image(systemName: "face.smiling").font(.caption)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(Color.secondary)
+                        .controlSize(.mini)
+                        .accessibilityLabel("リアクションを追加")
                     }
                     .padding(.top, 2)
                 }
@@ -794,6 +896,16 @@ struct MessageRow: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             KeyboardBehavior.dismiss()
             showingActions = true
+        }
+        // M25: VoiceOver has no long press on a row: the same sheet is an action (the actions rotor) of every element
+        // of the message, which keeps its own links and buttons.
+        .accessibilityActions {
+            if !message.pending {
+                Button("メッセージの操作") {
+                    KeyboardBehavior.dismiss()
+                    showingActions = true
+                }
+            }
         }
         .sheet(isPresented: $showingActions, onDismiss: runFollowUp) {
             MessageActionsSheet(message: message, controller: controller, canThread: onOpenThread != nil, canMarkUnread: onMarkUnread != nil,
@@ -1182,6 +1294,12 @@ private struct VisibleMessageFrames: PreferenceKey {
     }
 }
 
+/// M25: where the progress row at the top of the loaded range is (nil while LazyVStack has not built it).
+private struct OlderRowFrame: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) { value = nextValue() ?? value }
+}
+
 
 extension Notification.Name {
     /// A profile card asked to open a conversation (userInfo["id"] = channel id).
@@ -1193,6 +1311,12 @@ extension Notification.Name {
 final class RowFrames {
     var byId: [String: CGRect] = [:]
     var viewportHeight: CGFloat = 0
+    /// M25: the progress row at the top of the loaded range, whether the list is moving, and the row kept in place while
+    /// a page of older rows settles (OlderPaging).
+    var topRow: CGRect?
+    var moving = false
+    var kept: OlderPaging.Kept?
+    var keptTries = 0
 }
 
 /// A row redraws when its message or its grouping changes; what it reads from the store (names, custom emoji, the saved
