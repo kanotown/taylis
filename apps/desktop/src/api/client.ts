@@ -1,5 +1,5 @@
 import { ApiError, NetworkError } from "./errors";
-import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -453,6 +453,26 @@ export class ApiClient {
 
   adminDeleteGroup(groupId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/groups/${groupId}`);
+  }
+
+  // --- lab roster (M23) -----------------------------------------------------------------------
+
+  roster(): Promise<LabProfileOut[]> {
+    return this.request("GET", "/api/v1/lab/roster");
+  }
+
+  /** Administrators: put someone on the roster or change their line (topic and reading kept unless sent). */
+  adminPutRosterLine(userId: string, body: LabProfilePut): Promise<LabProfileOut> {
+    return this.request("PUT", `/api/v1/lab/roster/${userId}`, body);
+  }
+
+  adminDeleteRosterLine(userId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/lab/roster/${userId}`);
+  }
+
+  /** My research topic and reading (404 roster_entry_not_found while I am not on the roster). */
+  updateMyRosterLine(body: MyLabProfileUpdate): Promise<LabProfileOut> {
+    return this.request("PATCH", "/api/v1/lab/roster/me", body);
   }
 
   // --- incoming webhooks (M13a) --------------------------------------------------------------

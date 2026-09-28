@@ -5,7 +5,7 @@
  */
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
-import type { BootstrapOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -485,6 +485,7 @@ export class SyncEngine {
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
+    store.replaceRoster(bootstrap.roster ?? []);
     store.replaceGroups(bootstrap.groups ?? []);
     store.replaceSidebar(bootstrap.sidebar_sections ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
@@ -599,6 +600,11 @@ export class SyncEngine {
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
         this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        return;
+      }
+      case "roster.updated": {
+        const data = frame.data as { user_id: string; profile: LabProfileOut | null };
+        store.applyRoster(data.user_id, data.profile);
         return;
       }
       case "emoji.updated": {

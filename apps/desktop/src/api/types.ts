@@ -106,6 +106,14 @@ export type GroupOut = components["schemas"]["GroupOut"];
 export type GroupCreate = components["schemas"]["GroupCreate"];
 export type GroupUpdate = components["schemas"]["GroupUpdate"];
 
+/** The lab roster (M23). */
+export type LabProfileOut = components["schemas"]["LabProfileOut"];
+export type LabProfilePut = components["schemas"]["LabProfilePut"];
+export type MyLabProfileUpdate = components["schemas"]["MyLabProfileUpdate"];
+export type Affiliation = LabProfileOut["affiliation"];
+export type FacultyRank = NonNullable<LabProfileOut["rank"]>;
+export type Grade = NonNullable<LabProfileOut["grade"]>;
+
 /** Incoming webhooks (M13a). */
 export type WebhookOut = components["schemas"]["WebhookOut"];
 export type WebhookCreate = components["schemas"]["WebhookCreate"];
