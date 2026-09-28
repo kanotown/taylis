@@ -26,7 +26,7 @@ import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
-import { overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
@@ -38,6 +38,7 @@ import { presenceLabel } from "./Avatar";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
+import { useNavigationHistory } from "./navigationHistory";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
@@ -54,7 +55,7 @@ function readUnreadOnly(): boolean {
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
-  const [currentId, setCurrentId] = useState<string | null>(engine?.currentChannelId ?? null);
+  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -91,6 +92,27 @@ export function MainScreen({ controller }: { controller: AppController }) {
   }, [compact]);
   const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
+  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch };
+  const focus = controller.messageFocus;
+  const navigationKey = JSON.stringify({ ...navigation, focus: focus?.messageId ?? null });
+  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current }, (previous) => {
+    controller.messageFocus = previous.focus;
+    controller.setEditing(null);
+    setCurrentId(previous.currentId);
+    setView(previous.view);
+    setThreadId(previous.threadId);
+    setThreadChannelId(previous.threadChannelId);
+    setPinsOpen(previous.pinsOpen);
+    setPane(previous.pane);
+    setFilesChannelId(previous.filesChannelId);
+    setSearch(previous.search);
+    setSearchTab(previous.searchTab);
+    setBackToSearch(previous.backToSearch);
+    searchSnapshot.current = previous.results;
+    setSearchOpen(false);
+    setDialog(null);
+    setSwitcher(false);
+  }, isWeb());
   // The sidebar's views toggle back to the conversation on a desktop; on a phone a tap always opens them.
   const compactRef = useRef(compact);
   compactRef.current = compact;
