@@ -1314,10 +1314,19 @@ export class AppController {
     }
   }
 
+  /**
+   * The last message this device posted outside the send queue (a poll): the timeline follows it to the bottom like a
+   * post from the composer (§10.1 11.; the server reads the channel for it too). Testers: after a poll the view stayed
+   * put, or jumped up.
+   */
+  postedHere: string | null = null;
+
   async createPoll(channelId: string, parentId: string | null, question: string, options: string[], multiple: boolean): Promise<boolean> {
     if (!this.api) return false;
     try {
-      this.store.upsertMessage(await this.api.postPoll(channelId, parentId, { question, options, multiple }));
+      const message = await this.api.postPoll(channelId, parentId, { question, options, multiple });
+      this.postedHere = message.id;
+      this.store.upsertMessage(message);
       return true;
     } catch (error) {
       this.setError(error);
