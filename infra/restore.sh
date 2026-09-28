@@ -43,8 +43,16 @@ echo "== database"
 "${COMPOSE[@]}" exec -T db pg_restore -U "$DBUSER" -d "$DBNAME" --no-owner --no-privileges < "$SRC/db.dump"
 
 echo "== object store"
-"${COMPOSE[@]}" run --rm --no-deps -T -v "$SRC:/backup:ro" --entrypoint sh objectstore \
-  -c 'rm -rf /data/* && cd /data && tar xzf /backup/objects.tgz'
+if [ -d "$SRC/objects" ]; then
+  # A directory backup: check every file against objects.sha256, then copy the tree in.
+  "${COMPOSE[@]}" run --rm --no-deps -T -v "$SRC:/backup:ro" --entrypoint sh objectstore \
+    -c 'set -e; cd /backup/objects && sha256sum -c -s ../objects.sha256 && rm -rf /data/* &&
+        tar cf - . | tar xf - -C /data'
+else
+  # Backups made before the incremental format (objects.tgz).
+  "${COMPOSE[@]}" run --rm --no-deps -T -v "$SRC:/backup:ro" --entrypoint sh objectstore \
+    -c 'rm -rf /data/* && cd /data && tar xzf /backup/objects.tgz'
+fi
 
 echo "== app"
 "${COMPOSE[@]}" up -d ${BUILD[@]+"${BUILD[@]}"} app

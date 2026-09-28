@@ -115,6 +115,11 @@ async def _emit(db: AsyncSession, row: CustomEmoji, *, deleted: bool) -> None:
     )
 
 
+async def announce_created_in_tx(db: AsyncSession, row: CustomEmoji) -> None:
+    """emoji.updated for an emoji added outside the API (M18 import)."""
+    await _emit(db, row, deleted=False)
+
+
 async def list_all(db: AsyncSession) -> list[CustomEmojiOut]:
     return [to_emoji_out(row) for row in await repo.list_all(db)]
 

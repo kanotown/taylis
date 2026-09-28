@@ -182,16 +182,19 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    ChikuwaChat) で、クライアントの切り替え一覧と検索欄に出る。チームを分けたいときは、この手順でもう 1 つ
    デプロイし、各クライアントの「ワークスペースを追加」から登録する (docs/WORKSPACES.md)。
 
-4. **バックアップ** (毎日。`infra/backup.sh` は `pg_dump -Fc` の後にオブジェクトストアの tar を取る)
+4. **バックアップ** (毎日。`infra/backup.sh` は `pg_dump -Fc` の後にオブジェクトストアのファイルを写す)
 
    ```sh
    # crontab (root)
    30 3 * * * CHIKUWA_PROD=1 /srv/chikuwachat/infra/backup.sh /srv/backups >> /var/log/chikuwachat-backup.log 2>&1
    ```
 
-   `/srv/backups/<UTC 時刻>/{db.dump,objects.tgz,SHA256SUMS}` ができる。世代は 14 個保持。
-   別のマシンや外部ストレージへは `rsync` / `restic` で転送する。`.env` と `secrets/` は別経路で保管する
-   (バックアップには含めない)。
+   `/srv/backups/<UTC 時刻>/{db.dump,objects/,objects.sha256,SHA256SUMS}` ができる。世代は 14 個保持
+   (デプロイ直前のバックアップも 1 世代に数える)。`objects/` は増分で、前回から変わっていないファイルは前回の
+   バックアップへのハードリンクになる。添付が 7 GB あっても 14 世代で 7 GB と各日の増えた分で済む
+   (以前の `objects.tgz` 形式は毎回全体を写していた。`restore.sh` はどちらの形式も戻せる)。バックアップの
+   置き場所は 1 つのファイルシステムの中に置く。別のマシンや外部ストレージへは `rsync -aH` (ハードリンクを保つ) /
+   `restic` で転送する。`.env` と `secrets/` は別経路で保管する (バックアップには含めない)。
 
 5. **復元** (`infra/restore.sh <backup dir>`: DB → バケット → app 起動 → `verify-attachments`)
 
@@ -403,6 +406,77 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
 **手元で確かめた内容 (2026-09-27)**: ローカルのレジストリと別プロジェクトの compose で、強制コマンド経由の
 upload / deploy、初回起動、更新 (バックアップあり)、起動しないリリースの自動ロールバック、
 復元 (`restore.sh`) が通ることを確認した。GitHub Actions 上での実行は、リポジトリを push した後の最初のタグで確かめる。
+
+## Mattermost からの移行 (M18)
+
+Mattermost のチーム 1 つを、会話ごとこのサーバへ読み込む。2 段に分かれる。
+
+1. `mattermost-extract`: Mattermost の PostgreSQL から、そのチームの分だけを JSONL ファイルに書き出す。読み取り専用の
+   トランザクションで SELECT だけを行い、Mattermost には何も書かない。
+2. `import-mattermost`: その JSONL を ChikuwaChat に読み込む。添付ファイルとカスタム絵文字の画像は、Mattermost の
+   データディレクトリ (読み取り専用でマウント) から直接読む。
+
+**読み込むもの**: チームの公開 / 非公開チャンネル (アーカイブ済みはアーカイブのまま)、そのメンバー、投稿 (作成順に
+チャンネルの seq を振る)、スレッド、リアクション、ピン留め、編集の時刻、添付ファイル (画像はサムネイルも作る)、
+投稿で使われているカスタム絵文字。本文の `@名前` はメンションに、`@channel` / `@all` / `@here` はチャンネル全体への
+メンションに、標準の絵文字の `:shortcode:` は絵文字そのものに変わる (コードブロックの中は変えない)。
+
+**読み込まないもの**: DM とグループ DM、他のチーム、削除済みの投稿、システムメッセージ (参加・退出など)、
+編集の履歴、Webhook の表示名の上書き。
+
+**人の対応付け** (先に当てはまったもの):
+
+1. `--user mattermostの名前=chikuwaの名前` で指定したアカウント (指定先は既に存在すること)
+2. 前回の移行で対応付けたアカウント
+3. 同じメールアドレスのアカウント
+4. それ以外で投稿かリアクションのある人は、新しく**無効化済み**のアカウントを作る (bot は bot アカウント)。
+   投稿者を残すためで、管理者が有効化するまでログインできない。名前が使用中なら `名前-mm` にして警告を出す。
+   投稿もリアクションもないメンバーやメンションされただけの人は作らない (メンションは `@名前` の文字のまま残る)。
+
+チャンネルのメンバーは有効なアカウントに対応した人だけで、Mattermost のチャンネル管理者と作成者はオーナーになる。
+チャンネル名は表示名から作る (空白は `-`、`# @ /` は除く)。同じ名前があれば `名前-mm` にして警告を出す。
+読み込んだメッセージは全員が既読の状態で、参加者はスレッドをフォローする。プッシュ通知やメッセージのイベントは
+出さない。新しいチャンネルは開いているクライアントにもすぐ現れ、履歴は開いた時に読み込まれる。
+
+**やり直し**: 作った行はすべて `import_refs` に記録する。同じコマンドをもう一度実行すると、読み込み済みの行は
+飛ばして、その後に増えた投稿だけを足す (途中で失敗しても、コミット済みのところから続く)。1 回目の後に
+Mattermost 側で行われた編集・削除・リアクションは反映しない。本番では、`--dry-run` で確かめた後、Mattermost を
+止める (または読み取り専用にする) 直前に 1 回実行するのがよい。
+
+**前提**: この機能と増分バックアップを含むリリースをデプロイしてから行う (以前の `objects.tgz` 形式のままだと、
+毎晩 7 GB を丸ごと写すことになる)。添付の分だけオブジェクトストアが増える (🍤 チームは約 7 GB)。
+
+本番サーバー (root。Mattermost の設定とデータは root でしか読めない) での手順:
+
+```sh
+cd /srv/chikuwachat/infra
+. ./deploy.conf
+export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$(cat .release)"
+export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
+install -d -m 700 /srv/chikuwachat/import
+
+# 1. 書き出し (Mattermost は読むだけ。接続先は Mattermost の config.json の DataSource)
+docker run --rm --network host --user root -e RUN_MIGRATIONS=false \
+  -v /opt/mattermost/config/config.json:/mm/config.json:ro -v /srv/chikuwachat/import:/import \
+  "$CHIKUWA_SERVER_IMAGE" \
+  python -m app.cli mattermost-extract --mm-config /mm/config.json --team ebi --out /import/ebi.jsonl
+
+# 2. 試し読み (--dry-run: すべて検査して何も書かない。人の対応付け・件数・警告が出る)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml \
+  run --rm --no-deps --user root -e RUN_MIGRATIONS=false \
+  -v /opt/mattermost/data:/mm-data:ro -v /srv/chikuwachat/import:/import:ro app \
+  python -m app.cli import-mattermost /import/ebi.jsonl --files /mm-data --actor admin \
+  --user alicemm=alice --user bobmm=ebi --user admin_mm=admin --dry-run
+
+# 3. 本番: 2. から --dry-run を外して実行する
+
+# 4. 終わったら書き出したファイルを消す (チームの全メッセージが入っている)
+rm -rf /srv/chikuwachat/import
+```
+
+`--actor` は実行する管理者 (監査ログと、作成者が分からない行の作成者になる)。結果には人の対応付け
+(`@kanotown → @kano (--user)` など)、件数 (`posts`、`replies`、`files`、`files_missing` など)、警告 (見つからない
+ファイル、名前の変更など) が出る。`files_over_upload_limit` はアップロードの上限を超えるが読み込んだファイルの数。
 
 ## 実機での動作確認 (iPhone)
 
