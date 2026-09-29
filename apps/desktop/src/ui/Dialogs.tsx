@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar, presenceLabel } from "./Avatar";
+import { myName, SELF_NOTES_HINT } from "./channels";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
@@ -77,16 +78,16 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   return (
     <Modal onClose={onClose} title="ダイレクトメッセージ" description="相手を選びます。複数選ぶとグループ DM になります。">
       <div className="mt-4 space-y-3">
-        {/* A DM with only myself: notes to self (as in Slack). */}
+        {/* A DM with only myself, titled with my name (as in Slack / Mattermost). */}
         {me && (
           <button
             type="button"
             onClick={() => void open([me])}
             className="flex w-full items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-panel"
           >
-            <NotebookPen size={16} className="text-muted" />
-            <span className="font-medium">自分へのメモ</span>
-            <span className="text-xs text-muted">自分だけが見られる DM</span>
+            <NotebookPen size={16} className="shrink-0 text-muted" />
+            <span className="shrink-0 font-medium">{myName(controller.store.users, me, controller.store.me)}</span>
+            <span className="min-w-0 truncate text-xs text-muted">{SELF_NOTES_HINT}</span>
           </button>
         )}
         <UserPicker users={users} selected={selected} onToggle={toggle} empty="相手になるユーザーがいません" />

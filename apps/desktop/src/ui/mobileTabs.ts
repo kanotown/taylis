@@ -4,7 +4,7 @@
  * notification / permalink / search result lands, and the per-tab screen stacks.
  */
 import type { ChannelState, ThreadSummary } from "../sync/types";
-import { hasUnread, isDmChannel } from "./channels";
+import { hasUnread, isDmChannel, isSelfNotes } from "./channels";
 
 export type MobileTab = "home" | "dm" | "activity" | "you";
 
@@ -39,27 +39,12 @@ export function homeDot(channels: Iterable<ChannelState>, meId: string | null, n
 
 // --- the DM list (§6.3) ------------------------------------------------------------------------
 
-/** 「自分へのメモ」: a DM with nobody but me. */
-export function isSelfNotes(channel: ChannelState, meId: string | null): boolean {
-  return channel.type === "dm" && (channel.dm_user_ids ?? []).every((id) => id === meId);
-}
-
-export const SELF_NOTES_TITLE = "自分へのメモ";
+// My own DM (a DM with nobody but me, titled with my name): its rules live in ./channels, the sidebar uses them too.
+export { isSelfNotes, showsSelfNotesPlaceholder } from "./channels";
 
 /**
- * Whether the DM list shows the 「自分へのメモ」 placeholder row first: there is no DM with only me among my channels yet
- * (a tap on the row makes it), and the filter is empty or matches its title.
- */
-export function showsSelfNotesPlaceholder(channels: Iterable<ChannelState>, meId: string | null, query = ""): boolean {
-  if (!meId) return false;
-  for (const channel of channels) if (channel.isMember && isSelfNotes(channel, meId)) return false;
-  const needle = query.trim().toLowerCase();
-  return !needle || SELF_NOTES_TITLE.toLowerCase().includes(needle);
-}
-
-/**
- * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, 「自分へのメモ」, never one of my
- * 1:1 DMs.
+ * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, my own DM, never one of my 1:1
+ * DMs.
  */
 export function findDmWith(channels: Iterable<ChannelState>, userId: string, meId: string | null): ChannelState | undefined {
   const wanted = new Set([userId, ...(meId ? [meId] : [])]);
@@ -71,7 +56,7 @@ export function findDmWith(channels: Iterable<ChannelState>, userId: string, meI
   return undefined;
 }
 
-/** My DMs and group DMs: 「自分へのメモ」 first, then the newest last message first; `query` filters by name. */
+/** My DMs and group DMs: my own DM first, then the newest last message first; `query` filters by name. */
 export function dmList(channels: Iterable<ChannelState>, title: (channel: ChannelState) => string, meId: string | null, query = ""): ChannelState[] {
   const needle = query.trim().toLowerCase();
   const rows = [...channels].filter((c) => c.isMember && isDmChannel(c) && (!needle || title(c).toLowerCase().includes(needle)));

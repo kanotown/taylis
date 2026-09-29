@@ -4,8 +4,9 @@ import { type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels } from "./channels";
-import { channelTitle } from "./MainScreen";
+import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
+import { useOpenSelfNotes } from "./DmListView";
+import { channelTitle, myDisplayName } from "./MainScreen";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
@@ -64,6 +65,11 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).
   const [folded, toggleFolded] = useFoldedDefaults();
   const [newSection, setNewSection] = useState(false);
+  // My own DM is always the first DM (sectionChannels); until it exists, a placeholder row with my picture and name
+  // stands there, not while the section is folded or only unread conversations are listed.
+  const myName = myDisplayName(controller);
+  const selfPlaceholder = showsSelfNotesInDmSection(channels, me?.id ?? null, myName, { collapsed: folded.has("dms"), unreadOnly });
+  const { creating: creatingSelf, open: openSelfNotes } = useOpenSelfNotes(controller, me?.id ?? null, onOpen);
   // A folded section still shows what is unread and the open conversation (Slack). The others stay in the list, folded
   // away (.fold-row), so they slide shut and open rather than jump (testers, 2026-09-29).
   const shown = (rows: ChannelState[], collapsed: boolean) => rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null)));
@@ -375,8 +381,26 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </span>
         }
       >
-        <ul className="space-y-px">{shown(sections.dms, folded.has("dms"))}</ul>
-        {sections.dms.length === 0 && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
+        <ul className="space-y-px">
+          {selfPlaceholder && me && (
+            <li>
+              <button
+                type="button"
+                onClick={openSelfNotes}
+                disabled={creatingSelf}
+                aria-busy={creatingSelf}
+                data-self-notes-placeholder=""
+                title={myName}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors hover:bg-sidebar-hover hover:text-white disabled:opacity-60"
+              >
+                <Avatar id={me.id} name={myName} size={18} className="rounded-md text-[9px]" />
+                <span className="flex-1 truncate">{myName}</span>
+              </button>
+            </li>
+          )}
+          {shown(sections.dms, folded.has("dms"))}
+        </ul>
+        {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
       </Section>
       {sections.browse.length > 0 && (
         <Section title="参加できるチャンネル">

@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { canMakePublic, canPostTopLevel, conversationTitle, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
+import { canMakePublic, canPostTopLevel, conversationTitle, hasUnread, isDmChannel, myName, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -1162,5 +1162,10 @@ function ConvertConfirm({ channel, isAdmin, busy, onClose, onConfirm }: {
 }
 
 export function channelTitle(channel: ChannelState, controller: AppController): string {
-  return conversationTitle(channel, controller.store.users, controller.store.me?.id ?? null);
+  return conversationTitle(channel, controller.store.users, controller.store.me?.id ?? controller.me?.id ?? null, controller.store.me ?? controller.me);
+}
+
+/** My name as the lists show it (my own DM's title, and its placeholder row's). */
+export function myDisplayName(controller: AppController): string {
+  return myName(controller.store.users, controller.store.me?.id ?? controller.me?.id ?? null, controller.store.me ?? controller.me);
 }

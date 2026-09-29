@@ -22,7 +22,8 @@ import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Input, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
-import { channelTitle } from "./MainScreen";
+import { channelTitle, myDisplayName } from "./MainScreen";
+import { isSelfNotes, SELF_NOTES_INTRO } from "./channels";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
@@ -453,8 +454,18 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
               <MessagesSquare size={22} />
             </span>
-            <strong className="text-base">まだメッセージはありません</strong>
-            <span className="text-sm text-muted">最初のメッセージを送ってみましょう。</span>
+            {/* My own DM (a DM with only me) says what it is for, under my name. */}
+            {isSelfNotes(channel, me?.id ?? controller.me?.id ?? null) ? (
+              <>
+                <strong className="text-base">{myDisplayName(controller)}</strong>
+                <span className="max-w-md text-sm text-muted">{SELF_NOTES_INTRO}</span>
+              </>
+            ) : (
+              <>
+                <strong className="text-base">まだメッセージはありません</strong>
+                <span className="text-sm text-muted">最初のメッセージを送ってみましょう。</span>
+              </>
+            )}
           </div>
         )}
         {items.map((item) => {
@@ -542,6 +553,8 @@ export function screenRows(scroller: HTMLElement, selector: string, idPrefix: st
 export function ChannelIntro({ controller, channel }: { controller: AppController; channel: ChannelState }) {
   const store = controller.store;
   const isDm = channel.type === "dm" || channel.type === "group_dm";
+  // My own DM: titled with my name (channelTitle), and what it is for instead of 「… との会話の始まりです。」.
+  const self = isSelfNotes(channel, store.me?.id ?? controller.me?.id ?? null);
   const creator = channel.created_by ? store.users.get(channel.created_by)?.display_name : null;
   const created = channel.created_at ? new Date(channel.created_at) : null;
   const title = channelTitle(channel, controller);
@@ -552,7 +565,9 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
         {title.replace(/^#/, "")}
       </div>
       <p className="mt-1.5 text-sm text-muted">
-        {isDm ? (
+        {self ? (
+          SELF_NOTES_INTRO
+        ) : isDm ? (
           <>{title} との会話の始まりです。</>
         ) : (
           <>

@@ -5,12 +5,61 @@ export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
 }
 
-/** A conversation's name: `#name` for channels, the other members for DMs (also the notification title). */
-export function conversationTitle(channel: ChannelState, users: ReadonlyMap<string, UserPublic>, meId: string | null): string {
+/**
+ * A conversation's name: `#name` for channels, the other members for DMs (also the notification title). My own DM (a
+ * DM with nobody but me, Slack / Mattermost style) is named after me; `me` stands in while the users are not loaded.
+ */
+export function conversationTitle(channel: ChannelState, users: ReadonlyMap<string, UserPublic>, meId: string | null, me?: NamedUser | null): string {
   if (channel.type === "public" || channel.type === "private") return `#${channel.name ?? ""}`;
   const others = (channel.dm_user_ids ?? []).filter((id) => id !== meId);
-  if (others.length === 0) return "自分へのメモ";
+  if (others.length === 0) return myName(users, meId, me);
   return others.map((id) => users.get(id)?.display_name ?? "…").join(", ");
+}
+
+type NamedUser = Pick<UserPublic, "display_name" | "username">;
+
+/** My name as the lists show it: my display name, else my username, else 「…」 (not loaded yet). */
+export function myName(users: ReadonlyMap<string, NamedUser>, meId: string | null, me?: NamedUser | null): string {
+  const user = (meId ? users.get(meId) : undefined) ?? me ?? undefined;
+  return user?.display_name?.trim() || user?.username?.trim() || "…";
+}
+
+// --- my own DM (Slack / Mattermost: a DM with only me, titled with my name) --------------------------------------
+
+/** A DM with nobody but me. */
+export function isSelfNotes(channel: ChannelState, meId: string | null): boolean {
+  return !!meId && channel.type === "dm" && (channel.dm_user_ids ?? []).every((id) => id === meId);
+}
+
+/** What my own DM says where its conversation starts (empty, or at the start of its history). */
+export const SELF_NOTES_INTRO = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。";
+
+/** The new-DM picker's line under my name. */
+export const SELF_NOTES_HINT = "メモや下書きに使える、自分だけの DM";
+
+/**
+ * Whether a DM list shows my own DM's placeholder row first: there is no DM with only me among my channels yet (a tap on
+ * the row makes it), and the filter is empty or matches my name (`name`, as myName gives it), ignoring case.
+ */
+export function showsSelfNotesPlaceholder(channels: Iterable<ChannelState>, meId: string | null, name: string, query = ""): boolean {
+  if (!meId) return false;
+  for (const channel of channels) if (channel.isMember && isSelfNotes(channel, meId)) return false;
+  const needle = query.trim().toLowerCase();
+  return !needle || name.trim().toLowerCase().includes(needle);
+}
+
+/**
+ * The home list's 「ダイレクトメッセージ」 section: the placeholder as above, but never while the section is folded or only
+ * unread conversations are listed. (My own DM starred or in one of my sections exists, so it gets no placeholder either.)
+ */
+export function showsSelfNotesInDmSection(
+  channels: Iterable<ChannelState>,
+  meId: string | null,
+  name: string,
+  options: { collapsed?: boolean; unreadOnly?: boolean; query?: string } = {},
+): boolean {
+  if (options.collapsed || options.unreadOnly) return false;
+  return showsSelfNotesPlaceholder(channels, meId, name, options.query);
 }
 
 /** M15a: whether I may start top-level posts here; thread replies stay open to every member. */
@@ -69,11 +118,12 @@ export interface ChannelSections {
   channels: ChannelState[];
   /** M24: times channels I am in, mine first; left out of `channels`. */
   times: ChannelState[];
+  /** My own DM first, then the newest. */
   dms: ChannelState[];
   browse: ChannelState[];
 }
 
-/** The sidebar order: channels by name, DMs by recency, joinable public channels by name. */
+/** The sidebar order: channels by name, DMs by recency (my own DM first), joinable public channels by name. */
 export function sectionChannels(
   all: ChannelState[],
   title: (channel: ChannelState) => string,
@@ -82,6 +132,7 @@ export function sectionChannels(
   const meId = options.meId ?? null;
   const byTitle = (a: ChannelState, b: ChannelState) => title(a).localeCompare(title(b), "ja");
   const byRecency = (a: ChannelState, b: ChannelState) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "");
+  const selfFirst = (a: ChannelState, b: ChannelState) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || byRecency(a, b);
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, meId, options.now);
   const isTimes = (channel: ChannelState) => !!channel.times_owner_id;
   const mineFirst = (a: ChannelState, b: ChannelState) => Number(b.times_owner_id === meId) - Number(a.times_owner_id === meId) || byTitle(a, b);
@@ -98,7 +149,7 @@ export function sectionChannels(
     }),
     channels: all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)).sort(byTitle),
     times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
-    dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(byRecency),
+    dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(selfFirst),
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byTitle),
   };
 }
