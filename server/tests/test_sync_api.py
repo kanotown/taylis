@@ -50,7 +50,10 @@ async def test_delta_cursor_semantics(
     alice = await make_user(db, "alice")
     bob = await make_user(db, "bob")
     as_user(alice)
-    channel = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    # Private: a public channel is read before joining (M27), a private one only by its members.
+    channel = (
+        await client.post("/api/v1/channels", json={"name": "general", "type": "private"})
+    ).json()
     for i in range(5):
         await _post(client, channel["id"], f"m{i + 1}")
     base = f"/api/v1/channels/{channel['id']}/sync"

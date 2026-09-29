@@ -702,7 +702,8 @@ CREATE INDEX message_revisions_message_idx ON message_revisions (message_id, rep
 
 ### 投票 (polls、M14b)
 
-`messages.poll jsonb` に `{ "question", "options": [..], "multiple", "closed_at" }` を持ち、票は別テーブルに置く。
+`messages.poll jsonb` に `{ "question", "options": [..], "multiple", "anonymous", "closed_at" }` を持ち、票は別テーブルに置く
+(`anonymous` は M27。無い行は記名)。
 
 ```sql
 CREATE TABLE poll_votes (
@@ -720,6 +721,13 @@ CREATE TABLE poll_votes (
 - `PUT/DELETE /messages/{id}/poll/votes/{index}` は reactions と同じ扱い: 変化があれば seq を 1 つ消費して
   `updated_seq` を進め、`message.updated` (`change = poll`) で全員に届く。単一選択は前の票を動かす。
 - `POST /messages/{id}/poll/close` (投稿者だけ。admin も他人の投票は締め切れない、2026-09-29 テスターの要望) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
+- 匿名 (M27、作成時の `poll.anonymous`、後から変えない): 誰が投票したかを誰にも見せない (投稿者・admin にも)。
+  `PollOut.votes` は選択肢ごとに空の配列、`counts` が件数。票のテーブルは記名と同じ (同じ人が 2 回投票しないため)。
+- `PollOut.counts` は選択肢ごとの件数 (記名・匿名とも)。`PollOut.mine` はその応答を受け取る人が投票した選択肢の
+  番号で、本人宛ての応答 (履歴・差分・前後・スレッド・単体・投票と締め切りの応答・検索・保存済み・スレッド一覧) にだけ入る。
+  `message.updated` などのイベントはメンバー全員に同じものを配るので `mine = null`。クライアントは null なら前に知っていた
+  値を保つ (SYNC_PROTOCOL.md §8)。記名の投票でも `mine` は入る (`votes` から導いても同じ)。
+  匿名の投票で同じ人の別の端末は、次に履歴か差分を取るまで自分の票の表示が古いことがある。
 
 ### message_acks と messages.priority (重要度と確認、M15e)
 
@@ -739,7 +747,8 @@ CREATE TABLE message_acks (
 - 重要度と「確認を求める」は投稿時にだけ付けられ、後から変えない (Mattermost と同じ)。
 - 確認は投稿者以外のメンバーが `PUT / DELETE /messages/{id}/ack` で付け外しする。`MessageOut.acks` は古い順。
   変化は `message.updated` (`change = ack`) で配り、seq を消費する。メッセージを削除すると確認も消す。
-- `MessageOut.poll.votes` は選択肢ごとの投票者 id の配列 (投票順)。件数と「自分の票」はクライアントが導く。
+- `MessageOut.poll.votes` は選択肢ごとの投票者 id の配列 (投票順、匿名なら空)。件数は `counts`、自分の票は `mine`
+  (上の「投票」)。3 端末とも記名の投票は選択肢ごとに投票した人の名前を出す (M27)。
 
 ### reactions
 

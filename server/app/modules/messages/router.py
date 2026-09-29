@@ -38,7 +38,7 @@ async def create_message(
         raise rate_limited(limiter.retry_after_seconds(key))
     message, created = await service.create_message(db, user, channel_id, body)
     response.status_code = 201 if created else 200
-    return await service.message_out(db, message)
+    return await service.message_out(db, message, user.id)
 
 
 @router.get("/channels/{channel_id}/messages", response_model=HistoryOut)
@@ -65,7 +65,8 @@ async def list_delta(
 
 @router.get("/messages/{message_id}", response_model=MessageOut)
 async def get_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
-    return await service.message_out(db, await service.get_message(db, user, message_id))
+    message = await service.get_readable_message(db, user, message_id)  # M27: also a public preview
+    return await service.message_out(db, message, user.id)
 
 
 @router.get("/messages/{message_id}/replies", response_model=list[MessageOut])

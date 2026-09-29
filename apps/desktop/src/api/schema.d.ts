@@ -2886,6 +2886,11 @@ export interface components {
          */
         PollCreate: {
             /**
+             * Anonymous
+             * @default false
+             */
+            anonymous: boolean;
+            /**
              * Multiple
              * @default false
              */
@@ -2897,8 +2902,20 @@ export interface components {
         };
         /** PollOut */
         PollOut: {
+            /**
+             * Anonymous
+             * @default false
+             */
+            anonymous: boolean;
             /** Closed At */
             closed_at?: string | null;
+            /**
+             * Counts
+             * @default []
+             */
+            counts: number[];
+            /** Mine */
+            mine?: number[] | null;
             /** Multiple */
             multiple: boolean;
             /** Options */

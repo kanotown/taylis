@@ -230,6 +230,18 @@ async def require_member(
     return channel, membership
 
 
+async def require_readable(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> Channel:
+    """Reading a channel's messages (SECURITY.md §3.2): its members, and in a public channel
+    everyone but a guest, who could join it anyway (M27: the preview before joining, Slack).
+    Writing, reactions, votes and read positions stay with the members (require_member)."""
+    channel = await require_channel(db, channel_id)
+    if await repo.get_membership(db, channel_id, actor.id) is not None:
+        return channel
+    if channel.type == "public" and not actor.is_guest:
+        return channel
+    raise forbidden("not_a_member", "You are not a member of this channel")
+
+
 def require_writable(channel: Channel) -> None:
     if channel.is_archived:
         raise conflict("channel_archived", "Channel is archived")
