@@ -123,7 +123,7 @@ struct LoginView: View {
             }
             .onAppear(perform: prepare)
             .sheet(isPresented: $adding) { LoginView(controller: controller, mode: .add) { adding = false } }
-            .confirmationDialog("このワークスペースを一覧から外しますか？", isPresented: $forgetting, titleVisibility: .visible) {
+            .alert("このワークスペースを一覧から外しますか？", isPresented: $forgetting) {
                 Button("一覧から外す", role: .destructive) {
                     if let workspace = relogin { Task { await controller.signOutWorkspace(workspace.serverUrl) } }
                 }

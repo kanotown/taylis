@@ -14,8 +14,17 @@ struct ChannelListView: View {
     @State private var sectionForm: SectionFormTarget?
     /// M26: the default sections folded on this device; my own sections fold on all my devices through the server.
     @AppStorage("sidebar.folded") private var foldedRaw = ""
-    private var folded: Set<String> { Self.foldedKeys(foldedRaw) }
-    private func toggleFold(_ key: String) { withAnimation(.easeInOut(duration: 0.25)) { foldedRaw = Self.toggledFold(foldedRaw, key: key) } }
+    /// What the list shows, changed inside an animation (a change of the stored value itself was not animated: the
+    /// section snapped shut, testers 2026-09-29); the stored value follows for the next launch.
+    @State private var foldedShown: Set<String>?
+    private var folded: Set<String> { foldedShown ?? Self.foldedKeys(foldedRaw) }
+    /// The folds as stored, before the first change (so that change is animated from a value already on screen).
+    private func loadFolds() { if foldedShown == nil { foldedShown = Self.foldedKeys(foldedRaw) } }
+    private func toggleFold(_ key: String) {
+        let next = Self.toggledFold(foldedRaw, key: key)
+        withAnimation(.easeInOut(duration: 0.3)) { foldedShown = Self.foldedKeys(next) }
+        foldedRaw = next
+    }
     private func shown(_ rows: [ChannelState], _ collapsed: Bool) -> [ChannelState] {
         Self.shown(rows, collapsed: collapsed, meId: meId, selection: selection)
     }
@@ -108,6 +117,7 @@ struct ChannelListView: View {
         // Plain and compact like Slack's (testers, 2026-09-29: widely spaced rows were hard to scan with many channels).
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 40)
+        .onAppear(perform: loadFolds)
         .sheet(item: $sectionForm) { target in
             SectionFormView(controller: controller, section: target.section, preselected: target.preselected)
         }

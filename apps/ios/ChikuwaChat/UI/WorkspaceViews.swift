@@ -106,9 +106,9 @@ struct WorkspaceListView: View {
                 Button { adding = true } label: { Label("ワークスペースを追加", systemImage: "plus") }
             }
         }
-        .confirmationDialog(leaving.map { "\($0.name) からサインアウトしますか？" } ?? "",
-                            isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
-                            titleVisibility: .visible, presenting: leaving) { workspace in
+        .alert(leaving.map { "\($0.name) からサインアウトしますか？" } ?? "",
+               isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
+               presenting: leaving) { workspace in
             Button("サインアウト", role: .destructive) { Task { await controller.signOutWorkspace(workspace.serverUrl) } }
             Button("キャンセル", role: .cancel) {}
         } message: { workspace in
