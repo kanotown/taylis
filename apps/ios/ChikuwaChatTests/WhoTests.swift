@@ -53,6 +53,17 @@ final class WhoTests: XCTestCase {
         XCTAssertEqual(other.message("c1", id: "m1")?.poll?.mine, [1])
     }
 
+    /// Another member's vote event (a newer updated_seq) came before the answer to mine: my votes still show.
+    func testMyVoteCountsWhenANewerEventCameFirst() throws {
+        let store = Store()
+        store.upsertMessage(try message(updatedSeq: 6, poll: #"{"question": "Q", "options": ["A", "B"], "multiple": false, "anonymous": true, "closed_at": null, "votes": [[], []], "counts": [1, 1], "mine": null}"#))
+        let answer = try message(updatedSeq: 5, poll: #"{"question": "Q", "options": ["A", "B"], "multiple": false, "anonymous": true, "closed_at": null, "votes": [[], []], "counts": [0, 1], "mine": [1]}"#)
+        XCTAssertFalse(store.upsertMessage(answer))
+        store.setMyVotes(answer)
+        XCTAssertEqual(store.message("c1", id: "m1")?.poll?.mine, [1])
+        XCTAssertEqual(store.message("c1", id: "m1")?.poll?.counts, [1, 1])
+    }
+
     func testNamesShowAFewThenHowManyMore() {
         XCTAssertEqual(PeopleList.compact(["山田"]), "山田")
         XCTAssertEqual(PeopleList.compact(["山田", "佐藤", "鈴木"]), "山田、佐藤、鈴木")

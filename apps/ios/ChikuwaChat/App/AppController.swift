@@ -1061,7 +1061,9 @@ final class AppController {
     func vote(_ message: MessageState, option: Int, present: Bool) async -> Bool {
         guard let api else { return false }
         do {
-            store.upsertMessage(try await api.vote(messageId: message.id, option: option, present: present))
+            let answer = try await api.vote(messageId: message.id, option: option, present: present)
+            store.upsertMessage(answer)
+            store.setMyVotes(answer) // also when another vote's event came first (§8)
             return true
         } catch { self.error = describe(error); return false }
     }
@@ -1069,7 +1071,9 @@ final class AppController {
     func closePoll(_ message: MessageState) async -> Bool {
         guard let api else { return false }
         do {
-            store.upsertMessage(try await api.closePoll(messageId: message.id))
+            let answer = try await api.closePoll(messageId: message.id)
+            store.upsertMessage(answer)
+            store.setMyVotes(answer)
             return true
         } catch { self.error = describe(error); return false }
     }

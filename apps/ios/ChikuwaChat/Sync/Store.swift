@@ -820,6 +820,17 @@ final class Store {
         return true
     }
 
+    /// The answer to my own vote or close (SYNC_PROTOCOL.md §8, M27): its `mine` goes in whatever the order. Another
+    /// member's vote event may have come first with a newer updated_seq, and the merge then drops the answer.
+    func setMyVotes(_ answer: MessageOut) {
+        guard let mine = answer.poll?.mine else { return }
+        let rows = bucket(answer.channelId)
+        guard var stored = rows.byId[answer.id], stored.poll != nil, stored.poll?.mine != mine else { return }
+        stored.poll?.mine = mine
+        rows.byId[answer.id] = stored
+        persist { try $0.saveMessage(stored) }
+    }
+
     func putPlaceholder(_ message: MessageState) {
         bucket(message.channelId).byId[message.id] = message
         persist { try $0.saveMessage(message) }

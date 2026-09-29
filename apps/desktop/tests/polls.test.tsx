@@ -93,6 +93,19 @@ describe("poll.mine merge (SYNC_PROTOCOL.md §8, M27)", () => {
     expect(row.poll?.mine).toEqual([0]);
   });
 
+  it("my vote's answer counts also when another member's vote event came first with a newer updated_seq", () => {
+    const store = new Store();
+    const base = { id: "m1", channel_id: "c1", sender_id: "u1", seq: 1, client_msg_id: null, body: "📊 q", created_at: "", edited_at: null, deleted: false };
+    const poll = { question: "q", options: ["a", "b"], multiple: false, anonymous: true, closed_at: null, votes: [[], []] };
+    store.upsertMessage({ ...base, updated_seq: 6, poll: { ...poll, counts: [1, 1], mine: null } } satisfies MessageState); // carol's event
+    const answer = { ...base, updated_seq: 5, poll: { ...poll, counts: [0, 1], mine: [1] } } satisfies MessageState; // my vote, older
+    expect(store.upsertMessage(answer)).toBe(false); // the merge keeps the newer row…
+    store.setMyVotes(answer); // …and AppController.vote still takes my votes from the answer
+    const row = store.message("c1", "m1")!;
+    expect(row.poll?.mine).toEqual([1]);
+    expect(row.poll?.counts).toEqual([1, 1]);
+  });
+
   it("an answer with the same updated_seq and the same votes changes nothing (no re-render)", () => {
     const store = new Store();
     const row = { id: "m1", channel_id: "c1", sender_id: "u1", seq: 1, updated_seq: 5, client_msg_id: null, body: "📊 q", created_at: "", edited_at: null, deleted: false, poll: { question: "q", options: ["a", "b"], multiple: false, anonymous: true, closed_at: null, votes: [[], []], counts: [1, 0], mine: [0] } } satisfies MessageState;
