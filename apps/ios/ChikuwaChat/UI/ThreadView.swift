@@ -28,13 +28,10 @@ struct ThreadView: View {
     @State private var viewportHeight: CGFloat = 0
     @State private var cover = CoverProbe()
     @State private var landingInterrupted = false
-    /// The list's UIScrollView, for keeping its bottom edge on iOS 18 (KeepsBottom), and whether it is doing that.
-    @State private var scroller = ScrollViewProbe()
-    @State private var resizing = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
-    /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
-    @State private var keyboardKept = KeyboardKept()
+    /// The row the list is kept at (ChannelView.keptRowId): a reply arriving below does not move what is on screen.
+    @State private var keptRowId: String?
     /// The landing on the first unread reply, in a task of its own (ChannelView.landingTask: a `.task` cancelled by the
     /// navigation's disappear and reappear left the landing unfinished).
     @State private var landingTask: Task<Void, Never>?
@@ -57,52 +54,46 @@ struct ThreadView: View {
     var body: some View {
         // M29: pushed onto the conversation's navigation (Slack), not a sheet: back and the swipe return to it.
         VStack(spacing: 0) {
+            // The flipped list must not reach under the navigation bar: a scroll view there takes the bar's height as a
+            // margin and draws the bar's edge effect, both at its top — which the flip puts at the bottom, and the replies
+            // went under the bar blurred (M36). A hairline above keeps it below the bar, as the tabs row does in a channel.
+            Color.clear.frame(height: 1)
             ScrollViewReader { proxy in
                 GeometryReader { viewport in
+                    // Upside down like a conversation (UpsideDownList.swift): the newest reply stays above the input as
+                    // the keyboard comes and goes, and a new one pushes the others up by itself.
                     ScrollView {
                         rowStack(viewportHeight: viewport.size.height)
                         .padding(.vertical) // the side margin is each row's (margin)
                         .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
-                        .background(ScrollViewProbe.Marker(probe: scroller))
+                        .animation(positioned || provisional ? .easeOut(duration: 0.25) : nil, value: replies.last?.rowKey)
                         .background(StatusBarTapStays())
                     }
-                    .coordinateSpace(name: "threadViewport")
+                    .scrollPosition(id: $keptRowId, anchor: .top)
+                    .upsideDown()
+                    .clipped()
                     .dismissesKeyboardOnTap()
-                    // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
-                    .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom, scroller: scroller,
-                                         resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
-                        if atEnd {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        } else {
-                            // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
-                            keyboardKept.scrollView = { scroller.scrollView }
-                            if let expected = keyboardKept.expected {
-                                keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
-                                keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                            }
-                        }
-                    }
                     .onUserScroll {
                         if provisional && !positioned { userScrolled = true }
                         if anchor.landing != nil { landingInterrupted = true }
-                        keyboardKept.clear()
                     }
                     .background(CoverProbe.Marker(probe: cover))
                     .onPreferenceChange(VisibleReplyFrames.self) { frames in
                         visibleFrames = frames
                         viewportHeight = viewport.size.height
-                        keyboardKept.note(frames)
                         markRead()
                     }
                 }
-                .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
+                // Outside the flip: the replies' frames come out as they are on screen.
+                .coordinateSpace(name: "threadViewport")
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: replies.last?.rowKey) { _, _ in
+                    // At the newest reply the list shows a new one by itself; my own reply from further up brings it down.
                     let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
-                    if (positioned || provisional) && (mine || atBottom && anchor.landing == nil) && controller.messageFocus?.parentId != parentId {
-                        if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    guard mine, positioned || provisional, controller.messageFocus?.parentId != parentId else { return }
+                    if anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+                    if !atBottom {
+                        withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) }
                     }
                 }
                 .onChange(of: scenePhase) { _, _ in markRead() }
@@ -179,32 +170,19 @@ struct ThreadView: View {
     @ViewBuilder
     private func rowStack(viewportHeight: CGFloat) -> some View {
         if replies.count > Self.lazyFrom {
-            LazyVStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }
+            LazyVStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }.scrollTargetLayout()
         } else {
-            VStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }
+            VStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }.scrollTargetLayout()
         }
     }
 
-    /// The parent, the reply count, the replies and the end marker.
+    /// Upside down (the list is flipped): the end marker, the replies newest first, then the reply count and the parent;
+    /// each flipped back the right way up.
     @ViewBuilder
     private func rows(viewportHeight: CGFloat) -> some View {
+        EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id(UpsideDown.newest)
         if let parent {
-            MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
-                       present: { messageSheet = $0 })
-            Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
-                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
-            Divider().padding(.horizontal, Self.margin)
-            if loadFailed {
-                HStack(spacing: 10) {
-                    Label("スレッドを読み込めませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
-                    Button("再読み込み") {
-                        loadFailed = false
-                        loadAttempt += 1
-                    }
-                }
-                .font(.footnote).padding(.horizontal, Self.margin)
-            }
-            ForEach(replies, id: \.rowKey) { reply in
+            ForEach(replies.reversed(), id: \.rowKey) { reply in
                 // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
                 VStack(alignment: .leading, spacing: 12) {
                     if reply.id == firstUnreadId { NewRepliesDivider().padding(.horizontal, Self.margin) }
@@ -215,12 +193,31 @@ struct ThreadView: View {
                                                    value: [reply.id: geometry.frame(in: .named("threadViewport"))])
                         })
                 }
+                .upsideDown()
+                .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                 .id(reply.rowKey)
             }
+            Group {
+                if loadFailed {
+                    HStack(spacing: 10) {
+                        Label("スレッドを読み込めませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                        Button("再読み込み") {
+                            loadFailed = false
+                            loadAttempt += 1
+                        }
+                    }
+                    .font(.footnote).padding(.horizontal, Self.margin)
+                }
+                Divider().padding(.horizontal, Self.margin)
+                Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
+                MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
+                           present: { messageSheet = $0 })
+            }
+            .upsideDown()
         } else {
-            Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin)
+            Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin).upsideDown()
         }
-        EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id("bottom")
     }
 
     /// 「フォロー中」 / 「フォロー」 with the bell where the toolbar shows titles (iOS 18). From iOS 26 it shows the bell
@@ -248,7 +245,7 @@ struct ThreadView: View {
                 proxy.scrollTo(focus.rowKey, anchor: .center)
                 positioned = true // already where the ready thread would put it
             } else {
-                proxy.scrollTo("bottom", anchor: .bottom)
+                proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom))
             }
             provisional = true
             return
@@ -260,7 +257,7 @@ struct ThreadView: View {
         case .top(let key):
             // Anchored only once the reply is really on screen: a long thread lands by estimated heights first.
             if let row = rows.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
-        case .bottom: proxy.scrollTo("bottom", anchor: .bottom)
+        case .bottom: proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom))
         }
     }
 
@@ -277,7 +274,7 @@ struct ThreadView: View {
         landingInterrupted = false
         for _ in 0..<3 {
             if landingInterrupted { break } // the reader took the list: it is not pulled from under a finger
-            proxy.scrollTo(landing.rowKey, anchor: .top)
+            proxy.scrollTo(landing.rowKey, anchor: UpsideDown.anchor(.top))
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
             if fullyShown(visibleFrames[landing.rowId]) { break }

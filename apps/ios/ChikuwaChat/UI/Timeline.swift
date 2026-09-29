@@ -390,42 +390,4 @@ enum OlderPaging {
         guard !focused, placed, !landing, !busy, !moving else { return false }
         return topShown(topRow, viewportHeight: viewportHeight)
     }
-
-    /// The row that stays where it is while a page goes in above it (its id for the frames, its list key to scroll to,
-    /// §10.3), where its top edge was, and the scrollTo anchor that puts it back there.
-    struct Kept: Equatable {
-        let rowId: String
-        let rowKey: String
-        let minY: CGFloat
-        let anchorY: CGFloat
-    }
-
-    /// The topmost message row on screen that is shown in full or covers the whole list (frames by message id, in the
-    /// list's visible coordinates). A UnitPoint anchor lines the row's point at `y` of its height up with the list's
-    /// point at `y` of its height, so y = minY / (viewport - row height) puts the row's top edge back at minY; for those
-    /// rows y is within 0...1 (a row cut by an edge would need an anchor outside it). `regrouped` is the row that was
-    /// first before the page (its id): the page's last row can take its name and time away (Timeline.build groups it),
-    /// which would move everything below it by a line, so it is kept only when no other row can be. Nil when none can.
-    static func keptRow(_ frames: [String: CGRect], rows: [MessageState], viewportHeight: CGFloat, regrouped: String? = nil) -> Kept? {
-        guard viewportHeight > 0 else { return nil }
-        let shown = rows.compactMap { row in frames[row.id].map { (id: row.id, key: row.rowKey, frame: $0) } }
-            .filter { $0.frame.maxY > 0 && $0.frame.minY < viewportHeight }
-            .sorted { $0.frame.minY < $1.frame.minY }
-        var fallback: Kept?
-        for (id, key, frame) in shown {
-            let room = viewportHeight - frame.height
-            let y: CGFloat
-            if abs(room) < 0.5 {
-                guard abs(frame.minY) < 0.5 else { continue }
-                y = 0
-            } else {
-                y = frame.minY / room
-                guard y >= 0 && y <= 1 else { continue }
-            }
-            let kept = Kept(rowId: id, rowKey: key, minY: frame.minY, anchorY: y)
-            if id != regrouped { return kept }
-            fallback = fallback ?? kept
-        }
-        return fallback
-    }
 }
