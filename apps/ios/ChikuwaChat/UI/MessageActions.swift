@@ -103,7 +103,10 @@ private struct MessageSheets: ViewModifier {
             .alert("メッセージを削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                    presenting: deleting) { message in
                 Button("キャンセル", role: .cancel) {}
-                Button("削除", role: .destructive) { Task { await controller.deleteMessage(message.id) } }
+                Button("削除", role: .destructive) {
+                    withAnimation(.easeOut(duration: 0.25)) { controller.hideMessage(message) }
+                    Task { await controller.deleteMessage(message) }
+                }
             } message: { _ in Text("削除したメッセージは元に戻せません。") }
     }
 }

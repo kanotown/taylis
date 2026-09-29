@@ -609,9 +609,20 @@ final class AppController {
         } catch { return describe(error) }
     }
 
-    func deleteMessage(_ messageId: String) async {
+    /// The row gone from the list at once, for the view to animate (the rows closing up in one frame when the server's
+    /// answer came jolted the list, testers 2026-09-29); `deleteMessage` puts it back if the server refuses.
+    func hideMessage(_ message: MessageState) {
+        var gone = message
+        gone.deleted = true
+        store.upsertMessage(gone, replacingSameVersion: true)
+    }
+
+    func deleteMessage(_ message: MessageState) async {
         guard let api else { return }
-        do { _ = store.upsertMessage(try await api.deleteMessage(id: messageId)) } catch { self.error = describe(error) }
+        do { _ = store.upsertMessage(try await api.deleteMessage(id: message.id)) } catch {
+            store.upsertMessage(message, replacingSameVersion: true)
+            self.error = describe(error)
+        }
     }
 
     // MARK: link previews (M11g): one fetch per URL per session
