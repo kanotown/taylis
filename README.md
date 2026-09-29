@@ -4,7 +4,7 @@
 modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android のクライアントを持つ。
 
 開発方針は [CLAUDE.md](CLAUDE.md)。進捗は [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) の
-マイルストーン表を参照 (M0〜M32 まで実装済み、2026-09-29 時点)。
+マイルストーン表を参照 (M0〜M34 まで実装済み、2026-09-29 時点)。
 
 **運用者に見えるもの**: 非公開チャンネルや DM は、admin でもメンバーでなければアプリからは読めない。ただしサーバ・
 データベース・バックアップに触れられる運用者は、技術的にはすべてのメッセージを読める。研究室で使うときは、この点を
