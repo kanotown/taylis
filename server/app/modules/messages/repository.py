@@ -38,6 +38,12 @@ async def allocate_seq(
     return int((await db.execute(stmt)).scalar_one())
 
 
+async def lock_channel(db: AsyncSession, channel_id: uuid.UUID) -> None:
+    """Hold the channel row (the lock every write to the channel takes through allocate_seq)
+    without consuming a seq: for a change that must see the others' committed state first."""
+    await db.execute(select(Channel.id).where(Channel.id == channel_id).with_for_update())
+
+
 async def get_channel_last_seq(db: AsyncSession, channel_id: uuid.UUID) -> int:
     result = await db.execute(select(Channel.last_seq).where(Channel.id == channel_id))
     return int(result.scalar_one())

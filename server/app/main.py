@@ -25,6 +25,7 @@ from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
 from app.modules.auth import repository as auth_repo
+from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
@@ -82,7 +83,9 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
             purged = await purge_processed(
-                app.state.db, timedelta(days=settings.outbox_retention_days)
+                app.state.db,
+                timedelta(days=settings.outbox_retention_days),
+                max_attempts=settings.outbox_max_attempts,
             )
             if purged:
                 log.info("purged %d processed outbox events", purged)
@@ -94,6 +97,10 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
             if purged_pushes:
                 log.info("purged %d push deliveries", purged_pushes)
             async with app.state.db.session_factory() as session:
+                # Sessions run out quietly: their devices are disabled here before the sessions
+                # themselves are purged, so an expired phone stops getting pushes (SECURITY.md
+                # §2.6).
+                expired = await auth_service.disable_expired_devices(session, utcnow())
                 sessions = await auth_repo.purge_sessions(
                     session, utcnow() - timedelta(days=settings.session_retention_days)
                 )
@@ -101,6 +108,8 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     session, utcnow() - timedelta(days=settings.device_retention_days)
                 )
                 await session.commit()
+            if expired:
+                log.info("disabled %d devices whose sessions expired", expired)
             if sessions or devices:
                 log.info("purged %d sessions and %d devices", sessions, devices)
         except Exception:

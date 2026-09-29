@@ -136,6 +136,7 @@ class ChannelState:
     members: set[uuid.UUID]
     created: bool  # made by this run (announced at the end)
     touched: bool = False  # got posts in this run
+    locked: bool = False  # the channel row is locked for the batch being built (see _lock)
 
 
 @dataclass
@@ -624,12 +625,29 @@ class MattermostImport:
                 pending = 0
         await self._flush_posts()
 
+    async def _lock(self, state: ChannelState) -> None:
+        """The channel row is locked for the rest of the batch, as `allocate_seq` locks it for a
+        post, and the seq continues from what the row says under the lock: a rerun while someone
+        posts must neither hand out a seq twice nor write an older `last_seq` back."""
+        if state.locked:
+            return
+        row = (
+            await self.db.execute(
+                select(Channel.last_seq, Channel.last_message_at)
+                .where(Channel.id == state.id)
+                .with_for_update()
+            )
+        ).one()
+        state.last_seq, state.last_message_at = int(row[0]), row[1]
+        state.locked = True
+
     async def _post(self, post: dict[str, Any], state: ChannelState, sender: Person) -> None:
         parent_id: uuid.UUID | None = None
         if post["root_id"]:
             parent_id = self.post_refs.get(post["root_id"])
             if parent_id is None:
                 self.report.warn(f"post {post['id']}: スレッドの親が無いのでチャンネルに投稿")
+        await self._lock(state)
         seq = state.last_seq + 1
         created_at = ms_to_datetime(post["create_at"])
         message_id = uuid7_at(post["create_at"])
@@ -708,6 +726,9 @@ class MattermostImport:
                     .execution_options(synchronize_session=False)
                 )
         await self._commit()
+        if not self.dry_run:  # the commit released the row locks (a dry run keeps them)
+            for state in self.channels.values():
+                state.locked = False
 
     def _reactions(self, post: dict[str, Any], message_id: uuid.UUID) -> None:
         seen: set[tuple[uuid.UUID, str]] = set()

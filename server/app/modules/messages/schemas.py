@@ -16,8 +16,12 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 EMOJI_PATTERN = r"^(:[a-z0-9_+\-]{1,30}:|[^\x00-\x7f]{1,16})$"
 
 
+def strip_control_chars(value: str) -> str:
+    return _CONTROL_CHARS.sub("", value)
+
+
 def clean_body(value: str) -> str:
-    cleaned = _CONTROL_CHARS.sub("", value)
+    cleaned = strip_control_chars(value)
     if not cleaned.strip():
         raise ValueError("body must not be empty")
     return cleaned
@@ -85,7 +89,7 @@ class MessageCreate(BaseModel):
     @field_validator("body")
     @classmethod
     def _clean_body(cls, value: str) -> str:
-        return _CONTROL_CHARS.sub("", value)
+        return strip_control_chars(value)
 
     @model_validator(mode="after")
     def _body_or_attachments(self) -> "MessageCreate":

@@ -478,6 +478,10 @@ async def set_vote(
         raise conflict("poll_closed", "The poll is closed")
     if index < 0 or index >= len(poll.get("options", [])):
         raise bad_request("poll_option_invalid", "No such option")
+    # Two devices voting at once must see each other's vote (a single-choice poll would keep
+    # both). The channel row is the lock, as for every write, so a vote and a reply to the same
+    # message never wait for each other in opposite orders.
+    await repo.lock_channel(db, message.channel_id)
     current = await repo.user_votes(db, message.id, actor.id)
     if present:
         if index in current:

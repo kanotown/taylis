@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, exists, func, select
+from sqlalchemy import ColumnElement, and_, any_, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -78,6 +78,40 @@ async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def follower_states(
+    db: AsyncSession, parent_id: uuid.UUID
+) -> list[tuple[ThreadFollow, int, int]]:
+    """Every follower's row with their (unread, mentions) counts in one query, in the order of
+    `followers`: a reply tells each follower its new state (THREADS.md §4), and a thread of
+    thirty people used to cost two queries per follower inside the reply's transaction."""
+    reply = aliased(Message)
+    mentioned = or_(
+        ThreadFollow.user_id == any_(reply.mentioned_user_ids),
+        ThreadFollow.user_id == any_(reply.keyword_user_ids),
+        reply.mention_all.is_(True),
+    )
+    stmt = (
+        select(ThreadFollow, func.count(reply.id), func.count(reply.id).filter(mentioned))
+        .outerjoin(
+            reply,
+            and_(
+                reply.parent_id == ThreadFollow.parent_id,
+                reply.seq > ThreadFollow.last_read_seq,
+                reply.sender_id != ThreadFollow.user_id,
+                reply.deleted_at.is_(None),
+            ),
+        )
+        .where(
+            ThreadFollow.parent_id == parent_id,
+            ThreadFollow.following.is_(True),
+            _member_of_thread_channel(),
+        )
+        .group_by(ThreadFollow.parent_id, ThreadFollow.user_id)
+        .order_by(ThreadFollow.created_at)
+    )
+    return [(row[0], int(row[1]), int(row[2])) for row in (await db.execute(stmt)).all()]
+
+
 async def followers_of(
     db: AsyncSession, parent_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[uuid.UUID]]:
@@ -98,6 +132,18 @@ async def followers_of(
     return out
 
 
+async def last_read_seqs(
+    db: AsyncSession, parent_id: uuid.UUID, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """The users' read positions in one thread (no row: 0), for the push planner."""
+    if not user_ids:
+        return {}
+    stmt = select(ThreadFollow.user_id, ThreadFollow.last_read_seq).where(
+        ThreadFollow.parent_id == parent_id, ThreadFollow.user_id.in_(user_ids)
+    )
+    return {user_id: int(seq) for user_id, seq in (await db.execute(stmt)).all()}
+
+
 async def newest_reply_seq(db: AsyncSession, parent_id: uuid.UUID) -> int:
     stmt = select(func.coalesce(func.max(Message.seq), 0)).where(
         Message.parent_id == parent_id, Message.deleted_at.is_(None)
@@ -110,18 +156,30 @@ async def advance_read(
 ) -> tuple[int, bool]:
     """Monotonic; a missing row is created without following (reading is not following)."""
     row = await db.get(ThreadFollow, (parent_id, user_id), with_for_update=True)
-    if row is None:
-        db.add(
-            ThreadFollow(parent_id=parent_id, user_id=user_id, following=False, last_read_seq=seq)
-        )
+    if row is not None:
+        if seq <= row.last_read_seq:
+            return row.last_read_seq, False
+        row.last_read_seq = seq
+        row.updated_at = utcnow()
         await db.flush()
         return seq, True
-    if seq <= row.last_read_seq:
-        return row.last_read_seq, False
-    row.last_read_seq = seq
-    row.updated_at = utcnow()
-    await db.flush()
-    return seq, True
+    # No row yet: an upsert, so two devices reading the thread at once do not collide on the
+    # key; the later one only moves the position forward and leaves the follow flag alone.
+    insert = pg_insert(ThreadFollow).values(
+        parent_id=parent_id, user_id=user_id, following=False, last_read_seq=seq
+    )
+    upsert = insert.on_conflict_do_update(
+        index_elements=["parent_id", "user_id"],
+        set_={"last_read_seq": seq, "updated_at": utcnow()},
+        where=ThreadFollow.last_read_seq < seq,
+    ).returning(ThreadFollow.last_read_seq)
+    moved = (await db.execute(upsert)).scalar_one_or_none()
+    if moved is not None:
+        return int(moved), True
+    current = select(ThreadFollow.last_read_seq).where(
+        ThreadFollow.parent_id == parent_id, ThreadFollow.user_id == user_id
+    )
+    return int((await db.execute(current)).scalar_one()), False
 
 
 async def set_following(

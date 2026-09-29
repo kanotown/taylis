@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import re
+import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
@@ -19,7 +20,7 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import repository as repo
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, make_thumbnail
+from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.schemas import (
     AttachmentOut,
@@ -35,6 +36,9 @@ log = logging.getLogger("app.attachments")
 MAX_ATTACHMENTS_PER_MESSAGE = 10
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 READ_CHUNK = 1024 * 1024
+# An upload larger than this is spooled to a temporary file rather than held in memory.
+SPOOL_MAX_BYTES = 8 * 1024 * 1024
+SNIFF_BYTES = 8192
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -58,51 +62,67 @@ def thumbnail_key(attachment_id: uuid.UUID) -> str:
 async def upload(
     db: AsyncSession, actor: User, file: UploadFile, settings: Settings, blobs: BlobStore
 ) -> AttachmentOut:
-    """Stream the multipart body, sniff its type, store it as pending (bound by the send)."""
-    digest = hashlib.sha256()
-    chunks: list[bytes] = []
-    size = 0
-    while True:
-        chunk = await file.read(READ_CHUNK)
-        if not chunk:
-            break
-        size += len(chunk)
-        if size > settings.attachment_max_bytes:
-            raise AppError(
-                413,
-                "attachment_too_large",
-                f"Attachments are limited to {settings.attachment_max_bytes} bytes",
-            )
-        digest.update(chunk)
-        chunks.append(chunk)
-    if size == 0:
-        raise bad_request("attachment_empty", "The file is empty")
-    data = b"".join(chunks)
-    kind = filetype.guess(data[:8192])
-    content_type = kind.mime if kind is not None else "application/octet-stream"
+    """Stream the multipart body, sniff its type, store it as pending (bound by the send).
 
-    # UUIDv7 like every other id (DATA_MODEL.md): generated here because the storage key needs it.
-    attachment_id = uuid7()
-    attachment = Attachment(
-        id=attachment_id,
-        uploader_id=actor.id,
-        filename=sanitize_filename(file.filename),
-        content_type=content_type,
-        size_bytes=size,
-        sha256=digest.digest(),
-        storage_key=storage_key(attachment_id),
-    )
-    if content_type in IMAGE_TYPES:
-        try:
-            thumb, width, height = await run_in_threadpool(
-                make_thumbnail, data, settings.attachment_thumbnail_px
-            )
-            await blobs.put(thumbnail_key(attachment_id), thumb, "image/jpeg")
-            attachment.width, attachment.height = width, height
-            attachment.thumbnail_key = thumbnail_key(attachment_id)
-        except Exception as exc:  # a broken or hostile image still uploads as a plain file
-            log.warning("thumbnail failed for %s: %s", attachment_id, exc)
-    await blobs.put(attachment.storage_key, data, content_type)
+    The bytes go through a spooled temporary file (memory up to SPOOL_MAX_BYTES, disk beyond), so
+    a 100 MB upload never sits in memory, let alone twice; the thumbnail and the store read the
+    same file.
+    """
+    digest = hashlib.sha256()
+    head = b""
+    size = 0
+    with tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES) as spool:
+        while True:
+            chunk = await file.read(READ_CHUNK)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > settings.attachment_max_bytes:
+                raise AppError(
+                    413,
+                    "attachment_too_large",
+                    f"Attachments are limited to {settings.attachment_max_bytes} bytes",
+                )
+            digest.update(chunk)
+            if len(head) < SNIFF_BYTES:
+                head += chunk[: SNIFF_BYTES - len(head)]
+            spool.write(chunk)
+        if size == 0:
+            raise bad_request("attachment_empty", "The file is empty")
+        kind = filetype.guess(head)
+        content_type = kind.mime if kind is not None else "application/octet-stream"
+
+        # UUIDv7 like every other id (DATA_MODEL.md): generated here because the storage key
+        # needs it.
+        attachment_id = uuid7()
+        attachment = Attachment(
+            id=attachment_id,
+            uploader_id=actor.id,
+            filename=sanitize_filename(file.filename),
+            content_type=content_type,
+            size_bytes=size,
+            sha256=digest.digest(),
+            storage_key=storage_key(attachment_id),
+        )
+        if content_type in IMAGE_TYPES:
+            spool.seek(0)
+            try:
+                thumb, width, height = await run_in_threadpool(
+                    make_thumbnail, spool, settings.attachment_thumbnail_px
+                )
+            except ImageTooLarge as exc:
+                # Refused rather than stored as a plain file: the clients would try to show it.
+                raise AppError(
+                    422, "image_too_large", "The image has too many pixels to be shown"
+                ) from exc
+            except Exception as exc:  # a broken or hostile image still uploads as a plain file
+                log.warning("thumbnail failed for %s: %s", attachment_id, exc)
+            else:
+                await blobs.put(thumbnail_key(attachment_id), thumb, "image/jpeg")
+                attachment.width, attachment.height = width, height
+                attachment.thumbnail_key = thumbnail_key(attachment_id)
+        spool.seek(0)
+        await blobs.put(attachment.storage_key, spool, content_type)
     db.add(attachment)
     await db.commit()
     await db.refresh(attachment)

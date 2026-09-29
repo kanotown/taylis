@@ -67,6 +67,10 @@ class PushSender:
                 delivery.status, delivery.last_error = "skipped", "expired"
             elif not device.enabled or not device.push_registered:
                 delivery.status, delivery.last_error = "skipped", "device_disabled"
+            elif not await self._session_alive(session, device.id, now):
+                # Sessions run out quietly (the hourly sweep disables the device later): a phone
+                # that can no longer show the message gets no content (SECURITY.md §2.6).
+                delivery.status, delivery.last_error = "skipped", "session_expired"
             elif await self._already_read(session, device.user_id, delivery):
                 delivery.status, delivery.last_error = "skipped", "already_read"
             else:
@@ -92,14 +96,27 @@ class PushSender:
             await session.commit()
 
     @staticmethod
+    async def _session_alive(session: AsyncSession, device_id: uuid.UUID, now: datetime) -> bool:
+        from app.modules.auth import service as auth
+
+        return await auth.has_live_session(session, device_id, now)
+
+    @staticmethod
     async def _already_read(session: AsyncSession, user_id: uuid.UUID, delivery: object) -> bool:
-        """Read on another device since planning (PUSH_NOTIFICATIONS.md §6: 送信直前の再判定)."""
+        """Read on another device since planning (PUSH_NOTIFICATIONS.md §6: 送信直前の再判定).
+        A thread reply is read by its thread's position (THREADS.md), not the channel's."""
         from app.modules.notifications.models import PushDelivery
         from app.modules.reads import service as reads
+        from app.modules.threads import service as threads
 
         assert isinstance(delivery, PushDelivery)
         if delivery.channel_id is None or delivery.message_seq is None:
             return False
+        parent_id = delivery.payload.get("parent_id")
+        if parent_id:
+            return await threads.is_read(
+                session, user_id, uuid.UUID(str(parent_id)), delivery.message_seq
+            )
         return await reads.is_read(session, user_id, delivery.channel_id, delivery.message_seq)
 
     def apply(self, delivery: object, device: object, result: object, now: datetime) -> None:

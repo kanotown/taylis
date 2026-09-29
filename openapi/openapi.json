@@ -9747,6 +9747,7 @@
                 ],
                 "type": "string"
               },
+              "maxItems": 5,
               "title": "Has",
               "type": "array"
             }

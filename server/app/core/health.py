@@ -34,16 +34,25 @@ async def readyz(request: Request) -> JSONResponse:
         ok = False
 
     try:
+        max_attempts = int(request.app.state.settings.outbox_max_attempts)
         async with request.app.state.db.engine.connect() as conn:
             version = (await conn.execute(text("SELECT version_num FROM alembic_version"))).scalar()
-            pending = (
+            # Rows the relay gave up on are not pending (they never move again, and the purge
+            # removes them after the retention); they are reported on their own.
+            pending, failed = (
                 await conn.execute(
-                    text("SELECT count(*) FROM outbox_events WHERE processed_at IS NULL")
+                    text(
+                        "SELECT count(*) FILTER (WHERE attempts < :max_attempts),"
+                        " count(*) FILTER (WHERE attempts >= :max_attempts)"
+                        " FROM outbox_events WHERE processed_at IS NULL"
+                    ),
+                    {"max_attempts": max_attempts},
                 )
-            ).scalar()
+            ).one()
         head = schema_head()
         checks["schema"] = "ok" if version == head else f"behind ({version} != {head})"
         checks["outbox_pending"] = int(pending or 0)
+        checks["outbox_failed"] = int(failed or 0)
         if version != head:
             ok = False
     except Exception as exc:  # pragma: no cover - only when the schema tables are missing

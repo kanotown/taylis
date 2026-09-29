@@ -9,8 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.models import OutboxEvent
+from app.modules.channels.service import resolve_event_audience
 from app.modules.users.models import User
 from tests.helpers import make_user
+
+
+async def _channel_updated(db: AsyncSession) -> list[OutboxEvent]:
+    stmt = (
+        select(OutboxEvent)
+        .where(OutboxEvent.event_type == "channel.updated")
+        .order_by(OutboxEvent.id)
+    )
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def _post(client: AsyncClient, channel_id: str, body: str, parent: str | None = None) -> Any:
@@ -99,6 +109,17 @@ async def test_public_private_conversion(
     browse = await client.get("/api/v1/channels", params={"include": "public"})
     assert channel["id"] not in [c["id"] for c in browse.json()]
     assert (await client.post(f"/api/v1/channels/{channel['id']}/join")).status_code == 403
+    # Made private: the members got the full event, everyone else a bare one that carries no
+    # topic or member list (the channel is now the members' business) and skips the members.
+    to_members, to_others = await _channel_updated(db)
+    assert (to_members.audience_type, to_others.audience_type) == ("channel", "all")
+    assert to_members.payload["member_ids"] == [str(owner.id)]
+    assert to_others.payload["member_ids"] == [] and to_others.payload["channel"]["topic"] is None
+    assert to_others.payload["channel"]["member_count"] is None
+    assert to_others.payload["channel"]["type"] == "private"  # what the clients drop on
+    audience = await resolve_event_audience(db, to_others)
+    assert outsider.id in audience.ids and root.id in audience.ids
+    assert guest.id not in audience.ids and owner.id not in audience.ids
 
     # Back to public: an administrator only.
     as_user(owner)
@@ -117,20 +138,8 @@ async def test_public_private_conversion(
         await client.patch(f"/api/v1/channels/{dm['id']}", json={"type": "public"})
     ).status_code in (403, 409)
 
-    # The visibility changes went to every non-guest user; other changes only to members.
-    rows = (
-        (
-            await db.execute(
-                select(OutboxEvent)
-                .where(OutboxEvent.event_type == "channel.updated")
-                .order_by(OutboxEvent.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert [r.audience_type for r in rows] == ["all", "all"]
-    from app.modules.channels.service import resolve_event_audience
-
-    audience = await resolve_event_audience(db, rows[0])
-    assert guest.id not in audience.ids and outsider.id in audience.ids and root.id in audience.ids
+    # Made public: one event for every non-guest user; other changes only reach the members.
+    rows = await _channel_updated(db)
+    assert [r.audience_type for r in rows] == ["channel", "all", "all"]
+    audience = await resolve_event_audience(db, rows[-1])
+    assert {owner.id, outsider.id, root.id} <= set(audience.ids) and guest.id not in audience.ids

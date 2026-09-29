@@ -13,7 +13,7 @@ from datetime import timedelta
 from typing import Any, Literal, Protocol
 
 import asyncpg
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import and_, delete, or_, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -202,12 +202,23 @@ class OutboxRelay:
                 backoff = min(backoff * 2, 30.0)
 
 
-async def purge_processed(db: Database, older_than: timedelta) -> int:
+async def purge_processed(db: Database, older_than: timedelta, *, max_attempts: int = 10) -> int:
+    """Processed rows older than the retention, and rows given up on (attempts exhausted; the
+    relay skips them, so they would otherwise stay for good)."""
     cutoff = utcnow() - older_than
     async with db.session_factory() as session:
         result = await session.execute(
             delete(OutboxEvent)
-            .where(OutboxEvent.processed_at.is_not(None), OutboxEvent.processed_at < cutoff)
+            .where(
+                or_(
+                    and_(OutboxEvent.processed_at.is_not(None), OutboxEvent.processed_at < cutoff),
+                    and_(
+                        OutboxEvent.processed_at.is_(None),
+                        OutboxEvent.attempts >= max_attempts,
+                        OutboxEvent.created_at < cutoff,
+                    ),
+                )
+            )
             .returning(OutboxEvent.id)
         )
         purged = len(result.all())

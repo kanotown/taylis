@@ -57,12 +57,18 @@ class PushPlanner:
         channel = await channels.require_channel(db, event.channel_id)
         thread = event.payload.get("parent_thread") or {}
         participants = {uuid.UUID(str(uid)) for uid in thread.get("participant_ids", [])}
+        # A reply also sent to the channel is a channel message; any other reply is read (and
+        # muted) by its thread.
+        parent_id = None
         if thread and not message.get("also_in_channel"):
+            parent_id = uuid.UUID(str(thread["id"]))
             # A reply in a thread the user unfollowed stays silent whatever the channel level
-            # (THREADS.md §4); a reply also sent to the channel is a channel message.
-            muted = set(await threads.unfollowed(db, uuid.UUID(str(thread["id"]))))
+            # (THREADS.md §4).
+            muted = set(await threads.unfollowed(db, parent_id))
             recipients = [uid for uid in recipients if uid not in muted]
-        targets = await self.select_recipients(db, channel, recipients, message, participants)
+        targets = await self.select_recipients(
+            db, channel, recipients, message, participants, parent_id=parent_id
+        )
         if not targets:
             return
         devices = await repo.push_devices_for_users(db, targets)
@@ -92,8 +98,11 @@ class PushPlanner:
                     names=names,
                     workspace_id=workspace_id,
                 )
+                # parent_id is for the sender's last check (a reply is read by its thread's
+                # position), kept beside the payload like expires_at.
                 payloads[device.user_id] = payload.model_dump(mode="json") | {
-                    "expires_at": expires_at.isoformat()
+                    "expires_at": expires_at.isoformat(),
+                    "parent_id": str(parent_id) if parent_id is not None else None,
                 }
             if await repo.add_delivery(
                 db,
@@ -163,8 +172,11 @@ class PushPlanner:
         recipients: list[uuid.UUID],
         message: dict[str, Any] | None = None,
         participants: set[uuid.UUID] | None = None,
+        *,
+        parent_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
-        """PUSH_NOTIFICATIONS.md §4; ``participants`` are the thread's author and repliers."""
+        """PUSH_NOTIFICATIONS.md §4; ``participants`` are the thread's author and repliers, and
+        ``parent_id`` the thread a reply is read in (its position, not the channel's)."""
         now = utcnow()
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
         default = default_level(channel)
@@ -173,7 +185,10 @@ class PushPlanner:
             mentioned |= await messages.keyword_user_ids(db, uuid.UUID(str(message["id"])))
         mention_all = bool((message or {}).get("mention_all"))
         seq = (message or {}).get("seq")
-        positions = await reads.last_read_seqs(db, recipients, channel.id)
+        if parent_id is not None:
+            positions = await threads.last_read_seqs(db, parent_id, recipients)
+        else:
+            positions = await reads.last_read_seqs(db, recipients, channel.id)
         rows = await users.get_users(db, recipients)
         targets: list[uuid.UUID] = []
         for user_id in recipients:

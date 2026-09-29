@@ -12,7 +12,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, conflict, not_found
+from app.core.errors import AppError, conflict, forbidden, not_found
 from app.core.security import hash_token
 from app.core.time import utcnow
 from app.modules.admin import service as admin
@@ -41,12 +41,16 @@ def _slug(name: str) -> str:
     return f"hook-{base}-{secrets.token_hex(2)}"
 
 
-async def _target_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel:
+async def _target_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> Channel:
+    """A public channel, or a private one the administrator belongs to: a webhook must not be
+    a way into a private channel its maker could not post in (SECURITY.md §3.2)."""
     channel = await channels.require_channel(db, channel_id)
     if channel.is_dm:
         raise AppError(400, "invalid_channel", "Webhooks post to channels, not direct messages")
     if channel.is_archived:
         raise conflict("channel_archived", "Channel is archived")
+    if channel.type == "private" and await channels.membership_of(db, actor.id, channel.id) is None:
+        raise forbidden("not_a_member", "You are not a member of this channel")
     return channel
 
 
@@ -55,7 +59,7 @@ async def list_all(db: AsyncSession) -> list[WebhookOut]:
 
 
 async def create(db: AsyncSession, actor: User, data: WebhookCreate) -> tuple[WebhookOut, str]:
-    channel = await _target_channel(db, data.channel_id)
+    channel = await _target_channel(db, actor, data.channel_id)
     token = secrets.token_urlsafe(32)
     now = utcnow()
     bot = await admin.create_bot_in_tx(
@@ -99,7 +103,7 @@ async def update(
         bot.display_name = row.name
         bot.updated_at = utcnow()
     if data.channel_id is not None and data.channel_id != row.channel_id:
-        target = await _target_channel(db, data.channel_id)
+        target = await _target_channel(db, actor, data.channel_id)
         old = await channels.find_channel(db, row.channel_id)
         if old is not None:
             await channels.remove_member_in_tx(db, old, bot.id)
