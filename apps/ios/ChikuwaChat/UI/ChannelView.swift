@@ -40,22 +40,16 @@ struct ChannelView: View {
     /// The reader touched the list while it was landing on the first unread row: the landing stops scrolling.
     @State private var landingInterrupted = false
     @State private var cover = CoverProbe()
-    /// The list's UIScrollView, for keeping its bottom edge on iOS 18 (KeepsBottom), and whether it is doing that.
-    @State private var scroller = ScrollViewProbe()
-    @State private var resizing = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
-    /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
-    @State private var keyboardKept = KeyboardKept()
     @State private var syncWait: Task<Void, Never>?
     /// The landing on the first unread row (land). Not a `.task` either: opened from a notification, the navigation let
     /// the view go and come back as it opened, the task stayed cancelled, and the landing never ended — no keyboard
     /// follow and no read marks until the conversation was opened again (testers, 2026-09-29).
     @State private var landingTask: Task<Void, Never>?
-    /// The newest row the list has settled on. A new one (mine sent, someone's arriving) grows the content below the
-    /// screen with the bottom anchor off, and the scroll to it is animated; the anchor comes back once it is there (the
-    /// anchor made the rows jump up by a row at once, testers 2026-09-29).
-    @State private var settledLastKey: String?
+    /// The row the list is kept at (SwiftUI's scroll position): up in the conversation, a row arriving below does not move
+    /// what is on screen; at the newest edge it is the edge's marker, so arrivals show (UpsideDownList.swift).
+    @State private var keptRowId: String?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -185,7 +179,7 @@ struct ChannelView: View {
             if let row = messages.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
             seenSeq = mark // §10.1 7.: 「新着 N 件」 counts every unread row below the divider
         case .bottom:
-            proxy.scrollTo("bottom", anchor: .bottom)
+            proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom))
             markSeen() // §10.1 7.: the rows on screen now are not 「新着」
         }
     }
@@ -199,7 +193,7 @@ struct ChannelView: View {
         landingInterrupted = false
         for _ in 0..<3 {
             if landingInterrupted { break }
-            proxy.scrollTo(dividerAbove ? TimelineItem.unread.id : landing.rowKey, anchor: .top)
+            proxy.scrollTo(dividerAbove ? TimelineItem.unread.id : landing.rowKey, anchor: UpsideDown.anchor(.top))
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
             if fullyShown(visibleFrames[landing.rowId]) { break }
@@ -214,9 +208,8 @@ struct ChannelView: View {
     /// 「新着 N 件」 / ↓ at the bottom right while the list is not at the end.
     @ViewBuilder
     private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
-        // Not while a new row slides in (it flashed for a frame as the end went out of view and came back).
-        if !atBottom && focus == nil && !newRowComing {
-            Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+        if !atBottom && focus == nil {
+            Button { withAnimation { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) } } label: {
                 if unseenBelow > 0 {
                     Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
                         .font(.footnote.bold())
@@ -235,59 +228,22 @@ struct ChannelView: View {
     /// What makes the placement look again: rows coming in, the window reaching the newest row.
     private var placementKey: String { "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)" }
 
-    private func settleNewestRow() { if settledLastKey == nil { settledLastKey = messages.last?.rowKey } }
-
-    /// A row after the settled newest one — not the newest one gone (a deletion: the list keeps its end then).
-    private var newRowComing: Bool {
-        guard let settledLastKey, messages.last?.rowKey != settledLastKey else { return false }
-        return messages.contains { $0.rowKey == settledLastKey }
-    }
-
-    /// Built here, out of the body's long chain.
-    private var scrollAnchor: TimelineScrollAnchor {
-        TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, newRow: newRowComing, atEnd: atBottom)
-    }
-
-    /// Arrivals while at the bottom, and my own top-level send from this device, show the newest message, scrolled to
-    /// with an animation (settledLastKey). A landing on the first unread row is not overridden by someone else's arrival.
-    private func newestRowChanged(_ key: String?, _ proxy: ScrollViewProxy) {
-        // The newest row went away (a deletion): the bottom anchor keeps the end as the rows close up, animated; a slide
-        // of our own fought that animation (the list jumped up and back, 2026-09-29).
-        if let settledLastKey, !messages.contains(where: { $0.rowKey == settledLastKey }) {
-            self.settledLastKey = key
-            return
-        }
+    /// A new newest row (mine sent from here, or anyone's arriving). At the newest row the list shows it by itself: the
+    /// flipped list keeps its origin, and the rows moving up for it are animated (UpsideDownList.swift). My own post from
+    /// further up brings the list down to it; someone else's leaves the reader where they are.
+    private func newestRowChanged(_ proxy: ScrollViewProxy) {
+        guard positioned, focus == nil else { return }
         let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
-        guard positioned && focus == nil && (mine || atBottom && anchor.landing == nil) else {
-            settledLastKey = key
-            return
+        if mine {
+            if anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+            showNewest(proxy)
         }
-        if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-        scrollToEnd(proxy)
-        markSeen()
-        Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // the slide and its check, then the anchor again
-            if messages.last?.rowKey == key { settledLastKey = key }
-        }
+        if atBottom || mine { markSeen() }
     }
 
-    /// To the end, sliding: the new row rises into view with the list. `withAnimation { proxy.scrollTo }` got there in
-    /// one frame when the row had just come in (2026-09-29, iOS 27), and so did KeepsBottom's end of turn (the content
-    /// grew at the end): the offset slides frame by frame instead, towards the end as it is on each frame (the row is
-    /// laid out a frame or two later), and KeepsBottom leaves it alone meanwhile (newRowComing).
-    private func scrollToEnd(_ proxy: ScrollViewProxy) {
-        guard let scrollView = scroller.scrollView else {
-            withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo("bottom", anchor: .bottom) }
-            return
-        }
-        KeyboardBehavior.slideToEnd(scrollView, duration: 0.3)
-        Task {
-            // LazyVStack may settle the row's height after the slide: the end, outright, if it moved on.
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            if !frames.moving, KeyboardBehavior.end(of: scrollView) - scrollView.contentOffset.y > 1 {
-                scrollView.contentOffset.y = KeyboardBehavior.end(of: scrollView)
-            }
-        }
+    private func showNewest(_ proxy: ScrollViewProxy) {
+        guard !atBottom else { return }
+        withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) }
     }
 
     /// Lands on `landing` in a task of its own, replacing the one under way (a new landing, or the same one again after the
@@ -332,16 +288,6 @@ struct ChannelView: View {
         }
     }
 
-    /// M25: while a page of older rows settles, a layout that reports the kept row elsewhere scrolls it back. LazyVStack
-    /// places it from the page's estimated heights first; iOS 26 corrects that by itself a pass later, iOS 18 did not
-    /// (the rows stayed about a quarter screen off on the simulator). A few times at most, never during a landing.
-    private func keepOlderPlace(_ proxy: ScrollViewProxy) {
-        guard let kept = frames.kept, frames.keptTries < 4, anchor.landing == nil else { return }
-        if let frame = frames.byId[kept.rowId], abs(frame.minY - kept.minY) <= 1 { return }
-        frames.keptTries += 1
-        proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
-    }
-
     /// 「ここから未読にする」 for a row, when it is offered (§10.1 10.).
     private func markUnreadAction(_ message: MessageState) -> (() -> Void)? {
         guard let seq = message.seq, let channel, ReadGate.markUnreadOffered(channel, seq: seq) else { return nil }
@@ -359,7 +305,7 @@ struct ChannelView: View {
         loadOlder()
     }
 
-    /// The rows go in above with the row at the top kept where it is (the onChange of oldestLoadedSeq).
+    /// The rows go in at the far end of the flipped list: what is on screen stays where it is.
     private func loadOlder() {
         guard !loadingOlder, let engine = controller.engine else { return }
         let window = { (channel?.oldestLoadedSeq, channel?.hasOlder) }
@@ -368,12 +314,45 @@ struct ChannelView: View {
         olderStalled = false
         Task {
             await engine.loadOlder(channelId)
-            // The page settles (keepOlderPlace), and the next look at the top row waits for the frames of the layout
-            // with the page in: the ones from before would still show it on screen and load a page nobody scrolled to.
+            // The next look at the top row waits for the frames of the layout with the page in: the ones from before
+            // would still show it on screen and load a page nobody scrolled to.
             try? await Task.sleep(nanoseconds: 300_000_000)
-            frames.kept = nil
             loadingOlder = false
             if window() == before { olderStalled = true } else { loadOlderIfShown() }
+        }
+    }
+
+    /// The top of the conversation: the page before the loaded ones (M25), or what the conversation is.
+    @ViewBuilder
+    private func conversationTop(_ channel: ChannelState) -> some View {
+        if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
+            // M25: on screen, it loads the page before (loadOlderIfShown). The button stays for when that cannot happen by
+            // itself: offline, or after a load that brought nothing.
+            Group {
+                if loadingOlder || controller.engine?.status == .online && !olderStalled {
+                    ProgressView().controlSize(.small).accessibilityLabel("以前のメッセージを読み込み中")
+                } else {
+                    Button("以前のメッセージを読み込む", action: loadOlder)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .font(.footnote)
+            .padding(.vertical, 8)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
+            })
+            .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
+        } else if messages.isEmpty, channel.channel.isDm, DMList.isNotesToSelf(channel, meId: controller.store.me?.id) {
+            // My DM with myself: what it is for (Slack, Mattermost), under my name.
+            ContentUnavailableView(channelTitle(channel, store: controller.store), systemImage: "note.text",
+                                   description: Text(DMList.notesIntro))
+                .padding(.top, 40)
+        } else if messages.isEmpty {
+            ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
+                                   description: Text("最初のメッセージを送ってみましょう。"))
+                .padding(.top, 40)
+        } else if focus == nil {
+            ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
         }
     }
 
@@ -411,143 +390,77 @@ struct ChannelView: View {
                     .disabled(!banner.enabled)
                     .padding(10)
                 }
+                // Never under the navigation bar (ThreadView): a preview's links row can be empty.
+                Color.clear.frame(height: 1)
                 ScrollViewReader { proxy in
                     GeometryReader { viewport in
                         ScrollView {
+                            // Upside down (UpsideDownList.swift): the newest edge first, then the rows newest first, then
+                            // what is at the top of the conversation; each flipped back the right way up.
                             LazyVStack(alignment: .leading, spacing: 0) {
-                                if let channel {
-                                    if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
-                                        // M25: on screen, it loads the page before (loadOlderIfShown). The button stays for
-                                        // when that cannot happen by itself: offline, or after a load that brought nothing.
-                                        Group {
-                                            if loadingOlder || controller.engine?.status == .online && !olderStalled {
-                                                ProgressView().controlSize(.small).accessibilityLabel("以前のメッセージを読み込み中")
-                                            } else {
-                                                Button("以前のメッセージを読み込む", action: loadOlder)
-                                            }
+                                NewestEdgeMarker { atBottom = $0 }
+                                ForEach(items.reversed()) { item in
+                                    Group {
+                                        switch item {
+                                        case .date(let label, _):
+                                            DaySeparator(label: label).padding(.horizontal, Self.margin)
+                                        case .unread:
+                                            UnreadSeparator().padding(.horizontal, Self.margin)
+                                        case .message(let message, let compact):
+                                            MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
+                                                       highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
+                                                       onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
+                                                       present: { messageSheet = $0 })
+                                                .equatable() // unchanged messages skip their body (M20)
+                                                .background(GeometryReader { geometry in
+                                                    Color.clear.preference(key: VisibleMessageFrames.self,
+                                                        value: [message.id: geometry.frame(in: .named("conversation"))])
+                                                })
                                         }
-                                        .frame(maxWidth: .infinity)
-                                        .font(.footnote)
-                                        .padding(.vertical, 8)
-                                        .background(GeometryReader { geometry in
-                                            Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
-                                        })
-                                        .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
-                                    } else if messages.isEmpty, channel.channel.isDm,
-                                              DMList.isNotesToSelf(channel, meId: controller.store.me?.id) {
-                                        // My DM with myself: what it is for (Slack, Mattermost), under my name.
-                                        ContentUnavailableView(channelTitle(channel, store: controller.store), systemImage: "note.text",
-                                                               description: Text(DMList.notesIntro))
-                                            .padding(.top, 40)
-                                    } else if messages.isEmpty {
-                                        ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
-                                                               description: Text("最初のメッセージを送ってみましょう。"))
-                                            .padding(.top, 40)
-                                    } else if focus == nil {
-                                        ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
                                     }
+                                    .upsideDown()
+                                    // A new newest row comes up from under the input with the others (in the flipped list the
+                                    // top edge is the screen's bottom); faded in in place, it overlapped the row above.
+                                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                                    .id(item.id) // the row key (scrollTo), "unread" for the divider
                                 }
-                                ForEach(items) { item in
-                                    switch item {
-                                    case .date(let label, _):
-                                        DaySeparator(label: label).padding(.horizontal, Self.margin)
-                                    case .unread:
-                                        UnreadSeparator().padding(.horizontal, Self.margin).id(item.id)
-                                    case .message(let message, let compact):
-                                        MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
-                                                   highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
-                                                   onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
-                                                   present: { messageSheet = $0 })
-                                            .equatable() // unchanged messages skip their body (M20)
-                                            .id(message.rowKey)
-                                            .background(GeometryReader { geometry in
-                                                Color.clear.preference(key: VisibleMessageFrames.self,
-                                                    value: [message.id: geometry.frame(in: .named("conversation"))])
-                                            })
-                                    }
+                                if let channel {
+                                    conversationTop(channel).upsideDown()
                                 }
-                                Color.clear.frame(height: 1).id("bottom")
-                                    .onAppear { atBottom = true }
-                                    .onDisappear { atBottom = false }
                             }
+                            .scrollTargetLayout()
                             .padding(.vertical, 8) // the side margin is each row's (margin)
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                             .containerRelativeFrame(.horizontal)
-                            .background(ScrollViewProbe.Marker(probe: scroller))
+                            // A new newest row: the others move up for it, animated (the list keeps its origin by itself).
+                            .animation(positioned ? .easeOut(duration: 0.25) : nil, value: items.last?.id)
                             .background(StatusBarTapStays())
                         }
-                        .coordinateSpace(name: "conversation")
+                        .scrollPosition(id: $keptRowId, anchor: .top)
+                        .upsideDown()
+                        .clipped()
+                        .onNewestEdge { atBottom = $0 }
                         .onUserScroll {
                             if !positioned && !messages.isEmpty { userScrolled = true }
                             if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
                             olderStalled = false // M25: the reader scrolled: the top row may try again
-                            frames.kept = nil // and the list is theirs
-                            keyboardKept.clear()
                         }
                         .onScrollMotion { moving in
                             frames.moving = moving
                             if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                         }
                         .background(CoverProbe.Marker(probe: cover))
-                        .modifier(scrollAnchor)
                         .scrollDismissesKeyboard(.interactively)
                         .dismissesKeyboardOnTap()
-                        // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
-                        // Not while the list is being placed or lands on the first unread row (§10.1 4.).
-                        // Not under a pushed page (M29): a swipe back from the thread with the keyboard up lays this list out
-                        // again at the keyboard's height, and following that height mid-transition never finished laying
-                        // out the LazyVStack on iOS 26.2 (the app hung).
-                        .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil && thread == nil && !showInfo,
-                                             atEnd: atBottom, scroller: scroller,
-                                             resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
-                            if atEnd {
-                                // A new newest row: the list slides to it itself (scrollToEnd), also as the list grows
-                                // under it — the Japanese keyboard's candidate row goes as the input empties, and a
-                                // scroll to the end here jumped the list in one frame before the slide (iOS 27, 2026-09-29).
-                                if newRowComing {
-                                    if !KeyboardBehavior.isSliding, let scrollView = scroller.scrollView {
-                                        KeyboardBehavior.slideToEnd(scrollView, duration: 0.25)
-                                    }
-                                    return
-                                }
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            } else {
-                                // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
-                                keyboardKept.scrollView = { scroller.scrollView }
-                                keyboardKept.moving = { frames.moving }
-                                if let expected = keyboardKept.expected {
-                                    // The second change of the turn (the tool row, then the keyboard): from the first's place.
-                                    keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                                } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
-                                    keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                                }
-                            }
-                        }
                         .onPreferenceChange(VisibleMessageFrames.self) { frames in
                             self.frames.byId = frames
                             self.frames.viewportHeight = viewport.size.height
-                            keepOlderPlace(proxy)
-                            keyboardKept.note(frames)
                             markRead()
                         }
                         .onPreferenceChange(OlderRowFrame.self) { frame in
                             frames.topRow = frame
                             loadOlderIfShown()
-                        }
-                        .onChange(of: channel?.oldestLoadedSeq) { old, _ in
-                            // M25: a page of older rows went in above, in this very update. The list does not keep its place
-                            // by itself (LazyVStack's rows moved down by about the page's height), so the row at the top is
-                            // scrolled back to where it was, from the frames of the layout before the page, in the same update
-                            // (a scroll after it showed the page-sized jump), and again while it settles (keepOlderPlace).
-                            // Not during a landing (§10.1 4./6.).
-                            guard loadingOlder, anchor.landing == nil else { return }
-                            let formerFirst = old.flatMap { seq in messages.first { ($0.seq ?? -1) >= seq } }
-                            guard let kept = OlderPaging.keptRow(visibleFrames, rows: messages, viewportHeight: viewportHeight,
-                                                                 regrouped: formerFirst?.id) else { return }
-                            frames.kept = kept
-                            frames.keptTries = 0
-                            proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
                         }
                         .onChange(of: positioned && anchor.landing == nil && !jumping) { _, ready in
                             if ready { loadOlderIfShown() } // M25: placed, or a landing over, with the top row already on screen
@@ -559,15 +472,15 @@ struct ChannelView: View {
                             // came first, its response or its event (§10.1 11.).
                             guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
                             if anchor.landing != nil { anchor.landed() }
-                            scrollToEnd(proxy)
+                            showNewest(proxy)
                             markSeen()
                         }
-                        .onChange(of: messages.last?.rowKey) { _, key in newestRowChanged(key, proxy) }
+                        .onChange(of: messages.last?.rowKey) { _, _ in newestRowChanged(proxy) }
                         .task(id: placementKey) { await Task.yield(); position(proxy) }
                         // Opened, or back from the search context: the placement waits for a catch-up at most this long.
                         // Not a `.task`: the navigation lets the view go and come back once as it opens, which cancelled
                         // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
-                        .onAppear { startSyncWait(proxy); settleNewestRow() }
+                        .onAppear { startSyncWait(proxy) }
                         .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
                         .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
                         .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } } // back after a disappear
@@ -602,6 +515,8 @@ struct ChannelView: View {
                             if seenSeq == nil { seenSeq = channel?.lastReadSeq ?? 0 }
                         }
                     }
+                    // Outside the flip: the rows' frames come out as they are on screen (0 at the list's top).
+                    .coordinateSpace(name: "conversation")
                 }
                 if let channel {
                     if !channel.isMember {
@@ -867,33 +782,6 @@ private struct UserScrollDetector: ViewModifier {
             content.onScrollPhaseChange { _, phase in if phase == .interacting { action() } }
         } else {
             content.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { _ in action() })
-        }
-    }
-}
-
-/// A conversation list starts at the bottom, a short one sits at the bottom, and size changes keep the bottom where it
-/// is, except while a landing scroll is on its way (§10.1 4./6.): LazyVStack settling the heights of the rows below the
-/// divider then pulled the list back towards the bottom, and it never landed (2026-09-28, iOS 18–27). Nor while the
-/// list's height follows the keyboard frame by frame (iOS 18, KeepsBottom): LazyVStack's re-estimates then passed for
-/// the end, and the list went there from the middle of the conversation.
-struct TimelineScrollAnchor: ViewModifier {
-    let landing: Bool
-    var resizing = false
-    /// A new newest row is on its way in (ChannelView.settledLastKey): the list scrolls to it itself, animated.
-    var newRow = false
-    /// The reader is at the end: only then does a size change keep the bottom edge by itself. Up in the conversation
-    /// the anchor pulled the list to its end as the keyboard came (iOS 26.2, 2026-09-29); KeepsBottom moves the rows
-    /// there instead.
-    var atEnd = true
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(atEnd ? .bottom : nil, for: .alignment)
-                .defaultScrollAnchor(landing || resizing || newRow || !atEnd ? nil : .bottom, for: .sizeChanges)
-        } else {
-            content.defaultScrollAnchor(landing || newRow ? nil : .bottom)
         }
     }
 }
@@ -1814,12 +1702,9 @@ extension Notification.Name {
 final class RowFrames {
     var byId: [String: CGRect] = [:]
     var viewportHeight: CGFloat = 0
-    /// M25: the progress row at the top of the loaded range, whether the list is moving, and the row kept in place while
-    /// a page of older rows settles (OlderPaging).
+    /// M25: the progress row at the top of the loaded range, and whether the list is moving (OlderPaging).
     var topRow: CGRect?
     var moving = false
-    var kept: OlderPaging.Kept?
-    var keptTries = 0
 }
 
 /// A row redraws when its message, its grouping or its highlight changes; what it reads from the store (names, custom
