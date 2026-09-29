@@ -54,7 +54,7 @@ struct ThreadView: View {
                     GeometryReader { viewport in
                         ScrollView {
                             rowStack(viewportHeight: viewport.size.height)
-                            .padding()
+                            .padding(.vertical) // the side margin is each row's (margin)
                             .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
                             .background(ScrollViewProbe.Marker(probe: scroller))
                             .background(StatusBarTapStays())
@@ -158,6 +158,8 @@ struct ThreadView: View {
     /// (testers, 2026-09-29; reproduced on iOS 26.2 with 60 replies of mixed heights over a slow network). A thread's rows
     /// are few, and with every height known the landing and the bottom are exact too. A very long thread stays lazy.
     private static let lazyFrom = 200
+    /// The list's side margin, inside each row: a message's highlight reaches the sheet's edges (ChannelView).
+    private static let margin: CGFloat = 16
 
     @ViewBuilder
     private func rowStack(viewportHeight: CGFloat) -> some View {
@@ -172,15 +174,17 @@ struct ThreadView: View {
     @ViewBuilder
     private func rows(viewportHeight: CGFloat) -> some View {
         if let parent {
-            MessageRow(message: parent, controller: controller, highlighted: highlighted(parent), present: { messageSheet = $0 })
+            MessageRow(message: parent, controller: controller, margin: Self.margin, highlighted: highlighted(parent),
+                       present: { messageSheet = $0 })
             Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
-                .font(.caption).foregroundStyle(.secondary)
-            Divider()
+                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
+            Divider().padding(.horizontal, Self.margin)
             ForEach(replies, id: \.rowKey) { reply in
                 // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
                 VStack(alignment: .leading, spacing: 12) {
-                    if reply.id == firstUnreadId { NewRepliesDivider() }
-                    MessageRow(message: reply, controller: controller, highlighted: highlighted(reply), present: { messageSheet = $0 })
+                    if reply.id == firstUnreadId { NewRepliesDivider().padding(.horizontal, Self.margin) }
+                    MessageRow(message: reply, controller: controller, margin: Self.margin, highlighted: highlighted(reply),
+                               present: { messageSheet = $0 })
                         .background(GeometryReader { geometry in
                             Color.clear.preference(key: VisibleReplyFrames.self,
                                                    value: [reply.id: geometry.frame(in: .named("threadViewport"))])
@@ -189,7 +193,7 @@ struct ThreadView: View {
                 .id(reply.rowKey)
             }
         } else {
-            Text("メッセージが見つかりません").foregroundStyle(.secondary)
+            Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin)
         }
         EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id("bottom")
     }

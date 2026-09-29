@@ -41,6 +41,8 @@ struct ChannelView: View {
     @State private var resizing = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
+    /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
+    private static let margin: CGFloat = 12
 
     enum ChannelSheet: Identifiable {
         case info, addMember, pins
@@ -297,17 +299,17 @@ struct ChannelView: View {
                                                            description: Text("最初のメッセージを送ってみましょう。"))
                                         .padding(.top, 40)
                                 } else if focus == nil {
-                                    ChannelIntroView(controller: controller, channel: channel)
+                                    ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
                                 }
                             }
                             ForEach(items) { item in
                                 switch item {
                                 case .date(let label, _):
-                                    DaySeparator(label: label)
+                                    DaySeparator(label: label).padding(.horizontal, Self.margin)
                                 case .unread:
-                                    UnreadSeparator().id(item.id)
+                                    UnreadSeparator().padding(.horizontal, Self.margin).id(item.id)
                                 case .message(let message, let compact):
-                                    MessageRow(message: message, controller: controller, compact: compact,
+                                    MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
                                                highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
                                                onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
                                                present: { messageSheet = $0 })
@@ -323,8 +325,7 @@ struct ChannelView: View {
                                 .onAppear { atBottom = true }
                                 .onDisappear { atBottom = false }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 8) // the side margin is each row's (margin)
                         // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                         // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                         .containerRelativeFrame(.horizontal)
@@ -744,8 +745,12 @@ struct MessageRow: View {
     let message: MessageState
     @Bindable var controller: AppController
     var compact = false
+    /// The list's side margin, inside the row: its highlight and its press reach the screen's edges (testers,
+    /// 2026-09-29), with the text where it was.
+    var margin: CGFloat = 0
     /// The message whose actions are open: it stays highlighted where it is (Slack).
     var highlighted = false
+    /// In the channel: its thread (the parent's for a reply shared there), from 「N 件の返信」 and a tap on the message.
     var onOpenThread: (() -> Void)? = nil
     /// Asks the conversation for one of the message's sheets (`messageSheets`); the row presents nothing itself.
     var present: ((MessageSheet) -> Void)? = nil
@@ -762,6 +767,13 @@ struct MessageRow: View {
         if haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
         KeyboardBehavior.dismiss()
         show(.actions)
+    }
+
+    /// A tap on the message opens its thread (Slack; testers, 2026-09-29), to read or to reply. With the keyboard up the
+    /// tap only closes it, as a tap on the list always did (`dismissesKeyboardOnTap`).
+    private func tapped() {
+        guard !message.pending, let onOpenThread, !KeyboardBehavior.isUp else { return }
+        onOpenThread()
     }
 
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
@@ -842,6 +854,11 @@ struct MessageRow: View {
                             Task { await controller.openPermalink(id) }
                             return .handled
                         })
+                        // The text takes its own taps: SwiftUI gives a touch to a control within some 12 pt of it, and a
+                        // tap on the first line went to the name above (the profile), on the last to the reactions below.
+                        // Its links keep theirs.
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: tapped)
                 }
                 if !message.attachments.isEmpty {
                     AttachmentsView(attachments: message.attachments, controller: controller,
@@ -905,6 +922,7 @@ struct MessageRow: View {
             }
         }
         .padding(.vertical, compact ? 4 : 5)
+        .padding(.horizontal, margin)
         // The row is as wide as the list: a press right of a short message is on it. It was only as wide as its text,
         // and a press beside that went to whichever row was nearest, often the one above (testers, 2026-09-29).
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -912,16 +930,22 @@ struct MessageRow: View {
         .background(controller.messageFocus?.messageId == message.id ? Color.yellow.opacity(0.18) : Color.clear)
         .background(highlighted ? Color(.systemGray5) : Color.clear) // the message whose actions are open (Slack)
         .contentShape(Rectangle())
-        // Slack: a tap does nothing (a tap on the list closes the keyboard); a long press anywhere on the row opens the
-        // actions from the bottom (MessageActions.swift). Before the buttons in it: a press on or near the name, a
-        // reaction or 「N 件の返信」 went to that control instead (the chip looked pressed, then toggled as the finger
-        // lifted; the name opened the profile). Their taps still come once the press is too short to be this one.
+        // A long press anywhere on the row opens the actions from the bottom (MessageActions.swift). Before the buttons
+        // in it: a press on or near the name, a reaction or 「N 件の返信」 went to that control instead (the chip looked
+        // pressed, then toggled as the finger lifted; the name opened the profile). Their taps still come once the
+        // press is too short to be this one.
         .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in openActions(haptic: true) })
+        // Slack: a tap opens the thread (in the channel); the links, buttons, name and pictures in the row keep their
+        // own taps.
+        .onTapGesture(perform: tapped)
         // M25: VoiceOver has no long press on a row: the same sheet is an action (the actions rotor) of every element
-        // of the message, which keeps its own links and buttons.
+        // of the message, which keeps its own links and buttons. So is the thread a tap opens.
         .accessibilityActions {
             if !message.pending && present != nil {
                 Button("メッセージの操作") { openActions(haptic: false) }
+            }
+            if !message.pending, let onOpenThread {
+                Button("スレッドを開く") { onOpenThread() }
             }
         }
     }
@@ -1520,7 +1544,8 @@ final class RowFrames {
 /// conversation.
 extension MessageRow: Equatable {
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
-        lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.highlighted == rhs.highlighted && lhs.controller === rhs.controller
+        lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.margin == rhs.margin && lhs.highlighted == rhs.highlighted
+            && lhs.controller === rhs.controller
             && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.present == nil) == (rhs.present == nil)
     }
 }

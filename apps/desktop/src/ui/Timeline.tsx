@@ -479,6 +479,11 @@ export interface ScreenRows {
 
 const NOTHING_SEEN: ScreenRows = { shown: new Set(), seqs: [], partly: new Set() };
 
+/** Where typing goes: with it focused, a phone shows its keyboard. */
+export function isTextInput(element: Element | null): boolean {
+  return element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement || (element instanceof HTMLElement && element.isContentEditable);
+}
+
 /**
  * The `selector` rows of a scroller on screen. Shown = the §10 criterion (the bottom edge on screen, and the top edge
  * too unless the row is taller than the screen). Rows are matched by message id (`idPrefix` + id), never by React key.
@@ -602,6 +607,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
   /** The press became a long press: the finger lifting must not tap the sheet item now under it. */
   const pressed = useRef(false);
+  /** The keyboard was up when the finger came down: that tap only closes it (as on iOS / Android). */
+  const typing = useRef(false);
   const cancelPress = () => {
     if (press.current) window.clearTimeout(press.current.timer);
     press.current = null;
@@ -637,11 +644,12 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       onClick={(event) => {
         // Alt+click marks the conversation unread from this message (Mattermost).
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
-        // On a phone a tap on a message with replies opens its thread (Slack; tester request), unless it was on a link,
-        // a button or an image of the message.
-        else if (touchScreen() && (message.reply_count ?? 0) > 0 && onOpenThread && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) onOpenThread(message.id);
+        // On a phone a tap on a message opens its thread, to read or to reply (Slack; testers, 2026-09-29), unless it was
+        // on a link, a button or an image of the message, or the keyboard was up (the tap closes it).
+        else if (touchScreen() && onOpenThread && !message.pending && !typing.current && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) onOpenThread(threadId);
       }}
       onTouchStart={(event) => {
+        typing.current = isTextInput(document.activeElement);
         if (message.pending || !touchScreen() || event.touches.length !== 1) return;
         const touch = event.touches[0]!;
         cancelPress();

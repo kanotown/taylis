@@ -158,7 +158,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current), state = listState) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState) {
             if (parent != null) {
                 item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                 item(key = "divider") {

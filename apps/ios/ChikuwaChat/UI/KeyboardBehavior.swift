@@ -6,13 +6,29 @@ import UIKit
 ///   line, the candidate row of a Japanese keyboard) its bottom edge stays: at the end of the conversation the newest
 ///   messages stay just above the input instead of going behind it, and higher up the row that was just above the
 ///   input stays there (`keepsBottomOnResize`); at the end, rows growing (a reaction, an image) keep the end in view;
-/// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`); dragging the list down closes it too
-///   (`.scrollDismissesKeyboard(.interactively)`).
+/// - a tap on the list closes the keyboard (`dismissesKeyboardOnTap`), and does nothing else on a message (which a tap
+///   otherwise opens the thread of); dragging the list down closes it too (`.scrollDismissesKeyboard(.interactively)`).
 /// A swipe back is left to UIKit, which slides the keyboard away with the screen: closing it as the swipe starts
 /// removed the keyboard's room at once while UIKit kept the keyboard on screen, and the input went behind it.
 enum KeyboardBehavior {
     static func dismiss() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    /// Whether the keyboard is up, from its coming until it has gone: a tap on a message while it is only closes it
+    /// (`dismissesKeyboardOnTap`). Until it has gone, not until it starts going: the list's tap may close it before the
+    /// row sees the same tap.
+    private(set) static var isUp = false
+    private static var observers: [NSObjectProtocol] = []
+
+    /// Follows the keyboard from the app's start (`isUp`).
+    static func watch() {
+        guard observers.isEmpty else { return }
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in isUp = true },
+            center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { _ in isUp = false },
+        ]
     }
 
     /// How far the end of the content is below the list's bottom edge, from SwiftUI's scroll geometry: the offset
@@ -168,6 +184,17 @@ private struct KeepsBottom: ViewModifier {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { resizeSettled(now) }
                 }
                 layouts.latest = new
+                // iOS 27: a sheet presented over a conversation shorter than the screen moved its rows below the screen
+                // (SwiftUI took the offset some 390 pt past the top of the content) and they stayed there, the list blank
+                // after the sheet closed (a thread opened by a tap, a profile). Nobody can rest there: back to the top.
+                if !moving, new.offset < -new.insets.top - 1, let scrollView = scroller?.scrollView {
+                    DispatchQueue.main.async {
+                        let top = -scrollView.adjustedContentInset.top
+                        if scrollView.contentOffset.y < top - 1 && !scrollView.isTracking && !scrollView.isDecelerating {
+                            scrollView.contentOffset.y = top
+                        }
+                    }
+                }
                 if !layouts.ending {
                     layouts.ending = true
                     DispatchQueue.main.async { endOfTurn() }
