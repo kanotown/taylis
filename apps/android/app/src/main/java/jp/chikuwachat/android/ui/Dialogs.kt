@@ -50,7 +50,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.RadioButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -416,15 +418,21 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
     }
 }
 
-/** Profile (display name), password change and logout. `version`: 「在席を隠す」 follows my UserMe in the Store (M31). */
+/**
+ * M34, the 自分 tab (MOBILE_UI.md §6.5): what the settings dialog held, as a page (M36 splits it into screens): the
+ * photo, status, presence, profile, notification keywords, two-factor, password and logout. `version`: 「在席を隠す」
+ * follows my UserMe in the Store (M31). `scrollState`: the tab's re-tap scrolls it to the top.
+ */
 @Composable
-fun SettingsDialog(controller: AppController, version: Int, onDismiss: () -> Unit) {
+fun YouScreen(controller: AppController, version: Int, scrollState: ScrollState) {
     val me = controller.store.me ?: controller.me
     val presenceHidden = remember(version) { (controller.store.me ?: controller.me)?.presenceHidden ?: false }
     var savingPresence by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var displayName by rememberSaveable { mutableStateOf(me?.displayName ?: "") }
     var title by rememberSaveable { mutableStateOf(me?.title ?: "") }
+    val myName = me?.displayName
+    val myTitle = me?.title
     // M12g: notification keywords, edited as a comma-separated line.
     var keywords by rememberSaveable { mutableStateOf((me?.notifyKeywords ?: emptyList()).joinToString(", ")) }
     val parsedKeywords: List<String> = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
@@ -436,159 +444,155 @@ fun SettingsDialog(controller: AppController, version: Int, onDismiss: () -> Uni
     var reading by remember(line == null) { mutableStateOf(line?.reading ?: "") }
     val lineChanged = line != null && (topic.trim().ifEmpty { null } != line.researchTopic || reading.trim().ifEmpty { null } != line.reading)
     var nameSaved by remember { mutableStateOf(false) }
-    var editingStatus by remember { mutableStateOf(false) }
-    if (editingStatus) {
-        StatusDialog(controller, onDismiss = { editingStatus = false })
-        return
-    }
+    var editingStatus by rememberSaveable { mutableStateOf(false) }
+    if (editingStatus) StatusDialog(controller, onDismiss = { editingStatus = false })
     // M12i: whether my account asks for an authenticator code, and the setup / disable dialogs.
     var totp by remember { mutableStateOf<TotpStatusOut?>(null) }
     var totpDialog by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { totp = controller.totpStatus() }
     when (totpDialog) {
-        "setup" -> { TotpSetupDialog(controller, onDismiss = { totpDialog = null }, onEnabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } }); return }
-        "disable" -> { TotpDisableDialog(controller, onDismiss = { totpDialog = null }, onDisabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } }); return }
+        "setup" -> TotpSetupDialog(controller, onDismiss = { totpDialog = null }, onEnabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } })
+        "disable" -> TotpDisableDialog(controller, onDismiss = { totpDialog = null }, onDisabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } })
     }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
     var passwordMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("設定") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (me != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                        Avatar(me.id, me.displayName, size = 44.dp)
-                        Column(Modifier.padding(start = 12.dp)) {
-                            Text(me.displayName, style = MaterialTheme.typography.titleMedium)
-                            Text("@" + me.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    // M14a / M16g: profile picture — any photo, loaded small, then its square chosen in AvatarCropDialog
-                    var cropping by remember { mutableStateOf<Bitmap?>(null) }
-                    var loadingPhoto by remember { mutableStateOf(false) }
-                    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-                        if (uri != null) scope.launch {
-                            loadingPhoto = true
-                            cropping = controller.loadAvatarPhoto(uri)
-                            loadingPhoto = false
-                        }
-                    }
-                    cropping?.let { bitmap ->
-                        AvatarCropDialog(bitmap, onCancel = { cropping = null }) { jpeg ->
-                            cropping = null
-                            scope.launch { controller.uploadAvatar(jpeg) }
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        TextButton(onClick = { avatarPicker.launch("image/*") }, enabled = !loadingPhoto, contentPadding = PaddingValues(0.dp)) {
-                            Text(if (loadingPhoto) "写真を読み込んでいます…" else "写真を選ぶ")
-                        }
-                        if (me.avatarUpdatedAt != null) TextButton(onClick = { scope.launch { controller.deleteAvatar() } }, contentPadding = PaddingValues(0.dp)) { Text("写真を削除", color = MaterialTheme.colorScheme.error) }
-                    }
+    // The keyboard of a field pushes the page up (the bottom bar's height is already taken off, MainScreen).
+    Column(Modifier.fillMaxSize().imePadding().verticalScroll(scrollState).padding(horizontal = 24.dp, vertical = 16.dp)) {
+        if (me != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                Avatar(me.id, me.displayName, size = 44.dp)
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(me.displayName, style = MaterialTheme.typography.titleMedium)
+                    Text("@" + me.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                SectionLabel("ステータス")
-                val status = jp.chikuwachat.android.api.activeStatus(me?.let { controller.store.users[it.id] ?: it.asPublic })
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(status?.let { (it.first + " " + it.second).trim() } ?: "未設定", modifier = Modifier.weight(1f), color = if (status == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                    TextButton(onClick = { editingStatus = true }) { Text(if (status == null) "設定" else "変更") }
-                }
-                // L4 (M31): others always see me offline; the whole row toggles it (48 dp).
-                SectionLabel("在席")
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = presenceHidden, enabled = !savingPresence, role = Role.Switch) { on ->
-                        scope.launch {
-                            savingPresence = true
-                            controller.setPresenceHidden(on)
-                            savingPresence = false
-                        }
-                    },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("在席を隠す")
-                        Text("ほかの人からは常にオフラインに見えます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(checked = presenceHidden, onCheckedChange = null, enabled = !savingPresence, modifier = Modifier.padding(start = 8.dp))
-                }
-                SectionLabel("プロフィール")
-                OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(title, { title = it.take(80); nameSaved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                if (line != null) {
-                    OutlinedTextField(
-                        topic, { topic = it.take(200); nameSaved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },
-                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
-                    OutlinedTextField(
-                        reading, { reading = it.take(80); nameSaved = false }, label = { Text("よみ (任意、名簿の並び順に使います)") }, placeholder = { Text("例: かのう とおる") },
-                        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
-                }
-                OutlinedTextField(keywords, { keywords = it; nameSaved = false }, label = { Text("通知キーワード (任意、コンマ区切り)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        enabled = !busy && displayName.isNotBlank() && (displayName.trim() != me?.displayName || title.trim().ifEmpty { null } != me?.title || keywordsChanged || lineChanged),
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                var ok = true
-                                if (displayName.trim() != me?.displayName) ok = controller.updateDisplayName(displayName)
-                                if (ok && title.trim().ifEmpty { null } != me?.title) ok = controller.updateProfile(mapOf("title" to title.trim().ifEmpty { null }))
-                                if (ok && keywordsChanged) ok = controller.updateProfileJson(buildJsonObject { put("notify_keywords", buildJsonArray { parsedKeywords.forEach { add(JsonPrimitive(it)) } }) })
-                                if (ok && lineChanged) ok = controller.updateMyRosterLine(topic.trim().ifEmpty { null }, reading.trim().ifEmpty { null })
-                                nameSaved = ok
-                                busy = false
-                            }
-                        },
-                    ) { Text("プロフィールを保存") }
-                    if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                // M28c: the notification permission is asked once after sign-in; a refusal shows here with the way to the
-                // system's page (checked again when the app comes back from it).
-                val notificationsPermitted = remember(controller.appForeground) { controller.notificationsPermitted }
-                if (!notificationsPermitted) {
-                    SectionLabel("通知")
-                    Text("通知が許可されていないため、新しいメッセージの通知は届きません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { controller.openNotificationSettings() }, contentPadding = PaddingValues(0.dp)) { Text("端末の設定で許可する") }
-                }
-                SectionLabel("2 要素認証")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val status = totp
-                    Column(Modifier.weight(1f)) {
-                        Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
-                        if (status != null) Text(
-                            if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
-                }
-                SectionLabel("パスワードの変更")
-                OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(next, { next = it }, label = { Text("新しいパスワード (8 文字以上)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                OutlinedTextField(repeat, { repeat = it }, label = { Text("新しいパスワード (確認)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                passwordMessage?.let { Text(it, color = if (it.endsWith("しました")) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)) }
-                TextButton(
-                    enabled = !busy && current.isNotEmpty() && next.length >= 8,
-                    onClick = {
-                        if (next != repeat) { passwordMessage = "新しいパスワードが一致しません"; return@TextButton }
-                        scope.launch {
-                            busy = true
-                            val error = controller.changePasswordInSession(current, next)
-                            busy = false
-                            passwordMessage = error ?: "パスワードを変更しました"
-                            if (error == null) { current = ""; next = ""; repeat = "" }
-                        }
-                    },
-                ) { Text("変更する") }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
-        dismissButton = { TextButton(onClick = { scope.launch { controller.logout() } }) { Text("ログアウト", color = MaterialTheme.colorScheme.error) } },
-    )
+            // M14a / M16g: profile picture — any photo, loaded small, then its square chosen in AvatarCropDialog
+            var cropping by remember { mutableStateOf<Bitmap?>(null) }
+            var loadingPhoto by remember { mutableStateOf(false) }
+            val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+                if (uri != null) scope.launch {
+                    loadingPhoto = true
+                    cropping = controller.loadAvatarPhoto(uri)
+                    loadingPhoto = false
+                }
+            }
+            cropping?.let { bitmap ->
+                AvatarCropDialog(bitmap, onCancel = { cropping = null }) { jpeg ->
+                    cropping = null
+                    scope.launch { controller.uploadAvatar(jpeg) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                TextButton(onClick = { avatarPicker.launch("image/*") }, enabled = !loadingPhoto, contentPadding = PaddingValues(0.dp)) {
+                    Text(if (loadingPhoto) "写真を読み込んでいます…" else "写真を選ぶ")
+                }
+                if (me.avatarUpdatedAt != null) TextButton(onClick = { scope.launch { controller.deleteAvatar() } }, contentPadding = PaddingValues(0.dp)) { Text("写真を削除", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        SectionLabel("ステータス")
+        val status = jp.chikuwachat.android.api.activeStatus(me?.let { controller.store.users[it.id] ?: it.asPublic })
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(status?.let { (it.first + " " + it.second).trim() } ?: "未設定", modifier = Modifier.weight(1f), color = if (status == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            TextButton(onClick = { editingStatus = true }) { Text(if (status == null) "設定" else "変更") }
+        }
+        // L4 (M31): others always see me offline; the whole row toggles it (48 dp).
+        SectionLabel("在席")
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = presenceHidden, enabled = !savingPresence, role = Role.Switch) { on ->
+                scope.launch {
+                    savingPresence = true
+                    controller.setPresenceHidden(on)
+                    savingPresence = false
+                }
+            },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("在席を隠す")
+                Text("ほかの人からは常にオフラインに見えます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = presenceHidden, onCheckedChange = null, enabled = !savingPresence, modifier = Modifier.padding(start = 8.dp))
+        }
+        SectionLabel("プロフィール")
+        OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(title, { title = it.take(80); nameSaved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        if (line != null) {
+            OutlinedTextField(
+                topic, { topic = it.take(200); nameSaved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            )
+            OutlinedTextField(
+                reading, { reading = it.take(80); nameSaved = false }, label = { Text("よみ (任意、名簿の並び順に使います)") }, placeholder = { Text("例: かのう とおる") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            )
+        }
+        OutlinedTextField(keywords, { keywords = it; nameSaved = false }, label = { Text("通知キーワード (任意、コンマ区切り)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                enabled = !busy && displayName.isNotBlank() && (displayName.trim() != myName || title.trim().ifEmpty { null } != myTitle || keywordsChanged || lineChanged),
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        var ok = true
+                        if (displayName.trim() != me?.displayName) ok = controller.updateDisplayName(displayName)
+                        if (ok && title.trim().ifEmpty { null } != me?.title) ok = controller.updateProfile(mapOf("title" to title.trim().ifEmpty { null }))
+                        if (ok && keywordsChanged) ok = controller.updateProfileJson(buildJsonObject { put("notify_keywords", buildJsonArray { parsedKeywords.forEach { add(JsonPrimitive(it)) } }) })
+                        if (ok && lineChanged) ok = controller.updateMyRosterLine(topic.trim().ifEmpty { null }, reading.trim().ifEmpty { null })
+                        nameSaved = ok
+                        busy = false
+                    }
+                },
+            ) { Text("プロフィールを保存") }
+            if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        // M28c: the notification permission is asked once after sign-in; a refusal shows here with the way to the
+        // system's page (checked again when the app comes back from it).
+        val notificationsPermitted = remember(controller.appForeground) { controller.notificationsPermitted }
+        if (!notificationsPermitted) {
+            SectionLabel("通知")
+            Text("通知が許可されていないため、新しいメッセージの通知は届きません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { controller.openNotificationSettings() }, contentPadding = PaddingValues(0.dp)) { Text("端末の設定で許可する") }
+        }
+        SectionLabel("2 要素認証")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val status = totp
+            Column(Modifier.weight(1f)) {
+                Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
+                if (status != null) Text(
+                    if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
+        }
+        SectionLabel("パスワードの変更")
+        OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(next, { next = it }, label = { Text("新しいパスワード (8 文字以上)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(repeat, { repeat = it }, label = { Text("新しいパスワード (確認)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        passwordMessage?.let { Text(it, color = if (it.endsWith("しました")) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)) }
+        TextButton(
+            enabled = !busy && current.isNotEmpty() && next.length >= 8,
+            onClick = {
+                if (next != repeat) { passwordMessage = "新しいパスワードが一致しません"; return@TextButton }
+                scope.launch {
+                    busy = true
+                    val error = controller.changePasswordInSession(current, next)
+                    busy = false
+                    passwordMessage = error ?: "パスワードを変更しました"
+                    if (error == null) { current = ""; next = ""; repeat = "" }
+                }
+            },
+        ) { Text("変更する") }
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
+        val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+        TextButton(onClick = { scope.launch { controller.logout() } }, contentPadding = PaddingValues(0.dp)) {
+            Text(logoutLabel, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 @Composable

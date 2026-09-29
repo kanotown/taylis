@@ -15,9 +15,25 @@ import kotlinx.serialization.builtins.ListSerializer
  */
 @Serializable
 sealed interface Route {
-    /** The sidebar's channel list: the bottom of every stack. */
+    /** M34: the bottom of a bottom tab's stack, its root screen; nothing is under it. */
+    @Serializable
+    sealed interface Root : Route
+
+    /** The sidebar's channel list: the bottom of the home tab's stack. */
     @Serializable @SerialName("home")
-    data object ChannelList : Route
+    data object ChannelList : Root
+
+    /** M34: the DM tab's list (MOBILE_UI.md §6.3). */
+    @Serializable @SerialName("dms")
+    data object DmList : Root
+
+    /** M34: the activity tab (§6.4 stage A), on one of its two lists. */
+    @Serializable @SerialName("activity")
+    data class Activity(val segment: ActivitySegment = ActivitySegment.MENTIONS) : Root
+
+    /** M34: the 自分 tab (the settings as a page, §6.5). */
+    @Serializable @SerialName("you")
+    data object You : Root
 
     /** A conversation, on one of its tabs (M29), with or without its details page over it. */
     @Serializable @SerialName("channel")
@@ -62,6 +78,9 @@ sealed interface Route {
     data class Files(val channelId: String? = null) : Pane { override val keptUnderConversation get() = false }
 }
 
+/** M34: the activity tab's switch [メンション | スレッド]. */
+enum class ActivitySegment(val label: String) { MENTIONS("メンション"), THREADS("スレッド") }
+
 /** Where a thread was opened from: its conversation, the 「スレッド」 list, or the search's results. */
 enum class ThreadFrom { CHANNEL, LIST, SEARCH }
 
@@ -70,7 +89,8 @@ enum class ThreadFrom { CHANNEL, LIST, SEARCH }
  * conversation opens (a list row, a notification, a permalink, a pin, the dialogs, /dm, /join) goes through
  * [openConversation]; a search result through [openFromSearch]. The system's back and the app bar's ← are [back].
  *
- * The stack never is empty; it holds at most one conversation (opening one replaces the one open) and one search.
+ * The stack never is empty and starts with a [Route.Root] (the channel list, or another bottom tab's screen, M34); it
+ * holds at most one conversation (opening one replaces the one open) and one search. The bottom tabs are [MainTabs].
  * A workspace switch needs nothing here: AppRoot keeps each workspace's saved stack apart (M16c), and one that was
  * never shown starts at [root].
  */
@@ -80,6 +100,9 @@ object MainNav {
     // --- what is on screen ---
 
     fun top(stack: List<Route>): Route = stack.lastOrNull() ?: Route.ChannelList
+
+    /** The stack's root screen (M34: each bottom tab has its own). */
+    fun rootOf(stack: List<Route>): Route.Root = stack.firstOrNull() as? Route.Root ?: Route.ChannelList
 
     /** The open conversation (the controller's open channel): kept while a search shows over it. */
     fun conversation(stack: List<Route>): Route.Channel? = stack.lastOrNull { it is Route.Channel } as Route.Channel?
@@ -170,7 +193,7 @@ object MainNav {
             ThreadFrom.SEARCH -> if (stack.any { it is Route.Search }) returnToSearch(stack) else pop(stack)
         }
         is Route.Pane -> pop(stack)
-        Route.ChannelList -> stack
+        is Route.Root -> stack
     }
 
     /** The search bar (M16b), over whatever is on screen; a search kept behind a conversation is replaced by it. */
@@ -206,7 +229,7 @@ object MainNav {
         if (index < 0) return stack
         val below = stack.take(index).dropLastWhile { it is Route.Search }
         val above = stack.drop(index + 1).filter { it is Route.Search }
-        return (below + above).ifEmpty { root }
+        return (below + above).ifEmpty { listOf(rootOf(stack)) }
     }
 
     /** The tabs and the details belong to a joined conversation: left (or previewed), they go back to the timeline. */
@@ -222,15 +245,18 @@ object MainNav {
 
     /** A stack saved by [encode]; anything unreadable (an older build's) starts over at the channel list. */
     fun decode(raw: String): List<Route> =
-        runCatching { Codec.plain.decodeFromString(serializer, raw) }.getOrNull()?.takeIf { it.firstOrNull() == Route.ChannelList } ?: root
+        runCatching { Codec.plain.decodeFromString(serializer, raw) }.getOrNull()?.takeIf { valid(it) } ?: root
+
+    /** A stack starts with its root and has no other root in it. */
+    fun valid(stack: List<Route>): Boolean = stack.firstOrNull() is Route.Root && stack.drop(1).none { it is Route.Root }
 
     // --- helpers ---
 
-    private fun pop(stack: List<Route>): List<Route> = stack.dropLast(1).ifEmpty { root }
+    private fun pop(stack: List<Route>): List<Route> = stack.dropLast(1).ifEmpty { listOf(rootOf(stack)) }
 
-    /** What stays under a conversation opened on top: the channel list and the lists kept behind one. */
+    /** What stays under a conversation opened on top: the root (the channel list, a tab's screen) and the lists kept behind one. */
     private fun base(stack: List<Route>): List<Route> =
-        stack.filter { it == Route.ChannelList || (it is Route.Pane && it.keptUnderConversation) }.ifEmpty { root }
+        stack.filter { it is Route.Root || (it is Route.Pane && it.keptUnderConversation) }.ifEmpty { listOf(rootOf(stack)) }
 
     private fun conversationRoutes(channelId: String, parentId: String?, from: ThreadFrom): List<Route> =
         listOfNotNull(Route.Channel(channelId), parentId?.let { Route.Thread(channelId, it, from) })
