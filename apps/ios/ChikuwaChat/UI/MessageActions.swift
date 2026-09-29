@@ -98,10 +98,13 @@ private struct MessageSheets: ViewModifier {
                     }
                 }
             }
-            .confirmationDialog("メッセージを削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                                titleVisibility: .visible, presenting: deleting) { message in
+            // An alert in the middle of the screen: a confirmation dialog pointed at the conversation from wherever
+            // iOS 26 put it (testers, 2026-09-29).
+            .alert("メッセージを削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                   presenting: deleting) { message in
+                Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) { Task { await controller.deleteMessage(message.id) } }
-            }
+            } message: { _ in Text("削除したメッセージは元に戻せません。") }
     }
 }
 

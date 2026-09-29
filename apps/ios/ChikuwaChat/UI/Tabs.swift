@@ -70,17 +70,25 @@ struct DMListView: View {
     let onOpen: (String) -> Void
     let onNew: () -> Void
     @State private var filter = ""
+    @State private var openingNotes = false
 
     private var store: Store { controller.store }
 
     var body: some View {
         let meId = store.me?.id
-        let rows = DMList.ordered(Array(store.channels.values), meId: meId).filter { channel in
-            let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
-            return query.isEmpty || channelTitle(channel, store: store).lowercased().contains(query)
-        }
+        let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        let all = DMList.ordered(Array(store.channels.values), meId: meId)
+        let rows = all.filter { query.isEmpty || channelTitle($0, store: store).lowercased().contains(query) }
+        // 「自分へのメモ」 is always first (as in Slack), made on its first open.
+        let notesMissing = meId != nil && !all.contains { DMList.isNotesToSelf($0, meId: meId) }
+            && (query.isEmpty || "自分へのメモ".contains(query))
         List {
-            if rows.isEmpty {
+            if notesMissing, let meId {
+                Button { openNotes(meId) } label: { notesRow(meId) }
+                    .buttonStyle(.plain)
+                    .disabled(openingNotes)
+            }
+            if rows.isEmpty && !notesMissing {
                 ContentUnavailableView(filter.isEmpty ? "ダイレクトメッセージはまだありません" : "見つかりません", systemImage: "bubble.left.and.bubble.right",
                                        description: Text("右上の「新しいメッセージ」から始められます。"))
                     .listRowSeparator(.hidden)
@@ -99,6 +107,29 @@ struct DMListView: View {
                 Button(action: onNew) { Image(systemName: "square.and.pencil") }.accessibilityLabel("新しいメッセージ")
             }
         }
+    }
+
+    private func openNotes(_ meId: String) {
+        openingNotes = true
+        Task {
+            if let id = await controller.openDmWith(meId) { onOpen(id) }
+            openingNotes = false
+        }
+    }
+
+    /// 「自分へのメモ」 before its DM exists.
+    private func notesRow(_ meId: String) -> some View {
+        HStack(spacing: 12) {
+            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: nil)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("自分へのメモ").lineLimit(1)
+                Text("自分だけが見られる DM").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 6)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
     }
 
     private func row(_ channel: ChannelState, meId: String?) -> some View {
@@ -158,5 +189,53 @@ struct ActivityView: View {
         }
         .navigationTitle("アクティビティ")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Hides the tab bar while a page pushed on a tab's stack shows (iOS 18's `setTabBarHidden(_:animated:)`): it leaves
+/// with the screen underneath on the push and comes back with the pop. SwiftUI's `.toolbar(.hidden, for: .tabBar)` dropped it at once when the push began
+/// and showed it only after the pop had ended (testers, 2026-09-29); iOS 17 keeps that.
+struct HidesTabBar: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.background(TabBarProbe())
+        } else {
+            content.toolbar(.hidden, for: .tabBar)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct TabBarProbe: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Probe { Probe() }
+    func updateUIViewController(_ controller: Probe, context: Context) {}
+
+    final class Probe: UIViewController {
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            guard let tabBarController, !tabBarController.isTabBarHidden else { return }
+            // Hidden at once, for the conversation to lay out with its final bottom edge; a picture of the bar leaves
+            // with the screen underneath, as UIKit's own hide on push does. An animated hide went in one frame as the
+            // push began (iOS 27, 2026-09-29).
+            let bar = tabBarController.tabBar
+            // `animated` is false here (a child of the pushed page); the push's coordinator says whether it animates.
+            // Beside the screen underneath, in the view that carries it across (iOS 26–27: a plain view in the
+            // transition's card), so it moves as that screen does. Not inside it: a hosting controller's view takes no
+            // subviews of its own.
+            if let coordinator = transitionCoordinator, coordinator.isAnimated, let from = coordinator.view(forKey: .from),
+               let carrier = from.superview, let picture = bar.snapshotView(afterScreenUpdates: false) {
+                picture.frame = bar.convert(bar.bounds, to: carrier)
+                carrier.insertSubview(picture, aboveSubview: from)
+                coordinator.animate(alongsideTransition: nil) { _ in picture.removeFromSuperview() }
+            }
+            tabBarController.setTabBarHidden(true, animated: false)
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            // Back to the tab's first screen (not a thread or details pushed over this page, not another tab).
+            guard let navigation = navigationController, navigation.viewControllers.count <= 1 else { return }
+            tabBarController?.setTabBarHidden(false, animated: animated)
+        }
     }
 }

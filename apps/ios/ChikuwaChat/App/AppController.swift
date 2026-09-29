@@ -984,10 +984,12 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    /// Open (or create) the DM with one user; returns its channel id.
+    /// Open (or create) the DM with one user, or with myself alone (notes to self); returns its channel id.
     func openDmWith(_ userId: String) async -> String? {
         guard let api else { return nil }
-        if let existing = store.channels.values.first(where: { $0.channel.type == "dm" && ($0.channel.dmUserIds ?? []).contains(userId) && ($0.channel.dmUserIds ?? []).count <= 2 }) {
+        // Exactly the two of us (me alone for my own id: "contains" took any DM of mine for notes to self).
+        let members = Set([userId] + (store.me.map { [$0.id] } ?? []))
+        if let existing = store.channels.values.first(where: { $0.isMember && $0.channel.type == "dm" && Set($0.channel.dmUserIds ?? []) == members }) {
             return existing.id
         }
         do {

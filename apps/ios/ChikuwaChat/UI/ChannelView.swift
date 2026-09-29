@@ -52,6 +52,10 @@ struct ChannelView: View {
     /// the view go and come back as it opened, the task stayed cancelled, and the landing never ended — no keyboard
     /// follow and no read marks until the conversation was opened again (testers, 2026-09-29).
     @State private var landingTask: Task<Void, Never>?
+    /// The newest row the list has settled on. A new one (mine sent, someone's arriving) grows the content below the
+    /// screen with the bottom anchor off, and the scroll to it is animated; the anchor comes back once it is there (the
+    /// anchor made the rows jump up by a row at once, testers 2026-09-29).
+    @State private var settledLastKey: String?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -205,6 +209,75 @@ struct ChannelView: View {
         // A short unread region lands clamped at the bottom, where atBottom never changes: its rows are seen (§10.1 7.).
         if atBottom { markSeen() }
         markRead()
+    }
+
+    /// 「新着 N 件」 / ↓ at the bottom right while the list is not at the end.
+    @ViewBuilder
+    private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
+        if !atBottom && focus == nil {
+            Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+                if unseenBelow > 0 {
+                    Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
+                        .font(.footnote.bold())
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
+                } else {
+                    Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                }
+            }
+            .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
+            .padding(12)
+        }
+    }
+
+    /// What makes the placement look again: rows coming in, the window reaching the newest row.
+    private var placementKey: String { "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)" }
+
+    private func settleNewestRow() { if settledLastKey == nil { settledLastKey = messages.last?.rowKey } }
+
+    private var newRowComing: Bool { settledLastKey != nil && messages.last?.rowKey != settledLastKey }
+
+    /// Built here, out of the body's long chain.
+    private var scrollAnchor: TimelineScrollAnchor {
+        TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, newRow: newRowComing, atEnd: atBottom)
+    }
+
+    /// Arrivals while at the bottom, and my own top-level send from this device, show the newest message, scrolled to
+    /// with an animation (settledLastKey). A landing on the first unread row is not overridden by someone else's arrival.
+    private func newestRowChanged(_ key: String?, _ proxy: ScrollViewProxy) {
+        let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
+        guard positioned && focus == nil && (mine || atBottom && anchor.landing == nil) else {
+            settledLastKey = key
+            return
+        }
+        if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+        scrollToEnd(proxy)
+        markSeen()
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000) // the scroll's length, then the anchor again
+            if messages.last?.rowKey == key { settledLastKey = key }
+        }
+    }
+
+    /// To the end, sliding. `withAnimation { proxy.scrollTo }` got there in one frame when the row had just come in
+    /// (2026-09-29, iOS 27), and so did KeepsBottom's end of turn (the content grew at the end): the offset slides frame
+    /// by frame instead (KeyboardBehavior.slide), once the row is laid out, and KeepsBottom leaves it alone meanwhile
+    /// (newRowComing). The proxy puts right a slide that stopped short of LazyVStack's settled heights.
+    private func scrollToEnd(_ proxy: ScrollViewProxy) {
+        guard let scrollView = scroller.scrollView else {
+            withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            return
+        }
+        DispatchQueue.main.async {
+            scrollView.layoutIfNeeded()
+            let end = scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
+            if end > scrollView.contentOffset.y + 0.5 { KeyboardBehavior.slide(scrollView, to: end, duration: 0.3) }
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if !atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
     }
 
     /// Lands on `landing` in a task of its own, replacing the one under way (a new landing, or the same one again after the
@@ -385,6 +458,8 @@ struct ChannelView: View {
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                             .containerRelativeFrame(.horizontal)
+                            // A new newest row fades in as the list scrolls to it (newestRowChanged).
+                            .animation(.easeOut(duration: 0.25), value: messages.last?.rowKey)
                             .background(ScrollViewProbe.Marker(probe: scroller))
                             .background(StatusBarTapStays())
                         }
@@ -401,7 +476,7 @@ struct ChannelView: View {
                             if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                         }
                         .background(CoverProbe.Marker(probe: cover))
-                        .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
+                        .modifier(scrollAnchor)
                         .scrollDismissesKeyboard(.interactively)
                         .dismissesKeyboardOnTap()
                         // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
@@ -413,6 +488,8 @@ struct ChannelView: View {
                                              atEnd: atBottom, scroller: scroller,
                                              resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
                             if atEnd {
+                                // A new newest row: the list slides to it itself (scrollToEnd).
+                                if newRowComing && oldHeight == newHeight { return }
                                 proxy.scrollTo("bottom", anchor: .bottom)
                             } else {
                                 // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
@@ -454,47 +531,22 @@ struct ChannelView: View {
                         .onChange(of: positioned && anchor.landing == nil && !jumping) { _, ready in
                             if ready { loadOlderIfShown() } // M25: placed, or a landing over, with the top row already on screen
                         }
-                        .overlay(alignment: .bottomTrailing) {
-                            if !atBottom && focus == nil {
-                                Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
-                                    if unseenBelow > 0 {
-                                        Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
-                                            .font(.footnote.bold())
-                                            .padding(.horizontal, 12).padding(.vertical, 8)
-                                            .background(Color.accentColor, in: Capsule())
-                                            .foregroundStyle(.white)
-                                    } else {
-                                        Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
-                                    }
-                                }
-                                .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
-                                .padding(12)
-                            }
-                        }
+                        .overlay(alignment: .bottomTrailing) { jumpButton(proxy) }
                         .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
                         .onChange(of: controller.engine?.postedHere) { _, id in
                             // A post of mine made through its own endpoint (a poll): shown like one from the outbox, whichever
                             // came first, its response or its event (§10.1 11.).
                             guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
                             if anchor.landing != nil { anchor.landed() }
-                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                            scrollToEnd(proxy)
                             markSeen()
                         }
-                        .onChange(of: messages.last?.rowKey) { _, _ in
-                            // Arrivals while at the bottom, and my own top-level send from this device, show the newest
-                            // message. A landing on the first unread row is not overridden by someone else's arrival.
-                            let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
-                            if positioned && focus == nil && (mine || atBottom && anchor.landing == nil) {
-                                if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-                                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                                markSeen()
-                            }
-                        }
-                        .task(id: "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)") { await Task.yield(); position(proxy) }
+                        .onChange(of: messages.last?.rowKey) { _, key in newestRowChanged(key, proxy) }
+                        .task(id: placementKey) { await Task.yield(); position(proxy) }
                         // Opened, or back from the search context: the placement waits for a catch-up at most this long.
                         // Not a `.task`: the navigation lets the view go and come back once as it opens, which cancelled
                         // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
-                        .onAppear { startSyncWait(proxy) }
+                        .onAppear { startSyncWait(proxy); settleNewestRow() }
                         .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
                         .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
                         .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } } // back after a disappear
@@ -778,6 +830,8 @@ private struct UserScrollDetector: ViewModifier {
 struct TimelineScrollAnchor: ViewModifier {
     let landing: Bool
     var resizing = false
+    /// A new newest row is on its way in (ChannelView.settledLastKey): the list scrolls to it itself, animated.
+    var newRow = false
     /// The reader is at the end: only then does a size change keep the bottom edge by itself. Up in the conversation
     /// the anchor pulled the list to its end as the keyboard came (iOS 26.2, 2026-09-29); KeepsBottom moves the rows
     /// there instead.
@@ -788,9 +842,9 @@ struct TimelineScrollAnchor: ViewModifier {
             content
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
                 .defaultScrollAnchor(atEnd ? .bottom : nil, for: .alignment)
-                .defaultScrollAnchor(landing || resizing || !atEnd ? nil : .bottom, for: .sizeChanges)
+                .defaultScrollAnchor(landing || resizing || newRow || !atEnd ? nil : .bottom, for: .sizeChanges)
         } else {
-            content.defaultScrollAnchor(landing ? nil : .bottom)
+            content.defaultScrollAnchor(landing || newRow ? nil : .bottom)
         }
     }
 }
@@ -1212,7 +1266,7 @@ struct ComposerView: View {
     @State private var priority: String?
     @State private var ackRequested = false
     @FocusState private var focused: Bool
-    /// The cursor and selection (iOS 18: `TextSelection`), where the formatting and the emoji go.
+    /// The cursor and selection (iOS 26: `TextSelection`), where the formatting and the emoji go.
     @State private var selection = ComposerSelection()
 
     /// `/st` at the very start offers the slash commands (M13b).
@@ -1361,7 +1415,9 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var inputField: some View {
-        if #available(iOS 18.0, *) {
+        // Not on iOS 18: typing crashed there at the first character (a tester, 2026-09-29), where the Japanese
+        // keyboard's text being converted counts in the selection and not yet in the text. Its input is iOS 17's.
+        if #available(iOS 26.0, *) {
             SelectingTextField(placeholder: placeholder, text: textBinding, box: selection)
         } else {
             TextField(placeholder, text: textBinding, axis: .vertical)
@@ -1462,10 +1518,10 @@ struct ComposerView: View {
         .accessibilityLabel("送信")
     }
 
-    /// The cursor or selection as character offsets (iOS 18 reports it; before, the end of the text).
+    /// The cursor or selection as character offsets (iOS 26 reports it; before, the end of the text).
     private func selectedRange() -> Range<Int> {
         let end = text.count
-        if #available(iOS 18.0, *), let current = selection.raw(for: text) as? TextSelection, case .selection(let range) = current.indices {
+        if #available(iOS 26.0, *), let current = selection.raw(for: text) as? TextSelection, case .selection(let range) = current.indices {
             func offset(_ index: String.Index) -> Int {
                 let utf16 = min(max(0, index.utf16Offset(in: text)), text.utf16.count)
                 return text[..<String.Index(utf16Offset: utf16, in: text)].count
@@ -1478,7 +1534,7 @@ struct ComposerView: View {
 
     private func setText(_ value: String, selecting range: Range<Int>) {
         textBinding.wrappedValue = value
-        if #available(iOS 18.0, *) {
+        if #available(iOS 26.0, *) {
             let lower = value.index(value.startIndex, offsetBy: min(range.lowerBound, value.count))
             let upper = value.index(value.startIndex, offsetBy: min(range.upperBound, value.count))
             selection.raw = lower == upper ? TextSelection(insertionPoint: lower) : TextSelection(range: lower..<upper)
@@ -1487,7 +1543,7 @@ struct ComposerView: View {
         focused = true
     }
 
-    /// Text at the cursor, in place of the selection (the end of the text before iOS 18).
+    /// Text at the cursor, in place of the selection (the end of the text before iOS 26).
     private func insert(_ inserted: String) {
         var chars = Array(text)
         let range = selectedRange().clamped(to: 0..<(chars.count + 1))
@@ -1725,7 +1781,7 @@ extension MessageRow: Equatable {
     }
 }
 
-/// The composer's cursor and selection: a `TextSelection?` from iOS 18, kept untyped so the view builds for iOS 17.
+/// The composer's cursor and selection: a `TextSelection?` from iOS 26, kept untyped so the view builds for iOS 17.
 final class ComposerSelection {
     var raw: Any?
     /// The text the selection belongs to. Its indices are only good for that text: after a send cleared the input,
@@ -1736,8 +1792,8 @@ final class ComposerSelection {
     func raw(for current: String) -> Any? { text == current ? raw : nil }
 }
 
-/// The input with its selection reported (iOS 18), for the formatting menu and inserting at the cursor.
-@available(iOS 18.0, *)
+/// The input with its selection reported (iOS 26), for the formatting menu and inserting at the cursor.
+@available(iOS 26.0, *)
 private struct SelectingTextField: View {
     let placeholder: String
     let text: Binding<String>

@@ -222,7 +222,7 @@ struct MainView: View {
                             .id(channel.id)
                     }
                 }
-                .toolbar(.hidden, for: .tabBar)
+                .modifier(HidesTabBar())
             } else {
                 ContentUnavailableView("会話が見つかりません", systemImage: "bubble.left.and.bubble.right")
             }

@@ -436,20 +436,23 @@ struct ChannelInfoView: View {
             Button("変更") { Task { _ = await controller.renameChannel(channelId, name: newName) } }
             Button("キャンセル", role: .cancel) {}
         }
-        .confirmationDialog("メンバーから外しますか？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-                            titleVisibility: .visible, presenting: removing) { member in
-            Button("\(controller.store.users[member.userId]?.displayName ?? "?") を外す", role: .destructive) {
-                Task { await remove(member) }
-            }
-        }
-        .confirmationDialog("このチャンネルを退出しますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
+        // Yes / no questions are alerts in the middle of the screen (MessageActions: the dialogs pointed from odd places).
+        .alert("メンバーから外しますか？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+               presenting: removing) { member in
+            Button("キャンセル", role: .cancel) {}
+            Button("外す", role: .destructive) { Task { await remove(member) } }
+        } message: { member in Text("\(controller.store.users[member.userId]?.displayName ?? "?") さんをこのチャンネルから外します。") }
+        .alert("このチャンネルを退出しますか？", isPresented: $confirmLeave) {
+            Button("キャンセル", role: .cancel) {}
             Button("退出", role: .destructive) { Task { if await controller.leaveChannel(channelId) { dismiss() } } }
         } message: { Text("公開チャンネルなら、あとから「チャンネルを探す」で再び参加できます。") }
-        .confirmationDialog("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive, titleVisibility: .visible) {
+        .alert("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive) {
+            Button("キャンセル", role: .cancel) {}
             Button("アーカイブ", role: .destructive) { Task { if await controller.archiveChannel(channelId) { dismiss() } } }
         } message: { Text("アーカイブしたチャンネルは読み取り専用になります。") }
-        .confirmationDialog(convertTitle, isPresented: $confirmConvert, titleVisibility: .visible) {
+        .alert(convertTitle, isPresented: $confirmConvert) {
             let toPrivate = channel?.channel.type == "public"
+            Button("キャンセル", role: .cancel) {}
             Button(toPrivate ? "非公開にする" : "公開にする", role: .destructive) {
                 Task { _ = await controller.convertChannel(channelId, to: toPrivate ? "private" : "public") }
             }
