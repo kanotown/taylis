@@ -68,7 +68,7 @@ fun PeopleDialog(title: String, people: List<Person>, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun PersonRow(person: Person) {
+internal fun PersonRow(person: Person) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Avatar(person.id, person.name, size = 28.dp)
         Spacer(Modifier.width(10.dp))

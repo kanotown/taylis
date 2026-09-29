@@ -40,6 +40,7 @@ import jp.chikuwachat.android.ui.Templates
 import java.time.LocalDate
 import jp.chikuwachat.android.ui.Share
 import jp.chikuwachat.android.ui.Totp
+import jp.chikuwachat.android.ui.AckReminders
 import jp.chikuwachat.android.api.TotpEnabledOut
 import jp.chikuwachat.android.api.TotpSetupOut
 import jp.chikuwachat.android.api.TotpStatusOut
@@ -1298,7 +1299,17 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
-    /** M15b: public → private (owner / admin) or private → public (admin only). */
+    /** L4 (M31): make a member an owner ("owner") or a member again ("member"); the Store follows at once. */
+    suspend fun setMemberRole(channelId: String, userId: String, role: String): Boolean = attempt {
+        val member = api!!.updateMemberRole(channelId, userId, role)
+        store.applyMemberUpdated(channelId, member.userId, member.role)
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /** L4 (M31): 「在席を隠す」; others always see me offline. */
+    suspend fun setPresenceHidden(hidden: Boolean): Boolean = updateProfileJson(buildJsonObject { put("presence_hidden", hidden) })
+
+    /** M15b: public → private (owner / admin) or private → public (an admin who is a member, L4). */
     suspend fun convertChannel(channelId: String, type: String): Boolean = attempt {
         store.upsertChannel(api!!.updateChannel(channelId, type = type))
         true
@@ -1447,6 +1458,17 @@ class AppController(private val app: Application) {
         val mine = message.acks.any { it.userId == me.id }
         attempt { store.upsertMessage(api!!.acknowledge(message.id, !mine)) }.onFailure { error = describe(it) }
     }
+
+    /** L4 (M31): who has not acknowledged `messageId` yet, by display name (a failure is shown in the dialog, see [describe]). */
+    suspend fun ackPending(messageId: String): Result<List<String>> = attempt { api!!.ackPending(messageId).userIds }
+
+    /**
+     * L4 (M31): the author or an admin reminds those who have not acknowledged. The outcome in words, shown in the
+     * acknowledgement dialog itself (the snackbar would be hidden behind it): the count, or the failure (e.g. once an hour).
+     */
+    suspend fun remindAck(messageId: String): AckReminders.Outcome = attempt {
+        AckReminders.Outcome(AckReminders.notice(api!!.remindAck(messageId).reminded), failed = false)
+    }.getOrElse { AckReminders.Outcome(describe(it), failed = true) }
 
     // --- polls (M14b) ------------------------------------------------------------------------
 

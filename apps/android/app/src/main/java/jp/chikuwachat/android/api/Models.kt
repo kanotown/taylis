@@ -50,6 +50,8 @@ data class UserMe(
     val notifyKeywords: List<String> = emptyList(),
     /** M14a: when the profile picture changed (null = no picture); the cache key. */
     val avatarUpdatedAt: String? = null,
+    /** L4 (M31): others always see me offline (the server never sends my presence). */
+    val presenceHidden: Boolean = false,
 ) {
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
@@ -416,6 +418,8 @@ data class ReminderOut(
     val status: String,
     val firedAt: String? = null,
     val createdAt: String,
+    /** L4 (M31): "personal" (set by me) or "ack" (the author asked me to acknowledge the message). */
+    val kind: String = "personal",
 )
 
 /** A message the server posts later (M12d); `status` is pending | sent | failed | cancelled. */
@@ -468,6 +472,14 @@ data class ThreadListOut(val items: List<ThreadItem>, val nextCursor: String? = 
 
 @Serializable
 data class MemberOut(val userId: String, val role: String, val joinedAt: String)
+
+/** L4 (M31): GET /messages/{id}/ack/pending, the members yet to acknowledge (by display name). */
+@Serializable
+data class AckPendingOut(val userIds: List<String> = emptyList())
+
+/** L4 (M31): POST /messages/{id}/ack/remind, how many were reminded (0: everyone pending already has one open). */
+@Serializable
+data class AckRemindOut(val reminded: Int = 0)
 
 @Serializable
 data class ErrorEnvelope(val error: ErrorInner)

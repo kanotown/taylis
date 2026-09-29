@@ -673,6 +673,10 @@ class SyncEngine(
                     store.updateChannel(id) { state -> state.channel.memberCount?.let { state.copy(channel = state.channel.copy(memberCount = maxOf(0, it - 1))) } ?: state }
                 }
             }
+            "channel.member_updated" -> {
+                val id = frame.data.str("channel_id") ?: return
+                store.applyMemberUpdated(id, frame.data.str("user_id") ?: return, frame.data.str("role") ?: return)
+            }
             "user.created", "user.updated", "user.deactivated" -> {
                 val user = Codec.snake.decodeFromJsonElement(UserPublic.serializer(), frame.data["user"] ?: return)
                 store.upsertUser(user)

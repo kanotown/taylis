@@ -21,7 +21,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -230,7 +236,11 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
     // M15f: add a link from channel info (the bar itself only shows once there is one).
     var addingLink by remember { mutableStateOf(false) }
     if (addingLink) ChannelLinkDialog(controller, channel.id, null, onDismiss = { addingLink = false })
-    LaunchedEffect(channel.id, membersLoad) { controller.memberList(channel.id).onSuccess { members = it } }
+    // M31: channel.member_updated (an owner added or taken back, here or elsewhere) loads the list again.
+    val memberEpoch = remember(version, channel.id) { store.memberEpoch(channel.id) }
+    LaunchedEffect(channel.id, membersLoad, memberEpoch) { controller.memberList(channel.id).onSuccess { members = it } }
+    val ownerCount = members?.count { it.role == "owner" } ?: 0
+    val myRole = store.me?.role
     // M23: people on the lab roster first in roster order (with their label), then the others by name (someone not
     // loaded yet as a nameless member off the roster).
     val sortedMembers = remember(members, version) {
@@ -315,6 +325,20 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     }
                     if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                     if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // M31: 「オーナーにする」 / 「オーナーから外す」 behind a 48 dp menu button (a text button leaves no room for
+                    // the name at 360 dp).
+                    ChannelOwners.action(channel, myRole, member, user, ownerCount)?.let { action ->
+                        var menu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "メンバーの操作") }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(ChannelOwners.actionLabel(action)) },
+                                    onClick = { menu = false; scope.launch { controller.setMemberRole(channel.id, member.userId, action) } },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -382,7 +406,7 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                 if (ChannelLinks.canEdit(channel, store.me?.role)) {
                     TextButton(onClick = { addingLink = true }, contentPadding = PaddingValues(0.dp)) { Text("リンクを追加") }
                 }
-                if ((toPrivate && canManage) || (channel.channel.type == "private" && isAdmin)) {
+                if (ChannelOwners.canConvert(channel, myRole)) {
                     TextButton(onClick = { confirm = "convert" }, contentPadding = PaddingValues(0.dp)) {
                         Text(if (toPrivate) "非公開チャンネルに変換" else "公開チャンネルに変換")
                     }
@@ -392,10 +416,12 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
     }
 }
 
-/** Profile (display name), password change and logout. */
+/** Profile (display name), password change and logout. `version`: 「在席を隠す」 follows my UserMe in the Store (M31). */
 @Composable
-fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
+fun SettingsDialog(controller: AppController, version: Int, onDismiss: () -> Unit) {
     val me = controller.store.me ?: controller.me
+    val presenceHidden = remember(version) { (controller.store.me ?: controller.me)?.presenceHidden ?: false }
+    var savingPresence by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var displayName by rememberSaveable { mutableStateOf(me?.displayName ?: "") }
     var title by rememberSaveable { mutableStateOf(me?.title ?: "") }
@@ -469,6 +495,24 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(status?.let { (it.first + " " + it.second).trim() } ?: "未設定", modifier = Modifier.weight(1f), color = if (status == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                     TextButton(onClick = { editingStatus = true }) { Text(if (status == null) "設定" else "変更") }
+                }
+                // L4 (M31): others always see me offline; the whole row toggles it (48 dp).
+                SectionLabel("在席")
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = presenceHidden, enabled = !savingPresence, role = Role.Switch) { on ->
+                        scope.launch {
+                            savingPresence = true
+                            controller.setPresenceHidden(on)
+                            savingPresence = false
+                        }
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("在席を隠す")
+                        Text("ほかの人からは常にオフラインに見えます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = presenceHidden, onCheckedChange = null, enabled = !savingPresence, modifier = Modifier.padding(start = 8.dp))
                 }
                 SectionLabel("プロフィール")
                 OutlinedTextField(displayName, { displayName = it.take(80); nameSaved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
