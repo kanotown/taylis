@@ -96,6 +96,7 @@ struct ChannelListView: View {
                             Button("参加") { join(channel.id) }
                                 .font(.footnote)
                                 .buttonStyle(.borderless)
+                                .frame(minWidth: 44, minHeight: 40) // a finger's target (audit 2026-09-29)
                         }
                         .listRowInsets(Self.rowInsets)
                         .listRowSeparator(.hidden)
