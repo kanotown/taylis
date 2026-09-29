@@ -341,6 +341,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         ]))
     }
     func listScheduled() async throws -> [ScheduledOut] { try await request("GET", "/api/v1/scheduled") }
+    /// M28d (parity): an owner or an admin takes a member out of a channel (the web had it; DATA_MODEL.md).
+    func removeMember(channelId: String, userId: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/channels/\(channelId)/members/\(userId)", body: nil, auth: true, retry401: true)
+    }
+
     func cancelScheduled(id: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/scheduled/\(id)", body: nil, auth: true, retry401: true)
     }

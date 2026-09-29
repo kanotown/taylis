@@ -3,7 +3,7 @@ import UIKit
 
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
-    case thread, edit, moreReactions, reactors, share, delete
+    case thread, edit, moreReactions, reactors, share, delete, customReminder
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -11,7 +11,7 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file }
+    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder }
     let kind: Kind
     let message: MessageState
     /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
@@ -52,6 +52,7 @@ private struct MessageSheets: ViewModifier {
         case (.edit, let message)?: sheet = MessageSheet(kind: .edit, message: message)
         case (.moreReactions, let message)?: sheet = MessageSheet(kind: .reactions, message: message)
         case (.reactors, let message)?: sheet = MessageSheet(kind: .reactors, message: message)
+        case (.customReminder, let message)?: sheet = MessageSheet(kind: .reminder, message: message)
         case (.share, let message)?: sheet = MessageSheet(kind: .share, message: message)
         case (.delete, let message)?: deleting = message
         case nil: break
@@ -75,6 +76,8 @@ private struct MessageSheets: ViewModifier {
                     }
                 case .reactors:
                     ReactorsSheet(message: message, controller: controller)
+                case .reminder:
+                    ReminderFormView(controller: controller, message: message)
                 case .share:
                     ShareMessageSheet(controller: controller, message: message)
                 case .revisions:
@@ -183,6 +186,7 @@ struct MessageActionsSheet: View {
                             run { _ = await controller.setReminder(messageId: message.id, at: preset.at) }
                         }
                     }
+                    Button("日時を指定…", systemImage: "calendar") { then(.customReminder) } // M28d: with a note, as on the web / Android
                 } label: {
                     VStack(spacing: 0) {
                         rowLabel("リマインド", "alarm").foregroundStyle(Color.primary)
