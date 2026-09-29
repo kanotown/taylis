@@ -608,10 +608,13 @@ final class SyncEngine {
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
             trimIfFull(channelId)
         } else if seq > synced + 1 {
+            // A gap: the catch-up brings the rows lost with it, and counts every one past what was counted so far (this
+            // one too; §7.4 — before, only this one was counted and the lost ones showed up at the next bootstrap).
+            let countedTo = channel.lastSeq
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
-            try await catchUp(channelId)
+            try await catchUp(channelId, countedTo: countedTo)
             trimIfFull(channelId)
-            if isNew { countUnread(message); maybeNotify(message, channel, thread) }
+            if isNew { maybeNotify(message, channel, thread) }
         }
         // seq <= synced: already applied.
     }
@@ -1056,7 +1059,20 @@ final class SyncEngine {
         await flushReads()
     }
 
-    func catchUp(_ channelId: String) async throws {
+    /// §7.3, and §7.4 for the count: the unread count covers the rows up to `countedTo` (the bootstrap's and the live
+    /// events'); what the catch-up brings past it, up to the new synced seq, is counted here — their events were lost,
+    /// and nothing else counts them until the next bootstrap. The channel's last seq when not given (a reconnect's
+    /// catch-up after the bootstrap counted everything).
+    func catchUp(_ channelId: String, countedTo: Int? = nil) async throws {
+        guard let channel = store.channel(channelId) else { return }
+        let counted = countedTo ?? channel.lastSeq
+        var brought: [String: MessageOut] = [:]
+        try await catchUpRows(channelId, into: &brought)
+        let synced = store.channel(channelId)?.syncedSeq ?? counted
+        for message in brought.values.filter({ $0.seq > counted && $0.seq <= synced }).sorted(by: { $0.seq < $1.seq }) { countUnread(message) }
+    }
+
+    private func catchUpRows(_ channelId: String, into brought: inout [String: MessageOut]) async throws {
         catchUps += 1
         guard var channel = store.channel(channelId) else { return }
         // Far behind, or a timeline stored before its window was tracked: read the newest page again (§7.3).
@@ -1069,7 +1085,7 @@ final class SyncEngine {
         }
         guard var since = channel.syncedSeq else {
             let page = try await api.history(channelId: channelId, beforeSeq: nil, limit: options.pageSize)
-            for message in page.messages { store.upsertMessage(message) }
+            for message in page.messages { store.upsertMessage(message); brought[message.id] = message }
             store.updateChannel(channelId) { state in
                 state.syncedSeq = page.channelLastSeq
                 state.lastSeq = max(state.lastSeq, page.channelLastSeq)
@@ -1080,7 +1096,7 @@ final class SyncEngine {
         }
         while true {
             let delta = try await api.delta(channelId: channelId, sinceSeq: since, limit: options.deltaLimit)
-            for message in delta.messages { store.upsertMessage(message) }
+            for message in delta.messages { store.upsertMessage(message); brought[message.id] = message } // by id: a row changed between two pages counts once
             since = delta.nextSinceSeq
             store.updateChannel(channelId) { $0.syncedSeq = since; $0.lastSeq = max($0.lastSeq, since) }
             if !delta.hasMore { return }

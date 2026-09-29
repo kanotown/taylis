@@ -88,6 +88,35 @@ final class SyncEngineTests: XCTestCase {
         }
     }
 
+    /// §7.4 (M28e, the Android rule): a live gap's catch-up counts every unread row it brings, once, so the count
+    /// matches the server's — before, only the event that showed the gap was counted and the lost rows waited for the
+    /// next bootstrap.
+    func testALiveGapCountsEveryRowItsCatchUpBringsOnce() async throws {
+        let w = makeWorld()
+        for i in 1...3 { try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m\(i)") }
+        _ = try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: 3)
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 0)
+        w.server.sockets.forEach { $0.dropNext = 1 }
+        let lost = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "lost").0 // 4, its event lost
+        _ = try w.server.react(channelId: w.channel.id, userId: w.alice.id, messageId: lost.id, emoji: "👍", present: true) // 5: a gap, no new row
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 5)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 1)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).unreadCount, 1)
+        w.server.sockets.forEach { $0.dropNext = 1 }
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "lost too") // 6, lost
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "opens the gap") // 7
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "live") // 8
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 8)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.unreadCount, 4)
+        XCTAssertEqual(w.server.readState(userId: w.bob.id, channelId: w.channel.id).unreadCount, 4)
+        w.engine.stop()
+    }
+
     func testOpeningDoesNotReadAndBackgroundReadIsIgnored() async throws {
         let w = makeWorld()
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "unseen")
