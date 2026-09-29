@@ -211,10 +211,12 @@ class ApiClient(
             type?.let { put("type", it) }
         })
 
-    suspend fun setNotificationPreference(channelId: String, level: String, mutedUntil: String?): NotificationPreferenceOut =
+    /** M35: `level` null follows the overall setting; `muted` null leaves the mute-until-unmuted as it is. */
+    suspend fun setNotificationPreference(channelId: String, level: String?, mutedUntil: String?, muted: Boolean? = null): NotificationPreferenceOut =
         request("PUT", "/api/v1/channels/$channelId/notification-preference", buildJsonObject {
             put("level", level)
             put("muted_until", mutedUntil)
+            muted?.let { put("muted", it) }
         })
 
     suspend fun updateMe(displayName: String? = null, email: String? = null): UserMe =

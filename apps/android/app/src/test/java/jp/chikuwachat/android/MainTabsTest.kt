@@ -41,7 +41,7 @@ class MainTabsTest {
         channel = ChannelOut(
             id = id, type = type, name = if (type == "dm" || type == "group_dm") null else id, archived = false, lastSeq = 0,
             createdAt = createdAt, updatedAt = createdAt, lastMessageAt = lastMessageAt, dmUserIds = users,
-            notification = level?.let { NotificationPreferenceOut(id, it, null) }, timesOwnerId = timesOwner,
+            notification = level?.let { NotificationPreferenceOut(id, it, null, followsDefault = false) }, timesOwnerId = timesOwner,
         ),
         isMember = member, unreadCount = unread, mentionCount = mentions,
     )

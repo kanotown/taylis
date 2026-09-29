@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.sync.CLOSE_AUTH_FAILED
@@ -292,6 +293,41 @@ class SyncEngineTest {
         w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
         w.server.post(w.channelId, w.alice, "<!channel> all"); settle(w.engine)
         assertEquals(listOf("hey <@${w.bob}>", "<!channel> all"), w.notifications)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun theOverallSettingAndTheMuteDecideTheAppsNotifications() = runBlocking { // M35
+        val w = world()
+        w.server.notificationDefaults[w.bob] = "all"
+        w.engine.start(); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "plain"); settle(w.engine)
+        assertEquals(listOf("plain"), w.notifications) // no level of its own: the overall "all"
+        // Muted until unmuted, still following the overall setting: the event carries both, nothing notifies.
+        w.server.emitNotificationPreference(w.bob, NotificationPreferenceOut(w.channelId, "all", null, followsDefault = true, muted = true)); settle(w.engine)
+        val pref = w.store.channel(w.channelId)!!.channel.notification!!
+        assertTrue(pref.muted)
+        assertTrue(pref.followsDefault)
+        assertTrue(jp.chikuwachat.android.ui.Channels.isMuted(w.store.channel(w.channelId)!!))
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
+        assertEquals(listOf("plain"), w.notifications)
+        // Unmuted with a level of its own: mentions only.
+        w.server.emitNotificationPreference(w.bob, NotificationPreferenceOut(w.channelId, "mentions", null, followsDefault = false, muted = false)); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "plain again"); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "again <@${w.bob}>"); settle(w.engine)
+        assertEquals(listOf("plain", "again <@${w.bob}>"), w.notifications)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun theOverallSettingNoneSilencesChannelsWithoutALevel() = runBlocking { // M35
+        val w = world()
+        w.server.notificationDefaults[w.bob] = "none"
+        w.engine.start(); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
+        assertEquals(0, w.notifications.size)
+        // ...but it does not mute: the unread rules never read the overall setting (SYNC_PROTOCOL.md §10.5).
+        val state = w.store.channel(w.channelId)!!
+        assertFalse(jp.chikuwachat.android.ui.Channels.isMuted(state))
+        assertTrue(jp.chikuwachat.android.ui.Channels.hasUnread(state, w.bob))
         w.engine.stop(); w.scope.cancel()
     }
 

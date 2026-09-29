@@ -67,6 +67,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -103,6 +104,7 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.platform.NotificationPermission
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -433,22 +435,31 @@ fun MainScreen(controller: AppController) {
                         // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
                         // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
                         if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
-                            val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
+                            // M35: 「既定 (…)」 follows the overall setting (level null); 「ミュート」 lasts until unmuted.
+                            val ownLevel = NotificationLevels.own(selectedChannel)
+                            val overall = store.me?.notificationDefault ?: NotificationLevels.MENTIONS
+                            val mutedOn = NotificationLevels.mutedUntilUnmuted(selectedChannel)
                             val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
                             DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
-                                listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text((if (level == value) "✓ " else "    ") + label) },
-                                        onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, value, null) } },
-                                    )
-                                }
+                                (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(overall)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
+                                    .forEach { (value, label) ->
+                                        DropdownMenuItem(
+                                            text = { Text((if (ownLevel == value) "✓ " else "    ") + label) },
+                                            onClick = { bellOpen = false; scope.launch { controller.setChannelLevel(selectedChannel.id, value) } },
+                                        )
+                                    }
                                 HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("ミュート") },
+                                    trailingIcon = { Switch(checked = mutedOn, onCheckedChange = null) },
+                                    onClick = { bellOpen = false; scope.launch { controller.setChannelMuted(selectedChannel.id, !mutedOn) } },
+                                )
                                 if (mute != null) {
-                                    DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { bellOpen = false; scope.launch { controller.setNotification(selectedChannel.id, level, null) } })
+                                    DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { bellOpen = false; scope.launch { controller.setChannelTimedMute(selectedChannel.id, null) } })
                                 } else {
                                     DropdownMenuItem(text = { Text("8 時間ミュート") }, onClick = {
                                         bellOpen = false
-                                        scope.launch { controller.setNotification(selectedChannel.id, level, Instant.now().plusSeconds(8 * 3600).toString()) }
+                                        scope.launch { controller.setChannelTimedMute(selectedChannel.id, Instant.now().plusSeconds(8 * 3600).toString()) }
                                     })
                                 }
                             }
@@ -467,12 +478,21 @@ fun MainScreen(controller: AppController) {
                                     leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
                                     onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(selectedChannel.id) } },
                                 )
-                                val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
+                                // M35: the level resolved with my overall setting as it is now (a change shows at once).
+                                val level = NotificationLevels.resolved(selectedChannel, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
                                 val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
-                                val levelName = when (level) { "all" -> "すべて"; "none" -> "通知しない"; else -> "メンションのみ" }
+                                val mutedOn = NotificationLevels.mutedUntilUnmuted(selectedChannel)
                                 DropdownMenuItem(
-                                    text = { Text(if (mute != null) "通知 ($mute までミュート)" else "通知: $levelName") },
-                                    leadingIcon = { Icon(if (level == "none" || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
+                                    text = {
+                                        Text(
+                                            when {
+                                                mutedOn -> "通知 (ミュート中)"
+                                                mute != null -> "通知 ($mute)"
+                                                else -> "通知: " + NotificationLabels.shortLabel(level)
+                                            },
+                                        )
+                                    },
+                                    leadingIcon = { Icon(if (level == NotificationLevels.NONE || mutedOn || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
                                     onClick = { menuOpen = false; bellOpen = true },
                                 )
                                 DropdownMenuItem(

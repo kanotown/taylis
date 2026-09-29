@@ -21,6 +21,7 @@ import android.app.Application
 import android.os.Build
 import android.provider.Settings
 import jp.chikuwachat.android.ui.Channels
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.ui.MainTabs
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1342,11 +1343,38 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun setNotification(channelId: String, level: String, mutedUntil: String? = null): Boolean = attempt {
-        val pref = api!!.setNotificationPreference(channelId, level, mutedUntil)
-        store.setNotification(channelId, pref.level, pref.mutedUntil)
+    /**
+     * PUT the channel's notification preference (M35): `level` null follows the overall setting; `mutedUntil` is sent
+     * as given (null ends a timed mute); `muted` null leaves the mute-until-unmuted as it is.
+     */
+    suspend fun setNotification(channelId: String, level: String?, mutedUntil: String? = null, muted: Boolean? = null): Boolean = attempt {
+        store.setNotification(api!!.setNotificationPreference(channelId, level, mutedUntil, muted))
         true
     }.getOrElse { error = describe(it); false }
+
+    /** The channel's menu: its own level (null = 「既定」), keeping a running timed mute and the mute as they are. */
+    suspend fun setChannelLevel(channelId: String, level: String?): Boolean {
+        val state = store.channels[channelId] ?: return false
+        return setNotification(channelId, level, NotificationLevels.keptMutedUntil(state))
+    }
+
+    /** 「ミュート」 (M35, until unmuted) on or off, keeping the channel's own level (or none) and a running timed mute. */
+    suspend fun setChannelMuted(channelId: String, on: Boolean): Boolean {
+        val state = store.channels[channelId] ?: return false
+        return setNotification(channelId, NotificationLevels.own(state), NotificationLevels.keptMutedUntil(state), muted = on)
+    }
+
+    /** 「8 時間ミュート」 (until = the end) and its ミュート解除 (null), keeping the channel's own level (or none). */
+    suspend fun setChannelTimedMute(channelId: String, until: String?): Boolean {
+        val state = store.channels[channelId] ?: return false
+        return setNotification(channelId, NotificationLevels.own(state), until)
+    }
+
+    /**
+     * M35: the overall notification setting (「自分」の通知). The Store's UserMe takes the answer, so channels following
+     * the default show the new level at once; my other devices learn it on their next bootstrap.
+     */
+    suspend fun setNotificationDefault(overall: String): Boolean = updateProfileJson(buildJsonObject { put("notification_default", overall) })
 
     /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
     suspend fun updateProfile(fields: Map<String, String?>): Boolean =
@@ -1510,7 +1538,8 @@ class AppController(private val app: Application) {
         if (spec == null) { error = "/${command.name} というコマンドはありません (/help で一覧)"; return false }
         if (spec.channelOnly && isDm) { error = "/${command.name} はチャンネルでだけ使えます"; return false }
         fun user(handle: String) = store.users.values.firstOrNull { it.username.equals(handle.removePrefix("@"), ignoreCase = true) }
-        val level = state.channel.notification?.level ?: if (isDm) "all" else "mentions"
+        // M35: the channel's own level, null while it follows the overall setting (so a mute does not pin a level).
+        val level = NotificationLevels.own(state)
         return when (command.name) {
             "help" -> {
                 // M30: the templates' names too, in the order the template button shows them.
@@ -1575,7 +1604,8 @@ class AppController(private val app: Application) {
                 if (until == null) { error = "/mute 1h | 8h | tomorrow"; return false }
                 setNotification(channelId, level, until.toInstant().toString()).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
             }
-            "unmute" -> setNotification(channelId, level, null).also { if (it) notice = "通知を再開しました" }
+            // Both mutes end: the timed one and the one until unmuted (M35).
+            "unmute" -> setNotification(channelId, level, null, muted = false).also { if (it) notice = "通知を再開しました" }
             "me" -> {
                 if (command.args.isEmpty()) return false
                 engine?.send(channelId, "_${command.args}_", parentId = parentId)
