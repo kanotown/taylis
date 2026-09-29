@@ -828,6 +828,19 @@ export class AppController {
     }
   }
 
+  /** M11h: what the channel is for (the channel details, M29). An empty text clears it. */
+  async updatePurpose(channelId: string, purpose: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const channel = await this.api.updateChannel(channelId, { purpose: purpose.trim() });
+      this.store.upsertChannel(channel);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   async setNotification(channelId: string, level: NotificationLevel, mutedUntil: string | null = null): Promise<void> {
     if (!this.api) return;
     try {

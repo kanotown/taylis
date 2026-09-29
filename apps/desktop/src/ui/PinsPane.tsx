@@ -11,8 +11,8 @@ import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { IconButton } from "./primitives";
 
-/** The right pane: messages pinned in this channel (M11c), most recently pinned first; a row reveals it. */
-export function PinsPane({ controller, channel, onOpen, onClose }: { controller: AppController; channel: ChannelState; onOpen: (message: MessageOut) => void; onClose: () => void }) {
+/** Messages pinned in this channel (M11c), most recently pinned first; null while loading. */
+export function usePins(controller: AppController, channel: ChannelState): MessageOut[] | null {
   const store = controller.store;
   const [pins, setPins] = useState<MessageOut[] | null>(null);
   // Pin changes arrive as message.updated (also for old rows outside the loaded timeline); re-read the list when they move.
@@ -21,7 +21,34 @@ export function PinsPane({ controller, channel, onOpen, onClose }: { controller:
     if (!controller.api) return;
     void controller.api.listPins(channel.id).then(setPins, (error) => controller.setError(error));
   }, [controller.api, channel.id, pinnedSignature]);
+  return pins;
+}
 
+/** The pinned messages as cards; a card reveals its message. */
+export function PinsList({ controller, pins, onOpen }: { controller: AppController; pins: MessageOut[] | null; onOpen: (message: MessageOut) => void }) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      {pins === null ? (
+        <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+      ) : pins.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-muted">ピン留めされたメッセージはありません。メッセージのピンアイコンから追加できます。</div>
+      ) : (
+        <div className="space-y-1">
+          {pins.map((message) => <MessageCard key={message.id} message={message} controller={controller} onOpen={() => onOpen(message)} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** M29: a conversation's 「ピン留め」 tab on a phone. */
+export function ChannelPins({ controller, channel, onOpen }: { controller: AppController; channel: ChannelState; onOpen: (message: MessageOut) => void }) {
+  return <PinsList controller={controller} pins={usePins(controller, channel)} onOpen={onOpen} />;
+}
+
+/** The right pane: messages pinned in this channel (M11c), most recently pinned first; a row reveals it. */
+export function PinsPane({ controller, channel, onOpen, onClose }: { controller: AppController; channel: ChannelState; onOpen: (message: MessageOut) => void; onClose: () => void }) {
+  const pins = usePins(controller, channel);
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
@@ -34,17 +61,7 @@ export function PinsPane({ controller, channel, onOpen, onClose }: { controller:
           <X size={18} />
         </IconButton>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {pins === null ? (
-          <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
-        ) : pins.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-muted">ピン留めされたメッセージはありません。メッセージのピンアイコンから追加できます。</div>
-        ) : (
-          <div className="space-y-1">
-            {pins.map((message) => <MessageCard key={message.id} message={message} controller={controller} onOpen={() => onOpen(message)} />)}
-          </div>
-        )}
-      </div>
+      <PinsList controller={controller} pins={pins} onOpen={onOpen} />
     </aside>
   );
 }

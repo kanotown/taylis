@@ -34,7 +34,19 @@ import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 
 
-export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
+export function Timeline({ controller, channel, onOpenThread, active = true }: {
+  controller: AppController;
+  channel: ChannelState;
+  onOpenThread?: (id: string) => void;
+  /**
+   * M29: false while the conversation is kept mounted but not on screen (a phone's 「ピン留め」 / 「ファイル」 tab, the
+   * channel details or a thread over it): no row counts as shown (SYNC_PROTOCOL.md §10.1 2.), so nothing is read and
+   * nothing counts as seen for 「新着 N 件」, which is not drawn either. Back on screen, it looks again.
+   */
+  active?: boolean;
+}) {
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const store = controller.store;
   const engine = controller.engine;
   const focus = controller.messageFocus?.channelId === channel.id ? controller.messageFocus : null;
@@ -78,7 +90,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
   const unseenBelow = focus ? 0 : messages.filter((m) => m.seq !== null && m.seq > seenSeq && m.sender_id !== me?.id).length;
   const markSeen = () => {
-    if (maxSeq > seenSeq) setSeenSeq(maxSeq);
+    if (activeRef.current && maxSeq > seenSeq) setSeenSeq(maxSeq);
   };
 
   const positioned = useRef(false);
@@ -181,7 +193,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   const markVisible = () => {
     const el = container.current;
     // Not while 「最初の未読へ」 loads either: the view is about to land elsewhere (§10.1 4.).
-    if (!el || focus || !positioned.current || quiet.current || jumpingFor.current === channel.id || !document.hasFocus()) return;
+    if (!el || !activeRef.current || focus || !positioned.current || quiet.current || jumpingFor.current === channel.id || !document.hasFocus()) return;
     const seen = screenRows(el, "article[data-seq]", "timeline-");
     const nowAnchored = reanchor(seen);
     const seq = Math.max(0, ...seen.seqs);
@@ -303,6 +315,18 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
       window.removeEventListener(READER_BACK, backInFront);
     };
   }, [channel.id, channel.lastSeq, channel.syncedSeq, channel.lastReadSeq, channel.unreadCount, channel.oldestLoadedSeq, status, focus?.messageId, messages.length, heldUnread, reloads]);
+
+  // Back on screen (M29, another tab or a page over it closed): like the window back in front, the rows shown are looked
+  // at again, and what is at the bottom now counts as seen.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active === wasActive.current) return;
+    wasActive.current = active;
+    if (!active) return;
+    quiet.current = false;
+    measureScroll();
+    markVisible();
+  }, [active]);
 
   // 「最初の未読へ」 (§10.1): page back until the range reaches the read position, then start there like opening.
   const jumpToFirstUnread = async () => {
@@ -457,7 +481,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
         <div ref={bottom} />
         </div>
       </div>
-      {!focus && showJump && (
+      {!focus && showJump && active && (
         <button
           type="button"
           onClick={() => {

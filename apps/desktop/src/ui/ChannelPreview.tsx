@@ -1,4 +1,4 @@
-import { Eye, MessagesSquare, X } from "lucide-react";
+import { Eye, MessagesSquare } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -7,7 +7,8 @@ import type { ChannelState, MessageState } from "../sync/types";
 import { tapClosesKeyboard } from "../platform/viewport";
 import { buildTimeline, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
-import { Button, IconButton } from "./primitives";
+import { PaneBackButton, PaneCloseButton } from "./compact";
+import { Button } from "./primitives";
 import { ChannelIntro, MessageRow } from "./Timeline";
 
 /**
@@ -182,13 +183,12 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
+        <PaneBackButton onClick={onClose} />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">スレッド</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
         </div>
-        <IconButton label="閉じる (Esc)" onClick={onClose}>
-          <X size={18} />
-        </IconButton>
+        <PaneCloseButton onClick={onClose} />
       </header>
       <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2" {...tapHandlers}>
         {parent ? (
