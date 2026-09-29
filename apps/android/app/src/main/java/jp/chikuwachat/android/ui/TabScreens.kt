@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,6 +67,7 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ThreadEntry
+import kotlinx.coroutines.launch
 
 /**
  * M34: the bottom tabs (MOBILE_UI.md §5) with their badges (§8, [MainTabs]): DM = the unread DMs, activity = the unread
@@ -119,7 +121,8 @@ private fun tabIcons(tab: MainTab): Pair<ImageVector, ImageVector> = when (tab) 
 /**
  * M34, the DM tab (MOBILE_UI.md §6.3): my DMs and group DMs, 「自分へのメモ」 first, then the newest. A row shows the
  * avatar with the presence, the name with the status emoji and the time, the status or presence (group DMs: how many
- * people), unread in bold with its count; a muted one is dimmed. The last message's preview comes with M37.
+ * people), unread in bold with its count; a muted one is dimmed. The last message's preview comes with M37. Until
+ * 「自分へのメモ」 exists, a placeholder row stands first; a tap makes it (POST /dms with only me) and opens it.
  */
 @Composable
 fun DmListScreen(controller: AppController, version: Int, listState: LazyListState, onOpen: (String) -> Unit, onNew: () -> Unit) {
@@ -127,6 +130,19 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
     val meId = store.me?.id
     var query by rememberSaveable { mutableStateOf("") }
     val rows = remember(version, meId, query) { MainTabs.dmList(store.channels.values, { channelTitle(it, store) }, meId, query) }
+    val placeholder = remember(version, meId, query) { MainTabs.showsSelfNotesPlaceholder(store.channels.values, meId, query) }
+    val scope = rememberCoroutineScope()
+    var creating by remember { mutableStateOf(false) }
+    val openSelfNotes: () -> Unit = {
+        // One request at a time: a second tap while it runs does nothing.
+        if (meId != null && !creating) {
+            creating = true
+            scope.launch {
+                // Made, in the Store as mine, and opened; a failure is the app's error (openDmWith sets it).
+                try { controller.openDmWith(meId)?.let(onOpen) } finally { creating = false }
+            }
+        }
+    }
     val now = remember(version) { ZonedDateTime.now() }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 88.dp)) {
@@ -144,7 +160,10 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
-            if (rows.isEmpty()) {
+            if (placeholder && meId != null) {
+                item(key = "self-notes-placeholder") { SelfNotesPlaceholderRow(store, meId, busy = creating, onClick = openSelfNotes) }
+            }
+            if (rows.isEmpty() && !placeholder) {
                 item(key = "empty") {
                     Text(
                         if (query.isNotBlank()) "一致する DM はありません" else "まだ DM はありません",
@@ -162,6 +181,26 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
             text = { Text("新しいメッセージ") },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
+    }
+}
+
+/** 「自分へのメモ」 before it exists: my picture, the title and what it is; disabled while the tap's request runs. */
+@Composable
+private fun SelfNotesPlaceholderRow(store: Store, meId: String, busy: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(enabled = !busy, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)
+            .alpha(if (busy) 0.6f else 1f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar(meId, store.users[meId]?.displayName ?: store.me?.displayName ?: MainTabs.SELF_NOTES_TITLE, size = 40.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(MainTabs.SELF_NOTES_TITLE, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "自分だけが見られる DM", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
