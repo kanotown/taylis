@@ -21,6 +21,7 @@ import android.app.Application
 import android.os.Build
 import android.provider.Settings
 import jp.chikuwachat.android.ui.Channels
+import jp.chikuwachat.android.ui.MainTabs
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -1367,9 +1368,12 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
-    /** Open (or create) the DM with one user; returns its channel id. */
+    /**
+     * Open (or create) the DM with one user; returns its channel id. The existing one has exactly that user and me as its
+     * members, so my own id finds 「自分へのメモ」 (made on the first call), not one of my 1:1 DMs.
+     */
     suspend fun openDmWith(userId: String): String? {
-        store.channels.values.firstOrNull { it.channel.type == "dm" && userId in (it.channel.dmUserIds ?: emptyList()) && (it.channel.dmUserIds?.size ?: 0) <= 2 }?.let { return it.id }
+        MainTabs.findDmWith(store.channels.values, userId, (store.me ?: me)?.id)?.let { return it.id }
         return createDm(listOf(userId)).getOrElse { error = describe(it); null }
     }
 

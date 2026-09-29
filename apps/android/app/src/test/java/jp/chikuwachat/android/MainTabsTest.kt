@@ -115,6 +115,34 @@ class MainTabsTest {
     }
 
     @Test
+    fun theSelfNotesPlaceholderShowsUntilMyNotesExistAndMatchesTheFilter() {
+        val others = listOf(dm("a"), channel("group", "group_dm", users = listOf(me, "x", "y")), channel("general"))
+        val notes = channel("notes", "dm", users = listOf(me))
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others + notes, me))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "  "))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "メモ"))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "自分へのメモ"))
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, me, "山田"))
+        // Not mine (left): still the placeholder; nobody signed in yet: none.
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others + channel("left", "dm", users = listOf(me), member = false), me))
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, null))
+    }
+
+    @Test
+    fun theDmWithAUserIsExactlyThemAndMeSoMyOwnIdFindsMyNotes() {
+        val alice = dm("a", other = "alice")
+        val group = channel("group", "group_dm", users = listOf(me, "bob", "carol"))
+        val notes = channel("notes", "dm", users = listOf(me))
+        val channels = listOf(alice, group, notes)
+        assertEquals("a", MainTabs.findDmWith(channels, "alice", me)?.id)
+        assertNull(MainTabs.findDmWith(channels, "bob", me)) // only in a group DM
+        assertEquals("notes", MainTabs.findDmWith(channels, me, me)?.id)
+        assertNull(MainTabs.findDmWith(listOf(alice, group), me, me)) // never a 1:1 DM
+        assertEquals("a", MainTabs.findDmWith(listOf(notes, alice), "alice", me)?.id)
+    }
+
+    @Test
     fun theDmTimeLabelFollowsTheSharedRule() {
         val tokyo = ZoneId.of("Asia/Tokyo")
         val at = ZonedDateTime.of(2026, 9, 29, 12, 0, 0, 0, tokyo) // a Tuesday
