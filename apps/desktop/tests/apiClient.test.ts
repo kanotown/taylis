@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClient, COOKIE_SESSION } from "../src/api/client";
 import { ApiError, describeError, isRetryable, NetworkError } from "../src/api/errors";
@@ -77,6 +77,79 @@ describe("ApiClient", () => {
   it("derives the WebSocket URL from the base URL", () => {
     expect(new ApiClient("https://chat.example.com").wsUrl).toBe("wss://chat.example.com/api/v1/ws");
     expect(new ApiClient("http://127.0.0.1:8000/").wsUrl).toBe("ws://127.0.0.1:8000/api/v1/ws");
+  });
+
+});
+
+describe("timeouts and the refresh retries (§7.2, M28b)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** A server that never answers; the request's own abort ends it. */
+  const hanging: typeof fetch = (_input, init) => new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+
+  it("gives up on a request that hangs after 30 s, as a network error", async () => {
+    vi.useFakeTimers();
+    const client = new ApiClient("http://server", { fetchImpl: hanging });
+    client.accessToken = "a";
+    const pending = client.bootstrap();
+    vi.advanceTimersByTime(29_000);
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    vi.advanceTimersByTime(1_000);
+    await expect(pending).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  it("tries a refresh that fails on the network again at 1, 2, 4 and 8 s, all inside the reuse grace; a refusal is final at once", async () => {
+    vi.useFakeTimers();
+    const sleep = async (ms: number) => { vi.advanceTimersByTime(ms); };
+    let calls = 0;
+    const flaky = new ApiClient("http://server", {
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls < 3) throw new TypeError("fetch failed");
+        return jsonResponse(200, tokens(2));
+      },
+      sleep: vi.fn(sleep),
+    });
+    flaky.refreshToken = "refresh-1";
+    await flaky.refresh();
+    expect(calls).toBe(3);
+    expect(vi.mocked(flaky["options"].sleep!).mock.calls.map(([ms]) => ms)).toEqual([1000, 2000]);
+    expect(flaky.refreshToken).toBe("refresh-2");
+
+    const deadSleep = vi.fn(sleep);
+    let deadCalls = 0;
+    const dead = new ApiClient("http://server", { fetchImpl: async () => { deadCalls += 1; throw new TypeError("fetch failed"); }, sleep: deadSleep });
+    dead.refreshToken = "refresh-1";
+    await expect(dead.refresh()).rejects.toBeInstanceOf(NetworkError);
+    expect(deadCalls).toBe(5); // at 0, 1, 3, 7 and 15 s
+    expect(deadSleep.mock.calls.map(([ms]) => ms)).toEqual([1000, 2000, 4000, 8000]);
+    expect(dead.refreshToken).toBe("refresh-1"); // a network failure never signs out (§7.2)
+
+    let refusals = 0;
+    const refused = new ApiClient("http://server", { fetchImpl: async () => { refusals += 1; return jsonResponse(401, { error: { code: "session_revoked", message: "revoked", details: {} } }); }, sleep });
+    refused.refreshToken = "refresh-1";
+    await expect(refused.refresh()).rejects.toMatchObject({ code: "session_revoked" });
+    expect(refusals).toBe(1);
+  });
+
+  it("a hanging refresh attempt ends after 10 s and the next one follows within the grace", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const client = new ApiClient("http://server", {
+      fetchImpl: (input, init) => {
+        calls += 1;
+        return calls === 1 ? hanging(input, init) : Promise.resolve(jsonResponse(200, tokens(2)));
+      },
+      sleep: async (ms) => { vi.advanceTimersByTime(ms); },
+    });
+    client.refreshToken = "refresh-1";
+    const pending = client.refresh();
+    vi.advanceTimersByTime(10_000);
+    await expect(pending).resolves.toMatchObject({ refresh_token: "refresh-2" });
+    expect(calls).toBe(2);
   });
 });
 
@@ -358,7 +431,7 @@ describe("sign-out and error bodies (SYNC_PROTOCOL.md §11, ARCHITECTURE.md §9)
     expect([client.accessToken, client.refreshToken, signedOut]).toEqual([null, null, 1]);
   });
 
-  it("classifies a non-JSON error page by its status and a non-JSON success as a network failure", async () => {
+  it("classifies a non-JSON error page by its status and a non-JSON success as a decode error (final, as on the phones; M28b)", async () => {
     const proxy = new ApiClient("http://server", { fetchImpl: async () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502, headers: { "Content-Type": "text/html" } }) });
     proxy.accessToken = "a";
     const err = await proxy.postMessage("c1", "k1", "hi").catch((e: unknown) => e);
@@ -366,11 +439,15 @@ describe("sign-out and error bodies (SYNC_PROTOCOL.md §11, ARCHITECTURE.md §9)
     expect([(err as ApiError).status, (err as ApiError).code, (err as ApiError).isRetryable]).toEqual([502, "http_502", true]);
     expect(describeError(err)).toBe(STATUS_MESSAGES["5xx"]);
 
+    // A 2xx that is not the API's JSON (a captive portal, a server this client does not understand): retrying cannot
+    // fix it, so it is refused for good and shown, not retried as a network failure.
     const portal = new ApiClient("http://server", { fetchImpl: async () => new Response("<html>Wi-Fi login</html>", { status: 200, headers: { "Content-Type": "text/html" } }) });
     portal.accessToken = "a";
     const err2 = await portal.bootstrap().catch((e: unknown) => e);
-    expect(err2).toBeInstanceOf(NetworkError);
-    expect(isRetryable(err2)).toBe(true);
+    expect(err2).toBeInstanceOf(ApiError);
+    expect(err2).toMatchObject({ status: 200, code: "decode_error" });
+    expect(isRetryable(err2)).toBe(false);
+    expect(describeError(err2)).toBe(UNKNOWN_ERROR_MESSAGE);
 
     const offline = new ApiClient("http://server", { fetchImpl: async () => { throw new TypeError("Failed to fetch"); } });
     offline.accessToken = "a";

@@ -595,6 +595,25 @@ describe("mark as unread (§10 mode=set)", () => {
     await engine.flushReads();
     engine.stop();
   });
+
+  it("a set from another device below an advance not sent yet drops that advance: nothing re-advances the position (§10, M28b)", async () => {
+    // The debounce waits on this sleep until the test lets it go.
+    const waits: Array<() => void> = [];
+    const { server, alice, bob, channel, store, engine } = await setup({ active: true, sleep: () => new Promise<void>((resolve) => { waits.push(resolve); }) });
+    for (const body of ["m1", "m2", "m3"]) server.post(channel.id, alice.id, body);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    await engine.idle();
+    engine.markRead(channel.id, 3);
+    expect(store.getChannel(channel.id)).toMatchObject({ lastReadSeq: 3, pendingReadSeq: 3, unreadCount: 0 });
+    server.markRead(bob.id, channel.id, 1, "set"); // the phone: 「ここから未読にする」 on m2
+    await engine.idle();
+    expect(store.getChannel(channel.id)).toMatchObject({ lastReadSeq: 1, pendingReadSeq: null, unreadCount: 2 });
+    for (const resume of waits.splice(0)) resume();
+    await engine.flushReads();
+    expect(server.readState(bob.id, channel.id).last_read_seq).toBe(1); // the waiting PUT did not go out
+    engine.stop();
+  });
 });
 
 describe("conversation safety", () => {

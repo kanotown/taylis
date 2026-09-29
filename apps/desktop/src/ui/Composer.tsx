@@ -87,13 +87,18 @@ export function Composer({
     if (box) box.style.minHeight = held;
   }, [text, preview, viewportHeight]);
   const query = mentionQuery(text, caret);
-  const candidates = query ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
   // `:tada` completes to an emoji (M11f) when no mention is being typed.
   const emojiAt = query ? null : emojiQuery(text, caret);
-  const emojiHits = emojiAt ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
+  // Esc closes the candidate list for what is typed now (and goes no further: the screen's Esc would close the thread
+  // or read the conversation); typing on shows it again.
+  const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const listShown = dismissed !== listKey;
+  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
+  const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   // `/st` at the very start offers the slash commands (M13b).
-  const commandHits = query || emojiAt ? [] : commandCandidates(text);
+  const commandHits = query || emojiAt || !listShown ? [] : commandCandidates(text);
   const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : commandHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -261,6 +266,12 @@ export function Composer({
       event.keyCode === 229 ||
       Date.now() - composedAt.current < IME_COMMIT_GRACE_MS;
     if (listLength > 0 && !imeEnter) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setDismissed(listKey);
+        return;
+      }
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setSelected((active + 1) % listLength);

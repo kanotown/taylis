@@ -32,6 +32,31 @@ function world() {
 }
 
 describe("conversation UX", () => {
+  it("Esc closes the mention list without reaching the screen (which would close the thread); typing on shows it again (M28b)", () => {
+    const w = world();
+    render(<w.DraftComposer />);
+    const escapes: boolean[] = [];
+    const onWindowKey = (event: KeyboardEvent) => { if (event.key === "Escape") escapes.push(event.defaultPrevented); };
+    window.addEventListener("keydown", onWindowKey);
+    try {
+      const box = screen.getByRole("textbox");
+      fireEvent.change(box, { target: { value: "@al" } });
+      expect(screen.getByText("@alice")).toBeTruthy();
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(screen.queryByText("@alice")).toBeNull();
+      expect(escapes).toEqual([]); // stopped at the composer
+      expect((box as HTMLTextAreaElement).value).toBe("@al");
+      fireEvent.change(box, { target: { value: "@ali" } });
+      expect(screen.getByText("@alice")).toBeTruthy();
+      // With no list open, Esc is the screen's (a defaultPrevented one is an open menu's).
+      fireEvent.change(box, { target: { value: "plain" } });
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(escapes).toEqual([false]);
+    } finally {
+      window.removeEventListener("keydown", onWindowKey);
+    }
+  });
+
   it("keeps channel and thread text separate across switches and restart", () => {
     const w = world();
     const view = render(<w.DraftComposer />);

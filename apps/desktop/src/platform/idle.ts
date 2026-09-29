@@ -23,6 +23,10 @@ export class IdleWatch {
 
   start(target: EventTarget = window): void {
     for (const type of INPUT) target.addEventListener(type, this.input, { capture: true, passive: true });
+    // Coming back to the window (⌘-tab, a click on its title bar) is input too: a window left idle stayed so until the
+    // first key or pointer event inside it, and the conversation on screen was not read meanwhile. Focus does not
+    // bubble, so without capture this is the window's own focus, not a field's.
+    target.addEventListener("focus", this.input, { passive: true });
     this.arm(this.idleMs);
   }
 

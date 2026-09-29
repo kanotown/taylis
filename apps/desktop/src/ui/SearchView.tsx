@@ -150,7 +150,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
       ) : (
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
           {unresolved.length > 0 && (
-            <div className="mx-auto mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
+            <div className="mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <span>見つからない条件があります (直すと検索できます): {unresolved.join(" ")}</span>
             </div>
@@ -158,7 +158,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           {loaded && hits.length === 0 ? (
             <EmptyResults params={params} onClear={() => onChange({ ...EMPTY_SEARCH, q: params.q, sort: params.sort })} />
           ) : (
-            <ul className="mx-auto max-w-3xl space-y-1">
+            <ul className="max-w-3xl space-y-1">
               {hits.map((hit) => (
                 <li key={hit.message.id}>
                   <ResultRow controller={controller} message={hit.message} keywords={keywords} onOpen={(m) => { rememberScroll(); onOpen(m); }} />
@@ -540,7 +540,7 @@ function FileResults({ controller, params, onOpen }: { controller: AppController
           <p className="mt-1 text-sm text-muted">ファイル名で探します。</p>
         </div>
       ) : (
-        <ul className="mx-auto max-w-3xl divide-y divide-line rounded-xl border border-line">
+        <ul className="max-w-3xl divide-y divide-line rounded-xl border border-line">
           {items.map((item) => <FileRow key={item.attachment.id} item={item} controller={controller} onOpen={onOpen} />)}
           {cursor && (
             <li className="py-2 text-center">

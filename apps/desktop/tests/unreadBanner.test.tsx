@@ -626,6 +626,24 @@ describe("new rows never carry unread rows above the screen unseen (§10.1)", { 
     w.engine.stop();
   });
 
+  it("my poll follows to the bottom whichever comes first, its row or the answer that names it (§10.1 11., M28b)", async () => {
+    const w = world({ posts: 130, lastRead: 130 });
+    const { view, controller, timeline } = await openView(w);
+    expect(layout.first).toBe(116);
+    layout.first = 90; // the reader scrolled up
+    userScroll(timeline);
+    // The poll's event lands before the POST's answer (a slow answer): a row from "someone" while scrolled up stays put.
+    const poll = w.server.postPoll(w.channelId, w.bob.id, { question: "どれ?", options: ["A", "B"] });
+    await act(async () => { await w.engine.idle(); });
+    expect(document.getElementById(`timeline-${poll.id}`)).toBeTruthy();
+    expect(layout.first).toBe(90);
+    // The answer arrives: the controller names the post (createPoll) and re-renders.
+    (controller as unknown as { postedHere: string | null }).postedHere = poll.id;
+    await act(async () => { view.rerender(<View w={w} controller={controller} />); });
+    expect(layout.first).toBe(117); // 117..131: the poll at the bottom
+    w.engine.stop();
+  });
+
   it("relaunching from the persisted store with 300 new posts: the first new row at the top, only rows shown are read", async () => {
     const w = world({ posts: 130, lastRead: 100 });
     const { view, timeline } = await openView(w);

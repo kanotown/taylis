@@ -3,13 +3,14 @@ import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError } from "../src/api/errors";
+import { ApiError, NetworkError } from "../src/api/errors";
 import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "../src/ui/ChannelPreview";
 import { LONG_PRESS_MS } from "../src/ui/MessageActionsSheet";
+import { ThreadPane } from "../src/ui/ThreadPane";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
 afterEach(() => {
@@ -51,10 +52,25 @@ async function world(options: { refuseNonMembers?: boolean } = {}) {
   const engine = new SyncEngine({ api, connect: server.connectorFor(bob.id), store, getAccessToken: () => "token", sleep: async () => {} }, { pageSize: 3, readDebounceMs: 0 });
   await engine.start();
   await engine.idle();
-  return { server, alice, bob, channel, mine, first, poll, store, engine, persistence, markRead };
+  return { server, alice, bob, channel, mine, first, poll, store, engine, persistence, markRead, api };
 }
 
 const bodies = (rows: { body: string }[]) => rows.map((m) => m.body);
+
+/** Let a dropped socket reconnect (the engine's sleep is a no-op here). */
+async function reconnected(engine: SyncEngine): Promise<void> {
+  for (let i = 0; i < 20 && engine.status !== "online"; i++) await engine.idle();
+  await engine.idle();
+  expect(engine.status).toBe("online");
+}
+
+/** What 「#name に参加する」 does (AppController.joinChannel): the server adds me, the store learns it, the member path opens. */
+async function joined(w: Awaited<ReturnType<typeof world>>): Promise<void> {
+  w.server.join(w.channel.id, w.bob.id);
+  w.store.upsertChannel({ ...w.server.channels.get(w.channel.id)!.channel, membership: { role: "member", joined_at: "" } }, { isMember: true });
+  await w.engine.openChannel(w.channel.id);
+  await w.engine.idle();
+}
 
 describe("preview before joining (SYNC_PROTOCOL.md §7.6.1)", () => {
   it("opens a public channel without joining: its rows in memory only, no cursor, no read mark", async () => {
@@ -88,11 +104,7 @@ describe("preview before joining (SYNC_PROTOCOL.md §7.6.1)", () => {
   it("after joining, the same conversation loads like any of mine and the preview goes", async () => {
     const w = await world();
     await w.engine.openPreview(w.channel.id);
-    // What the join button does (AppController.joinChannel): the server adds me, the store learns it.
-    w.server.join(w.channel.id, w.bob.id);
-    w.store.upsertChannel({ ...w.server.channels.get(w.channel.id)!.channel, membership: { role: "member", joined_at: "" } }, { isMember: true });
-    await w.engine.openChannel(w.channel.id);
-    await w.engine.idle();
+    await joined(w);
     expect(w.engine.preview).toBeNull();
     expect(w.engine.currentChannelId).toBe(w.channel.id);
     expect(bodies(w.store.messages(w.channel.id))).toEqual(["three", "📊 どれ?", "five"]);
@@ -104,6 +116,50 @@ describe("preview before joining (SYNC_PROTOCOL.md §7.6.1)", () => {
     expect(w.engine.preview).toMatchObject({ refused: true, loaded: false, messages: [] });
     await w.engine.openChannel(w.mine.id);
     expect(w.engine.preview).toBeNull();
+  });
+
+  it("reads the latest page again after reconnecting: older pages stay when it reaches them, else it starts over (M28b)", async () => {
+    const w = await world();
+    await w.engine.openPreview(w.channel.id);
+    await w.engine.loadPreviewOlder();
+    expect(bodies(w.engine.preview!.messages)).toEqual(["one", "two", "three", "📊 どれ?", "five"]);
+    // No event reaches a non-member: only the page read again after the reconnect shows what was posted meanwhile.
+    w.server.disconnect(w.bob.id);
+    w.server.post(w.channel.id, w.alice.id, "six");
+    await reconnected(w.engine);
+    await waitFor(() => expect(bodies(w.engine.preview!.messages)).toEqual(["one", "two", "three", "📊 どれ?", "five", "six"]));
+    expect(w.engine.preview).toMatchObject({ hasOlder: false, loading: false });
+    // More than a page missed: the rows read before may not join up with the page, which replaces them.
+    w.server.disconnect(w.bob.id);
+    for (const body of ["seven", "eight", "nine", "ten"]) w.server.post(w.channel.id, w.alice.id, body);
+    await reconnected(w.engine);
+    await waitFor(() => expect(bodies(w.engine.preview!.messages)).toEqual(["eight", "nine", "ten"]));
+    expect(w.engine.preview!.hasOlder).toBe(true);
+  });
+
+  it("a page that fails once the preview is closed is nobody's error (M28b)", async () => {
+    const w = await world();
+    await w.engine.openPreview(w.channel.id);
+    let fail!: () => void;
+    const history = w.api.history;
+    w.api.history = (channelId, before, limit) => (channelId === w.channel.id ? new Promise((_, reject) => { fail = () => reject(new NetworkError("offline")); }) : history(channelId, before, limit));
+    const older = w.engine.loadPreviewOlder();
+    await w.engine.openChannel(w.mine.id); // the reader moved on before the page came back
+    fail();
+    await expect(older).resolves.toBeUndefined();
+    expect(w.engine.preview).toBeNull();
+  });
+
+  it("a channel that leaves the store takes its preview or its open conversation with it (M28b)", async () => {
+    const w = await world();
+    await w.engine.openPreview(w.channel.id);
+    w.server.updateChannel(w.channel.id, { type: "private" }); // made private while I read it (M15b)
+    await w.engine.idle();
+    expect(w.store.getChannel(w.channel.id)).toBeUndefined();
+    expect(w.engine.preview).toBeNull();
+    await w.engine.openChannel(w.mine.id);
+    w.engine.removeChannel(w.mine.id); // channel.member_removed for me
+    expect(w.engine.currentChannelId).toBeNull();
   });
 });
 
@@ -181,5 +237,24 @@ describe("the preview on screen", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText("チャンネルに参加すると返信できます")).toBeTruthy();
     expect(w.store.messages(w.channel.id)).toEqual([]);
+  });
+
+  it("keeps a thread from the preview open after joining: a parent older than the loaded page is fetched (M28b)", async () => {
+    const w = await screenWorld();
+    await w.engine.loadPreviewThread(w.first.id);
+    cleanup();
+    await joined(w);
+    expect(w.store.message(w.channel.id, w.first.id)).toBeUndefined(); // "one" is before the page of three
+    (w.controller.api as unknown as { uploadAttachment: unknown }).uploadAttachment = vi.fn();
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    function Thread() {
+      useSyncExternalStore((l) => w.store.subscribe(l), () => w.store.version);
+      return <ThreadPane controller={w.controller} channel={w.store.getChannel(w.channel.id)!} parentId={w.first.id} onClose={() => {}} />;
+    }
+    render(<Thread />);
+    await waitFor(() => expect(screen.getByText("one")).toBeTruthy());
+    expect(screen.queryByText("メッセージが見つかりません")).toBeNull();
+    expect(screen.getByText("reply")).toBeTruthy();
+    expect(screen.getByRole("textbox")).toBeTruthy(); // the reply box
   });
 });

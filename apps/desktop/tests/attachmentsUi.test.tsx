@@ -39,6 +39,20 @@ it("ignores late failures from an old session", async () => {
   expect(screen.getByRole("img")).toBeTruthy();
 });
 
+it("puts two or more photos in a two-column grid of squares, one photo and files as before (M28b)", async () => {
+  const second = { ...attachment, id: "b", filename: "second.png" };
+  const file = { ...attachment, id: "f", filename: "notes.pdf", content_type: "application/pdf", has_thumbnail: false, width: null, height: null };
+  const view = render(<AttachmentList attachments={[attachment, second, file]} controller={controller(async () => new Blob())} />);
+  const grid = document.querySelector("[data-photo-grid]")!;
+  expect(grid.className).toContain("grid-cols-2");
+  expect(grid.querySelectorAll("button")).toHaveLength(2);
+  expect(grid.querySelector("button")!.className).toContain("aspect-square");
+  expect(screen.getByText("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
+  view.rerender(<AttachmentList attachments={[attachment, file]} controller={controller(async () => new Blob())} />);
+  expect(document.querySelector("[data-photo-grid]")).toBeNull();
+  expect((await screen.findByRole("img", { name: "result.png" })).className).toContain("max-w-72");
+});
+
 it("keeps the full image viewer open while retrying a failed original", async () => {
   const fetch = vi.fn().mockRejectedValue(new Error("offline"));
   render(<AttachmentList attachments={[attachment]} controller={controller(fetch)} />);

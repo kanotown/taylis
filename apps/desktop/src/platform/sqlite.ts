@@ -23,6 +23,9 @@ export class SqlitePersistence implements Persistence {
   static async open(profile: string): Promise<SqlitePersistence> {
     const { default: Database } = await import("@tauri-apps/plugin-sql");
     const db = (await Database.load(`sqlite:chikuwa-${profile}.db`)) as unknown as SqlDatabase;
+    // Deleted rows are overwritten in the file, not only unlinked: a message deleted here, or the whole store at
+    // sign-out (§11), must not stay readable in the .db.
+    await db.execute("PRAGMA secure_delete = ON");
     for (const statement of SCHEMA) await db.execute(statement);
     return new SqlitePersistence(db);
   }
@@ -88,6 +91,12 @@ export class SqlitePersistence implements Persistence {
 
   async clearAll(): Promise<void> {
     for (const table of ["meta", "users", "channels", "messages", "outbox"]) await this.db.execute(`DELETE FROM ${table}`);
+    // The freed pages leave the file as well (secure_delete has zeroed them; a failed vacuum loses nothing).
+    try {
+      await this.db.execute("VACUUM");
+    } catch (err) {
+      console.warn("could not vacuum the local store", err);
+    }
   }
 }
 

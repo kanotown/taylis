@@ -141,4 +141,44 @@ describe("the long-press sheet (M25)", () => {
     longPress(document.getElementById(`timeline-${desk.mine.id}`)!);
     expect(screen.queryByRole("dialog", { name: "メッセージの操作" })).toBeNull();
   });
+
+  it("the tap that opens a thread unfocuses the row, so its floating actions do not cover the reply box (M28b)", () => {
+    touchScreen(false);
+    const onOpenThread = vi.fn();
+    const w = world(onOpenThread);
+    const row = document.getElementById(`timeline-${w.theirs.id}`)!;
+    row.focus(); // what the tap did on the phone (tabIndex)
+    expect(document.activeElement).toBe(row);
+    fireEvent.click(row);
+    expect(onOpenThread).toHaveBeenCalledWith(w.theirs.id);
+    expect(document.activeElement).not.toBe(row);
+  });
+
+  it("「リマインド…」 takes a note and a time of my own besides the presets (M28b)", () => {
+    touchScreen(false);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:00:00"));
+    const w = world();
+    const setReminder = vi.fn(async () => true);
+    (w.controller as unknown as { setReminder: unknown }).setReminder = setReminder;
+    longPress(document.getElementById(`timeline-${w.theirs.id}`)!);
+    act(() => { vi.advanceTimersByTime(400); });
+    const sheet = screen.getByRole("dialog", { name: "メッセージの操作" });
+    fireEvent.click(within(sheet).getByText("リマインド…"));
+    fireEvent.change(within(sheet).getByLabelText("リマインドのメモ"), { target: { value: "返事を書く" } });
+    fireEvent.change(within(sheet).getByLabelText("日時を指定"), { target: { value: "2026-09-30T10:30" } });
+    fireEvent.click(within(sheet).getByText("設定"));
+    expect(setReminder).toHaveBeenCalledWith(w.theirs.id, new Date("2026-09-30T10:30"), "返事を書く");
+    expect(screen.queryByRole("dialog", { name: "メッセージの操作" })).toBeNull();
+    // A time already passed is refused, and the sheet stays.
+    longPress(document.getElementById(`timeline-${w.theirs.id}`)!);
+    act(() => { vi.advanceTimersByTime(400); });
+    const again = screen.getByRole("dialog", { name: "メッセージの操作" });
+    fireEvent.click(within(again).getByText("リマインド…"));
+    fireEvent.change(within(again).getByLabelText("日時を指定"), { target: { value: "2026-09-29T08:00" } });
+    fireEvent.click(within(again).getByText("設定"));
+    expect(w.controller.setError).toHaveBeenCalledWith("1 分以上先の時刻を選んでください");
+    expect(setReminder).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog", { name: "メッセージの操作" })).toBeTruthy();
+  });
 });

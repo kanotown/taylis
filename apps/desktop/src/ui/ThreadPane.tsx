@@ -114,6 +114,14 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     void engine?.loadThreadState(parentId, parent as MessageOut).catch((error) => controller.setError(error));
   }, [engine, engine?.status, parentId, state !== undefined, parent?.seq]);
 
+  // No parent held: a thread opened from the preview and kept open through 「#name に参加する」 (§7.6.1), whose parent
+  // is older than the page the conversation loaded. The engine fetches it, and the thread goes on with its composer.
+  const parentMissing = parent === undefined;
+  useEffect(() => {
+    if (!parentMissing) return;
+    void engine?.loadParent(channel.id, parentId).catch((error) => controller.setError(error));
+  }, [engine, engine?.status, channel.id, parentId, parentMissing]);
+
   // §10.2 (false cases 1 and 2): the thread stopped being ready, or a §7.3 reload replaced the channel's rows (perhaps
   // refetched before any render saw the thread not ready). Dropped here even in the background, where markVisible
   // does not run.
