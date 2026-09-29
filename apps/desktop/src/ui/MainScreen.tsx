@@ -20,6 +20,7 @@ import { DraftsView } from "./DraftsView";
 import { FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
+import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
 import { BackButton, BackToList, useCompact } from "./compact";
 import { useConnectionBanner } from "./hooks";
 import { SavedView } from "./SavedView";
@@ -56,7 +57,7 @@ function readUnreadOnly(): boolean {
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
-  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
+  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -179,6 +180,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   const channels = [...store.channels.values()];
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
+  // §7.6.1: a public channel I have not joined opens read-only (its preview), never for a guest (who cannot browse).
+  const previewing = !!current && !current.isMember && current.type === "public" && !controller.isGuest;
   // The thread pane belongs to the current channel, or to the channel of the row picked in the threads view.
   const threadChannel: ChannelState | undefined = view === "threads" ? (threadChannelId ? store.getChannel(threadChannelId) : undefined) : current;
   const status = engine?.status ?? "idle";
@@ -219,9 +222,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.openChannelRequest]);
 
+  // A channel of mine opens through the member path; one I have not joined as its preview. Joining flips `previewing`,
+  // and the conversation then loads like any other of mine.
   useEffect(() => {
-    if (currentId && engine) void engine.openChannel(currentId).catch((error) => controller.setError(error));
-  }, [currentId, engine]);
+    if (!currentId || !engine) return;
+    const opened = previewing ? engine.openPreview(currentId) : engine.openChannel(currentId);
+    void opened.catch((error) => controller.setError(error));
+  }, [currentId, engine, previewing]);
 
   const open = (id: string) => {
     controller.clearMessageFocus();
@@ -419,16 +426,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
     };
   }, [controller]);
 
+  /** 「#name に参加する」 under a preview: the same conversation goes on as one of mine. */
   const join = async (id: string) => {
-    if (!controller.api) return;
-    try {
-      const channel = await controller.api.joinChannel(id);
-      store.upsertChannel(channel, { isMember: true });
-      setCurrentId(id);
-      setPane("main");
-    } catch (error) {
-      controller.setError(error);
-    }
+    if (!(await controller.joinChannel(id))) return;
+    setCurrentId(id);
+    setPane("main");
   };
 
   const replyToLast = () => {
@@ -466,7 +468,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
       unreadOnly={unreadOnly}
       onToggleUnreadOnly={toggleUnreadOnly}
       onOpen={open}
-      onJoin={(id) => void join(id)}
       onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
       onNewChannel={() => setDialog("channel")}
       onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
@@ -541,7 +542,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
-      ) : current ? (
+      ) : current && (current.isMember || previewing) ? (
         <>
           {backToSearch && search && (
             <button
@@ -612,7 +613,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </IconButton>
                 </>
               )}
-              {isChannel && !compact && (
+              {isChannel && current.isMember && !compact && (
                 <IconButton label="メンバー" onClick={() => setDialog("members")}>
                   <Users size={18} />
                 </IconButton>
@@ -673,15 +674,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <Keyboard size={18} />
                 </IconButton>
               )}
-              {!current.isMember && (
-                <Button size="sm" className="ml-2" onClick={() => void join(current.id)}>
-                  参加する
-                </Button>
-              )}
             </div>
           </header>
           <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
-          <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+          {previewing ? (
+            <>
+              <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+              <PreviewJoinBar controller={controller} channel={current} onJoin={join} />
+            </>
+          ) : (
+            <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+          )}
           {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
             <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
           )}
@@ -709,8 +712,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const sidePane =
     pinsOpen && current && view === "channel" ? (
       <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
-    ) : threadId && threadChannel ? (
+    ) : threadId && threadChannel && threadChannel.isMember ? (
       <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+    ) : threadId && threadChannel && previewing && threadChannel.id === current?.id ? (
+      <PreviewThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
     ) : null;
   const overlays = (
     <>

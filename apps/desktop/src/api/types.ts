@@ -123,8 +123,11 @@ export type WebhookCreated = components["schemas"]["WebhookCreated"];
 /** Workspace roles (M13e adds guest). */
 export type Role = components["schemas"]["AdminUserCreate"]["role"];
 
-/** Polls (M14b). */
-export type PollOut = components["schemas"]["PollOut"];
+/**
+ * Polls (M14b). `anonymous`, `counts` and `mine` came with M27: a server before it sends none of them, and rows stored
+ * here before it lack them, so they are optional when read (ui/PollCard.tsx pollCounts / pollMine fall back).
+ */
+export type PollOut = Omit<components["schemas"]["PollOut"], "anonymous" | "counts"> & { anonymous?: boolean; counts?: number[] };
 export type PollCreate = components["schemas"]["PollCreate"];
 
 /** Edit history (M14c). */

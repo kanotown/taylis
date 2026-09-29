@@ -17,8 +17,8 @@ interface Props {
   currentId: string | null;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
+  /** Opens a conversation; one of 「参加できるチャンネル」 opens as its preview (SYNC_PROTOCOL.md §7.6.1), not joined. */
   onOpen: (id: string) => void;
-  onJoin: (id: string) => void;
   onNewDm: () => void;
   /** M13g: the member directory. */
   onDirectory?: () => void;
@@ -51,7 +51,7 @@ interface Props {
   remindersActive?: boolean;
 }
 
-export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onJoin, onNewDm,
+export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
   onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
@@ -383,14 +383,18 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           <ul className="space-y-px">
             {sections.browse.map((c) => (
               <li key={c.id}>
+                {/* M27: a click shows the channel read-only first; its bar joins (Slack). */}
                 <button
                   type="button"
-                  onClick={() => onJoin(c.id)}
-                  className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] opacity-80 hover:bg-sidebar-hover hover:text-white hover:opacity-100"
+                  onClick={() => onOpen(c.id)}
+                  aria-current={c.id === currentId ? "page" : undefined}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px]",
+                    c.id === currentId ? "bg-sidebar-active text-white" : "opacity-80 hover:bg-sidebar-hover hover:text-white hover:opacity-100",
+                  )}
                 >
                   <Hash size={15} className="shrink-0 opacity-70" />
                   <span className="flex-1 truncate">{c.name}</span>
-                  <span className="text-[11px] opacity-0 transition-opacity group-hover:opacity-100">参加</span>
                 </button>
               </li>
             ))}

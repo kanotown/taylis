@@ -516,8 +516,11 @@ export class ApiClient {
     return this.request("POST", `/api/v1/messages/${messageId}/poll/close`, {});
   }
 
-  /** A message that carries a poll; posted directly (not through the offline queue). */
-  postPoll(channelId: string, parentId: string | null, poll: PollCreate): Promise<MessageOut> {
+  /**
+   * A message that carries a poll; posted directly (not through the offline queue). `anonymous` (M27) goes only when
+   * true: a server before M27 refuses fields it does not know, and a named poll still works there.
+   */
+  postPoll(channelId: string, parentId: string | null, poll: Omit<PollCreate, "anonymous"> & { anonymous?: true }): Promise<MessageOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/messages`, { client_msg_id: crypto.randomUUID(), body: "", parent_id: parentId, poll });
   }
 

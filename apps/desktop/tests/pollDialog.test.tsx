@@ -30,8 +30,21 @@ describe("アンケートを作成 (tester request: a form like Polly, several a
     fireEvent.change(screen.getByLabelText("選択肢 3"), { target: { value: "日曜" } });
     fireEvent.click(screen.getByLabelText("複数選択を許可する"));
     await act(async () => { fireEvent.click(screen.getByText("作成")); });
-    expect(createPoll).toHaveBeenCalledWith("c1", null, "打ち上げの候補日", ["金曜", "土曜", "日曜"], true);
+    expect(createPoll).toHaveBeenCalledWith("c1", null, "打ち上げの候補日", ["金曜", "土曜", "日曜"], true, false);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("makes an anonymous poll when asked (M27); named by default", async () => {
+    const createPoll = vi.fn(async () => true);
+    render(<PollDialog controller={{ createPoll } as unknown as AppController} channelId="c1" parentId="p1" onClose={() => {}} />);
+    const anonymous = screen.getByLabelText("匿名にする (誰が投票したか表示しない)") as HTMLInputElement;
+    expect(anonymous.checked).toBe(false);
+    fireEvent.change(screen.getByPlaceholderText(/次回のミーティング/), { target: { value: "満足度は？" } });
+    fireEvent.change(screen.getByLabelText("選択肢 1"), { target: { value: "高い" } });
+    fireEvent.change(screen.getByLabelText("選択肢 2"), { target: { value: "低い" } });
+    fireEvent.click(anonymous);
+    await act(async () => { fireEvent.click(screen.getByText("作成")); });
+    expect(createPoll).toHaveBeenCalledWith("c1", "p1", "満足度は？", ["高い", "低い"], false, true);
   });
 
   it("`/poll` alone opens the form", async () => {

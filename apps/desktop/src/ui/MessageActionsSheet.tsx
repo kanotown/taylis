@@ -1,4 +1,4 @@
-import { AlarmClock, Bookmark, BookmarkCheck, Copy, Forward, Link, Mail, MessageSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, Copy, Forward, Link, Mail, MessageSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -26,7 +26,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, unreadOffered, saved, isAdmin }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, unreadOffered, saved, isAdmin }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -34,6 +34,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   onClose: () => void;
   onOpenThread?: (id: string) => void;
   onShare: () => void;
+  /** M27 「リアクションした人」: offered while the message has reactions (a phone has no hover names). */
+  onShowReactions?: () => void;
   unreadOffered: boolean;
   saved: boolean;
   isAdmin: boolean;
@@ -119,7 +121,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
               </button>
             </div>
             <ul className="px-2 pb-1">
-              {onOpenThread && <li><SheetButton icon={<MessageSquare size={18} />} onClick={then(() => onOpenThread(message.parent_id ?? message.id))}>スレッドで返信</SheetButton></li>}
+              {onShowReactions && (message.reactions ?? []).length > 0 && <li><SheetButton icon={<Users size={18} />} onClick={then(onShowReactions)}>リアクションした人</SheetButton></li>}
+              {onOpenThread &&<li><SheetButton icon={<MessageSquare size={18} />} onClick={then(() => onOpenThread(message.parent_id ?? message.id))}>スレッドで返信</SheetButton></li>}
               {mine && <li><SheetButton icon={<Pencil size={18} />} onClick={then(() => controller.setEditing(message.id))}>編集</SheetButton></li>}
               {message.body && <li><SheetButton icon={<Copy size={18} />} onClick={then(() => void controller.copyMessageText(message.body))}>テキストをコピー</SheetButton></li>}
               <li>

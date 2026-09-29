@@ -51,6 +51,21 @@ export function group3(n: number): string {
   return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+/**
+ * A few names in a line (M27, the same on iOS and Android): 「山田、佐藤、鈴木」, and past `max` the first ones and
+ * 「ほか N 人」 (「山田、佐藤、鈴木 ほか 2 人」). The full list is a tap or a hover away wherever this is shown.
+ */
+export function compactNames(names: readonly string[], max = 3): string {
+  const shown = names.slice(0, max).join("、");
+  return names.length > max ? `${shown} ほか ${names.length - max} 人` : shown;
+}
+
+/** 「山田、佐藤 が確認」 / 「山田、佐藤、鈴木 ほか 2 人が確認」: who acknowledged a message (M27; empty when nobody did). */
+export function ackLine(names: readonly string[], max = 3): string {
+  if (names.length === 0) return "";
+  return names.length > max ? `${compactNames(names, max)}が確認` : `${compactNames(names, max)} が確認`;
+}
+
 /** 「未読 2,000 件 · 10:23 以降」; without the time when the server sent none (older servers). */
 export function bannerText(n: number, firstUnreadAt: string | null | undefined, now = new Date()): string {
   const since = firstUnreadAt ? sinceLabel(firstUnreadAt, now) : "";

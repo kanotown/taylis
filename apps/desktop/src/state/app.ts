@@ -92,7 +92,10 @@ export class AppController {
     if (!this.api) return false;
     try {
       const context = await this.api.messageContext(message.id);
-      if (message.parent_id) for (const reply of await this.api.replies(message.parent_id)) this.store.upsertMessage(reply);
+      // A channel I have not joined is read without the store (its preview, SYNC_PROTOCOL.md §7.6.1): the thread pane
+      // fetches the replies itself there.
+      const mine = this.store.getChannel(message.channel_id)?.isMember === true;
+      if (message.parent_id && mine) for (const reply of await this.api.replies(message.parent_id)) this.store.upsertMessage(reply);
       this.messageFocus = { channelId: message.channel_id, messageId: message.id, parentId: message.parent_id ?? null, context };
       this.emit();
       return true;
@@ -773,6 +776,21 @@ export class AppController {
     }
   }
 
+  /**
+   * Join a public channel (the preview's 「#name に参加する」, SYNC_PROTOCOL.md §7.6.1): from here on it is a conversation of
+   * mine, and opening it again loads it into the store like any other (the preview is dropped then).
+   */
+  async joinChannel(channelId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertChannel(await this.api.joinChannel(channelId), { isMember: true });
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   async leaveChannel(channelId: string): Promise<boolean> {
     if (!this.api) return false;
     try {
@@ -1331,10 +1349,11 @@ export class AppController {
    */
   postedHere: string | null = null;
 
-  async createPoll(channelId: string, parentId: string | null, question: string, options: string[], multiple: boolean): Promise<boolean> {
+  /** `anonymous` (M27) is sent only when set, so a server before M27 (extra fields refused) still takes a named poll. */
+  async createPoll(channelId: string, parentId: string | null, question: string, options: string[], multiple: boolean, anonymous = false): Promise<boolean> {
     if (!this.api) return false;
     try {
-      const message = await this.api.postPoll(channelId, parentId, { question, options, multiple });
+      const message = await this.api.postPoll(channelId, parentId, { question, options, multiple, ...(anonymous ? { anonymous: true as const } : {}) });
       this.postedHere = message.id;
       if (this.engine) this.engine.postedFromHere(message);
       else this.store.upsertMessage(message);

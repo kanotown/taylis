@@ -45,6 +45,15 @@ export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: 
       setBusy(null);
     }
   };
+  /**
+   * A click on a row opens the channel: one of mine as usual, a public one I have not joined read-only first (M27,
+   * SYNC_PROTOCOL.md §7.6.1); its 「参加」 button still joins at once.
+   */
+  const openRow = (channel: ChannelOut, mine: boolean) => {
+    if (!mine && !store.getChannel(channel.id)) store.upsertChannel(channel, { isMember: false }); // not listed yet here
+    onOpen(channel.id);
+    onClose();
+  };
   const leave = async (channel: ChannelOut) => {
     setBusy(channel.id);
     const ok = await controller.leaveChannel(channel.id);
@@ -68,7 +77,7 @@ export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: 
           return (
             <li key={channel.id} className={cn("flex items-center gap-3 px-3 py-2.5 text-sm", channel.archived && "opacity-60")}>
               <span className="text-muted">{channel.type === "private" ? <Lock size={15} /> : <Hash size={15} />}</span>
-              <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { if (mine) { onOpen(channel.id); onClose(); } }}>
+              <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { if (mine || channel.type === "public") openRow(channel, mine); }}>
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{channel.name}</span>
                   {channel.archived && <Badge>アーカイブ済み</Badge>}

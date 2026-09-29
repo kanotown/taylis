@@ -28,7 +28,7 @@ function world() {
   };
   const view = () => render(
     <Sidebar controller={controller as unknown as AppController} channels={[...store.channels.values()]} currentId={general.id} unreadOnly={false}
-      onToggleUnreadOnly={() => {}} onOpen={() => {}} onJoin={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />,
+      onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />,
   );
   return { store, controller, view, general, papers, lab, random };
 }

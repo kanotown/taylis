@@ -18,12 +18,14 @@ export function pollProblem(question: string, options: readonly string[]): strin
 
 /**
  * 「アンケートを作成」 (testers asked for a form like Polly, and for polls with several answers): a question, 2-10
- * options, and whether one person may pick several. `/poll 質問 | A | B` still makes a single-answer poll at once.
+ * options, whether one person may pick several, and whether it is anonymous (M27: nobody sees who voted, only how many;
+ * fixed once made). `/poll 質問 | A | B` still makes a named single-answer poll at once.
  */
 export function PollDialog({ controller, channelId, parentId, onClose }: { controller: AppController; channelId: string; parentId: string | null; onClose: () => void }) {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]);
   const [multiple, setMultiple] = useState(false);
+  const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const problem = pollProblem(question, options);
@@ -33,7 +35,7 @@ export function PollDialog({ controller, channelId, parentId, onClose }: { contr
     setTried(true);
     if (problem || busy) return;
     setBusy(true);
-    const made = await controller.createPoll(channelId, parentId, question.trim(), options.map((o) => o.trim()).filter(Boolean), multiple);
+    const made = await controller.createPoll(channelId, parentId, question.trim(), options.map((o) => o.trim()).filter(Boolean), multiple, anonymous);
     setBusy(false);
     if (made) onClose();
   };
@@ -71,6 +73,10 @@ export function PollDialog({ controller, channelId, parentId, onClose }: { contr
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
           複数選択を許可する
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+          匿名にする (誰が投票したか表示しない)
         </label>
         {tried && problem && <p className="text-xs text-danger">{problem}</p>}
         <div className="flex justify-end gap-2">
