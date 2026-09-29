@@ -436,25 +436,8 @@ async def ensure_times(
                 membership.role = "owner"
             await db.commit()
         return await _out_with_count(db, existing, membership), False
-    name = await _free_times_name(db, f"times-{actor.username}")
-    channel = Channel(
-        type="public",
-        name=name,
-        purpose=f"{actor.display_name} の作業ログ",
-        created_by=actor.id,
-        times_owner_id=actor.id,
-    )
     try:
-        db.add(channel)
-        await db.flush()
-        membership = ChannelMember(channel_id=channel.id, user_id=actor.id, role="owner")
-        db.add(membership)
-        await db.flush()
-        await reads.initialize_in_tx(db, actor.id, channel.id, channel.last_seq)
-        await _emit_channel(db, events.CHANNEL_CREATED, channel, audience_type="all")
-        for user_id in dict.fromkeys(followers):
-            if user_id != actor.id:
-                await add_member_in_tx(db, channel, user_id)
+        channel, membership = await create_times_in_tx(db, actor, followers)
         await db.commit()
     except IntegrityError:
         # Made meanwhile by another request of mine (the one-per-person index): that one it is.
@@ -466,6 +449,64 @@ async def ensure_times(
             db, made, await repo.get_membership(db, made.id, actor.id)
         ), False
     return await _out_with_count(db, channel, membership), True
+
+
+async def create_times_in_tx(
+    db: AsyncSession, owner: User, followers: list[uuid.UUID]
+) -> tuple[Channel, ChannelMember]:
+    """A new times for `owner` (who has none); also an invite's preset on acceptance (L7). The
+    caller commits (and handles the one-per-person index)."""
+    name = await _free_times_name(db, f"times-{owner.username}")
+    channel = Channel(
+        type="public",
+        name=name,
+        purpose=f"{owner.display_name} の作業ログ",
+        created_by=owner.id,
+        times_owner_id=owner.id,
+    )
+    db.add(channel)
+    await db.flush()
+    membership = ChannelMember(channel_id=channel.id, user_id=owner.id, role="owner")
+    db.add(membership)
+    await db.flush()
+    await reads.initialize_in_tx(db, owner.id, channel.id, channel.last_seq)
+    await _emit_channel(db, events.CHANNEL_CREATED, channel, audience_type="all")
+    for user_id in dict.fromkeys(followers):
+        if user_id != owner.id:
+            await add_member_in_tx(db, channel, user_id)
+    return channel, membership
+
+
+async def times_of(db: AsyncSession, owner_id: uuid.UUID) -> Channel | None:
+    """For the lab module (L7): someone's times, archived or not."""
+    return await repo.get_times_of(db, owner_id)
+
+
+async def set_archived_in_tx(db: AsyncSession, channel: Channel, archived: bool) -> bool:
+    """For the lab module (L7): archive a graduate's times, or undo it; the caller commits.
+    False when it already was so."""
+    if channel.is_archived == archived:
+        return False
+    channel.archived_at = utcnow() if archived else None
+    channel.updated_at = utcnow()
+    await db.flush()
+    if archived:
+        await write_outbox(
+            db,
+            event_type=events.CHANNEL_ARCHIVED,
+            audience_type="channel",
+            channel_id=channel.id,
+            payload=events.ChannelArchivedData(channel_id=channel.id).model_dump(mode="json"),
+        )
+    else:
+        await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
+    return True
+
+
+async def conversations_of(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Channel, str]]:
+    """For the lab module (L7): the public and private channels someone belongs to, with their
+    role in each (DMs are left alone), by name."""
+    return await repo.channel_memberships_of(db, user_id)
 
 
 async def _free_times_name(db: AsyncSession, base: str) -> str:
@@ -746,8 +787,25 @@ async def update_member_role(
         target_id=channel.id,
         details={"user_id": str(target_user_id), "from": membership.role, "to": role},
     )
+    await set_member_role_in_tx(db, channel, target_user_id, role, membership)
+    await db.commit()
+    return to_member_out(membership)
+
+
+async def set_member_role_in_tx(
+    db: AsyncSession,
+    channel: Channel,
+    user_id: uuid.UUID,
+    role: str,
+    membership: ChannelMember | None = None,
+) -> bool:
+    """A member's role and channel.member_updated (also a rollover's undo, L7); the caller
+    commits."""
+    membership = membership or await repo.get_membership(db, channel.id, user_id)
+    if membership is None:
+        return False
     membership.role = role
-    data = events.ChannelMemberRoleData(channel_id=channel.id, user_id=target_user_id, role=role)
+    data = events.ChannelMemberRoleData(channel_id=channel.id, user_id=user_id, role=role)
     await write_outbox(
         db,
         event_type=events.CHANNEL_MEMBER_UPDATED,
@@ -755,8 +813,7 @@ async def update_member_role(
         channel_id=channel.id,
         payload=data.model_dump(mode="json"),
     )
-    await db.commit()
-    return to_member_out(membership)
+    return True
 
 
 async def get_or_create_dm(

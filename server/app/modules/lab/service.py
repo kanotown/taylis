@@ -92,6 +92,16 @@ async def put(
     db: AsyncSession, actor: User, user_id: uuid.UUID, data: LabProfilePut
 ) -> LabProfileOut:
     """An administrator puts someone on the roster or changes their line."""
+    out = await put_in_tx(db, actor, user_id, data)
+    await db.commit()
+    return out
+
+
+async def put_in_tx(
+    db: AsyncSession, actor: User | None, user_id: uuid.UUID, data: LabProfilePut
+) -> LabProfileOut:
+    """The same without committing: also an invite's preset on acceptance (L7), where `actor` is
+    the issuing admin."""
     await repo.lock_roster(db)
     await users.require_user(db, user_id)
     if data.supervisor_id is not None:
@@ -118,13 +128,12 @@ async def put(
     await _changed(db, actor, user_id, out)
     await audit.record_in_tx(
         db,
-        actor_id=actor.id,
+        actor_id=actor.id if actor else None,
         action="admin.roster_updated",
         target_type="user",
         target_id=user_id,
         details=data.model_dump(exclude={"research_topic", "reading"}, mode="json"),
     )
-    await db.commit()
     return out
 
 
@@ -175,6 +184,13 @@ async def forget_in_tx(db: AsyncSession, actor: User | None, user_id: uuid.UUID)
         await _changed(db, actor, user_id, None)
 
 
+async def check_supervisor(db: AsyncSession, supervisor_id: uuid.UUID) -> None:
+    """For invites (L7): a preset's supervisor must be faculty on the roster."""
+    row = await repo.get(db, supervisor_id)
+    if row is None or row.affiliation != "faculty":
+        raise AppError(422, "invalid_supervisor", "The supervisor must be faculty on the roster")
+
+
 async def _require_supervisor(
     db: AsyncSession, supervisor_id: uuid.UUID, user_id: uuid.UUID
 ) -> None:
@@ -191,10 +207,20 @@ async def _changed(
     db: AsyncSession, actor: User | None, user_id: uuid.UUID, profile: LabProfileOut | None
 ) -> None:
     await _emit(db, user_id, profile)
+    await sync_managed_groups(db, actor)
+
+
+async def sync_managed_groups(db: AsyncSession, actor: User | None) -> None:
+    """The managed groups from the whole roster (also once after a rollover, L7)."""
     rows = await repo.list_all(db)
     for group in MANAGED_GROUPS:
         members = [r.user_id for r in rows if group.includes(r)]
         await groups.sync_managed_in_tx(db, actor, group.key, group.description, members)
+
+
+async def emit_line(db: AsyncSession, user_id: uuid.UUID, profile: LabProfileOut | None) -> None:
+    """roster.updated for one person (L7's rollover changes many, then syncs the groups once)."""
+    await _emit(db, user_id, profile)
 
 
 async def _emit(db: AsyncSession, user_id: uuid.UUID, profile: LabProfileOut | None) -> None:

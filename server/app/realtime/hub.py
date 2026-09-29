@@ -135,6 +135,12 @@ class RealtimeHub:
             if user_id not in self._hidden
         ]
 
+    def reconnect(self, user_id: uuid.UUID) -> None:
+        """Ask this user's devices to connect again (L7: a new guest's visible set is computed when
+        a connection opens)."""
+        for conn in self._by_user.get(user_id, ()):
+            conn.request_close(CLOSE_RECONNECT)
+
     def set_presence_hidden(self, user_id: uuid.UUID, hidden: bool) -> None:
         """L4: from now on this user is announced as offline (or as they are again)."""
         if hidden:

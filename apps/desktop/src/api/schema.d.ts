@@ -1040,6 +1040,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lab/rollover/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Rollover
+         * @description Every student with the proposed step (up a grade, or graduation for M2 and D3) and the
+         *     channels a graduate would leave.
+         */
+        post: operations["preview_rollover_api_v1_lab_rollover_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lab/rollovers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rollovers */
+        get: operations["list_rollovers_api_v1_lab_rollovers_get"];
+        put?: never;
+        /**
+         * Apply Rollover
+         * @description One transaction for the whole year (409 rollover_applied when it is in force already).
+         */
+        post: operations["apply_rollover_api_v1_lab_rollovers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lab/rollovers/{academic_year}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Rollover */
+        post: operations["undo_rollover_api_v1_lab_rollovers__academic_year__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lab/roster": {
         parameters: {
             query?: never;
@@ -2562,6 +2621,7 @@ export interface components {
              * @default 168
              */
             expires_in_hours: number;
+            lab?: components["schemas"]["LabPreset"] | null;
             /**
              * Max Uses
              * @description null = unlimited
@@ -2589,6 +2649,25 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * InviteLabPreview
+         * @description L7: the roster line the invitee will get, for the acceptance screen.
+         */
+        InviteLabPreview: {
+            /**
+             * Affiliation
+             * @enum {string}
+             */
+            affiliation: "faculty" | "student" | "alumni" | "other";
+            /** Grade */
+            grade: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Rank */
+            rank: ("professor" | "associate_professor" | "lecturer" | "assistant_professor") | null;
+            /** Supervisor Name */
+            supervisor_name: string | null;
+            /** Times */
+            times: boolean;
+        };
         /** InviteOut */
         InviteOut: {
             /** Channel Ids */
@@ -2613,6 +2692,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            lab?: components["schemas"]["LabPreset"] | null;
             /** Max Uses */
             max_uses: number | null;
             /** Note */
@@ -2645,10 +2725,33 @@ export interface components {
             expires_at: string;
             /** Invited By */
             invited_by: string;
+            lab?: components["schemas"]["InviteLabPreview"] | null;
             /** Password Min Length */
             password_min_length: number;
             /** Role */
             role: string;
+        };
+        /**
+         * LabPreset
+         * @description L7: the roster line an invite link gives on acceptance (and whether to make a times).
+         */
+        LabPreset: {
+            /**
+             * Affiliation
+             * @enum {string}
+             */
+            affiliation: "faculty" | "student" | "alumni" | "other";
+            /** Grade */
+            grade?: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Rank */
+            rank?: ("professor" | "associate_professor" | "lecturer" | "assistant_professor") | null;
+            /** Supervisor Id */
+            supervisor_id?: string | null;
+            /**
+             * Times
+             * @default false
+             */
+            times: boolean;
         };
         /** LabProfileOut */
         LabProfileOut: {
@@ -3170,6 +3273,108 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "fired" | "done" | "cancelled";
+        };
+        /** RolloverApply */
+        RolloverApply: {
+            /** Academic Year */
+            academic_year: number;
+            /** Alumni Channel Id */
+            alumni_channel_id?: string | null;
+            /** Items */
+            items: components["schemas"]["RolloverItem"][];
+        };
+        /** RolloverChannelOut */
+        RolloverChannelOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Type */
+            type: string;
+        };
+        /** RolloverItem */
+        RolloverItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "advance" | "stay" | "graduate";
+            /**
+             * Guest
+             * @default false
+             */
+            guest: boolean;
+            /** Keep Channel Ids */
+            keep_channel_ids?: string[];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** RolloverOut */
+        RolloverOut: {
+            /** Academic Year */
+            academic_year: number;
+            /** Advanced */
+            advanced: number;
+            /**
+             * Applied At
+             * Format: date-time
+             */
+            applied_at: string;
+            /**
+             * Applied By
+             * Format: uuid
+             */
+            applied_by: string;
+            /** Graduated */
+            graduated: number;
+            /** Stayed */
+            stayed: number;
+            /** Undone At */
+            undone_at: string | null;
+        };
+        /** RolloverPreviewIn */
+        RolloverPreviewIn: {
+            /** Academic Year */
+            academic_year: number;
+        };
+        /**
+         * RolloverPreviewItem
+         * @description A student on the roster, with the proposed step and the channels a graduate would leave.
+         */
+        RolloverPreviewItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "advance" | "stay" | "graduate";
+            /** Channels */
+            channels: components["schemas"]["RolloverChannelOut"][];
+            /** Grade */
+            grade: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Next Grade */
+            next_grade: ("B3" | "B4" | "M1" | "M2" | "D1" | "D2" | "D3") | null;
+            /** Times Channel Id */
+            times_channel_id: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** RolloverPreviewOut */
+        RolloverPreviewOut: {
+            /** Academic Year */
+            academic_year: number;
+            /** Applied At */
+            applied_at: string | null;
+            /** Items */
+            items: components["schemas"]["RolloverPreviewItem"][];
         };
         /** ScheduledCreate */
         ScheduledCreate: {
@@ -5962,6 +6167,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_rollover_api_v1_lab_rollover_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolloverPreviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rollovers_api_v1_lab_rollovers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverOut"][];
+                };
+            };
+        };
+    };
+    apply_rollover_api_v1_lab_rollovers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolloverApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_rollover_api_v1_lab_rollovers__academic_year__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                academic_year: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverOut"];
                 };
             };
             /** @description Validation Error */
