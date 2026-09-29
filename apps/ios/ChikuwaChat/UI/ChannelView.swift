@@ -48,6 +48,10 @@ struct ChannelView: View {
     /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
     @State private var keyboardKept = KeyboardKept()
     @State private var syncWait: Task<Void, Never>?
+    /// The landing on the first unread row (land). Not a `.task` either: opened from a notification, the navigation let
+    /// the view go and come back as it opened, the task stayed cancelled, and the landing never ended — no keyboard
+    /// follow and no read marks until the conversation was opened again (testers, 2026-09-29).
+    @State private var landingTask: Task<Void, Never>?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -201,6 +205,15 @@ struct ChannelView: View {
         // A short unread region lands clamped at the bottom, where atBottom never changes: its rows are seen (§10.1 7.).
         if atBottom { markSeen() }
         markRead()
+    }
+
+    /// Lands on `landing` in a task of its own, replacing the one under way (a new landing, or the same one again after the
+    /// view came back).
+    private func startLanding(_ landing: ReadAnchor.Landing?, _ proxy: ScrollViewProxy) {
+        landingTask?.cancel()
+        landingTask = nil
+        guard let landing else { return }
+        landingTask = Task { await land(landing, proxy) }
     }
 
     /// The placement's wait for a catch-up (§10.1 4.), at most 3 s, then placed with what is there.
@@ -483,9 +496,8 @@ struct ChannelView: View {
                         // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
                         .onAppear { startSyncWait(proxy) }
                         .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
-                        .task(id: anchor.landing) {
-                            if let landing = anchor.landing { await land(landing, proxy) }
-                        }
+                        .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
+                        .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } } // back after a disappear
                         .onChange(of: focus?.messageId) { _, id in
                             if id == nil, let channel {
                                 // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).

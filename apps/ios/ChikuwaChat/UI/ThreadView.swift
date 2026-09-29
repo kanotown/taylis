@@ -35,6 +35,9 @@ struct ThreadView: View {
     @State private var messageSheet: MessageSheet?
     /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
     @State private var keyboardKept = KeyboardKept()
+    /// The landing on the first unread reply, in a task of its own (ChannelView.landingTask: a `.task` cancelled by the
+    /// navigation's disappear and reappear left the landing unfinished).
+    @State private var landingTask: Task<Void, Never>?
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
@@ -109,9 +112,8 @@ struct ThreadView: View {
                     await Task.yield()
                     position(proxy)
                 }
-                .task(id: anchor.landing) {
-                    if let landing = anchor.landing { await land(landing, proxy) }
-                }
+                .onChange(of: anchor.landing, initial: true) { _, landing in startLanding(landing, proxy) }
+                .onAppear { if anchor.landing != nil { startLanding(anchor.landing, proxy) } }
             }
             if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                 TypingLine(controller: controller, channelId: channelId, parentId: parentId)
@@ -264,6 +266,13 @@ struct ThreadView: View {
 
     /// Scrolls the first unread reply (and its divider) to the top, again while LazyVStack's estimates leave it off
     /// screen, then lets the anchor judge from the frames where it ended.
+    private func startLanding(_ landing: ReadAnchor.Landing?, _ proxy: ScrollViewProxy) {
+        landingTask?.cancel()
+        landingTask = nil
+        guard let landing else { return }
+        landingTask = Task { await land(landing, proxy) }
+    }
+
     private func land(_ landing: ReadAnchor.Landing, _ proxy: ScrollViewProxy) async {
         landingInterrupted = false
         for _ in 0..<3 {
