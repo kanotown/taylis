@@ -211,6 +211,8 @@ struct ChannelInfoView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var confirmLeave = false
+    /// M28d: the member an owner or admin is about to take out of the channel (a swipe on the row).
+    @State private var removing: MemberOut?
     @State private var confirmArchive = false
     @State private var confirmConvert = false
     @State private var addingLink = false
@@ -222,6 +224,43 @@ struct ChannelInfoView: View {
         return channel.channel.membership?.role == "owner" || controller.store.me?.role == "admin"
     }
     private var isAdmin: Bool { controller.store.me?.role == "admin" }
+
+    /// One member: the profile on a tap; a swipe takes them out (M28d, parity with the web) for owners and admins, not
+    /// oneself and not in a DM. Its own function: inside the list the type-checker gave up on it.
+    private func memberRow(_ member: MemberOut) -> some View {
+        let store = controller.store
+        let user = store.users[member.userId]
+        let presence = store.presenceOf(member.userId)
+        let removable = canManage && member.userId != store.me?.id && !(channel?.channel.isDm ?? true)
+        return Button { profileUserId = member.userId } label: {
+            HStack(spacing: 10) {
+                AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Text(user?.displayName ?? "?")
+                        StatusEmojiView(user: user)
+                    }
+                    Text("@\(user?.username ?? "")" + ((user?.title).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
+                if let line = store.roster[member.userId] { RosterBadge(profile: line) }
+                if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing) {
+            if removable { Button("外す", role: .destructive) { removing = member } }
+        }
+    }
+
+    private func remove(_ member: MemberOut) async {
+        guard let api = controller.api else { return }
+        do {
+            try await api.removeMember(channelId: channelId, userId: member.userId)
+            members?.removeAll { $0.userId == member.userId } // channel.member_removed confirms the count
+        } catch { controller.error = controller.describe(error) }
+    }
 
     private func loadMembers() async {
         guard let api = controller.api else { return }
@@ -372,27 +411,7 @@ struct ChannelInfoView: View {
                     }
                     Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
                         if let members {
-                            ForEach(sortedMembers(members), id: \.userId) { member in
-                                let user = store.users[member.userId]
-                                let presence = store.presenceOf(member.userId)
-                                Button { profileUserId = member.userId } label: {
-                                    HStack(spacing: 10) {
-                                        AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: presence)
-                                        VStack(alignment: .leading, spacing: 0) {
-                                            HStack(spacing: 6) {
-                                                Text(user?.displayName ?? "?")
-                                                StatusEmojiView(user: user)
-                                            }
-                                            Text("@\(user?.username ?? "")" + ((user?.title).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
-                                        if let line = store.roster[member.userId] { RosterBadge(profile: line) }
-                                        if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            ForEach(sortedMembers(members), id: \.userId) { member in memberRow(member) }
                         } else {
                             ProgressView()
                         }
@@ -419,6 +438,12 @@ struct ChannelInfoView: View {
                 TextField("新しい名前", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("変更") { Task { _ = await controller.renameChannel(channelId, name: newName) } }
                 Button("キャンセル", role: .cancel) {}
+            }
+            .confirmationDialog("メンバーから外しますか？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                                titleVisibility: .visible, presenting: removing) { member in
+                Button("\(controller.store.users[member.userId]?.displayName ?? "?") を外す", role: .destructive) {
+                    Task { await remove(member) }
+                }
             }
             .confirmationDialog("このチャンネルを退出しますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
                 Button("退出", role: .destructive) { Task { if await controller.leaveChannel(channelId) { dismiss() } } }
