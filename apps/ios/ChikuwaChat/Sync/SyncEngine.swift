@@ -944,11 +944,16 @@ final class SyncEngine {
     }
 
     /// A thread opened from a channel: fetch my relation to it (follow flag, read position).
-    func loadThreadState(_ parentId: String, parent: MessageOut? = nil) async {
+    /// False when the state could not be fetched (offline, or the request failed): the thread view offers a retry.
+    @discardableResult
+    func loadThreadState(_ parentId: String, parent: MessageOut? = nil) async -> Bool {
+        var loaded = false
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
             applyThreadState(try await api.threadState(messageId: parentId), parent: parent)
+            loaded = true
         }.value
+        return loaded
     }
 
     /// The reply with `seq` was shown: the thread position moves now (monotonic) and is sent after a debounce.
@@ -994,12 +999,17 @@ final class SyncEngine {
         }.value
     }
 
-    func setThreadFollow(_ parentId: String, following: Bool) async {
+    /// False when nothing changed (offline, or the request failed): the caller tells the reader.
+    @discardableResult
+    func setThreadFollow(_ parentId: String, following: Bool) async -> Bool {
+        var done = false
         _ = try? await enqueue { [self] in
             guard status == .online else { return }
             applyThreadState(try await api.setThreadFollow(messageId: parentId, following: following))
             onBadge?(store.badgeCount)
+            done = true
         }.value
+        return done
     }
 
     /// §10.2: a thread's state from the server (thread.updated, GET state, the threads list, the PUT read and follow

@@ -549,6 +549,7 @@ final class AppController {
             await switchTo(target.serverUrl)
         }
         PushCenter.shared.pendingChannelId = payload.channelId
+        PushCenter.shared.pendingParentId = payload.parentId // a reply: its thread opens too (M28d)
         engine?.reconnectNow()
     }
 
@@ -732,9 +733,10 @@ final class AppController {
         guard let api else { return }
         do {
             let message = try await api.message(id: messageId)
-            // M27: a public channel I have not joined opens as its preview (the newest messages, read-only).
+            // M27: a public channel I have not joined opens as its preview, read-only, around the linked message.
             if store.channel(message.channelId)?.isMember == false {
-                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": message.channelId])
+                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
+                                                userInfo: ["id": message.channelId, "messageId": messageId])
                 return
             }
             if await revealMessage(message) {
@@ -742,6 +744,17 @@ final class AppController {
                                                 userInfo: ["id": message.channelId, "parentId": message.parentId as Any])
             }
         } catch { self.error = describe(error) }
+    }
+
+    /// THREADS.md: follow or unfollow a thread, and say so when it could not be done (it was silent: an offline tap
+    /// changed nothing and showed nothing, audit 2026-09-29).
+    func setThreadFollow(_ parentId: String, following: Bool) async {
+        guard let engine else { return }
+        if engine.status != .online {
+            error = ErrorMessages.network
+        } else if !(await engine.setThreadFollow(parentId, following: following)) {
+            error = following ? "スレッドをフォローできませんでした" : "スレッドのフォローを外せませんでした"
+        }
     }
 
     /// M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device.

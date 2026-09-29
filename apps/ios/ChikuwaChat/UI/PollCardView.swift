@@ -51,7 +51,7 @@ struct PollCardView: View {
                         .frame(height: 5)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 6)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .disabled(readOnly || poll.closedAt != nil || message.pending)
@@ -64,7 +64,9 @@ struct PollCardView: View {
             }
         }
         .padding(10)
-        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        // The card a shade off the page and the options a shade off the card, in light and in dark (the card was the
+        // page's own colour in light mode: only its outline showed; audit 2026-09-29).
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
         .padding(.top, 4)
     }

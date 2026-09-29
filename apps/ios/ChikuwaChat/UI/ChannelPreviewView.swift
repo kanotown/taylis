@@ -6,6 +6,8 @@ import SwiftUI
 struct ChannelPreviewView: View {
     @Bindable var controller: AppController
     let channelId: String
+    /// A permalink's message: the preview opens around it (its context), 「最新へ」 goes to the newest page.
+    var focusMessageId: String? = nil
     /// Oldest first, as the timeline shows them.
     @State private var messages: [MessageState] = []
     @State private var hasMore = false
@@ -15,6 +17,8 @@ struct ChannelPreviewView: View {
     @State private var failure: String?
     @State private var thread: ThreadTarget?
     @State private var joining = false
+    /// The rows are the context of `focusMessageId`, not the newest page.
+    @State private var showingContext = false
 
     private static let margin: CGFloat = 12
     private static let pageSize = 50
@@ -53,10 +57,25 @@ struct ChannelPreviewView: View {
                 .padding(.vertical, 8)
                 .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
             }
-            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(showingContext ? .center : .bottom)
+            .overlay(alignment: .bottomTrailing) {
+                if showingContext {
+                    Button { Task { await load(latest: true) } } label: {
+                        Label("最新へ", systemImage: "arrow.down").font(.footnote.bold())
+                            .padding(.horizontal, 12).padding(.vertical, 8).background(.thinMaterial, in: Capsule())
+                    }
+                    .padding(12)
+                }
+            }
             .overlay {
                 if let failure {
-                    ContentUnavailableView("読み込めませんでした", systemImage: "exclamationmark.triangle", description: Text(failure))
+                    ContentUnavailableView {
+                        Label("読み込めませんでした", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(failure)
+                    } actions: {
+                        Button("再読み込み") { Task { await load() } }
+                    }
                 } else if !loaded {
                     ProgressView()
                 }
@@ -96,13 +115,21 @@ struct ChannelPreviewView: View {
         .background(.bar)
     }
 
-    private func load() async {
+    /// The newest page, or (a permalink, unless `latest`) the messages around the linked one.
+    private func load(latest: Bool = false) async {
         guard let api = controller.api else { return }
         failure = nil
         do {
-            let page = try await api.history(channelId: channelId, beforeSeq: nil, limit: Self.pageSize)
-            messages = Self.rows(page.messages)
-            hasMore = page.hasMore
+            if let focusMessageId, !latest {
+                messages = Self.rows(try await api.messageContext(focusMessageId))
+                hasMore = true
+                showingContext = true
+            } else {
+                let page = try await api.history(channelId: channelId, beforeSeq: nil, limit: Self.pageSize)
+                messages = Self.rows(page.messages)
+                hasMore = page.hasMore
+                showingContext = false
+            }
             loaded = true
         } catch {
             failure = controller.describe(error)

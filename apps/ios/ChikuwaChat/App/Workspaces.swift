@@ -64,13 +64,16 @@ struct PushPayload: Equatable, Sendable {
     var workspaceId: String?
     var channelId: String?
     var messageId: String?
+    /// The reply's thread (M28d): a tap opens it with the channel.
+    var parentId: String?
     /// `aps.badge`: that server's count for this account.
     var badge: Int?
 
-    init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, badge: Int? = nil) {
+    init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil) {
         self.workspaceId = workspaceId
         self.channelId = channelId
         self.messageId = messageId
+        self.parentId = parentId
         self.badge = badge
     }
 
@@ -82,6 +85,7 @@ struct PushPayload: Equatable, Sendable {
         workspaceId = text("workspace_id")
         channelId = text("channel_id")
         messageId = text("message_id")
+        parentId = text("parent_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }

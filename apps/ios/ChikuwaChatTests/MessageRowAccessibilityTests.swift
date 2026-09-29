@@ -109,7 +109,8 @@ final class MessageRowAccessibilityTests: XCTestCase {
         XCTAssertTrue(labels.contains("Toru"), "\(labels)")
         XCTAssertTrue(labels.contains { $0.contains("見てください") }, "\(labels)")
         for element in elements {
-            XCTAssertEqual(element.accessibilityCustomActions?.map(\.name), ["メッセージの操作"], element.accessibilityLabel ?? "")
+            // M28d: the profile too (the avatar and the name take taps VoiceOver cannot make).
+            XCTAssertEqual(Set(element.accessibilityCustomActions?.map(\.name) ?? []), ["メッセージの操作", "プロフィール"], element.accessibilityLabel ?? "")
         }
         // The reaction and the 「＋」 chip after it stay buttons of their own.
         let reaction = try XCTUnwrap(elements.first { $0.accessibilityLabel == "👍 2" })
@@ -118,7 +119,7 @@ final class MessageRowAccessibilityTests: XCTestCase {
         XCTAssertTrue(add.accessibilityTraits.contains(.button))
 
         // The action opens the long-press sheet: the six quick reactions and the list of actions.
-        let action = try XCTUnwrap(elements.first?.accessibilityCustomActions?.first)
+        let action = try XCTUnwrap(elements.first?.accessibilityCustomActions?.first { $0.name == "メッセージの操作" })
         XCTAssertTrue(action.actionHandler?(action) ?? false)
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         XCTAssertNotNil(host.presentedViewController, "the action sheet")
@@ -145,7 +146,7 @@ final class MessageRowAccessibilityTests: XCTestCase {
     /// 編集 in the action sheet: the editor comes once the sheet is gone, from the conversation.
     func testEditInTheActionSheetOpensTheEditorOnceTheSheetIsGone() throws {
         let (host, elements) = elements(message(mine: true), controller())
-        let action = try XCTUnwrap(elements.first?.accessibilityCustomActions?.first)
+        let action = try XCTUnwrap(elements.first?.accessibilityCustomActions?.first { $0.name == "メッセージの操作" })
         XCTAssertTrue(action.actionHandler?(action) ?? false)
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         let sheet = try XCTUnwrap(host.presentedViewController, "the action sheet")

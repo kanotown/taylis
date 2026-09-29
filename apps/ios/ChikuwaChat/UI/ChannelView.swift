@@ -43,6 +43,7 @@ struct ChannelView: View {
     @State private var messageSheet: MessageSheet?
     /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
     @State private var keyboardKept = KeyboardKept()
+    @State private var syncWait: Task<Void, Never>?
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -179,6 +180,16 @@ struct ChannelView: View {
         // A short unread region lands clamped at the bottom, where atBottom never changes: its rows are seen (§10.1 7.).
         if atBottom { markSeen() }
         markRead()
+    }
+
+    /// The placement's wait for a catch-up (§10.1 4.), at most 3 s, then placed with what is there.
+    private func startSyncWait(_ proxy: ScrollViewProxy) {
+        syncWait?.cancel()
+        syncWait = Task {
+            guard (try? await Task.sleep(nanoseconds: 3_000_000_000)) != nil else { return }
+            syncWaitOver = true
+            position(proxy)
+        }
     }
 
     /// 「最初の未読へ」 (§10.1 6.): load back to the read position, then show its first unread row at the top like an open.
@@ -433,12 +444,11 @@ struct ChannelView: View {
                         }
                     }
                     .task(id: "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)") { await Task.yield(); position(proxy) }
-                    .task(id: focus == nil) {
-                        // Opened, or back from the search context: the placement waits for a catch-up at most this long.
-                        guard (try? await Task.sleep(nanoseconds: 3_000_000_000)) != nil else { return }
-                        syncWaitOver = true
-                        position(proxy)
-                    }
+                    // Opened, or back from the search context: the placement waits for a catch-up at most this long.
+                    // Not a `.task`: the navigation lets the view go and come back once as it opens, which cancelled
+                    // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
+                    .onAppear { startSyncWait(proxy) }
+                    .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
                     .task(id: anchor.landing) {
                         if let landing = anchor.landing { await land(landing, proxy) }
                     }
@@ -462,6 +472,7 @@ struct ChannelView: View {
                         markRead(send: !lowered)
                     }
                     .onChange(of: controller.engine?.status) { _, _ in
+                        position(proxy) // offline now: nothing more to wait for (ReadGate.placementWaits)
                         markRead()
                         olderStalled = false // M25: back online (or a new connection): the top row may try again
                         loadOlderIfShown()
@@ -966,6 +977,10 @@ struct MessageRow: View {
             }
             if !message.pending, let onOpenThread {
                 Button("スレッドを開く") { onOpenThread() }
+            }
+            // The avatar and the name take taps VoiceOver cannot make (audit 2026-09-29).
+            if !message.pending && present != nil {
+                Button("プロフィール") { show(.profile) }
             }
         }
     }
@@ -1500,7 +1515,10 @@ struct ComposerView: View {
                         continue
                     }
                     // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
-                    guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else { continue }
+                    guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
+                        controller?.error = "写真を読み込めませんでした" // it was dropped without a word (audit 2026-09-29)
+                        continue
+                    }
                     await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
                 }
             }
