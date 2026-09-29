@@ -1,45 +1,14 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.ui.ConversationNav
-import jp.chikuwachat.android.ui.ConversationNav.Back
 import jp.chikuwachat.android.ui.ConversationTab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** M29: the phone's conversation screen as pages: the details page, the tabs under the app bar, and what back closes. */
+/** M29: the phone's conversation screen as pages: the details page and the tabs under the app bar (back: MainNavTest). */
 class ConversationNavTest {
-    private fun back(details: Boolean = false, tab: ConversationTab = ConversationTab.MESSAGES, thread: Boolean = false, channel: Boolean = true, lists: Boolean = false) =
-        ConversationNav.back(details, tab, thread, channel, lists)
-
-    @Test
-    fun backClosesTheDetailsPageFirst() {
-        assertEquals(Back.DETAILS, back(details = true))
-        // Opened over the pins tab: the tab is still there after it.
-        assertEquals(Back.DETAILS, back(details = true, tab = ConversationTab.PINS))
-    }
-
-    @Test
-    fun backOnThePinsOrFilesTabReturnsToMessagesBeforeClosingTheConversation() {
-        assertEquals(Back.TAB, back(tab = ConversationTab.PINS))
-        assertEquals(Back.TAB, back(tab = ConversationTab.FILES))
-        assertEquals(Back.CHANNEL, back(tab = ConversationTab.MESSAGES))
-    }
-
-    @Test
-    fun backClosesTheThreadThenTheConversationThenTheLists() {
-        assertEquals(Back.THREAD, back(thread = true))
-        assertEquals(Back.CHANNEL, back(lists = true))
-        assertEquals(Back.LISTS, back(channel = false, lists = true))
-        assertEquals(Back.NONE, back(channel = false))
-    }
-
-    @Test
-    fun aLeftoverTabOrDetailsWithoutAConversationIsIgnored() {
-        assertEquals(Back.NONE, back(channel = false, details = true, tab = ConversationTab.FILES))
-    }
-
     @Test
     fun theTabRowShowsOnlyOverAJoinedConversationsTimeline() {
         assertTrue(ConversationNav.tabRowShown(channelOpen = true, member = true, threadOpen = false, searching = false, detailsOpen = false))
