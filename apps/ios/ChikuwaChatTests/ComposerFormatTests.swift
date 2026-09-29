@@ -27,4 +27,15 @@ final class ComposerFormatTests: XCTestCase {
         XCTAssertTrue(ComposerFormat.numbered.apply(to: "a\nb\nc", selection: 0..<3) == ("1. a\n2. b\nc", 0..<9)) // the lines it touches
         XCTAssertTrue(ComposerFormat.quote.apply(to: "前置き\n引用する", selection: 5..<5) == ("前置き\n> 引用する", 7..<7))
     }
+
+    /// Testers, 2026-09-29: after a send cleared the input, an emoji went in at the old selection, past the end, and
+    /// the app crashed. A selection only serves the text it was made in.
+    func testASelectionOnlyServesTheTextItBelongsTo() {
+        let box = ComposerSelection()
+        box.raw = "selection"
+        box.text = "送信する前の文"
+        XCTAssertNotNil(box.raw(for: "送信する前の文"))
+        XCTAssertNil(box.raw(for: ""))
+        XCTAssertNil(box.raw(for: "別の文"))
+    }
 }

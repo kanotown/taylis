@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -45,6 +47,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -61,19 +64,35 @@ fun formatSize(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
-/** Images show their thumbnail; other files show a row that downloads and opens them. */
+/**
+ * Images show their thumbnail; other files show a row that downloads and opens them. Several photos sit side by side
+ * as square tiles (testers, 2026-09-29: they came one under another), two in a row for two or four, three otherwise.
+ */
 @Composable
 fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) {
     if (attachments.isEmpty()) return
+    val photos = attachments.filter { it.isImage }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+        if (photos.size > 1) {
+            val columns = if (photos.size == 2 || photos.size == 4) 2 else 3
+            val side = (PHOTO_GRID_WIDTH - 4.dp * (columns - 1)) / columns
+            FlowRow(
+                Modifier.width(PHOTO_GRID_WIDTH), horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp), maxItemsInEachRow = columns,
+            ) {
+                photos.forEach { ThumbnailImage(it, controller, square = side) }
+            }
+        }
         attachments.forEach { attachment ->
-            if (attachment.isImage) ThumbnailImage(attachment, controller) else FileRow(attachment, controller)
+            if (attachment.isImage) { if (photos.size == 1) ThumbnailImage(attachment, controller) } else FileRow(attachment, controller)
         }
     }
 }
 
+private val PHOTO_GRID_WIDTH = 280.dp
+
 @Composable
-private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController) {
+private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController, square: Dp? = null) {
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
     var viewing by remember(attachment.id) { mutableStateOf(false) }
     LaunchedEffect(attachment.id) {
@@ -84,9 +103,12 @@ private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController)
     }
     val image = bitmap
     val shape = RoundedCornerShape(8.dp)
-    val modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp).clip(shape).clickable { viewing = true }
+    val modifier = (if (square != null) Modifier.size(square) else Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp))
+        .clip(shape).clickable { viewing = true }
     if (image != null) {
-        Image(image, contentDescription = attachment.filename, contentScale = ContentScale.Fit, modifier = modifier)
+        Image(image, contentDescription = attachment.filename, contentScale = if (square != null) ContentScale.Crop else ContentScale.Fit, modifier = modifier)
+    } else if (square != null) {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
     } else {
         Text(attachment.filename, modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape).padding(12.dp))
     }

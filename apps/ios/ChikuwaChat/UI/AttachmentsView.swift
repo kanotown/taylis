@@ -74,11 +74,25 @@ struct AttachmentsView: View {
     @Bindable var controller: AppController
     var present: ((URL) -> Void)? = nil
 
+    /// Several photos sit side by side as square tiles (testers, 2026-09-29: they came one under another), two in a
+    /// row for two or four, three otherwise; one photo keeps its own shape.
+    static func photoColumns(_ count: Int) -> Int { count == 2 || count == 4 ? 2 : 3 }
+    static let photoGridWidth: CGFloat = 280
+
     var body: some View {
+        let photos = attachments.filter(\.isImage)
         VStack(alignment: .leading, spacing: 6) {
+            if photos.count > 1 {
+                let columns = Self.photoColumns(photos.count)
+                let side = (Self.photoGridWidth - CGFloat(columns - 1) * 4) / CGFloat(columns)
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: 4), count: columns), alignment: .leading, spacing: 4) {
+                    ForEach(photos) { photo in ThumbnailView(attachment: photo, controller: controller, square: side) }
+                }
+                .frame(width: Self.photoGridWidth, alignment: .leading)
+            }
             ForEach(attachments) { attachment in
                 if attachment.isImage {
-                    ThumbnailView(attachment: attachment, controller: controller)
+                    if photos.count == 1 { ThumbnailView(attachment: attachment, controller: controller) }
                 } else if attachment.isVideo {
                     VideoTile(attachment: attachment, controller: controller, present: present)
                 } else {
@@ -286,17 +300,32 @@ final class AttachmentImageLoader {
 struct ThumbnailView: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
+    /// A square tile of this side, the photo cropped to fill it (several photos in one message).
+    var square: CGFloat? = nil
     @State private var loader = AttachmentImageLoader()
     @State private var attempt = 0
     @State private var viewing = false
 
     var body: some View {
         Group {
-            if let image = loader.image {
+            if let image = loader.image, let square {
+                Button { viewing = true } label: {
+                    Image(uiImage: image).resizable().scaledToFill().frame(width: square, height: square).clipped()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("写真 \(attachment.filename)")
+            } else if let image = loader.image {
                 Button { viewing = true } label: { Image(uiImage: image).resizable().scaledToFit() }
                     .buttonStyle(.plain)
                     .frame(maxWidth: 280, maxHeight: 240)
                     .accessibilityLabel("写真 \(attachment.filename)")
+            } else if loader.failed, let square {
+                Button { attempt += 1 } label: {
+                    Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
+                        .frame(width: square, height: square).background(Color.secondary.opacity(0.12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(attachment.filename) を再読み込み")
             } else if loader.failed {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(attachment.filename).lineLimit(2)
@@ -316,10 +345,10 @@ struct ThumbnailView: View {
                     Color.secondary.opacity(0.12)
                     ProgressView()
                 }
-                .frame(width: 160, height: 120)
+                .frame(width: square ?? 160, height: square ?? 120)
             }
         }
-        .frame(maxWidth: 280, alignment: .leading)
+        .frame(maxWidth: square ?? 280, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .task(id: "\(attachment.id):\(attempt)") {

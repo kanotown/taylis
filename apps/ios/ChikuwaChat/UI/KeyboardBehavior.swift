@@ -202,6 +202,11 @@ private struct KeepsBottom: ViewModifier {
                     // A list that fits has no end to keep: the bottom anchor sets it (the larger content: a layout in
                     // passing reports it shorter).
                     guard max(old.contentHeight, new.contentHeight) + new.insets.top + new.insets.bottom > new.containerHeight else { return }
+                    // Growing (the keyboard going away) with the reader up in the conversation: the rows stay where they
+                    // are and more of them show below. Keeping the row at the bottom edge moved every row down by the
+                    // keyboard's height in one frame while the input slid down with the keyboard (testers,
+                    // 2026-09-29: 「縦方向にガクッとずれる」).
+                    if new.containerHeight > old.containerHeight && !wasAtEnd { return }
                     restore(old.containerHeight, wasAtEnd)
                 }
             }
@@ -275,9 +280,10 @@ private struct BackSwipeWatcher: UIViewRepresentable {
         @objc private func swiped(_ recognizer: UIGestureRecognizer) {
             switch recognizer.state {
             case .began:
-                guard let window else { return }
+                // Only for a pop under way (a swipe the navigation did not take held the list for nothing), and only
+                // with the keyboard up (the home indicator alone is some 34 pt).
+                guard let window, navigationController?.transitionCoordinator != nil else { return }
                 let below = window.bounds.maxY - convert(bounds, to: window).maxY
-                // Only with the keyboard up (the home indicator alone is some 34 pt).
                 guard below > 100 else { return }
                 holding = true
                 onChange(below)
