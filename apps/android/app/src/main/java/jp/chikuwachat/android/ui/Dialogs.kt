@@ -127,9 +127,9 @@ fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (Str
         text = {
             Column {
                 Text("複数選ぶとグループ DM になります (相手は8人まで)", style = MaterialTheme.typography.bodySmall)
-                // A DM with only myself: notes to self (as in Slack).
+                // A DM with only myself, titled with my name (as in Slack / Mattermost).
                 store.me?.id?.let { me ->
-                    TextButton(enabled = !busy, onClick = { start(listOf(me)) }) { Text("自分へのメモ (自分だけが見られる DM)") }
+                    TextButton(enabled = !busy, onClick = { start(listOf(me)) }) { Text("${myDisplayName(store)} (${MainTabs.SELF_NOTES_HINT})") }
                 }
                 OutlinedTextField(query, { query = it }, label = { Text("名前で検索") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (users.isEmpty()) Text("相手になるユーザーがいません")

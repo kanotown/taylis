@@ -342,8 +342,14 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                                 Text("接続が戻ると読み込みます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Timeline.FirstPage.EMPTY -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
-                                Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                // My own DM (a DM with only me) says what it is for, under my name.
+                                if (MainTabs.isSelfNotes(channel, store.me?.id)) {
+                                    Text(myDisplayName(store), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                                    Text(MainTabs.SELF_NOTES_INTRO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                } else {
+                                    Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
+                                    Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
