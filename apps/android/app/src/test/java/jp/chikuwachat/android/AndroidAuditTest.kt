@@ -38,11 +38,12 @@ class AndroidAuditTest {
         assertNull(prefs.values["sidebar.unreadOnly"]) // off leaves no key behind
     }
 
-    @Test fun theComposerFoldsItsButtonsBelow400dp() {
+    @Test fun theComposerFoldsItsButtonsBelow460dp() {  // 400 until M30 added the template button
         assertTrue(ComposerLayout.compact(360f))
-        assertTrue(ComposerLayout.compact(399f))
-        assertFalse(ComposerLayout.compact(400f))
-        assertFalse(ComposerLayout.compact(411f))
+        assertTrue(ComposerLayout.compact(411f))
+        assertTrue(ComposerLayout.compact(459f))
+        assertFalse(ComposerLayout.compact(460f))
+        assertFalse(ComposerLayout.compact(600f))
     }
 
     @Test fun anEmptyConversationSaysWhetherItsFirstPageIsOnItsWay() {

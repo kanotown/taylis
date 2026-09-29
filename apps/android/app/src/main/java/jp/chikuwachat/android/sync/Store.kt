@@ -6,6 +6,7 @@ import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.TemplateOut
 import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
@@ -275,6 +276,8 @@ class Store(private val persistence: Persistence? = null) {
     val emojiAnimations = HashMap<String, jp.chikuwachat.android.ui.EmojiAnimation>()
     /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
     val groups = LinkedHashMap<String, GroupOut>()
+    /** Post templates by id (M30); from bootstrap and template.updated, not persisted (like groups). Order: ui/Templates.kt. */
+    val templates = LinkedHashMap<String, TemplateOut>()
     /** The lab roster (M23) by user id; from bootstrap and roster.updated, not persisted (like groups). Order: ui/Roster.kt. */
     val roster = HashMap<String, LabProfileOut>()
     /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
@@ -634,6 +637,19 @@ class Store(private val persistence: Persistence? = null) {
 
     fun applyGroup(row: GroupOut, deleted: Boolean) {
         if (deleted) groups.remove(row.id) else groups[row.id] = row
+        emit()
+    }
+
+    // --- post templates (M30) ------------------------------------------------------------------
+
+    fun replaceTemplates(rows: List<TemplateOut>) {
+        templates.clear()
+        rows.forEach { templates[it.id] = it }
+        emit()
+    }
+
+    fun applyTemplate(row: TemplateOut, deleted: Boolean) {
+        if (deleted) templates.remove(row.id) else templates[row.id] = row
         emit()
     }
 

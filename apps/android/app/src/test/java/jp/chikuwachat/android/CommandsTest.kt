@@ -15,10 +15,18 @@ class CommandsTest {
         assertNull(SlashCommands.parse("hello /me"))
         assertNull(SlashCommands.parse("/"))
         assertNull(SlashCommands.parse("/path/to/file"))
+        // M30: names in any script (a template's /日報, the built-in /日程).
+        assertEquals(SlashCommands.Parsed("日報", "", false), SlashCommands.parse("/日報"))
+        assertEquals(SlashCommands.Parsed("日報", "追記", false), SlashCommands.parse("/日報 追記"))
+        assertEquals(SlashCommands.Parsed("日程", "ゼミ 10/3 10/4", true), SlashCommands.parse("/日程 ゼミ 10/3 10/4"))
+        assertEquals(SlashCommands.Parsed("weekly_2-a", "", false), SlashCommands.parse("/Weekly_2-a"))
     }
 
     @Test fun suggestsCommandsWhileTheNameIsTyped() {
-        assertEquals(13, SlashCommands.candidates("/").size)
+        assertEquals(14, SlashCommands.candidates("/").size)
+        assertEquals(listOf("日程"), SlashCommands.candidates("/日").map { it.name })
+        assertEquals("日", SlashCommands.prefix("/日"))
+        assertNull(SlashCommands.prefix("/日報 "))
         assertEquals(listOf("status", "shrug"), SlashCommands.candidates("/s").map { it.name })
         assertEquals(emptyList<SlashCommands.Command>(), SlashCommands.candidates("/status "))
         assertEquals(emptyList<SlashCommands.Command>(), SlashCommands.candidates("text /s"))
