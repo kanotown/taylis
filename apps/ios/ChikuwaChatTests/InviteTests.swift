@@ -30,7 +30,7 @@ final class InviteTests: XCTestCase {
     func testDescribesTheLabPreset() {
         XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "student", grade: "B4", supervisorName: "加納", times: true)),
                        "研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。")
-        XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "faculty", rank: "professor")), "研究室の名簿に 教授 として載ります。")
+        XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "faculty", rank: "professor")), "研究室の名簿に 教員 (教授) として載ります。")
         XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "other")), "研究室の名簿に その他 として載ります。")
     }
 }

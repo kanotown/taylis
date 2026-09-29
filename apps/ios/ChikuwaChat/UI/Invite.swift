@@ -9,7 +9,7 @@ enum Invite {
     static func labLine(_ lab: InviteLabPreview) -> String {
         let affiliation = Roster.affiliations.first { $0.value == lab.affiliation }?.label ?? "研究室のメンバー"
         var label = affiliation
-        if lab.affiliation == "faculty", let rank = Roster.ranks.first(where: { $0.value == lab.rank })?.label { label = rank }
+        if lab.affiliation == "faculty", let rank = Roster.ranks.first(where: { $0.value == lab.rank })?.label { label = "\(affiliation) (\(rank))" }
         if lab.affiliation == "student", let grade = lab.grade { label = "\(affiliation) (\(grade))" }
         var line = "研究室の名簿に \(label)"
         if let supervisor = lab.supervisorName { line += "・指導教員 \(supervisor)" }
