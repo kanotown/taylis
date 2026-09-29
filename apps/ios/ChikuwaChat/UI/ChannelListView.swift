@@ -15,7 +15,7 @@ struct ChannelListView: View {
     /// M26: the default sections folded on this device; my own sections fold on all my devices through the server.
     @AppStorage("sidebar.folded") private var foldedRaw = ""
     private var folded: Set<String> { Self.foldedKeys(foldedRaw) }
-    private func toggleFold(_ key: String) { withAnimation { foldedRaw = Self.toggledFold(foldedRaw, key: key) } }
+    private func toggleFold(_ key: String) { withAnimation(.easeInOut(duration: 0.25)) { foldedRaw = Self.toggledFold(foldedRaw, key: key) } }
     private func shown(_ rows: [ChannelState], _ collapsed: Bool) -> [ChannelState] {
         Self.shown(rows, collapsed: collapsed, meId: meId, selection: selection)
     }
@@ -182,7 +182,8 @@ struct ChannelListView: View {
     private func sectionHeader(_ section: SidebarSectionOut, index: Int, count: Int) -> some View {
         HStack {
             foldHeader(section.name, icon: section.emoji, folded: section.collapsed) {
-                Task { _ = await controller.setSectionCollapsed(section.id, collapsed: !section.collapsed) }
+                // Folds as smoothly as the default sections (testers, 2026-09-29: it opened and closed at once).
+                Task { _ = await controller.setSectionCollapsed(section.id, collapsed: !section.collapsed) { change in withAnimation(.easeInOut(duration: 0.25)) { change() } } }
             }
             Spacer()
             Menu {

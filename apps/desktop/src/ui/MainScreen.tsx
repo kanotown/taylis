@@ -682,7 +682,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
           </header>
           <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
           <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
-          {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
           {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
             <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
           )}
@@ -691,6 +690,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
               <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
             </div>
           )}
+          {/* Under the input, as in Slack: its line above it left a wide gap over the input (2026-09-29). */}
+          {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
           {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
         </>
       ) : (

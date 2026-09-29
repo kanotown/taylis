@@ -1,33 +1,11 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.NotificationsNone
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.AlternateEmail
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.outlined.PushPin
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,20 +16,41 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +58,7 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -69,7 +69,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -77,20 +76,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.Instant
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.Instant
 
 enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, CHANNEL_INFO, SETTINGS, BROWSE, DIRECTORY }
 
@@ -669,39 +672,42 @@ private fun ChannelList(
         // M26: a folded section keeps its unread rows (Channels.shown); its hints and actions go.
         if (sections.favorites.isNotEmpty()) {
             val fold = FoldedSections.FAVORITES in folded
-            item { SectionHeader("お気に入り", fold) { onToggleFolded(FoldedSections.FAVORITES) } }
-            items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+            item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader("お気に入り", fold) { onToggleFolded(FoldedSections.FAVORITES) } } }
+            items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
         }
         sections.custom.forEachIndexed { index, (section, members) ->
             item(key = "section:" + section.id) {
-                CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) })
+                // Every row of the sidebar slides into place when a section above it folds (testers, 2026-09-29).
+                Box(Modifier.folding(this)) {
+                    CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) })
+                }
             }
-            items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-            if (members.isEmpty() && !unreadOnly && !section.collapsed) item(key = "section-empty:" + section.id) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") }
+            items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
+            if (members.isEmpty() && !unreadOnly && !section.collapsed) item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") } }
         }
         val channelsFolded = FoldedSections.CHANNELS in folded
-        item { SectionHeader("チャンネル", channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } }
-        items(Channels.shown(channels, channelsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
+        item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader("チャンネル", channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } } }
+        items(Channels.shown(channels, channelsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
         if (!channelsFolded) {
-            if (channels.isEmpty()) item { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") }
-            if (!unreadOnly && !isGuest) item { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) }
+            if (channels.isEmpty()) item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") } }
+            if (!unreadOnly && !isGuest) item(key = "channels-browse") { Box(Modifier.folding(this)) { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) } }
         }
         // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
         val offerTimes = canCreateTimes && !unreadOnly
         if (sections.times.isNotEmpty() || offerTimes) {
             val timesFolded = FoldedSections.TIMES in folded
-            item { SectionHeader("Times", timesFolded) { onToggleFolded(FoldedSections.TIMES) } }
-            items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-            if (offerTimes && !timesFolded) item { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) }
+            item(key = "header:times") { Box(Modifier.folding(this)) { SectionHeader("Times", timesFolded) { onToggleFolded(FoldedSections.TIMES) } } }
+            items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
+            if (offerTimes && !timesFolded) item(key = "times-create") { Box(Modifier.folding(this)) { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) } }
         }
         val dmsFolded = FoldedSections.DMS in folded
-        item { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } }
-        items(Channels.shown(dms, dmsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }) }
-        if (dms.isEmpty() && !dmsFolded) item { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") }
+        item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
+        items(Channels.shown(dms, dmsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
+        if (dms.isEmpty() && !dmsFolded) item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") } }
         if (browsable.isNotEmpty()) {
-            item { SectionHeader("参加できるチャンネル") }
+            item(key = "header:browse") { Box(Modifier.folding(this)) { SectionHeader("参加できるチャンネル") } }
             items(browsable, key = { "browse:" + it.id }) { channel ->
-                Row(Modifier.fillMaxWidth().clickable { onJoin(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.folding(this).fillMaxWidth().clickable { onJoin(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     ChannelGlyph(channel)
                     Spacer(Modifier.width(12.dp))
                     Text(channel.channel.name ?: "", modifier = Modifier.weight(1f))
@@ -712,6 +718,13 @@ private fun ChannelList(
         item { Spacer(Modifier.padding(bottom = 24.dp)) }
     }
 }
+
+/**
+ * A sidebar row appearing, leaving or moving as a section folds (testers, 2026-09-29: it opened and closed at once):
+ * leaving rows fade before the rows below slide over them.
+ */
+private fun Modifier.folding(scope: LazyItemScope): Modifier =
+    with(scope) { this@folding.animateItem(fadeInSpec = tween(220), placementSpec = tween(260), fadeOutSpec = tween(120)) }
 
 /**
  * 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
@@ -819,7 +832,8 @@ private fun Modifier.foldable(collapsed: Boolean, onToggle: () -> Unit): Modifie
 
 @Composable
 private fun FoldChevron(collapsed: Boolean) {
-    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp).rotate(if (collapsed) -90f else 0f))
+    val angle by animateFloatAsState(if (collapsed) -90f else 0f, label = "fold")
+    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp).rotate(angle))
 }
 
 @Composable
@@ -846,7 +860,7 @@ private fun ChannelGlyph(channel: ChannelState) {
 /** `version`: the partner's name, presence dot and status emoji come from the Store, not from `channel`. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
     val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
     val muted = Channels.isMuted(channel)
     val unread = Channels.hasUnread(channel, store.me?.id)
@@ -854,7 +868,7 @@ private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClic
     val quietDot = Channels.showsQuietDot(channel, store.me?.id)
     val badge = Channels.badgeCount(channel)
     Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
+        modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (channel.channel.isDm) {

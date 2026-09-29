@@ -12,6 +12,7 @@ import { channelTitle } from "./MainScreen";
 import { Button, IconButton } from "./primitives";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
+import { READER_BACK } from "../platform/idle";
 
 /** The right pane: one thread (parent + replies) with its own composer, follow toggle and read position. */
 export function ThreadPane({ controller, channel, parentId, onClose }: { controller: AppController; channel: ChannelState; parentId: string; onClose: () => void }) {
@@ -140,9 +141,11 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     const el = list.current;
     el?.addEventListener("scroll", markVisible, { passive: true });
     window.addEventListener("focus", markVisible);
+    window.addEventListener(READER_BACK, markVisible);
     return () => {
       el?.removeEventListener("scroll", markVisible);
       window.removeEventListener("focus", markVisible);
+      window.removeEventListener(READER_BACK, markVisible);
     };
   }, [parentId, replies.length, lastReplyId, engine, ready, state?.last_read_seq]);
 
@@ -207,8 +210,8 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <div className="py-8 text-center text-sm text-muted">メッセージが見つかりません</div>
         )}
       </div>
-      {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}
       {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
+      {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}
     </aside>
   );
 }

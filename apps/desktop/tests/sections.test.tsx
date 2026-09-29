@@ -41,8 +41,12 @@ describe("sidebar sections (M26, Slack)", () => {
     expect(header.textContent).toContain("🔬");
     expect(header.getAttribute("aria-expanded")).toBe("false");
     const section = header.closest("section")!;
-    expect(within(section).queryByText("papers")).toBeNull(); // folded, nothing unread
-    expect(within(section).getByText("lab")).toBeTruthy(); // unread: still shown
+    // Folded, nothing unread: folded away (it slides shut), out of reach of the keyboard and screen readers.
+    const papers = within(section).getByText("papers").closest("li")!;
+    expect(papers.className).toContain("folded");
+    expect(papers.getAttribute("aria-hidden")).toBe("true");
+    expect(within(section).queryByRole("button", { name: "papers" })).toBeNull();
+    expect(within(section).getByRole("button", { name: "lab" })).toBeTruthy(); // unread: still shown
     fireEvent.click(header);
     expect(w.controller.setSectionCollapsed).toHaveBeenCalledWith("s1", false);
   });
@@ -69,8 +73,8 @@ describe("sidebar sections (M26, Slack)", () => {
     const w = world();
     w.view();
     fireEvent.click(screen.getByRole("button", { name: /^チャンネル$/ }));
-    expect(screen.queryByText("random")).toBeNull();
-    expect(screen.getByText("general")).toBeTruthy(); // the open conversation stays
+    expect(screen.queryByRole("button", { name: "random" })).toBeNull();
+    expect(screen.getByRole("button", { name: "general" })).toBeTruthy(); // the open conversation stays
     expect(localStorage.getItem("chikuwa.sidebar.folded")).toContain("channels");
   });
 
