@@ -100,6 +100,7 @@
 		B1CDDE952F0B4087B861A27D /* Totp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F8745FD65119CB04999AF56 /* Totp.swift */; };
 		B229EA04E953D0194682727E /* ApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20149D2520CFB689B293AEB2 /* ApiClient.swift */; };
 		B4CD4CF8E05DA616E9EBA973 /* UserScrollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A51B81551C8578ACBBC035 /* UserScrollTests.swift */; };
+		2B3C4D5E6F708192A3B4C5D6 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F708192A3B4C5 /* ImageViewerTests.swift */; };
 		B60B25516F421B2D785D44C4 /* ChannelIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 040510582EF3182E66D21640 /* ChannelIntroView.swift */; };
 		BAC374BD1E76EA42F1E24852 /* TypingLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234BE2448E1022BD0D1D55EB /* TypingLine.swift */; };
 		BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7251E3E02E155A12489239 /* ChannelListView.swift */; };
@@ -235,6 +236,7 @@
 		9FA240682AC06B184CE133E2 /* ShareTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareTests.swift; sourceTree = "<group>"; };
 		9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRulesTests.swift; sourceTree = "<group>"; };
 		A0A51B81551C8578ACBBC035 /* UserScrollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScrollTests.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F708192A3B4C5 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
 		A676948BB8E2458464753586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A8D41462A5457300887E01A5 /* PeopleList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleList.swift; sourceTree = "<group>"; };
 		A980BB847A9CA5813A391341 /* DraftSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSync.swift; sourceTree = "<group>"; };
@@ -375,6 +377,7 @@
 				86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */,
 				AEEE327A40F68B8450858B9E /* EmojiTests.swift */,
 				048A41BC92EAD6644AFA7294 /* FakeServer.swift */,
+				1A2B3C4D5E6F708192A3B4C5 /* ImageViewerTests.swift */,
 				0FB071937EF97C9E53923BC8 /* InviteTests.swift */,
 				22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */,
 				C329DDC26BD5759D01F4ADDF /* KeyboardBehaviorTests.swift */,
@@ -662,6 +665,7 @@
 				BDF7ED16F69E6499A10F480F /* TotpTests.swift in Sources */,
 				21B7288F1CFA4D0BE7A342FD /* UnreadBannerSnapshotTests.swift in Sources */,
 				FF91D7B337478DE41D4D5486 /* UnreadRangeTests.swift in Sources */,
+				2B3C4D5E6F708192A3B4C5D6 /* ImageViewerTests.swift in Sources */,
 				B4CD4CF8E05DA616E9EBA973 /* UserScrollTests.swift in Sources */,
 				530944C23EA2DF5F405D1D04 /* WhoTests.swift in Sources */,
 				A1719158034259BB3144A2D9 /* WorkspacesTests.swift in Sources */,
