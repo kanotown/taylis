@@ -70,4 +70,14 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(BodyTokenizer.parseBlocks("| a | b |\n| --- |").count, 1)
         XCTAssertEqual(Timeline.excerpt("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |", hasAttachments: false, users: [:]), "項目 担当 API 田中")
     }
+
+    /// The one-line excerpt matches the web and Android (parity audit 2026-09-29): italics and links keep their text,
+    /// and it stops at 80 characters.
+    func testExcerptDropsItalicsAndLinkMarkersAndStopsAtEighty() {
+        XCTAssertEqual(Timeline.excerpt("*強調* と _斜体_ と [資料](https://example.com/a)", hasAttachments: false, users: [:]), "強調 と 斜体 と 資料")
+        let long = String(repeating: "あ", count: 100)
+        let excerpt = Timeline.excerpt(long, hasAttachments: false, users: [:])
+        XCTAssertEqual(excerpt.count, 80)
+        XCTAssertTrue(excerpt.hasSuffix("…"))
+    }
 }

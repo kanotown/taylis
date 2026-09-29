@@ -37,7 +37,12 @@ enum Timeline {
         for pattern in ["```[a-zA-Z0-9_+-]*", "^#{1,3}\\s+", "^>\\s?", "^\\s*[-*]\\s+", "^\\s*\\d+\\.\\s+", "\\*\\*", "~~", "`"] {
             text = text.replacingOccurrences(of: pattern, with: "", options: [.regularExpression], range: nil)
         }
-        return text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        // Italics and links keep their text (the web and Android; parity audit 2026-09-29).
+        for (pattern, template) in [("\\*([^*\\n]+)\\*", "$1"), ("_([^_\\n]+)_", "$1"), ("\\[([^\\]\\n]+)\\]\\(https?://[^\\s)]+\\)", "$1")] {
+            text = text.replacingOccurrences(of: pattern, with: template, options: [.regularExpression], range: nil)
+        }
+        let line = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        return line.count > 80 ? String(line.prefix(79)) + "…" : line // the same cap as the web and Android
     }
 
     static let groupWindow: TimeInterval = 5 * 60
