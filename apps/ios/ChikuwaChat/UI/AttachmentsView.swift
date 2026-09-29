@@ -86,7 +86,7 @@ struct AttachmentsView: View {
                 let columns = Self.photoColumns(photos.count)
                 let side = (Self.photoGridWidth - CGFloat(columns - 1) * 4) / CGFloat(columns)
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: 4), count: columns), alignment: .leading, spacing: 4) {
-                    ForEach(photos) { photo in ThumbnailView(attachment: photo, controller: controller, square: side) }
+                    ForEach(photos) { photo in ThumbnailView(attachment: photo, controller: controller, square: side, gallery: photos) }
                 }
                 .frame(width: Self.photoGridWidth, alignment: .leading)
             }
@@ -302,6 +302,8 @@ struct ThumbnailView: View {
     @Bindable var controller: AppController
     /// A square tile of this side, the photo cropped to fill it (several photos in one message).
     var square: CGFloat? = nil
+    /// The message's attachments: the viewer pages through its photos, opening on this one.
+    var gallery: [AttachmentOut] = []
     @State private var loader = AttachmentImageLoader()
     @State private var attempt = 0
     @State private var viewing = false
@@ -357,7 +359,10 @@ struct ThumbnailView: View {
                 return try await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail")
             }
         }
-        .fullScreenCover(isPresented: $viewing) { ImageViewer(attachment: attachment, controller: controller) }
+        .fullScreenCover(isPresented: $viewing) {
+            let pages = ImageGallery.pages(for: attachment, in: gallery)
+            ImageViewer(attachments: pages.items, start: pages.start, controller: controller)
+        }
     }
 }
 
@@ -385,7 +390,7 @@ struct PendingAttachmentsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(items) { item in
-                        PendingTile(item: item, controller: controller) { onRemove(item) }
+                        PendingTile(item: item, gallery: items, controller: controller) { onRemove(item) }
                     }
                     if uploading > 0 {
                         ProgressView()
@@ -405,6 +410,8 @@ struct PendingAttachmentsView: View {
 private struct PendingTile: View {
     static let side: CGFloat = 64
     let item: AttachmentOut
+    /// The waiting uploads: the viewer pages through their photos.
+    let gallery: [AttachmentOut]
     let controller: AppController?
     let onRemove: () -> Void
     @State private var thumbnail = AttachmentImageLoader()
@@ -435,7 +442,10 @@ private struct PendingTile: View {
                 }
             }
             .fullScreenCover(isPresented: $viewing) {
-                if let controller { ImageViewer(attachment: item, controller: controller) }
+                if let controller {
+                    let pages = ImageGallery.pages(for: item, in: gallery)
+                    ImageViewer(attachments: pages.items, start: pages.start, controller: controller)
+                }
             }
             .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
     }
