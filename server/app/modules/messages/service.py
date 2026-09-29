@@ -145,6 +145,7 @@ async def create_message(
                         "question": data.poll.question,
                         "options": data.poll.options,
                         "multiple": data.poll.multiple,
+                        "anonymous": data.poll.anonymous,
                         "closed_at": None,
                     }
                     if data.poll
@@ -198,14 +199,15 @@ async def create_message(
 async def list_history(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, *, before_seq: int | None, limit: int
 ) -> HistoryOut:
-    await channels.require_member(db, actor.id, channel_id)
+    # M27: also a public channel the actor has not joined (its preview, Slack).
+    await channels.require_readable(db, actor, channel_id)
     # Read the channel cursor BEFORE the messages so the returned cursor is conservative
     # (SYNC_PROTOCOL.md §4.3).
     channel_last_seq = await repo.get_channel_last_seq(db, channel_id)
     rows = await repo.list_history(db, channel_id, before_seq=before_seq, limit=limit + 1)
     return HistoryOut(
         channel_last_seq=channel_last_seq,
-        messages=await messages_out(db, rows[:limit]),
+        messages=await messages_out(db, rows[:limit], actor.id),
         has_more=len(rows) > limit,
     )
 
@@ -213,17 +215,17 @@ async def list_history(
 async def message_context(
     db: AsyncSession, actor: User, message_id: uuid.UUID, limit: int
 ) -> list[MessageOut]:
-    message = await get_message(db, actor, message_id)
+    message = await get_readable_message(db, actor, message_id)
     if message.parent_id is not None:
-        message = await get_message(db, actor, message.parent_id)
-    return await messages_out(db, await repo.list_context(db, message, limit))
+        message = await get_readable_message(db, actor, message.parent_id)
+    return await messages_out(db, await repo.list_context(db, message, limit), actor.id)
 
 
 async def list_delta(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, *, since_seq: int, limit: int
 ) -> DeltaOut:
     """State-based delta sync (SYNC_PROTOCOL.md §4.3)."""
-    await channels.require_member(db, actor.id, channel_id)
+    await channels.require_readable(db, actor, channel_id)
     # Read the cursor BEFORE the rows so a cursor without has_more is conservative.
     channel_last_seq = await repo.get_channel_last_seq(db, channel_id)
     rows = await repo.list_delta(db, channel_id, since_seq=since_seq, limit=limit + 1)
@@ -239,7 +241,7 @@ async def list_delta(
     else:
         next_since_seq = max(channel_last_seq, since_seq)
     return DeltaOut(
-        messages=await messages_out(db, rows),
+        messages=await messages_out(db, rows, actor.id),
         next_since_seq=next_since_seq,
         has_more=has_more,
     )
@@ -259,8 +261,21 @@ async def get_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> M
     return message
 
 
-async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut]:
-    """Response shapes with reactions and attachments filled in (DATA_MODEL.md)."""
+async def get_readable_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
+    """A message to read, also in a public channel the actor has not joined (M27); changing it
+    goes through get_message (members only)."""
+    message = await repo.get_message(db, message_id)
+    if message is None or message.is_deleted:
+        raise not_found("message_not_found", "Message not found")
+    await channels.require_readable(db, actor, message.channel_id)
+    return message
+
+
+async def messages_out(
+    db: AsyncSession, rows: list[Message], viewer: uuid.UUID | None = None
+) -> list[MessageOut]:
+    """Response shapes with reactions and attachments filled in (DATA_MODEL.md); `viewer` as in
+    to_message_out."""
     live = [m.id for m in rows if not m.is_deleted]
     reactions = await repo.reactions_for(db, live)
     files = await attachments.for_messages(db, live)
@@ -268,7 +283,12 @@ async def messages_out(db: AsyncSession, rows: list[Message]) -> list[MessageOut
     acks = await repo.acks_for(db, [m.id for m in rows if m.ack_requested and not m.is_deleted])
     return [
         to_message_out(
-            m, reactions.get(m.id, []), files.get(m.id, []), votes.get(m.id, []), acks.get(m.id, [])
+            m,
+            reactions.get(m.id, []),
+            files.get(m.id, []),
+            votes.get(m.id, []),
+            acks.get(m.id, []),
+            viewer,
         )
         for m in rows
     ]
@@ -279,8 +299,10 @@ async def live_bodies(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[uu
     return await repo.live_bodies(db, message_ids)
 
 
-async def message_out(db: AsyncSession, message: Message) -> MessageOut:
-    return (await messages_out(db, [message]))[0]
+async def message_out(
+    db: AsyncSession, message: Message, viewer: uuid.UUID | None = None
+) -> MessageOut:
+    return (await messages_out(db, [message], viewer))[0]
 
 
 async def _require_live_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
@@ -373,7 +395,8 @@ async def list_mentions(
 ) -> MentionListOut:
     rows = await repo.list_mentions(db, actor.id, before=cursor, limit=limit)
     return MentionListOut(
-        items=await messages_out(db, rows), next_cursor=rows[-1].created_at if rows else None
+        items=await messages_out(db, rows, actor.id),
+        next_cursor=rows[-1].created_at if rows else None,
     )
 
 
@@ -407,7 +430,7 @@ async def list_pins(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, limit: int
 ) -> list[MessageOut]:
     await channels.require_member(db, actor.id, channel_id)
-    return await messages_out(db, await repo.list_pinned(db, channel_id, limit=limit))
+    return await messages_out(db, await repo.list_pinned(db, channel_id, limit=limit), actor.id)
 
 
 async def list_revisions(
@@ -458,15 +481,18 @@ async def set_vote(
     current = await repo.user_votes(db, message.id, actor.id)
     if present:
         if index in current:
-            return await message_out(db, message), False
+            return await message_out(db, message, actor.id), False
         if not poll.get("multiple") and current:
             await repo.remove_votes(db, message.id, actor.id)
         await repo.add_vote(db, message.id, actor.id, index)
     else:
         if index not in current:
-            return await message_out(db, message), False
+            return await message_out(db, message, actor.id), False
         await repo.remove_votes(db, message.id, actor.id, index)
-    return await _bump_and_announce(db, message, "poll"), True
+    await _bump_and_announce(db, message, "poll")
+    # The event left out the voter's own votes (every member gets the same one); the response
+    # has them.
+    return await message_out(db, message, actor.id), True
 
 
 async def set_ack(
@@ -497,9 +523,10 @@ async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Me
     if message.sender_id != actor.id:
         raise forbidden("forbidden", "Only the author can close a poll")
     if poll.get("closed_at"):
-        return await message_out(db, message)
+        return await message_out(db, message, actor.id)
     message.poll = {**poll, "closed_at": utcnow().isoformat()}
-    return await _bump_and_announce(db, message, "poll")
+    await _bump_and_announce(db, message, "poll")
+    return await message_out(db, message, actor.id)
 
 
 async def set_reaction(
@@ -531,8 +558,8 @@ async def set_reaction(
 
 async def list_replies(db: AsyncSession, actor: User, parent_id: uuid.UUID) -> list[MessageOut]:
     """GET /messages/{id}/replies: a thread is small enough to return whole, oldest first."""
-    parent = await get_message(db, actor, parent_id)
-    return await messages_out(db, await repo.list_replies(db, parent.id))
+    parent = await get_readable_message(db, actor, parent_id)
+    return await messages_out(db, await repo.list_replies(db, parent.id), actor.id)
 
 
 async def export_rows(db: AsyncSession, channel_id: uuid.UUID) -> list[MessageOut]:

@@ -38,7 +38,7 @@ async def list_threads(
     rows = await repo.list_followed(
         db, user.id, unread_only=filter == "unread", before=cursor, limit=limit
     )
-    parents = await messages.messages_out(db, [parent for parent, _ in rows])
+    parents = await messages.messages_out(db, [parent for parent, _ in rows], user.id)
     return await service.list_threads(db, user.id, parents, rows)
 
 

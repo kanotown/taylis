@@ -346,6 +346,18 @@ else:
 `channel.*` イベントはデータを伴うのでそのまま反映する。取りこぼしは次回 bootstrap で回復する。
 `channel.member_removed` が自分宛てなら、そのチャンネルのローカルデータを削除する。
 
+### 7.6.1 参加前のプレビュー (M27)
+
+公開チャンネルは参加する前に中を見られる (Slack)。ゲスト以外は未参加でも履歴・スレッドの返信・単体のメッセージを読める
+(SECURITY.md §3.2)。
+
+- 一覧の「参加できるチャンネル」・チャンネルを探す画面・チャンネルへのリンクから開くと、すぐには参加せず会話を読み取り専用で出す。
+  下の入力欄の代わりに「#name に参加する」。参加すると通常の会話になる (`channel.member_added` / 参加の応答から §7.3)。
+- イベントはメンバーにしか届かないので、プレビューは開いた時の `GET /channels/{id}/messages` の結果 (上へのスクロールで前のページ)。
+  カーソル・既読位置・未読は持たず、既読も送らない。ローカルの永続キャッシュ (SQLite / スナップショット) にも書かない。
+  閉じるか別の会話を開いたら捨てる。
+- 行のタップでスレッドを開けるが返信欄は無い。リアクション・投票・確認・長押しの操作は出さない (サーバも 403)。
+
 ### 7.7 保持件数の上限 (M22)
 
 端末がメモリとローカルストアに持つメッセージは、チャンネルごとに最新 **500 件**まで (3 端末共通)。持つ件数に比例して
@@ -386,6 +398,16 @@ apply read.updated(e):
 ```
 
 同じ `updated_seq` のメッセージが 2 回来た場合は 2 回目を無視してよい (内容は同じ)。
+
+例外は投票の `poll.mine` (M27、DATA_MODEL.md「投票」): 本人宛ての応答にだけ入り、イベントでは null。
+
+```
+merge poll.mine (upsert の後):
+    if m.poll and m.poll.mine is None and local and local.poll:
+        stored.poll.mine = local.poll.mine          # イベントは前に知っていた自分の票を消さない
+    if local and m.updated_seq == local.updated_seq and m.poll and m.poll.mine is not None:
+        local.poll.mine = m.poll.mine               # 投票の応答がイベントより後に着いても自分の票は入る
+```
 
 ### 下書きの同期 (M15d)
 

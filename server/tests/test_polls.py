@@ -42,8 +42,11 @@ async def test_poll_lifecycle(
         "question": "ランチはどこ?",
         "options": ["そば", "カレー", "パスタ"],
         "multiple": False,
+        "anonymous": False,
         "closed_at": None,
         "votes": [[], [], []],
+        "counts": [0, 0, 0],
+        "mine": [],
     }
     bad = await _poll(client, channel["id"], options=["ひとつ"])
     assert bad.status_code == 422
@@ -103,3 +106,54 @@ async def test_poll_lifecycle(
     await client.put(f"/api/v1/messages/{multi['id']}/poll/votes/0")
     both = await client.put(f"/api/v1/messages/{multi['id']}/poll/votes/1")
     assert both.json()["poll"]["votes"] == [[str(alice.id)], [str(alice.id)], []]
+
+
+async def test_anonymous_poll_names_nobody_but_tells_each_voter_their_own(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """M27: an anonymous poll carries counts, never voter ids; a response to a voter says what
+    they voted for (the event, the same for every member, does not)."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    channel = (await client.post("/api/v1/channels", json={"name": "vote"})).json()
+    await client.post(f"/api/v1/channels/{channel['id']}/members", json={"user_id": str(bob.id)})
+    poll = (await _poll(client, channel["id"], anonymous=True, multiple=True)).json()
+    assert poll["poll"]["anonymous"] is True
+
+    as_user(bob)
+    voted = (await client.put(f"/api/v1/messages/{poll['id']}/poll/votes/1")).json()["poll"]
+    assert voted["votes"] == [[], [], []] and voted["counts"] == [0, 1, 0] and voted["mine"] == [1]
+    as_user(alice)
+    await client.put(f"/api/v1/messages/{poll['id']}/poll/votes/1")
+    mine = (await client.put(f"/api/v1/messages/{poll['id']}/poll/votes/2")).json()["poll"]
+    assert mine["counts"] == [0, 2, 1] and mine["mine"] == [1, 2]
+
+    # History, the message itself and the thread of events: counts only; the reader's own votes.
+    as_user(bob)
+    history = (await client.get(f"/api/v1/channels/{channel['id']}/messages")).json()
+    row = next(m for m in history["messages"] if m["id"] == poll["id"])["poll"]
+    assert row["votes"] == [[], [], []] and row["counts"] == [0, 2, 1] and row["mine"] == [1]
+    single = (await client.get(f"/api/v1/messages/{poll['id']}")).json()["poll"]
+    assert single["mine"] == [1]
+    events = (
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.event_type == "message.updated")))
+        .scalars()
+        .all()
+    )
+    for event in events:
+        sent = event.payload["message"]["poll"]
+        assert sent["votes"] == [[], [], []] and sent["mine"] is None
+        assert str(bob.id) not in str(event.payload) and str(alice.id) not in str(sent)
+
+
+async def test_a_named_poll_says_who_voted_and_what_i_voted_for(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    channel = (await client.post("/api/v1/channels", json={"name": "named"})).json()
+    poll = (await _poll(client, channel["id"])).json()
+    voted = (await client.put(f"/api/v1/messages/{poll['id']}/poll/votes/0")).json()["poll"]
+    assert voted["votes"] == [[str(alice.id)], [], []]
+    assert voted["counts"] == [1, 0, 0] and voted["mine"] == [0]

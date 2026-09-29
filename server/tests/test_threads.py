@@ -104,9 +104,12 @@ async def test_replies_update_the_parent_and_stay_out_of_history(
     removed = next(e for e in events if e.event_type == "message.deleted")
     assert removed.payload["parent_thread"]["reply_count"] == 1
 
-    # Non-members cannot read a thread.
+    # A public channel's thread is read before joining (M27, its preview); not by a guest.
     dave = await make_user(db, "dave")
     as_user(dave)
+    assert (await client.get(f"/api/v1/messages/{parent['id']}/replies")).status_code == 200
+    visitor = await make_user(db, "visitor", role="guest")
+    as_user(visitor)
     assert (await client.get(f"/api/v1/messages/{parent['id']}/replies")).status_code == 403
 
 
@@ -166,7 +169,10 @@ async def test_search_context_requires_channel_membership(
     alice = await make_user(db, "alice")
     bob = await make_user(db, "bob")
     as_user(alice)
-    cid = (await client.post("/api/v1/channels", json={"name": "context"})).json()["id"]
+    # Private: a public channel is read before joining (M27).
+    cid = (
+        await client.post("/api/v1/channels", json={"name": "context", "type": "private"})
+    ).json()["id"]
     parent = await _post(client, cid, "private content")
     reply = await _post(client, cid, "private reply", parent["id"])
     as_user(bob)

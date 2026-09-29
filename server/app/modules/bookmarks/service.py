@@ -48,7 +48,7 @@ async def list_bookmarks(
     db: AsyncSession, actor: User, *, cursor: datetime | None, limit: int
 ) -> BookmarkListOut:
     rows = await repo.list_for_user(db, actor.id, before=cursor, limit=limit)
-    outs = await messages.messages_out(db, [message for _, message in rows])
+    outs = await messages.messages_out(db, [message for _, message in rows], actor.id)
     items = [
         BookmarkItem(message=out, created_at=bookmark.created_at)
         for out, (bookmark, _) in zip(outs, rows, strict=True)

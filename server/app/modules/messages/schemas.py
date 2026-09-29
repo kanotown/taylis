@@ -31,6 +31,8 @@ class PollCreate(BaseModel):
     question: str = Field(min_length=1, max_length=200)
     options: list[str] = Field(min_length=2, max_length=10)
     multiple: bool = False
+    # M27: nobody sees who voted, only how many (set when the poll is made).
+    anonymous: bool = False
 
     @field_validator("options")
     @classmethod
@@ -47,9 +49,17 @@ class PollOut(BaseModel):
     question: str
     options: list[str]
     multiple: bool
+    # M27: an anonymous poll names no voters: `votes` is empty for every option, `counts` says
+    # how many.
+    anonymous: bool = False
     closed_at: datetime | None = None
-    # Who voted for each option, in order of voting; counts and "mine" are derived on the client.
+    # Who voted for each option, in order of voting (empty lists in an anonymous poll).
     votes: list[list[UUID]]
+    # How many voted for each option.
+    counts: list[int] = []
+    # The options the viewer voted for, in a response to them. None in events: every member gets
+    # the same one, so a client keeps what it knew (DATA_MODEL.md).
+    mine: list[int] | None = None
 
 
 Priority = Literal["important", "urgent"]
@@ -181,7 +191,9 @@ def reactions_out(reactions: Sequence[Reaction]) -> list[ReactionOut]:
     return [ReactionOut(emoji=emoji, count=len(ids), user_ids=ids) for emoji, ids in groups.items()]
 
 
-def poll_out(data: dict[str, Any] | None, votes: Sequence[PollVote] = ()) -> PollOut | None:
+def poll_out(
+    data: dict[str, Any] | None, votes: Sequence[PollVote] = (), viewer: UUID | None = None
+) -> PollOut | None:
     if not data:
         return None
     options = list(data.get("options", []))
@@ -190,12 +202,18 @@ def poll_out(data: dict[str, Any] | None, votes: Sequence[PollVote] = ()) -> Pol
         if 0 <= vote.option_index < len(options):
             per_option[vote.option_index].append(vote.user_id)
     closed = data.get("closed_at")
+    anonymous = bool(data.get("anonymous", False))
     return PollOut(
         question=str(data.get("question", "")),
         options=options,
         multiple=bool(data.get("multiple", False)),
+        anonymous=anonymous,
         closed_at=datetime.fromisoformat(closed) if closed else None,
-        votes=per_option,
+        votes=[[] for _ in options] if anonymous else per_option,
+        counts=[len(voters) for voters in per_option],
+        mine=None
+        if viewer is None
+        else [i for i, voters in enumerate(per_option) if viewer in voters],
     )
 
 
@@ -205,7 +223,9 @@ def to_message_out(
     attachments: Sequence[AttachmentOut] = (),
     votes: Sequence[PollVote] = (),
     acks: Sequence[MessageAck] = (),
+    viewer: UUID | None = None,
 ) -> MessageOut:
+    """`viewer`: the user a response is for (their own poll votes, M27); None for events."""
     deleted = message.is_deleted
     return MessageOut(
         id=message.id,
@@ -229,7 +249,7 @@ def to_message_out(
         deleted=deleted,
         pinned_at=None if deleted else message.pinned_at,
         pinned_by=None if deleted else message.pinned_by,
-        poll=None if deleted else poll_out(message.poll, votes),
+        poll=None if deleted else poll_out(message.poll, votes, viewer),
         priority=message.priority,  # type: ignore[arg-type]
         ack_requested=message.ack_requested,
         acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],

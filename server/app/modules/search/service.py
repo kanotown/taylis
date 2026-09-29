@@ -164,7 +164,7 @@ async def _search_in_time(
         total = await repo.count(db, query=None, scope=scope, escaped=False)
     has_more = len(rows) > params.limit
     rows = rows[: params.limit]
-    outs = await messages.messages_out(db, [m for m, _ in rows])
+    outs = await messages.messages_out(db, [m for m, _ in rows], actor.id)
     hits = [SearchHit(message=out, score=score) for out, (_, score) in zip(outs, rows, strict=True)]
     return SearchOut(
         hits=hits,
