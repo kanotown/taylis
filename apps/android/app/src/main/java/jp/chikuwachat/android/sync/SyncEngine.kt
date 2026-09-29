@@ -803,7 +803,14 @@ class SyncEngine(
         currentChannelId = channelId
         if (previous != null && previous != channelId) trimLater(previous) // §7.7: the conversation just left
         unreadHold.keys.filter { it != channelId }.forEach { unreadHold.remove(it) }
+        // §7.6.1: a preview goes when another conversation opens, or when this one was joined meanwhile.
+        val previewing = store.channel(channelId)?.isMember == false
+        store.preview?.let { held -> if (held.channelId != channelId || !previewing) store.setPreview(null) }
         if (_status.value != EngineStatus.ONLINE) return
+        if (previewing) {
+            loadPreview(channelId)
+            return
+        }
         scope.launch { loadLinks(channelId) }
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
@@ -1005,7 +1012,8 @@ class SyncEngine(
      */
     suspend fun catchUp(channelId: String, countedTo: Int? = null) {
         catchUps += 1
-        val channel = store.channel(channelId) ?: return
+        // A public channel only browsed has no timeline here: its preview (§7.6.1) is read apart and never synced.
+        val channel = store.channel(channelId)?.takeIf { it.isMember } ?: return
         val counted = countedTo ?: channel.lastSeq
         val brought = LinkedHashMap<String, MessageOut>() // by id: a row changed between two delta pages counts once, as it is now
         try {
@@ -1088,6 +1096,55 @@ class SyncEngine(
         }
         return covered
     }
+
+    // --- §7.6.1 preview before joining -------------------------------------------------------------
+
+    /**
+     * A public channel I have not joined, opened to read (§7.6.1): the latest page of GET /channels/{id}/messages goes
+     * into the store's preview, in memory only. No cursor, read position or unread; nothing persisted, no read mark,
+     * no typing. Not on the work queue: it touches none of the synced state, and a slow page must not hold live
+     * events back. Opening it again while its rows are held (a reconnect) keeps them; a failed load is tried again.
+     * Guests never preview (SECURITY.md §3.2; the server refuses too).
+     */
+    private suspend fun loadPreview(channelId: String) {
+        if (store.me?.role == "guest") return
+        val held = store.preview?.takeIf { it.channelId == channelId }
+        if (held?.loaded == true) return
+        if (held == null) store.setPreview(ChannelPreview(channelId))
+        val page = try {
+            api.history(channelId, null, options.pageSize)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            store.updatePreview(channelId) { it.copy(failed = true) }
+            return
+        }
+        store.updatePreview(channelId) { it.withPage(page, older = false) }
+    }
+
+    /** §7.6.1: the page before the preview's oldest row, as the reader scrolls up. */
+    suspend fun loadOlderPreview(channelId: String) {
+        if (_status.value != EngineStatus.ONLINE) return
+        val held = store.preview?.takeIf { it.channelId == channelId && it.loaded && it.hasOlder } ?: return
+        val before = held.oldestSeq ?: return
+        val page = api.history(channelId, before, options.pageSize)
+        store.updatePreview(channelId) { it.withPage(page, older = true) }
+    }
+
+    /**
+     * §7.6.1: a thread opened from a preview, read-only: its replies go into the preview too (a reply's parent is
+     * among the preview rows, or the context a link brought). A thread opened before the page arrived starts the preview;
+     * replies that come back after the preview was closed are dropped.
+     */
+    suspend fun loadPreviewReplies(channelId: String, parentId: String) {
+        if (_status.value != EngineStatus.ONLINE || store.channel(channelId)?.isMember != false) return
+        if (store.preview?.channelId != channelId) store.setPreview(ChannelPreview(channelId))
+        val replies = api.replies(parentId).filter { !it.deleted }.map { MessageState.from(it) }
+        store.updatePreview(channelId) { it.copy(replies = it.replies + (parentId to replies)) }
+    }
+
+    /** The previewed conversation closed: its rows go (§7.6.1). */
+    fun closePreview() = store.setPreview(null)
 
     /** The oldest seq a history page reaches; 0 once nothing older is left. */
     private fun oldestOf(page: HistoryOut): Int = if (page.hasMore) page.messages.minOfOrNull { it.seq } ?: 0 else 0

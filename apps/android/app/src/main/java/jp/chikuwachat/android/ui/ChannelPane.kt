@@ -381,7 +381,7 @@ private suspend fun LazyListState.showAtTop(index: Int) {
 }
 
 @Composable
-private fun DaySeparator(label: String) {
+internal fun DaySeparator(label: String) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         HorizontalDivider(Modifier.weight(1f))
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp))
@@ -419,6 +419,8 @@ private fun ReplyLine(message: MessageState, store: Store, version: Int, onOpenT
 /**
  * One message. `version` (the Store's) makes the row re-read what lives in the Store rather than in
  * `message` — names, status emoji, 「保存済み」, custom emoji images — which strong skipping would keep stale.
+ * `readOnly`: a channel previewed before joining (SYNC_PROTOCOL.md §7.6.1): no long-press sheet, reactions, votes or
+ * acknowledgements (the server refuses them from non-members); who reacted or voted can still be read.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -438,9 +440,11 @@ fun MessageRow(
     onDelete: () -> Unit,
     onOpenThread: (() -> Unit)? = null,
     onMarkUnread: (() -> Unit)? = null,
+    readOnly: Boolean = false,
 ) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
+    var showingReactors by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var savingEdit by remember { mutableStateOf(false) }
     val rowScope = rememberCoroutineScope()
@@ -454,7 +458,7 @@ fun MessageRow(
     val rowClick = Modifier.combinedClickable(
         onClickLabel = if (onOpenThread != null) "スレッドを開く" else null,
         onLongClickLabel = "メッセージの操作",
-        onLongClick = if (message.pending) null else ({ menuOpen = true }),
+        onLongClick = if (message.pending || readOnly) null else ({ menuOpen = true }),
         // A tap on a message in the channel opens its thread, to read or to reply (Slack; testers, 2026-09-29; a grouped
         // row showed its time before, which its gutter shows now). With the keyboard up the tap only closes it
         // (closesKeyboardOnTap), as on iOS.
@@ -522,13 +526,14 @@ fun MessageRow(
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                     )
                 }
-                message.poll?.let { PollCard(it, message, controller) }  // M14b
-                if (message.ackRequested && !message.pending) AckBar(message, store, controller, version)  // M15e
+                message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
+                if (message.ackRequested && !message.pending) AckBar(message, store, controller, version, readOnly)  // M15e
                 AttachmentList(message.attachments, controller)
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(
-                    message, store, onToggle = onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
-                    onAdd = if (message.pending) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
+                    message, store, onToggle = if (readOnly) null else onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
+                    onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
+                    onShowReactors = { showingReactors = true },  // M27
                 )
                 if (message.replyCount > 0 && onOpenThread != null) {
                     TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
@@ -559,9 +564,11 @@ fun MessageRow(
             onShare = { sharing = true },
             quick = QuickReactions.pick(QuickReactions.read(controller.prefs)),
             onMoreReactions = { pickingReaction = true },
+            onShowReactors = if (message.reactions.isEmpty()) null else ({ showingReactors = true }),
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),
         )
     }
+    if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
     if (sharing) ShareDialog(controller, message, onDismiss = { sharing = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
     if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
@@ -675,7 +682,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         var pollOpen by remember { mutableStateOf(false) }
         if (pollOpen) PollDialog(
             onDismiss = { pollOpen = false },
-            onCreate = { question, options, multiple -> controller.createPoll(channelId, parentId, question, options, multiple) },
+            onCreate = { question, options, multiple, anonymous -> controller.createPoll(channelId, parentId, question, options, multiple, anonymous) },
             launch = { work -> controller.scope.launch { work() } },
         )
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {

@@ -168,8 +168,8 @@ class FakeServer {
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
-            requireMember(record.channel.id, userId)
-            return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }
+            requireReadable(record.channel.id, userId)
+            return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }.map { shaped(it, userId) }
         }
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut {
             maybeFail()
@@ -185,7 +185,8 @@ class FakeServer {
             return this@FakeServer.markRead(userId, channelId, lastReadSeq, mode = "set")
         }
         override suspend fun publicChannels(): List<ChannelOut> =
-            channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
+            if (users[userId]?.role == "guest") emptyList() // M13e: guests are shown only their own channels
+            else channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
         override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut { maybeFail(); return this@FakeServer.threads(userId, filter, cursor, limit) }
         override suspend fun threadState(messageId: String): ThreadState { maybeFail(); return this@FakeServer.threadState(userId, messageId) }
         override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState {
@@ -531,19 +532,71 @@ class FakeServer {
         return record
     }
 
+    /** M27 (SECURITY.md §3.2): reading also a public channel not joined, except for guests; writing stays with members. */
+    private fun requireReadable(channelId: String, userId: String): ChannelRecord {
+        val record = channels[channelId] ?: throw ApiException.Api(404, "channel_not_found", "not found")
+        if (userId in record.members || (record.channel.type == "public" && users[userId]?.role != "guest")) return record
+        throw ApiException.Api(403, "not_a_member", "not a member")
+    }
+
+    // --- polls (M14b, M27) ----------------------------------------------------------------------
+
+    /** message id → (user id, option) in the order voted: apart from the message, like the server's poll_votes. */
+    val pollVotes = HashMap<String, MutableList<Pair<String, Int>>>()
+
+    /**
+     * The wire shape of a message for `viewer` (DATA_MODEL.md 「投票」): counts per option, voters only for a named poll,
+     * and `mine` only in a response to the viewer (null = an event, the same for every member).
+     */
+    fun shaped(message: MessageOut, viewer: String?): MessageOut {
+        val poll = message.poll ?: return message
+        val votes = pollVotes[message.id] ?: emptyList()
+        val byOption = poll.options.indices.map { option -> votes.filter { it.second == option }.map { it.first } }
+        return message.copy(poll = poll.copy(
+            votes = if (poll.anonymous) byOption.map { emptyList() } else byOption,
+            counts = byOption.map { it.size },
+            mine = viewer?.let { v -> votes.filter { it.first == v }.map { it.second }.sorted() },
+        ))
+    }
+
+    /** POST /channels/{id}/messages with a poll: the response is the author's (with `mine`), the event everyone's. */
+    fun postPoll(channelId: String, senderId: String, question: String, options: List<String>, multiple: Boolean = false, anonymous: Boolean = false): MessageOut =
+        post(channelId, senderId, "📊 $question", poll = jp.chikuwachat.android.api.PollOut(question, options, multiple, anonymous = anonymous)).first
+
+    /** PUT / DELETE /messages/{id}/poll/votes/{option}: a change consumes a seq (message.updated change=poll). */
+    fun vote(channelId: String, userId: String, messageId: String, option: Int, present: Boolean): MessageOut {
+        val (record, message) = live(channelId, userId, messageId)
+        val poll = message.poll ?: throw ApiException.Api(404, "poll_not_found", "no poll")
+        if (poll.closedAt != null) throw ApiException.Api(409, "poll_closed", "closed")
+        val votes = pollVotes.getOrPut(messageId) { ArrayList() }
+        val had = (userId to option) in votes
+        if (present == had) return shaped(message, userId)
+        if (present) {
+            if (!poll.multiple) votes.removeAll { it.first == userId } // a single-answer poll moves the vote
+            votes.add(userId to option)
+        } else {
+            votes.remove(userId to option)
+        }
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq)
+        replace(record, updated, "message.updated", "poll")
+        return shaped(updated, userId)
+    }
+
     /**
      * `type` other than "user" is a system row: in the timeline, never unread (the server's reads.counts rule).
      * `scheduled`: a scheduled send going out (M12d), which does not read the channel for its sender.
      */
     fun post(
         channelId: String, senderId: String, body: String, clientMsgId: String? = null, parentId: String? = null, attachmentIds: List<String> = emptyList(),
-        options: SendOptions = SendOptions(), type: String = "user", scheduled: Boolean = false,
+        options: SendOptions = SendOptions(), type: String = "user", scheduled: Boolean = false, poll: jp.chikuwachat.android.api.PollOut? = null,
     ): Pair<MessageOut, Boolean> {
         val record = requireMember(channelId, senderId)
         val key = clientMsgId ?: nextId()
         byClientKey["$senderId:$key"]?.let { existing ->
             if (existing.channelId != channelId) throw ApiException.Api(409, "idempotency_conflict", "conflict")
-            return existing to false
+            return shaped(existing, senderId) to false
         }
         val parentIndex = parentId?.let { pid -> record.messages.indexOfFirst { it.id == pid && !it.deleted } }
         if (parentId != null && (parentIndex == null || parentIndex < 0)) throw ApiException.Api(404, "message_not_found", "parent not found")
@@ -557,6 +610,7 @@ class FakeServer {
             seq = seq, updatedSeq = seq, clientMsgId = key, body = body, type = type,
             mentionedUserIds = mentioned, mentionAll = Regex("<!(channel|here)>").containsMatchIn(body), createdAt = now(), deleted = false,
             attachments = attachmentIds.map { AttachmentOut(it, "file-$it", "application/octet-stream", 1, status = "attached", createdAt = now()) },
+            poll = poll,
         )
         record.messages.add(message)
         byClientKey["$senderId:$key"] = message
@@ -570,13 +624,13 @@ class FakeServer {
             thread = ParentThread(parent.id, parent.replyCount, parent.lastReplyAt, seq, followers(parent.id))
         }
         emit(record.members, event("message.created", channelId, seq, buildJsonObject {
-            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message))
+            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), shaped(message, null)))
             if (thread != null) put("parent_thread", Codec.snake.encodeToJsonElement(ParentThread.serializer(), thread))
         }))
         // §10: a top-level post reads the channel for its sender; a thread reply moves only the thread's position.
         if (parentId == null && !scheduled) markRead(senderId, channelId, seq)
         if (thread != null) emitThread(thread.id, followers(thread.id), "reply")
-        return message to true
+        return shaped(message, senderId) to true
     }
 
     fun messageByBody(channelId: String, body: String): MessageOut =
@@ -586,7 +640,7 @@ class FakeServer {
         val index = record.messages.indexOfFirst { it.id == updated.id }
         record.messages[index] = updated
         emit(record.members, event(event, updated.channelId, updated.updatedSeq, buildJsonObject {
-            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), updated))
+            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), shaped(updated, null)))
             if (change != null) put("change", change)
         }))
     }
@@ -710,23 +764,23 @@ class FakeServer {
     }
 
     fun history(userId: String, channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
-        val record = requireMember(channelId, userId)
+        val record = requireReadable(channelId, userId) // M27: a public channel's preview too
         val channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
         var rows = record.messages.filter { !it.deleted && (it.parentId == null || it.alsoInChannel) }
         if (beforeSeq != null) rows = rows.filter { it.seq < beforeSeq }
         rows = rows.sortedByDescending { it.seq }
-        return HistoryOut(channelLastSeq, rows.take(limit), rows.size > limit)
+        return HistoryOut(channelLastSeq, rows.take(limit).map { shaped(it, userId) }, rows.size > limit)
     }
 
     /** Runs once between reading the cursor and the rows of the next GET /sync: a post committed in between (§4.3). */
     var beforeDeltaRows: (() -> Unit)? = null
 
     fun delta(userId: String, channelId: String, sinceSeq: Int, limit: Int): DeltaOut {
-        val record = requireMember(channelId, userId)
+        val record = requireReadable(channelId, userId)
         val channelLastSeq = record.channel.lastSeq // read BEFORE the rows (§4.3)
         beforeDeltaRows?.let { beforeDeltaRows = null; it() }
         val rows = record.messages.filter { it.updatedSeq > sinceSeq }.sortedBy { it.updatedSeq }
-        val page = rows.take(limit)
+        val page = rows.take(limit).map { shaped(it, userId) }
         val hasMore = rows.size > limit
         return DeltaOut(page, if (hasMore) page.last().updatedSeq else maxOf(channelLastSeq, sinceSeq), hasMore)
     }

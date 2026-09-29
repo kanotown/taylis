@@ -2,7 +2,6 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -11,8 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Warning
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
@@ -45,30 +43,32 @@ fun PriorityLabel(priority: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** M15e: 「確認しました」 for readers, and who has acknowledged so far (`version` keeps their names current). */
+/**
+ * M15e: 「確認しました」 for readers, and who has acknowledged so far. M27: the first names are on the line (「山田、佐藤 が確認」,
+ * then 「… ほか N 人が確認」); tapping it lists everyone, oldest first. `readOnly`: a channel only previewed (§7.6.1), where
+ * nobody acknowledges. `version` keeps the names current.
+ */
 @Composable
-fun AckBar(message: MessageState, store: Store, controller: AppController, version: Int = 0) {
-    val me = store.me
+fun AckBar(message: MessageState, store: Store, controller: AppController, version: Int = 0, readOnly: Boolean = false) {
+    val me = remember(version) { store.me }
     val mine = me != null && message.acks.any { it.userId == me.id }
     val own = me?.id == message.senderId
-    val names = remember(version, message.acks) { message.acks.map { store.users[it.userId]?.displayName ?: "?" } }
+    val people = remember(version, message.acks) { PeopleText.people(store, message.acks.map { it.userId }) }
     var showNames by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-        if (!own) {
+        if (!own && !readOnly) {
             OutlinedButton(onClick = { controller.scope.launch { controller.toggleAck(message) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
                 Icon(Icons.Outlined.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (mine) " 確認済み" else " 確認しました", style = MaterialTheme.typography.labelMedium)
             }
         }
-        Box(Modifier.padding(start = 8.dp)) {
-            Text(
-                if (names.isEmpty()) "まだ誰も確認していません" else "${names.size} 人が確認",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clickable(enabled = names.isNotEmpty()) { showNames = true },
-            )
-            DropdownMenu(expanded = showNames, onDismissRequest = { showNames = false }) {
-                names.forEach { name -> DropdownMenuItem(text = { Text(name) }, onClick = { showNames = false }) }
-            }
-        }
+        Text(
+            if (people.isEmpty()) "まだ誰も確認していません" else PeopleText.acknowledged(people.map { it.name }),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).padding(start = if (!own && !readOnly) 8.dp else 0.dp)
+                .clickable(enabled = people.isNotEmpty(), onClickLabel = "確認した人") { showNames = true },
+        )
     }
+    if (showNames) PeopleDialog("確認した人", people, onDismiss = { showNames = false })
 }
