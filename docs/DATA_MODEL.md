@@ -593,6 +593,57 @@ CREATE INDEX channel_links_channel_idx ON channel_links (channel_id, position);
 - 変更はすべて `channel.links_updated` (audience=channel) でメンバーへ、ペイロードはリンク全体。
   クライアントは会話を開いたとき (と再接続後に開いている会話) に `GET /channels/{id}/links` で読み直す。
 
+### message_templates (投稿テンプレート、M30、LAB.md C / G)
+
+```sql
+CREATE TABLE message_templates (
+  id          uuid PRIMARY KEY,
+  scope       text NOT NULL,              -- 'workspace' (admin が編集) | 'user' (本人だけが見て編集)
+  owner_id    uuid REFERENCES users(id) ON DELETE CASCADE,  -- scope='user' の持ち主。workspace は NULL
+  name        varchar(20) NOT NULL,       -- `/name` の name。1〜20 文字の文字 (どの文字でも)・数字・_・-
+  body        text NOT NULL,              -- 1〜4,000 文字。空白だけは不可
+  suggest_in  varchar(8) NOT NULL DEFAULT 'any',  -- 'times' | 'any'
+  position    int NOT NULL DEFAULT 0,     -- 選ぶ画面での並び
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CHECK ((scope = 'workspace' AND owner_id IS NULL) OR (scope = 'user' AND owner_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX message_templates_workspace_name ON message_templates (lower(name)) WHERE scope = 'workspace';
+CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, lower(name)) WHERE scope = 'user';
+```
+
+- 入力欄に本文を挿入するための雛形。サーバは保存と配布だけで、投稿はしない (置き換えも挿入も端末が行う)。
+- **名前**: 大文字と小文字を区別せずに一意 (ワークスペース共通の中で、個人の中では本人の分の中で)。共通と個人は同じ名前でもよい
+  (`/name` では個人が優先)。端末の組み込みコマンド (status dnd topic invite leave join dm mute unmute me shrug poll help
+  日程) の名前は付けられない (400 `template_name_reserved`)。数の上限は共通 100、個人 1 人 50 (409 `template_limit`)。
+- **権限**: 共通は admin だけが作成・変更・削除 (403 `admin_required`)。個人は本人だけ。他人の個人テンプレートは見えず、
+  操作は 404。ゲストも個人テンプレートは作れる。
+- **API**: `GET /templates` (共通 → 自分の、それぞれ position → 名前の順)、`POST /templates` (`scope` の既定は user、
+  position を省くと末尾)、`PATCH /templates/{id}` (name / body / suggest_in / position。scope は変えられない)、
+  `DELETE /templates/{id}`。bootstrap の `templates` と `template.updated` で揃える (共通は audience all、個人は本人)。
+- **初期データ**: マイグレーション 0041 が共通の「日報」(`suggest_in` = times) と「週報」を入れる (admin が変更・削除してよい)。
+
+**端末の規則** (3 端末で同じ。検証ベクタは `apps/shared/templates.json`。日付は端末のローカルの日付):
+
+- **置き換え** (挿入する時に 1 回だけ。置き換えた結果は再び置き換えない):
+  `{date}` → `2026/09/28 (月)` (年は 4 桁、月日は 2 桁)、`{weekday}` → `月`、`{week}` → ISO 8601 の週 `2026-W40`
+  (年は ISO 週の年: 2027/01/01 は `2026-W53`)。ほかの `{…}` (大文字違いを含む) はそのまま残す。
+- **挿入**: 入力欄の「テンプレート」ボタンで一覧から選ぶか、`/name` (大文字と小文字は区別しない) を入れて送信の操作をすると、
+  送らずに入力欄へ本文を入れる。入力欄が空 (または `/name` だけ) なら本文にする。`/name 文` なら本文の後に改行を挟んで
+  「文」を続ける。ボタンからの挿入で入力欄に何か書いてあれば、その後ろに空行を挟んで足す。`/` の候補の一覧にも、組み込み
+  コマンドの後にテンプレートを出す (選ぶとすぐ挿入)。`/help` の一覧にも名前を出す。
+- **並び**: 共通 → 個人、それぞれ position → 名前。times のチャンネル (M24) では `suggest_in = times` のものを先に出す。
+- **`/日程`** (LAB.md G。サーバの変更なし、既存の投票 (M14b、`POST /channels/{id}/messages` の `poll`) を複数選択で作る):
+  - `/日程 ゼミ 10/3 10/4 10/6` → 質問「ゼミ」、選択肢「10/3 (土)」「10/4 (日)」「10/6 (火)」。空白で区切り、先頭から
+    日付でない語を質問にする (無ければ「日程調整」)。最初の日付より後ろは日付の書き方だけ。
+  - 日付: `M/D` または `YYYY/M/D`。範囲 `A-B` / `A〜B` / `A~B` (B は日付か、同じ月の日 `D`。14 日まで)。日付の直後の
+    `H:MM` または `H:MM-H:MM` (〜 でも可) はその日付 (範囲なら毎日) の時刻。
+  - 年を省いた日付は今年。それが今日より 30 日より前なら来年。範囲の終わりが始まりより前の月日なら翌年。
+  - ラベル: `M/D (曜)`、今年でなければ `YYYY/M/D (曜)`、時刻は ` 13:00` / ` 13:00〜14:30`。同じラベルは 1 つにする。
+  - 選択肢が 2〜10 個にならない、日付として読めない (2/30、13/1)、日付の後に日付でない語がある、範囲が逆・長すぎる、
+    時刻が読めない・終わりが先、のどれかなら何も作らずに使い方を出す。
+  - `/日程` だけなら投票の作成画面を開き、質問「日程調整」、複数選択、今日の翌日からの平日 5 日を選択肢に入れておく。
+
 ### drafts (端末間で共有する下書き、M15d)
 
 ```sql

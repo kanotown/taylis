@@ -71,6 +71,7 @@
   "bookmarks": [ "<message_id>", "..." ],
   "favorites": [ "<channel_id>", "..." ],
   "custom_emoji": [ { "id": "...", "name": "party_parrot", "content_type": "image/gif", "width": 64, "height": 64, "created_by": "...", "created_at": "..." } ],
+  "templates": [ { "id": "...", "scope": "workspace", "owner_id": null, "name": "日報", "body": "**日報 {date}**\n…", "suggest_in": "times", "position": 0, "created_at": "...", "updated_at": "..." } ],
   "groups": [ { "id": "...", "name": "design", "description": "デザイン担当", "member_ids": ["..."], "created_by": "...", "created_at": "...", "updated_at": "..." } ],
   "sidebar_sections": [ { "id": "...", "name": "プロジェクト", "position": 0, "channel_ids": ["..."] } ],
   "drafts": [ { "channel_id": "...", "parent_id": null, "body": "書きかけ", "updated_at": "..." } ]
@@ -222,6 +223,7 @@
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える |
+| `template.updated` | all (個人のテンプレートは本人) | — | `{ template: TemplateOut, deleted }` (M30)。投稿テンプレートの追加・変更・削除。クライアントは id で差し替えるか取り除く (DATA_MODEL.md message_templates) |
 | `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `roster.updated` | all (guest を除く) | — | `{ user_id, profile: LabProfileOut \| null }` (M23)。名簿の行の追加 / 変更 / 削除 (`profile` が null なら外れた)。クライアントは user_id の表を差し替える。管理グループのメンバーの変化は別に `group.updated` で届く |
 | `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut] }` (M14f)。自分のサイドバーのセクション一覧全体。クライアントは差し替える |

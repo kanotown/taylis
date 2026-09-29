@@ -54,6 +54,7 @@ from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
 from app.modules.sidebar.router import router as sidebar_router
 from app.modules.sync.router import router as sync_router
+from app.modules.templates.router import router as templates_router
 from app.modules.threads.router import router as threads_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
@@ -223,6 +224,7 @@ def build_api_router() -> APIRouter:
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)
+    api.include_router(templates_router)
     api.include_router(groups_router)
     api.include_router(lab_router)
     api.include_router(webhooks_router)

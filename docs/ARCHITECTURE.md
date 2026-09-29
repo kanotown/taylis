@@ -170,6 +170,7 @@ server/
       sidebar/           # サイドバーのセクション (個人の並べ替え、sidebar.updated) (M14f)
       drafts/            # 端末間で共有する下書き (本文のみ、draft.updated) (M15d)
       channel_links/     # 会話の上部のリンク (channel.links_updated) (M15f)
+      templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync

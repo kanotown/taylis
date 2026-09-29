@@ -1662,6 +1662,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description M30: the workspace's templates, then mine (also part of bootstrap).
+         */
+        get: operations["list_templates_api_v1_templates_get"];
+        put?: never;
+        /**
+         * Create Template
+         * @description A personal template, or (admins) one for the whole workspace.
+         */
+        post: operations["create_template_api_v1_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Template */
+        delete: operations["delete_template_api_v1_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Template */
+        patch: operations["update_template_api_v1_templates__template_id__patch"];
+        trace?: never;
+    };
     "/api/v1/threads": {
         parameters: {
             query?: never;
@@ -2049,6 +2091,11 @@ export interface components {
              * @default []
              */
             sidebar_sections: components["schemas"]["SidebarSectionOut"][];
+            /**
+             * Templates
+             * @default []
+             */
+            templates: components["schemas"]["TemplateOut"][];
             /**
              * @default {
              *       "mention_count": 0,
@@ -3255,6 +3302,74 @@ export interface components {
             name: string;
             /** Position */
             position: number;
+        };
+        /** TemplateCreate */
+        TemplateCreate: {
+            /** Body */
+            body: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position?: number | null;
+            /**
+             * Scope
+             * @default user
+             * @enum {string}
+             */
+            scope: "workspace" | "user";
+            /**
+             * Suggest In
+             * @default any
+             * @enum {string}
+             */
+            suggest_in: "any" | "times";
+        };
+        /** TemplateOut */
+        TemplateOut: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "workspace" | "user";
+            /**
+             * Suggest In
+             * @enum {string}
+             */
+            suggest_in: "any" | "times";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TemplateUpdate */
+        TemplateUpdate: {
+            /** Body */
+            body?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Suggest In */
+            suggest_in?: ("any" | "times") | null;
         };
         /** TemporaryPasswordOut */
         TemporaryPasswordOut: {
@@ -7000,6 +7115,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnreadSummaryOut"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"][];
+                };
+            };
+        };
+    };
+    create_template_api_v1_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_template_api_v1_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
