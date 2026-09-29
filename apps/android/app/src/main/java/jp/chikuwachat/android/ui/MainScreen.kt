@@ -24,14 +24,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
@@ -70,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -95,6 +97,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.Instant
+import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KProperty
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.platform.NotificationPermission
 import jp.chikuwachat.android.sync.ChannelState
@@ -103,7 +107,17 @@ import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, SETTINGS, BROWSE, DIRECTORY }
+/** M34: the settings are the 自分 tab's page now, not a dialog. */
+enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, BROWSE, DIRECTORY }
+
+/** M33 / M34: `stack` in MainScreen, read and written as the selected tab's stack in [MainTabs]. */
+private class SelectedStack(private val tabs: MutableState<TabStacks>) : ReadWriteProperty<Any?, List<Route>> {
+    override fun getValue(thisRef: Any?, property: KProperty<*>): List<Route> = MainTabs.stack(tabs.value)
+
+    override fun setValue(thisRef: Any?, property: KProperty<*>, value: List<Route>) {
+        tabs.value = MainTabs.withStack(tabs.value, tabs.value.selected, value)
+    }
+}
 
 /** Channel list first; a selected channel opens as its own page (compact-width layout, like the iOS app). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,10 +126,20 @@ fun MainScreen(controller: AppController) {
     val store = controller.store
     val version by store.version.collectAsState()
     val status = controller.engineStatus
-    // M33: the screen is a back stack of routes (MainNav): the channel list at the bottom, what shows on top. Saved as
-    // one string, so it survives a rotation, and AppRoot keeps one per workspace (M16c).
-    var stack by rememberSaveable(stateSaver = RouteStackSaver) { mutableStateOf(MainNav.root) }
+    // M33: the screen is a back stack of routes (MainNav): the channel list at the bottom, what shows on top. M34: each
+    // bottom tab has its own (MainTabs); `stack` is the selected tab's. Saved as one string, so they survive a rotation,
+    // and AppRoot keeps them per workspace (M16c).
+    val tabsState = rememberSaveable(stateSaver = TabStacksSaver) { mutableStateOf(MainTabs.initial) }
+    var tabs by tabsState
+    val selectedStack = remember(tabsState) { SelectedStack(tabsState) }
+    var stack by selectedStack
     val top = MainNav.top(stack)
+    // M34: each tab root's scroll position stays while another tab or a pushed screen shows (and a re-tap scrolls it up).
+    val homeListState = rememberLazyListState()
+    val dmListState = rememberLazyListState()
+    val mentionsListState = rememberLazyListState()
+    val threadsListState = rememberLazyListState()
+    val youScrollState = rememberScrollState()
     // M16b: the search screen (its route: the bar expanded = suggestions, the search on screen). The results stay while
     // a result's conversation is open, so going back shows them as they were.
     val searching = top is Route.Search
@@ -164,6 +188,39 @@ fun MainScreen(controller: AppController) {
         stack = MainNav.openConversation(stack, channelId, parentId)
     }
 
+    /**
+     * M34 (7): a notification, a permalink, /dm, /join or a profile's 「メッセージを送る」: a DM lands on the DM tab, a
+     * channel (and its thread) on the home tab, replacing that tab's stack and selecting it.
+     */
+    fun land(channelId: String, parentId: String? = null) {
+        focusManager.clearFocus()
+        tabs = MainTabs.land(tabs, MainTabs.landingTab(store.channel(channelId)), channelId, parentId)
+    }
+
+    /**
+     * A tap on the bottom bar (MOBILE_UI.md §5): another tab comes back as it was left; the selected one pops to its
+     * root, or at its root scrolls its list to the top.
+     */
+    fun selectMainTab(tab: MainTab) {
+        val tap = MainTabs.tap(tabs, tab)
+        if (tap.scrollToTop) {
+            scope.launch {
+                when (tab) {
+                    MainTab.HOME -> homeListState.animateScrollToItem(0)
+                    MainTab.DM -> dmListState.animateScrollToItem(0)
+                    MainTab.ACTIVITY -> (if ((top as? Route.Activity)?.segment == ActivitySegment.THREADS) threadsListState else mentionsListState).animateScrollToItem(0)
+                    MainTab.YOU -> youScrollState.animateScrollTo(0)
+                }
+            }
+            return
+        }
+        focusManager.clearFocus()
+        // A focused message belongs to the conversation it was revealed in, not to one on another tab.
+        if (tap.state.selected != tabs.selected) controller.messageFocus = null
+        tabs = tap.state
+        searchText = MainNav.search(stack)?.params?.q ?: ""
+    }
+
     // Errors from actions on this screen (edit, upload, settings…) surface as a snackbar.
     LaunchedEffect(controller.error) {
         val message = controller.error ?: return@LaunchedEffect
@@ -184,25 +241,23 @@ fun MainScreen(controller: AppController) {
             val reply = controller.pendingReply
             controller.pendingReply = null
             controller.messageFocus = null
-            if (reply == null) openConversation(id)
-            else scope.launch { if (controller.revealMessage(reply.first, id, reply.second)) openConversation(id, reply.second) else openConversation(id) }
+            if (reply == null) land(id)
+            else scope.launch { if (controller.revealMessage(reply.first, id, reply.second)) land(id, reply.second) else land(id) }
         }
     }
-    val conversation = MainNav.conversation(stack)
+    // M34 (8), MOBILE_UI.md §10 1.: the engine's open conversation is the selected tab's; one left on another tab is not.
+    val conversation = MainTabs.openConversation(tabs)
     val selection = conversation?.id
     LaunchedEffect(selection) {
         selection?.let { controller.openChannel(it) } ?: controller.closeChannel()
     }
-    // A channel we were removed from (or that vanished) closes, with its thread.
-    if (selection != null && store.channel(selection) == null) stack = MainNav.channelGone(stack, selection)
+    // A channel we were removed from (or that vanished) closes, with its thread, on whichever tab it is.
+    MainTabs.conversations(tabs).filter { store.channel(it) == null }.fold(tabs, MainTabs::channelGone).let { if (it != tabs) tabs = it }
 
     val selectedChannel = selection?.let { store.channel(it) }
     val threadId = if (selectedChannel != null) MainNav.thread(stack)?.parentId else null
     // The tabs and the details belong to a joined conversation (closed, left, or removed from it: they go too).
-    if (selectedChannel != null && !selectedChannel.isMember) {
-        val reset = MainNav.notMember(stack, selectedChannel.id)
-        if (reset != stack) stack = reset
-    }
+    MainTabs.conversations(tabs).filter { store.channel(it)?.isMember == false }.fold(tabs, MainTabs::notMember).let { if (it != tabs) tabs = it }
     val conversationTab = if (selectedChannel != null) conversation.tab else ConversationTab.MESSAGES
     val detailsOpen = selectedChannel != null && conversation.detailsOpen
     /** The list replacing the channel list, when it is the page on screen. */
@@ -239,7 +294,8 @@ fun MainScreen(controller: AppController) {
         scope.launch {
             val shown = if (message != null) controller.revealMessage(message) else controller.revealMessage(messageId, channelId, parentId)
             if (!shown) return@launch
-            stack = MainNav.openFromSearch(stack, channelId, parentId)
+            // M34 (7): on its tab (a DM on the DM tab, a channel on home); on the search's own tab the results stay behind it.
+            tabs = MainTabs.landFromSearch(tabs, MainTabs.landingTab(store.channel(channelId)), channelId, parentId)
         }
     }
     LaunchedEffect(searchParams) { searchParams?.let { searchResults.show(controller, it) } }
@@ -251,9 +307,10 @@ fun MainScreen(controller: AppController) {
     // M29 / M33: back (the system's, the app bar's ← and the search bar's) closes the details page, then a pins / files
     // tab (to 「メッセージ」), then the thread, then the conversation, then the list; on the search, the suggestions over
     // results then the search itself (MainNav.back).
+    // M34: at a tab's root, back goes to the home tab (MainTabs.back); at the home tab's root the app closes as before.
     fun goBack() {
         val fromSearch = top is Route.Search
-        stack = MainNav.back(stack)
+        tabs = MainTabs.back(tabs)
         if (fromSearch) searchText = (MainNav.top(stack) as? Route.Search)?.params?.q ?: ""
     }
     /** The keyboard goes with the composer when a page or tab covers the timeline. */
@@ -261,7 +318,7 @@ fun MainScreen(controller: AppController) {
     fun selectTab(tab: ConversationTab) { focusManager.clearFocus(); stack = MainNav.selectTab(stack, tab) }
     fun openThread(parentId: String) { stack = MainNav.openThread(stack, parentId) }
     // The suggestions fold through the search bar's own back handling (SearchBar → collapseSearch).
-    BackHandler(enabled = MainNav.canGoBack(stack) && !searchExpanded) { goBack() }
+    BackHandler(enabled = MainTabs.canGoBack(tabs) && !searchExpanded) { goBack() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
         scope.launch {
@@ -278,10 +335,12 @@ fun MainScreen(controller: AppController) {
     LaunchedEffect(controller.pendingReveal) {
         val message = controller.pendingReveal ?: return@LaunchedEffect
         controller.pendingReveal = null
-        openConversation(message.channelId, message.parentId)
+        land(message.channelId, message.parentId)
     }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
+        bottomBar = { if (MainTabs.barShown(stack)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab) },
         topBar = {
             if (searching) {
                 SearchTopBar(
@@ -320,6 +379,9 @@ fun MainScreen(controller: AppController) {
                             pane == Route.Drafts -> Text("下書き")
                             pane is Route.Files -> Text("ファイル")
                             pane == Route.Reminders -> Text("リマインダー")
+                            top == Route.DmList -> Text("ダイレクトメッセージ", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
                         }
                     },
@@ -328,7 +390,10 @@ fun MainScreen(controller: AppController) {
                             MainNav.canGoBack(stack) -> IconButton(onClick = ::goBack) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                             }
-                            me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
+                            // M34: my avatar opens the 自分 tab (the settings were a dialog).
+                            me != null && top != Route.You -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = "自分" }) {
+                                Avatar(me.id, me.displayName, size = 32.dp)
+                            }
                         }
                     },
                     actions = {
@@ -388,8 +453,11 @@ fun MainScreen(controller: AppController) {
                                 }
                             }
                         }
-                        IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
-                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                        // The 自分 tab is the settings page: no search or menu over it.
+                        if (top != Route.You) {
+                            IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
+                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                        }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
                             if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
@@ -425,7 +493,7 @@ fun MainScreen(controller: AppController) {
                                 DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
                             }
                             HorizontalDivider()
-                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; dialog = MainDialog.SETTINGS })
+                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
                             // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
                             val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
                             DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
@@ -481,9 +549,10 @@ fun MainScreen(controller: AppController) {
                     else {
                         // M29: the timeline stays composed under the tabs and the details page (scroll position, read
                         // anchor, draft), but counts as not on screen while they cover it (SYNC_PROTOCOL.md §10.1 2.).
+                        // M34: only the selected tab's top screen is composed at all; another tab's conversation is not.
                         ChannelPane(
                             controller, selectedChannel.id, version,
-                            onScreen = ConversationNav.conversationOnScreen(conversationTab, detailsOpen),
+                            onScreen = MainTabs.conversationOnScreen(tabs, tabs.selected),
                             onOpenThread = ::openThread,
                         )
                         when {
@@ -511,17 +580,38 @@ fun MainScreen(controller: AppController) {
                         stack = MainNav.openDraft(stack, channelId, parentId)
                     }
                 } else if (pane == Route.Threads) {
-                    ThreadsPane(controller, version) { entry ->
+                    ThreadsPane(controller, version, onOpen = { entry ->
                         controller.messageFocus = null
                         stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
-                    }
+                    })
+                } else if (top == Route.DmList) {
+                    DmListScreen(
+                        controller, version, dmListState,
+                        onOpen = { controller.messageFocus = null; openConversation(it) },
+                        onNew = { dialog = MainDialog.NEW_DM },
+                    )
+                } else if (top is Route.Activity) {
+                    // Rows push their conversation / thread on this tab's stack (back returns here).
+                    ActivityScreen(
+                        controller, version, top.segment,
+                        onSegment = { tabs = MainTabs.selectSegment(tabs, it) },
+                        mentionsState = mentionsListState,
+                        threadsState = threadsListState,
+                        onOpenMessage = ::reveal,
+                        onOpenThread = { entry ->
+                            controller.messageFocus = null
+                            stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
+                        },
+                    )
+                } else if (top == Route.You) {
+                    YouScreen(controller, version, youScrollState)
                 } else {
+                    // M34: 「メンション」 moved to the activity tab; 「スレッド」 stays.
                     ChannelList(
-                        store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly; UnreadFilter.write(controller.prefs, unreadOnly) },
+                        store, version, listState = homeListState, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly; UnreadFilter.write(controller.prefs, unreadOnly) },
                         onSelect = { controller.messageFocus = null; openConversation(it) },
                         onThreads = { stack = MainNav.open(stack, Route.Threads) },
                         onSaved = { stack = MainNav.open(stack, Route.Saved) },
-                        onMentions = { stack = MainNav.open(stack, Route.Mentions) },
                         onDrafts = { stack = MainNav.open(stack, Route.Drafts) },
                         onFiles = { stack = MainNav.open(stack, Route.Files()) },
                         onReminders = { stack = MainNav.open(stack, Route.Reminders) },
@@ -551,7 +641,6 @@ fun MainScreen(controller: AppController) {
         MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
-        MainDialog.SETTINGS -> SettingsDialog(controller, version, onDismiss = { dialog = null })
         MainDialog.BROWSE -> ChannelBrowserDialog(
             controller, version, onDismiss = { dialog = null },
             onOpen = { controller.messageFocus = null; openConversation(it) },
@@ -637,13 +726,14 @@ private const val BANNER_GRACE_MS = 2_000L
 private fun ChannelList(
     store: Store,
     version: Int,
+    /** M34: the home tab keeps its scroll position (and a re-tap of the tab scrolls it up). */
+    listState: LazyListState,
     unreadOnly: Boolean,
     onToggleUnreadOnly: () -> Unit,
     /** Opens a conversation; one under 「参加できるチャンネル」 opens as a preview (M27, SYNC_PROTOCOL.md §7.6.1). */
     onSelect: (String) -> Unit,
     onThreads: () -> Unit,
     onSaved: () -> Unit,
-    onMentions: () -> Unit,
     onDrafts: () -> Unit,
     onBrowse: () -> Unit,
     isGuest: Boolean = false,
@@ -672,14 +762,13 @@ private fun ChannelList(
     val dms = sections.dms
     val browsable = sections.browse
 
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(selected = unreadOnly, onClick = onToggleUnreadOnly, label = { Text("未読のみ") })
             }
         }
         item { ThreadsRow(store, version, onClick = onThreads) }
-        item { ListRow(Icons.Default.AlternateEmail, "メンション", onClick = onMentions) }
         if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
         val reminderCount = store.reminders.size
         val firedCount = store.firedReminderCount()

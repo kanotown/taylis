@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +28,7 @@ import kotlinx.coroutines.launch
 
 /** 「メンション」 (M11h): messages that mention me or everyone, newest first; a row reveals the message. */
 @Composable
-fun MentionsPane(controller: AppController, version: Int, onOpen: (MessageOut) -> Unit) {
+fun MentionsPane(controller: AppController, version: Int, onOpen: (MessageOut) -> Unit, listState: LazyListState = rememberLazyListState()) {
     val store = controller.store
     var items by remember { mutableStateOf<List<MessageOut>?>(null) }
     var cursor by remember { mutableStateOf<String?>(null) }
@@ -40,7 +42,7 @@ fun MentionsPane(controller: AppController, version: Int, onOpen: (MessageOut) -
     }
     LaunchedEffect(controller.engineStatus) { load(more = false) } // a reconnect re-reads
     val list = items
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         when {
             list == null -> item { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             list.isEmpty() -> item {

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
@@ -40,7 +42,7 @@ import kotlinx.coroutines.launch
 
 /** Followed threads (THREADS.md §5): newest reply first, an all / unread filter; a row opens the thread. */
 @Composable
-fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -> Unit) {
+fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -> Unit, listState: LazyListState = rememberLazyListState()) {
     val store = controller.store
     val rows = remember(version) { store.threadList() }
     val filter = store.threadsFilter
@@ -61,7 +63,7 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = filter == "all", onClick = { load("all") }, label = { Text("すべて") })
