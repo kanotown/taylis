@@ -5,17 +5,13 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -60,50 +56,51 @@ object ChannelLinks {
 }
 
 /**
- * M15f: the conversation's pinned links at the top (Slack's bookmarks bar); hidden while empty. The links
- * live in the Store (loaded after the pane opens, replaced by events), so `version` must re-read them.
+ * M15f: one of the conversation's pinned links (Slack's bookmarks bar); M29: it sits in the tab row under the app bar
+ * (ConversationTabRow). A tap opens it; a long press (for those who may edit links) edits, moves or deletes it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChannelLinksRow(controller: AppController, channel: ChannelState, version: Int, onAdd: () -> Unit, onEdit: (ChannelLinkOut) -> Unit) {
-    val links = remember(version, channel.id) { controller.store.linksOf(channel.id) }
-    if (links.isEmpty()) return
-    val editable = ChannelLinks.canEdit(channel, controller.store.me?.role)
+fun ChannelLinkChip(
+    controller: AppController,
+    channelId: String,
+    link: ChannelLinkOut,
+    index: Int,
+    count: Int,
+    editable: Boolean,
+    onEdit: (ChannelLinkOut) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
-    LazyRow(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        itemsIndexed(links, key = { _, link -> link.id }) { index, link ->
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.combinedClickable(onClick = { runCatching { uriHandler.openUri(link.url) } }, onLongClick = { if (editable) menu = true }),
-                ) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(" " + link.title, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                    }
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("編集") }, onClick = { menu = false; onEdit(link) })
-                    DropdownMenuItem(text = { Text("左へ移動") }, enabled = index > 0, onClick = { menu = false; scope.launch { controller.updateChannelLink(channel.id, link.id, position = index - 1) } })
-                    DropdownMenuItem(text = { Text("右へ移動") }, enabled = index < links.size - 1, onClick = { menu = false; scope.launch { controller.updateChannelLink(channel.id, link.id, position = index + 1) } })
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("削除", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; scope.launch { controller.deleteChannelLink(channel.id, link.id) } })
-                }
+    var menu by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            // A 48 dp touch target around the chip, which stays small in the row.
+            modifier = Modifier.touchTarget { source ->
+                Modifier.combinedClickable(
+                    interactionSource = source, indication = null,
+                    onClick = { runCatching { uriHandler.openUri(link.url) } },
+                    onLongClickLabel = if (editable) "リンクの操作" else null,
+                    onLongClick = if (editable) ({ menu = true }) else null,
+                )
+            },
+        ) {
+            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(" " + link.title, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             }
         }
-        if (editable) {
-            item(key = "add") {
-                TextButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Text(" リンク", style = MaterialTheme.typography.labelMedium)
-                }
-            }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("編集") }, onClick = { menu = false; onEdit(link) })
+            DropdownMenuItem(text = { Text("左へ移動") }, enabled = index > 0, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index - 1) } })
+            DropdownMenuItem(text = { Text("右へ移動") }, enabled = index < count - 1, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index + 1) } })
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("削除", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; scope.launch { controller.deleteChannelLink(channelId, link.id) } })
         }
     }
-    HorizontalDivider()
 }
 
 /** Add a link, or edit one (URL and title). */
