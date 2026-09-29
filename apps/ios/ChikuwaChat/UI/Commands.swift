@@ -30,14 +30,17 @@ enum SlashCommands {
         Command(name: "me", usage: "/me 文", description: "動作を斜体で投稿"),
         Command(name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿"),
         Command(name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "投票を作る"),
+        // M30: a multiple-choice poll of dates (DATA_MODEL.md message_templates); alone, the form with the next weekdays.
+        Command(name: "日程", usage: "/日程 [質問] 日付 …", description: "日付を選択肢にした投票を作る"),
         Command(name: "help", usage: "/help", description: "コマンド一覧"),
     ]
 
     /// In a code span, so the underscores do not read as italics (the light markdown has no escapes).
     static let shrug = "`¯\\_(ツ)_/¯`"
 
-    private static let pattern = try! NSRegularExpression(pattern: #"^/([a-z]+)(?:\s+([\s\S]*))?$"#, options: [.caseInsensitive])
-    private static let prefixPattern = try! NSRegularExpression(pattern: #"^/([a-z]*)$"#, options: [.caseInsensitive])
+    // M30: any script, so `/日報` (a template) and `/日程` are commands too.
+    private static let pattern = try! NSRegularExpression(pattern: #"^/([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$"#)
+    private static let prefixPattern = try! NSRegularExpression(pattern: #"^/([\p{L}\p{N}_-]*)$"#)
     private static let durationPattern = try! NSRegularExpression(pattern: #"^(\d{1,3})\s*(m|min|h|hour|hours|d|day|days)$"#)
     private static let shortcodePattern = try! NSRegularExpression(pattern: #"^:[a-z0-9_+-]+:$"#)
 
@@ -53,10 +56,15 @@ enum SlashCommands {
 
     /// Commands whose name starts with what was typed (`/`, `/st` …); empty once a space follows.
     static func candidates(_ text: String) -> [Command] {
-        let ns = text as NSString
-        guard let match = prefixPattern.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return [] }
-        let prefix = ns.substring(with: match.range(at: 1)).lowercased()
+        guard let prefix = typedPrefix(text) else { return [] }
         return all.filter { $0.name.hasPrefix(prefix) }
+    }
+
+    /// What follows the `/` while a command's name is being typed; nil otherwise.
+    static func typedPrefix(_ text: String) -> String? {
+        let ns = text as NSString
+        guard let match = prefixPattern.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        return ns.substring(with: match.range(at: 1)).lowercased()
     }
 
     static func tomorrowMorning(now: Date = Date(), calendar: Calendar = .current) -> Date {

@@ -22,9 +22,9 @@ struct PollFormView: View {
     let channelId: String
     let parentId: String?
     @Environment(\.dismiss) private var dismiss
-    @State private var question = ""
-    @State private var options = ["", ""]
-    @State private var multiple = false
+    @State private var question: String
+    @State private var options: [String]
+    @State private var multiple: Bool
     /// M27: who voted is shown to nobody.
     @State private var anonymous = false
     @State private var busy = false
@@ -32,6 +32,17 @@ struct PollFormView: View {
     @State private var error: String?
 
     private var problem: String? { PollForm.problem(question: question, options: options) }
+
+    /// M30: `/日程` alone opens the form filled in (a question, the next weekdays, several answers each).
+    init(controller: AppController, channelId: String, parentId: String?, question: String = "", options: [String] = ["", ""],
+         multiple: Bool = false) {
+        self.controller = controller
+        self.channelId = channelId
+        self.parentId = parentId
+        _question = State(initialValue: question)
+        _options = State(initialValue: options.count >= 2 ? options : options + Array(repeating: "", count: 2 - options.count))
+        _multiple = State(initialValue: multiple)
+    }
 
     var body: some View {
         NavigationStack {

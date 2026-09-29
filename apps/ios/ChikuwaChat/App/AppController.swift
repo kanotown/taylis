@@ -1121,7 +1121,9 @@ final class AppController {
         let level = state.channel.notification?.level ?? (isDm ? "all" : "mentions")
         switch command.name {
         case "help":
-            notice = SlashCommands.all.map(\.usage).joined(separator: " · ")
+            // M30: the templates too, which `/name` puts into the input.
+            let templates = Templates.ordered(store.templates, inTimes: state.channel.isTimes).map { "/" + $0.name }
+            notice = (SlashCommands.all.map(\.usage) + templates).joined(separator: " · ")
             return true
         case "status":
             if command.args.isEmpty || command.args == "clear" {
@@ -1194,6 +1196,12 @@ final class AppController {
             let parts = command.args.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             guard parts.count >= 3 else { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
             return await createPoll(channelId: channelId, parentId: parentId, question: parts[0], options: Array(parts.dropFirst()), multiple: false)
+        case "日程":  // M30: a multiple-choice poll of dates
+            guard let schedule = Templates.parseSchedule(command.args, today: .today()) else {
+                error = Templates.scheduleUsage
+                return false
+            }
+            return await createPoll(channelId: channelId, parentId: parentId, question: schedule.question, options: schedule.options, multiple: true)
         default:
             return false
         }
