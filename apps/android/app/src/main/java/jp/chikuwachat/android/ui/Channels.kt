@@ -55,8 +55,8 @@ object Channels {
     )
 
     /**
-     * List order: favorites, channels by name, times (M24), DMs by recency, joinable channels by name. The open one
-     * always stays. `meId` decides which times is mine (first, and never quiet).
+     * List order: favorites, channels by name, times (M24), DMs by recency (my own DM first), joinable channels by name.
+     * The open one always stays. `meId` decides which times is mine (first, and never quiet) and which DM is my own.
      */
     fun sections(
         all: Collection<ChannelState>,
@@ -81,7 +81,8 @@ object Channels {
             channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }.sortedBy { it.channel.name ?: "" },
             times = all.filter { it.isMember && it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }
                 .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.thenBy { it.channel.name ?: "" }),
-            dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }.sortedByDescending { it.channel.lastMessageAt ?: "" },
+            dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }
+                .sortedWith(compareByDescending<ChannelState> { MainTabs.isSelfNotes(it, meId) }.thenByDescending { it.channel.lastMessageAt ?: "" }),
             browse = if (unreadOnly) emptyList() else all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
         )
     }

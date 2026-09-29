@@ -3,8 +3,15 @@ package jp.chikuwachat.android
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ThreadSummary
+import jp.chikuwachat.android.api.UserMe
+import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.ui.ActivitySegment
+import jp.chikuwachat.android.ui.Channels
+import jp.chikuwachat.android.ui.channelTitle
+import jp.chikuwachat.android.ui.introSummary
+import jp.chikuwachat.android.ui.myDisplayName
 import jp.chikuwachat.android.ui.ConversationTab
 import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.MainTab
@@ -115,18 +122,74 @@ class MainTabsTest {
     }
 
     @Test
-    fun theSelfNotesPlaceholderShowsUntilMyNotesExistAndMatchesTheFilter() {
+    fun theSelfNotesPlaceholderShowsUntilMyOwnDmExistsAndMatchesTheFilterAgainstMyName() {
         val others = listOf(dm("a"), channel("group", "group_dm", users = listOf(me, "x", "y")), channel("general"))
         val notes = channel("notes", "dm", users = listOf(me))
-        assertFalse(MainTabs.showsSelfNotesPlaceholder(others + notes, me))
-        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me))
-        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "  "))
-        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "メモ"))
-        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, "自分へのメモ"))
-        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, me, "山田"))
+        val name = "Hanako Yamada"
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others + notes, me, name))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, name))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, name, "  "))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, name, " hANAko "))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others, me, name, "hanako yamada"))
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, me, name, "メモ")) // the old title matches nothing now
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, me, name, "山田"))
         // Not mine (left): still the placeholder; nobody signed in yet: none.
-        assertTrue(MainTabs.showsSelfNotesPlaceholder(others + channel("left", "dm", users = listOf(me), member = false), me))
-        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, null))
+        assertTrue(MainTabs.showsSelfNotesPlaceholder(others + channel("left", "dm", users = listOf(me), member = false), me, name))
+        assertFalse(MainTabs.showsSelfNotesPlaceholder(others, null, name))
+        // Nobody signed in: no DM is mine.
+        assertFalse(MainTabs.isSelfNotes(channel("empty", "dm", users = emptyList()), null))
+    }
+
+    @Test
+    fun theHomeDmSectionsPlaceholderIsNotShownFoldedOrUnreadOnly() {
+        val others = listOf(dm("a"), channel("general"))
+        val notes = channel("notes", "dm", users = listOf(me))
+        assertTrue(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako"))
+        assertFalse(MainTabs.showsSelfNotesInDmSection(others + notes, me, "Hanako")) // it exists (starred or in a section too)
+        assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", collapsed = true))
+        assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", unreadOnly = true))
+        assertTrue(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", query = " hana "))
+        assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", query = "alice"))
+        assertFalse(MainTabs.showsSelfNotesInDmSection(others, null, "…"))
+    }
+
+    @Test
+    fun myOwnDmIsTitledWithMyName() {
+        assertEquals("山田 花子", MainTabs.myName(" 山田 花子 ", "hanako"))
+        assertEquals("hanako", MainTabs.myName("  ", "hanako"))
+        assertEquals("…", MainTabs.myName(null, null))
+        val store = Store()
+        val notes = channel("notes", "dm", users = listOf(me))
+        store.setMe(UserMe(id = me, username = "hanako", displayName = "Hanako", role = "member", createdAt = "", updatedAt = "", mustChangePassword = false))
+        assertEquals("Hanako", channelTitle(notes, store)) // from me, before the users arrive
+        store.upsertUser(UserPublic(id = me, username = "hanako", displayName = "山田 花子", role = "member", createdAt = "", updatedAt = ""))
+        assertEquals("山田 花子", channelTitle(notes, store))
+        assertEquals("山田 花子", myDisplayName(store))
+        // Where its conversation starts, it says what it is for; a DM with someone else keeps its words.
+        assertEquals(MainTabs.SELF_NOTES_INTRO, introSummary(notes, store))
+        store.upsertUser(UserPublic(id = "alice", username = "alice", displayName = "Alice", role = "member", createdAt = "", updatedAt = ""))
+        assertEquals("Alice との会話の始まりです。", introSummary(dm("a", other = "alice"), store))
+    }
+
+    @Test
+    fun myOwnDmComesFirstInTheHomeListsDmSection() {
+        val notes = channel("notes", "dm", users = listOf(me), lastMessageAt = "2026-09-01T00:00:00Z")
+        val all = listOf(
+            dm("alice", last = "2026-09-28T10:00:00Z"),
+            notes,
+            channel("group", "group_dm", users = listOf(me, "x", "y"), lastMessageAt = "2026-09-28T11:00:00Z", unread = 1),
+            dm("bob"),
+        )
+        assertEquals(listOf("notes", "group", "alice", "bob"), Channels.sections(all, now = now, meId = me).dms.map { it.id })
+        // Nobody signed in: recency only.
+        assertEquals(listOf("group", "alice", "notes", "bob"), Channels.sections(all, now = now).dms.map { it.id })
+        // Unread only: like any row, it stays out unless unread or open.
+        assertEquals(listOf("group"), Channels.sections(all, unreadOnly = true, now = now, meId = me).dms.map { it.id })
+        assertEquals(listOf("notes", "group"), Channels.sections(all, unreadOnly = true, currentId = "notes", now = now, meId = me).dms.map { it.id })
+        // Starred: only among the favorites.
+        val starred = Channels.sections(all, now = now, favorites = setOf("notes"), meId = me)
+        assertEquals(listOf("notes"), starred.favorites.map { it.id })
+        assertEquals(listOf("group", "alice", "bob"), starred.dms.map { it.id })
     }
 
     @Test

@@ -52,9 +52,13 @@ fun ChannelIntro(channel: ChannelState, store: Store, version: Int) {
     }
 }
 
-/** "Toru が2026年9月27日に作成した公開チャンネルの始まりです。 メンバー 3 人。" (pure, tested). */
+/**
+ * "Toru が2026年9月27日に作成した公開チャンネルの始まりです。 メンバー 3 人。" (pure, tested). My own DM (titled with my
+ * name) says what it is for instead of 「… との会話の始まりです。」.
+ */
 fun introSummary(channel: ChannelState, store: Store, zone: ZoneId = ZoneId.systemDefault()): String {
     val out = channel.channel
+    if (MainTabs.isSelfNotes(channel, store.me?.id)) return MainTabs.SELF_NOTES_INTRO
     val title = channelTitle(channel, store)
     if (out.isDm) return "$title との会話の始まりです。"
     val creator = out.createdBy?.let { store.users[it]?.displayName }

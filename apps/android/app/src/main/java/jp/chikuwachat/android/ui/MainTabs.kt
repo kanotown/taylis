@@ -174,25 +174,41 @@ object MainTabs {
 
     // --- the DM list (§6.3) ---
 
-    /** 「自分へのメモ」: a DM with nobody but me. */
+    /** My own DM (Slack / Mattermost): a DM with nobody but me, titled with my name (channelTitle). */
     fun isSelfNotes(channel: ChannelState, meId: String?): Boolean =
-        channel.channel.type == "dm" && (channel.channel.dmUserIds ?: emptyList()).all { it == meId }
+        meId != null && channel.channel.type == "dm" && (channel.channel.dmUserIds ?: emptyList()).all { it == meId }
 
-    const val SELF_NOTES_TITLE = "自分へのメモ"
+    /** What my own DM says where its conversation starts (empty, or at the start of its history). */
+    const val SELF_NOTES_INTRO = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。"
+
+    /** The new-DM picker's words after my name. */
+    const val SELF_NOTES_HINT = "メモや下書きに使える、自分だけの DM"
+
+    /** My name as the lists show it: my display name, else my username, else 「…」 (not loaded yet). */
+    fun myName(displayName: String?, username: String?): String =
+        displayName?.trim()?.takeIf { it.isNotEmpty() } ?: username?.trim()?.takeIf { it.isNotEmpty() } ?: "…"
 
     /**
-     * Whether the DM list shows the 「自分へのメモ」 placeholder row first: no DM with only me is mine yet (a tap on the row
-     * makes it), and the filter is empty or matches its title.
+     * Whether a DM list shows my own DM's placeholder row first: no DM with only me is mine yet (a tap on the row makes
+     * it), and the filter is empty or matches my name (`name`, as myName gives it), ignoring case.
      */
-    fun showsSelfNotesPlaceholder(channels: Collection<ChannelState>, meId: String?, query: String = ""): Boolean {
+    fun showsSelfNotesPlaceholder(channels: Collection<ChannelState>, meId: String?, name: String, query: String = ""): Boolean {
         if (meId == null || channels.any { it.isMember && isSelfNotes(it, meId) }) return false
         val needle = query.trim().lowercase()
-        return needle.isEmpty() || SELF_NOTES_TITLE.lowercase().contains(needle)
+        return needle.isEmpty() || name.trim().lowercase().contains(needle)
     }
 
     /**
-     * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, 「自分へのメモ」, never one of
-     * my 1:1 DMs.
+     * The home list's 「ダイレクトメッセージ」 section: the placeholder as above, but never while the section is folded or
+     * only unread conversations are listed. (My own DM starred or in one of my sections exists, so no placeholder either.)
+     */
+    fun showsSelfNotesInDmSection(
+        channels: Collection<ChannelState>, meId: String?, name: String, collapsed: Boolean = false, unreadOnly: Boolean = false, query: String = "",
+    ): Boolean = !collapsed && !unreadOnly && showsSelfNotesPlaceholder(channels, meId, name, query)
+
+    /**
+     * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, my own DM, never one of my
+     * 1:1 DMs.
      */
     fun findDmWith(channels: Collection<ChannelState>, userId: String, meId: String?): ChannelState? {
         val wanted = setOfNotNull(userId, meId)
@@ -200,7 +216,7 @@ object MainTabs {
     }
 
     /**
-     * My DMs and group DMs: 「自分へのメモ」 first, then the newest last message first (the conversation's creation when it
+     * My DMs and group DMs: my own DM first, then the newest last message first (the conversation's creation when it
      * has none); `query` keeps the ones whose name has it.
      */
     fun dmList(channels: Collection<ChannelState>, title: (ChannelState) -> String, meId: String?, query: String = ""): List<ChannelState> {

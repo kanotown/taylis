@@ -630,6 +630,8 @@ fun MainScreen(controller: AppController) {
                         onToggleFolded = { folded = FoldedSections.toggle(controller.prefs, it) },
                         onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
                         sectionIcon = { emoji -> SectionIcon(controller, emoji, version) },
+                        // Made, in the Store as mine; a failure is the app's error (openDmWith sets it).
+                        openSelfNotes = { controller.store.me?.id?.let { controller.openDmWith(it) } },
                     )
                 }
             }
@@ -750,10 +752,27 @@ private fun ChannelList(
     /** M26: folding one of my sections (on all my devices), and drawing its icon. */
     onToggleSection: (jp.chikuwachat.android.api.SidebarSectionOut) -> Unit = {},
     sectionIcon: @Composable (String?) -> Unit = {},
+    /** Makes my own DM (POST /dms with only me) and returns its id; null on a failure, which it reports itself. */
+    openSelfNotes: suspend () -> String? = { null },
 ) {
     val meId = store.me?.id
     val sections = remember(version, unreadOnly, meId) {
         Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId)
+    }
+    // My own DM is always the first DM (Channels.sections); until it exists, a placeholder row with my picture and name
+    // stands there, not while the section is folded or only unread conversations are listed.
+    val myName = remember(version, meId) { myDisplayName(store) }
+    val selfPlaceholder = remember(version, meId, unreadOnly, folded) {
+        MainTabs.showsSelfNotesInDmSection(store.channels.values, meId, myName, collapsed = FoldedSections.DMS in folded, unreadOnly = unreadOnly)
+    }
+    val scope = rememberCoroutineScope()
+    var creatingSelf by remember { mutableStateOf(false) }
+    val onSelfPlaceholder: () -> Unit = {
+        // One request at a time: a second tap while it runs does nothing.
+        if (!creatingSelf) {
+            creatingSelf = true
+            scope.launch { try { openSelfNotes()?.let(onSelect) } finally { creatingSelf = false } }
+        }
     }
     val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
     // M24: offer to make my times until I have one (joined or not: a times I left is in 「参加できるチャンネル」).
@@ -808,8 +827,11 @@ private fun ChannelList(
         }
         val dmsFolded = FoldedSections.DMS in folded
         item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
+        if (selfPlaceholder && meId != null) {
+            item(key = "dms-self-placeholder") { HomeSelfNotesRow(meId, myName, busy = creatingSelf, onClick = onSelfPlaceholder, modifier = Modifier.folding(this)) }
+        }
         items(Channels.shown(dms, dmsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-        if (dms.isEmpty() && !dmsFolded) item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") } }
+        if (dms.isEmpty() && !dmsFolded && !selfPlaceholder) item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") } }
         if (browsable.isNotEmpty()) {
             item(key = "header:browse") { Box(Modifier.folding(this)) { SectionHeader("参加できるチャンネル") } }
             // M27: a tap reads the channel first (§7.6.1); joining is the button at the bottom of its preview.
@@ -1009,6 +1031,19 @@ private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClic
     }
 }
 
+/** My own DM before it exists, in the home list: my picture and my name, like a DM row; disabled while the tap's request runs. */
+@Composable
+private fun HomeSelfNotesRow(meId: String, name: String, busy: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (busy) 0.6f else 1f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar(meId, name, size = 36.dp)
+        Spacer(Modifier.width(12.dp))
+        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+    }
+}
+
 /** The connection dot in the app bar; M28c: TalkBack reads the state it shows (the dot said nothing). */
 @Composable
 fun StatusBadge(status: EngineStatus) {
@@ -1036,9 +1071,20 @@ private fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
     return "$presence · ${status.first} ${status.second}".trim()
 }
 
+/**
+ * `#name` for channels, the other members for DMs. My own DM (a DM with nobody but me, Slack / Mattermost style) is
+ * named after me.
+ */
 fun channelTitle(channel: ChannelState, store: Store): String {
     if (!channel.channel.isDm) return "#" + (channel.channel.name ?: "")
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != store.me?.id }
-    if (others.isEmpty()) return "自分へのメモ"
+    if (others.isEmpty()) return myDisplayName(store)
     return others.joinToString(", ") { store.users[it]?.displayName ?: "…" }
+}
+
+/** My name as the lists show it (my own DM's title, and its placeholder row's): see MainTabs.myName. */
+fun myDisplayName(store: Store): String {
+    val me = store.me
+    val user = me?.id?.let { store.users[it] }
+    return MainTabs.myName(user?.displayName?.takeIf { it.isNotBlank() } ?: me?.displayName, user?.username ?: me?.username)
 }

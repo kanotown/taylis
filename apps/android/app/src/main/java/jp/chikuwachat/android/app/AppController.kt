@@ -1370,7 +1370,7 @@ class AppController(private val app: Application) {
 
     /**
      * Open (or create) the DM with one user; returns its channel id. The existing one has exactly that user and me as its
-     * members, so my own id finds 「自分へのメモ」 (made on the first call), not one of my 1:1 DMs.
+     * members, so my own id finds my own DM (made on the first call), not one of my 1:1 DMs.
      */
     suspend fun openDmWith(userId: String): String? {
         MainTabs.findDmWith(store.channels.values, userId, (store.me ?: me)?.id)?.let { return it.id }
