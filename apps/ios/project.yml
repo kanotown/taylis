@@ -30,7 +30,7 @@ targets:
       properties:
         CFBundleDisplayName: ChikuwaChat
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "14"
+        CFBundleVersion: "15"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.
@@ -39,6 +39,8 @@ targets:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
         NSCameraUsageDescription: 撮った写真をメッセージに添付するために使います
+        # Saving a photo or a video from a message (the share button's 「画像を保存」/「ビデオを保存」).
+        NSPhotoLibraryAddUsageDescription: メッセージの写真や動画を写真ライブラリに保存するために使います
         # Only HTTPS through the system (exempt): App Store Connect then skips the export compliance question.
         ITSAppUsesNonExemptEncryption: false
     settings:

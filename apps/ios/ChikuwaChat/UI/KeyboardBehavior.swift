@@ -194,6 +194,14 @@ private struct KeepsBottom: ViewModifier {
                         resizing?(true)
                     }
                 } else {
+                    // Measured from here on: the restore's own scroll comes back as a change of offset only. Measured from
+                    // the turn's start instead, a list shorter than the screen scrolled to its end, reported the height
+                    // again, scrolled again… in one turn, for ever: the app froze (a channel of a few posts, the keyboard
+                    // going away as a hardware keyboard took over; 2026-09-29).
+                    layouts.turn?.containerHeight = new.containerHeight
+                    // A list that fits has no end to keep: the bottom anchor sets it (the larger content: a layout in
+                    // passing reports it shorter).
+                    guard max(old.contentHeight, new.contentHeight) + new.insets.top + new.insets.bottom > new.containerHeight else { return }
                     restore(old.containerHeight, wasAtEnd)
                 }
             }
