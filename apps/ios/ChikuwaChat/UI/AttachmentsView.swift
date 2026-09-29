@@ -1,3 +1,4 @@
+import AVFoundation
 import PhotosUI
 import QuickLook
 import SwiftUI
@@ -24,6 +25,42 @@ enum ImageUpload {
     }
 }
 
+/// A video picked from the photo library (testers, 2026-09-29: videos were not offered at all), copied out of the
+/// picker's temporary file so it can be uploaded from disk.
+struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { SentTransferredFile($0.url) } importing: { received in
+            // Its own folder, so the file keeps its name (IMG_1234.MOV) without clashing with another pick.
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("picked-videos/\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let name = received.file.lastPathComponent.isEmpty ? "video.mov" : received.file.lastPathComponent
+            let copy = dir.appendingPathComponent(name)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return PickedMovie(url: copy)
+        }
+    }
+}
+
+enum VideoUpload {
+    /// A copy of the video at 1280×720 H.264: a minute of an iPhone's 4K video is about 170 MB, past the server's
+    /// limit; at 720p it is about 40 MB. nil when it cannot be exported.
+    static func shrink(_ url: URL) async -> URL? {
+        guard let session = AVAssetExportSession(asset: AVURLAsset(url: url), presetName: AVAssetExportPreset1280x720) else { return nil }
+        let out = url.deletingPathExtension().appendingPathExtension("720p.mp4")
+        try? FileManager.default.removeItem(at: out)
+        if #available(iOS 18.0, *) {
+            do { try await session.export(to: out, as: .mp4) } catch { return nil }
+            return out
+        }
+        session.outputURL = out
+        session.outputFileType = .mp4
+        await session.export()
+        return session.status == .completed ? out : nil
+    }
+}
+
 func formatSize(_ bytes: Int64) -> String {
     if bytes >= 1_048_576 { return String(format: "%.1f MB", Double(bytes) / 1_048_576) }
     if bytes >= 1024 { return String(format: "%.0f KB", Double(bytes) / 1024) }
@@ -42,7 +79,7 @@ struct AttachmentsView: View {
                     ThumbnailView(attachment: attachment, controller: controller)
                 } else {
                     HStack(spacing: 8) {
-                        Image(systemName: "doc").foregroundStyle(.secondary)
+                        Image(systemName: attachment.isVideo ? "film" : "doc").foregroundStyle(.secondary)
                         VStack(alignment: .leading) {
                             Text(attachment.filename).font(.subheadline)
                             Text(formatSize(attachment.sizeBytes)).font(.caption).foregroundStyle(.secondary)
@@ -250,34 +287,104 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
-/// Chips for uploads waiting in the composer.
+/// Uploads waiting in the composer, as Slack and Mattermost show them (testers, 2026-09-29): small square thumbnails
+/// with a × to take one out; a tap previews it (a photo full screen, a video or document with Quick Look). They were
+/// chips with the file name, and a tap took the file out. `uploading` adds a tile with a spinner meanwhile.
 struct PendingAttachmentsView: View {
     let items: [AttachmentOut]
+    var uploading = 0
+    var controller: AppController? = nil
     let onRemove: (AttachmentOut) -> Void
 
     var body: some View {
-        if !items.isEmpty {
+        if !items.isEmpty || uploading > 0 {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 10) {
                     ForEach(items) { item in
-                        Button { onRemove(item) } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: item.isImage ? "photo" : "doc")
-                                Text(item.filename).lineLimit(1)
-                                Image(systemName: "xmark").font(.caption2.bold())
-                            }
-                            .font(.footnote)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.accentColor.opacity(0.12), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(item.filename) を取り消す")
+                        PendingTile(item: item, controller: controller) { onRemove(item) }
+                    }
+                    if uploading > 0 {
+                        ProgressView()
+                            .frame(width: PendingTile.side, height: PendingTile.side)
+                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                            .accessibilityLabel("アップロード中")
                     }
                 }
                 .padding(.horizontal, 12)
+                .padding(.top, 10) // room for the × over the corner
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
+        }
+    }
+}
+
+private struct PendingTile: View {
+    static let side: CGFloat = 64
+    let item: AttachmentOut
+    let controller: AppController?
+    let onRemove: () -> Void
+    @State private var thumbnail = AttachmentImageLoader()
+    @State private var file = AttachmentFileLoader()
+    @State private var viewing = false
+    @State private var previewURL: URL?
+
+    var body: some View {
+        Button(action: open) { face }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.isImage ? "写真" : item.isVideo ? "動画" : "ファイル") \(item.filename) をプレビュー")
+            .overlay(alignment: .topTrailing) {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.black.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 7, y: -7)
+                .accessibilityLabel("\(item.filename) を取り消す")
+            }
+            .task(id: item.id) {
+                guard item.isImage, let controller else { return }
+                await thumbnail.load {
+                    guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
+                    return try await api.fetchData("/api/v1/attachments/\(item.id)/thumbnail")
+                }
+            }
+            .fullScreenCover(isPresented: $viewing) {
+                if let controller { ImageViewer(attachment: item, controller: controller) }
+            }
+            .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
+    }
+
+    @ViewBuilder
+    private var face: some View {
+        ZStack {
+            Color.secondary.opacity(0.12)
+            if let image = thumbnail.image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if item.isImage && !thumbnail.failed {
+                ProgressView()
+            } else {
+                VStack(spacing: 3) {
+                    Image(systemName: item.isVideo ? "film" : item.isImage ? "photo" : "doc").font(.title3)
+                    Text(item.filename).font(.system(size: 9)).lineLimit(2).multilineTextAlignment(.center)
+                }
+                .foregroundStyle(.secondary)
+                .padding(4)
+            }
+            if file.loading { ProgressView() }
+        }
+        .frame(width: Self.side, height: Self.side)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func open() {
+        guard let controller else { return }
+        if item.isImage { viewing = true; return }
+        Task {
+            await file.load { await controller.downloadAttachment(item) }
+            if let url = file.url, AttachmentPreview.canPreview(url) { previewURL = url }
         }
     }
 }

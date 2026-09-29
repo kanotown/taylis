@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { Composer } from "../src/ui/Composer";
+import { pollHidesBody } from "../src/ui/PollCard";
 import { PollDialog, pollProblem } from "../src/ui/PollDialog";
 import { FakeServer } from "./fakeServer";
 
@@ -53,5 +54,14 @@ describe("アンケートを作成 (tester request: a form like Polly, several a
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(screen.getByRole("dialog", { name: "アンケートを作成" })).toBeTruthy();
     expect((controller as unknown as { runCommand: ReturnType<typeof vi.fn> }).runCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("a poll's message (testers, 2026-09-29: the question came twice in a row)", () => {
+  const poll = { question: "ランチはどこ?", options: ["そば", "カレー"], multiple: false, closed_at: null, votes: [[], []] };
+  it("leaves out the text the server made from the question; the card shows it", () => {
+    expect(pollHidesBody({ body: "📊 ランチはどこ?", poll })).toBe(true);
+    expect(pollHidesBody({ body: "明日のランチを決めたいです", poll })).toBe(false); // written by the author
+    expect(pollHidesBody({ body: "📊 ランチはどこ?", poll: null })).toBe(false);
   });
 });

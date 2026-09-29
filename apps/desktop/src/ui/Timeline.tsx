@@ -15,7 +15,7 @@ import { bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./f
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
-import { PollCard } from "./PollCard";
+import { PollCard, pollHidesBody } from "./PollCard";
 import { PriorityLabel } from "./PriorityLabel";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
@@ -728,7 +728,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <MessageEditor controller={controller} message={message} />
         ) : (
           <>
-            {message.body && (
+            {message.body && !pollHidesBody(message) && (
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />

@@ -716,9 +716,10 @@ CREATE TABLE poll_votes (
 
 - 作成は `POST /channels/{id}/messages` の `poll` (質問 200 文字、選択肢 2〜10 個・各 80 文字・重複不可、`multiple`)。
   本文が空なら `📊 質問` を本文にするので、プレビュー・プッシュ・検索は本文だけで済む。
+  クライアントは本文がこの `📊 質問` のままなら本文を出さない (投票のカードが質問を出すので、同じ質問が 2 回続いていた)。
 - `PUT/DELETE /messages/{id}/poll/votes/{index}` は reactions と同じ扱い: 変化があれば seq を 1 つ消費して
   `updated_seq` を進め、`message.updated` (`change = poll`) で全員に届く。単一選択は前の票を動かす。
-- `POST /messages/{id}/poll/close` (投稿者か admin) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
+- `POST /messages/{id}/poll/close` (投稿者だけ。admin も他人の投票は締め切れない、2026-09-29 テスターの要望) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
 
 ### message_acks と messages.priority (重要度と確認、M15e)
 

@@ -1245,7 +1245,7 @@ export interface paths {
         put?: never;
         /**
          * Close Poll
-         * @description M14b: the author or an administrator ends the voting.
+         * @description M14b: the author ends the voting (only the author, not an administrator).
          */
         post: operations["close_poll_api_v1_messages__message_id__poll_close_post"];
         delete?: never;

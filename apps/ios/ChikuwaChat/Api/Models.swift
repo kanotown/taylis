@@ -174,6 +174,7 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     let createdAt: String
 
     var isImage: Bool { hasThumbnail }
+    var isVideo: Bool { contentType.hasPrefix("video/") }
 }
 
 struct MessageOut: Codable, Identifiable, Equatable {

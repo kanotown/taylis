@@ -1,4 +1,4 @@
-import { Download, FileText, Loader2, X } from "lucide-react";
+import { Download, FileText, Film, Loader2, X } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { useEffect, useState } from "react";
 
@@ -27,7 +27,7 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
             className="group flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-left text-sm text-ink hover:border-accent/50 hover:bg-accent-soft/40"
             onClick={() => void controller.downloadAttachment(attachment)}
           >
-            <FileText size={18} className="shrink-0 text-muted" />
+            {attachment.content_type.startsWith("video/") ? <Film size={18} className="shrink-0 text-muted" /> : <FileText size={18} className="shrink-0 text-muted" />}
             <span className="max-w-64 truncate">{attachment.filename}</span>
             <span className="text-xs text-muted">{formatSize(attachment.size_bytes)}</span>
             <Download size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100" />
@@ -164,24 +164,66 @@ function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentO
   );
 }
 
-/** Chips for uploads waiting in the composer. */
-export function PendingAttachments({ items, onRemove }: { items: AttachmentOut[]; onRemove: (item: AttachmentOut) => void }) {
-  if (items.length === 0) return null;
+/**
+ * Uploads waiting in the composer, as Slack and Mattermost show them (testers, 2026-09-29): small square thumbnails
+ * with a × to take one out; a click previews a photo (the same lightbox as in the conversation) or downloads a file.
+ * They were chips with the file name, and a click took the file out. `uploading` adds a tile with a spinner for each
+ * file still on its way.
+ */
+export function PendingAttachments({ items, uploading = 0, controller, onRemove }: {
+  items: AttachmentOut[];
+  uploading?: number;
+  controller: AppController;
+  onRemove: (item: AttachmentOut) => void;
+}) {
+  if (items.length === 0 && uploading === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5 px-1 pb-2">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="inline-flex items-center gap-1 rounded-full border border-line bg-accent-soft px-2.5 py-0.5 text-xs text-ink hover:border-danger/50 hover:text-danger"
-          onClick={() => onRemove(item)}
-          title="取り消す"
-        >
-          <FileText size={12} />
-          <span className="max-w-48 truncate">{item.filename}</span>
-          <X size={12} />
-        </button>
+    <div className="flex flex-wrap gap-2.5 px-1 pb-2 pt-1.5">
+      {items.map((item) => <PendingTile key={item.id} item={item} controller={controller} onRemove={() => onRemove(item)} />)}
+      {Array.from({ length: uploading }, (_, index) => (
+        <span key={`uploading-${index}`} role="status" aria-label="アップロード中" className="flex h-16 w-16 items-center justify-center rounded-lg border border-line bg-panel text-muted">
+          <Loader2 size={18} className="animate-spin" />
+        </span>
       ))}
+    </div>
+  );
+}
+
+function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; controller: AppController; onRemove: () => void }) {
+  const image = item.has_thumbnail;
+  const { url } = useAttachmentImage(controller, item, "thumbnail", image);
+  const [open, setOpen] = useState(false);
+  const video = item.content_type.startsWith("video/");
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title={`${item.filename} (${formatSize(item.size_bytes)})${image ? " — クリックで拡大" : ""}`}
+        aria-label={`${item.filename} を${image ? "プレビュー" : "ダウンロード"}`}
+        className="flex h-16 w-16 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg border border-line bg-panel text-muted hover:border-accent/50"
+        onClick={() => (image ? setOpen(true) : void controller.downloadAttachment(item))}
+      >
+        {image && url ? (
+          <img src={url} alt="" className="h-full w-full object-cover" />
+        ) : image ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <>
+            {video ? <Film size={18} /> : <FileText size={18} />}
+            <span className="line-clamp-2 w-full break-all px-1 text-center text-[9px] leading-tight">{item.filename}</span>
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        aria-label={`${item.filename} を取り消す`}
+        title="取り消す"
+        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-canvas shadow hover:bg-danger"
+        onClick={onRemove}
+      >
+        <X size={12} />
+      </button>
+      {open && <Lightbox attachment={item} controller={controller} onClose={() => setOpen(false)} />}
     </div>
   );
 }

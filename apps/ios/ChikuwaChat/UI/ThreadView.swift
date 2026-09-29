@@ -53,31 +53,7 @@ struct ThreadView: View {
                 ScrollViewReader { proxy in
                     GeometryReader { viewport in
                         ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 12) {
-                                if let parent {
-                                    MessageRow(message: parent, controller: controller, highlighted: highlighted(parent), present: { messageSheet = $0 })
-                                    Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Divider()
-                                    ForEach(replies, id: \.rowKey) { reply in
-                                        // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
-                                        VStack(alignment: .leading, spacing: 12) {
-                                            if reply.id == firstUnreadId { NewRepliesDivider() }
-                                            MessageRow(message: reply, controller: controller, highlighted: highlighted(reply), present: { messageSheet = $0 })
-                                                .background(GeometryReader { geometry in
-                                                    Color.clear.preference(key: VisibleReplyFrames.self,
-                                                                           value: [reply.id: geometry.frame(in: .named("threadViewport"))])
-                                                })
-                                        }
-                                        .id(reply.rowKey)
-                                    }
-                                } else {
-                                    Text("メッセージが見つかりません").foregroundStyle(.secondary)
-                                }
-                                Color.clear.frame(height: 1).id("bottom")
-                                    .onAppear { atBottom = true }
-                                    .onDisappear { atBottom = false }
-                            }
+                            rowStack(viewportHeight: viewport.size.height)
                             .padding()
                             .background(ScrollViewProbe.Marker(probe: scroller))
                         }
@@ -174,6 +150,48 @@ struct ThreadView: View {
         .keepsChannelRows(controller.engine, channelId)
     }
 
+    /// The thread's rows, laid out all at once up to `lazyFrom` replies. A LazyVStack went into an endless layout pass
+    /// after landing on the first unread reply (a row at the edge of its range kept entering and leaving it as its estimated
+    /// and measured heights differed): the main thread spun and the sheet stayed blank until a touch moved the list
+    /// (testers, 2026-09-29; reproduced on iOS 26.2 with 60 replies of mixed heights over a slow network). A thread's rows
+    /// are few, and with every height known the landing and the bottom are exact too. A very long thread stays lazy.
+    private static let lazyFrom = 200
+
+    @ViewBuilder
+    private func rowStack(viewportHeight: CGFloat) -> some View {
+        if replies.count > Self.lazyFrom {
+            LazyVStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }
+        } else {
+            VStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }
+        }
+    }
+
+    /// The parent, the reply count, the replies and the end marker.
+    @ViewBuilder
+    private func rows(viewportHeight: CGFloat) -> some View {
+        if let parent {
+            MessageRow(message: parent, controller: controller, highlighted: highlighted(parent), present: { messageSheet = $0 })
+            Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            ForEach(replies, id: \.rowKey) { reply in
+                // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
+                VStack(alignment: .leading, spacing: 12) {
+                    if reply.id == firstUnreadId { NewRepliesDivider() }
+                    MessageRow(message: reply, controller: controller, highlighted: highlighted(reply), present: { messageSheet = $0 })
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: VisibleReplyFrames.self,
+                                                   value: [reply.id: geometry.frame(in: .named("threadViewport"))])
+                        })
+                }
+                .id(reply.rowKey)
+            }
+        } else {
+            Text("メッセージが見つかりません").foregroundStyle(.secondary)
+        }
+        EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id("bottom")
+    }
+
     /// 「フォロー中」 / 「フォロー」 with the bell where the toolbar shows titles (iOS 18). From iOS 26 it shows the bell
     /// alone, and the title is what VoiceOver reads there (iOS 26.2 read it rather than the button's label).
     @ViewBuilder
@@ -251,6 +269,19 @@ struct ThreadView: View {
                                visible: visible, onScreenIds: onScreen)
         if next != anchor { anchor = next }
         if let seq { controller.engine?.markThreadRead(parentId, seq: seq) }
+    }
+}
+
+/// The end of the thread's list, and whether it is on screen: from where it is, since a VStack (rowStack) makes it
+/// once, on screen or not, and its onAppear said nothing.
+private struct EndMarker: View {
+    let viewportHeight: CGFloat
+    let onScreen: (Bool) -> Void
+
+    var body: some View {
+        Color.clear.frame(height: 1)
+            .onGeometryChange(for: Bool.self) { $0.frame(in: .named("threadViewport")).minY <= viewportHeight + 1 } action: { onScreen($0) }
+            .onDisappear { onScreen(false) } // a lazy thread let go of it
     }
 }
 

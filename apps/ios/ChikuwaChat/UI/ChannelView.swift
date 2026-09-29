@@ -828,7 +828,7 @@ struct MessageRow: View {
                     Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
-                if !message.body.isEmpty {
+                if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
                     MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, onNeedEmojiImage: { controller.loadEmojiImage($0) })
                         .environment(\.openURL, OpenURLAction { url in
@@ -1117,6 +1117,20 @@ struct ComposerView: View {
         }
     }
 
+    /// A library video (testers, 2026-09-29): as it is when it fits the server's limit, else exported again at 720p; the
+    /// copies go once uploaded.
+    private func upload(video url: URL) async {
+        guard let controller else { return }
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } // PickedMovie's folder
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard controller.attachmentTooLarge(size) != nil, let smaller = await VideoUpload.shrink(url) else {
+            await upload(file: url)
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: smaller) }
+        await upload(file: smaller)
+    }
+
     /// M12d 「後で送信」: the same draft, posted by the server at the chosen time.
     private func schedule(_ at: Date) {
         guard canSend, let controller else { return }
@@ -1165,7 +1179,7 @@ struct ComposerView: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            PendingAttachmentsView(items: pending) { item in
+            PendingAttachmentsView(items: pending, uploading: uploading, controller: controller) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }
             .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
@@ -1300,7 +1314,8 @@ struct ComposerView: View {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in textBinding.wrappedValue = text + glyph }
         }
-        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .images)
+        // Videos too (testers, 2026-09-29: they were not in the list at all).
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             photoItems = []
@@ -1308,6 +1323,14 @@ struct ComposerView: View {
             Task {
                 defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
                 for item in items {
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                        guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
+                            controller?.error = "動画を読み込めませんでした"
+                            continue
+                        }
+                        await upload(video: movie.url)
+                        continue
+                    }
                     // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
                     guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else { continue }
                     await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
