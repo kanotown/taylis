@@ -86,6 +86,7 @@ CREATE TABLE users (
   quiet_hours_days      smallint[],             -- 0 = 月 … 6 = 日 (NULL = 毎日)
   quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
+  presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   created_at            timestamptz NOT NULL DEFAULT now(),
@@ -376,11 +377,13 @@ CREATE TABLE reminders (
   remind_at   timestamptz NOT NULL,
   status      varchar(16) NOT NULL DEFAULT 'pending', -- pending | fired | done | cancelled
   fired_at    timestamptz,
+  kind        varchar(16) NOT NULL DEFAULT 'personal', -- personal (本人が設定) | ack (確認のお願い、L4)
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX reminders_due_idx  ON reminders (status, remind_at);
 CREATE INDEX reminders_user_idx ON reminders (user_id, status, remind_at);
+CREATE INDEX reminders_message_kind_idx ON reminders (message_id, kind, created_at);
 ```
 
 - 個人データ。時刻になるとワーカー (予約送信と同じループ) が `fired` にして `reminder.updated` (audience=user)
@@ -389,6 +392,15 @@ CREATE INDEX reminders_user_idx ON reminders (user_id, status, remind_at);
   `cancelled`、fired なら `done`。fired の件数はアプリのバッジに足す。
 - 1 人あたり pending + fired は 200 件まで (`409 too_many_reminders`、M28a)。一覧はこの上限で抑えられるので
   ページングは持たない (done / cancelled は一覧にも上限にも数えない)。
+- **確認のお願い (`kind = ack`、L4、LAB.md H)**: 確認を求めた投稿 (M15e) の投稿者か admin が
+  `POST /messages/{id}/ack/remind` すると、未確認の人それぞれに本人だけのリマインダーを `fired` で作る
+  (`reminders.create_system_in_tx`。一覧・プッシュ・バッジは本人が設定したものと同じ経路。プッシュの題は「確認のお願い」、
+  note は「(投稿者名) さんから確認のお願い」)。同じ投稿へのお願いは 1 時間に 1 回まで (`429 ack_remind_too_soon`、
+  `details.retry_after_seconds`)。前のお願いが開いたままの人には重ねない。応答は `{ reminded: 人数 }`。確認した後の
+  お願いは `GET /reminders` に出さない (端末は `done` にしてよい)。
+- **未確認の人**: `GET /messages/{id}/ack/pending` → `{ user_ids }` (表示名順)。チャンネルのメンバーから、投稿者・bot・
+  無効化された人・確認済みの人を除いたもの。メンバーなら誰でも見られる (確認した人の一覧が見えるのと同じ)。
+  確認を求めていない投稿は `409 ack_not_requested`。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 

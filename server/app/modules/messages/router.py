@@ -9,6 +9,7 @@ from app.modules.auth.deps import CurrentUser
 from app.modules.messages import service
 from app.modules.messages.schemas import (
     EMOJI_PATTERN,
+    AckPendingOut,
     DeltaOut,
     HistoryOut,
     MentionListOut,
@@ -154,6 +155,12 @@ async def unvote(message_id: UUID, index: int, user: CurrentUser, db: Db) -> Mes
 async def acknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
     """M15e: 「確認しました」 on a message that asks for it (not your own); idempotent."""
     return await service.set_ack(db, user, message_id, present=True)
+
+
+@router.get("/messages/{message_id}/ack/pending", response_model=AckPendingOut)
+async def ack_pending(message_id: UUID, user: CurrentUser, db: Db) -> AckPendingOut:
+    """L4: the channel's members (not the author, bots or deactivated people) yet to acknowledge."""
+    return AckPendingOut(user_ids=await service.ack_pending(db, user, message_id))
 
 
 @router.delete("/messages/{message_id}/ack", response_model=MessageOut)

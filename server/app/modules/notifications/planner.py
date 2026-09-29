@@ -143,7 +143,8 @@ class PushPlanner:
             channel_id=channel_id,
             message_id=message_id,
             seq=None,
-            title="リマインダー",
+            # L4: a request from the author to acknowledge reads as such.
+            title="確認のお願い" if reminder.get("kind") == "ack" else "リマインダー",
             subtitle=None,
             body=(body if self.settings.push_include_content else "リマインダーの時間です")[:240]
             or "リマインダーの時間です",

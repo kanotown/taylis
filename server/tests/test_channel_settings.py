@@ -121,10 +121,18 @@ async def test_public_private_conversion(
     assert outsider.id in audience.ids and root.id in audience.ids
     assert guest.id not in audience.ids and owner.id not in audience.ids
 
-    # Back to public: an administrator only.
+    # Back to public: an administrator only, and (L4) one who is a member.
     as_user(owner)
     refused = await client.patch(f"/api/v1/channels/{channel['id']}", json={"type": "public"})
     assert refused.status_code == 403 and refused.json()["error"]["code"] == "admin_required"
+    as_user(root)
+    outside = await client.patch(f"/api/v1/channels/{channel['id']}", json={"type": "public"})
+    assert outside.status_code == 403 and outside.json()["error"]["code"] == "admin_not_member"
+    as_user(owner)
+    added = await client.post(
+        f"/api/v1/channels/{channel['id']}/members", json={"user_id": str(root.id)}
+    )
+    assert added.status_code == 200
     as_user(root)
     public = await client.patch(f"/api/v1/channels/{channel['id']}", json={"type": "public"})
     assert public.status_code == 200 and public.json()["type"] == "public"

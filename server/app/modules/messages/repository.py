@@ -15,6 +15,7 @@ from app.modules.messages.models import (
     mentions_of,
     timeline_filter,
 )
+from app.modules.users.models import User  # read-only
 
 
 async def allocate_seq(
@@ -325,6 +326,25 @@ async def has_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -
         MessageAck.message_id == message_id, MessageAck.user_id == user_id
     )
     return (await db.execute(stmt)).first() is not None
+
+
+async def ack_pending_user_ids(db: AsyncSession, message: Message) -> list[uuid.UUID]:
+    """L4: the channel's members who have not acknowledged: not the author, bots or deactivated
+    people. By display name, for the list the clients show."""
+    acked = select(MessageAck.user_id).where(MessageAck.message_id == message.id)
+    stmt = (
+        select(User.id)
+        .join(ChannelMember, ChannelMember.user_id == User.id)
+        .where(
+            ChannelMember.channel_id == message.channel_id,
+            User.id != message.sender_id,
+            User.role != "bot",
+            User.deactivated_at.is_(None),
+            User.id.not_in(acked),
+        )
+        .order_by(User.display_name, User.id)
+    )
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def add_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> None:

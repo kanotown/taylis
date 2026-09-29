@@ -134,7 +134,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     existing = hub.connections_of(context.user.id)
     for old in existing[: max(0, len(existing) - settings.ws_max_connections_per_user + 1)]:
         old.request_close(CLOSE_RECONNECT)
-    conn = hub.new_connection(context.user.id, context.session.id, visible=visible)
+    conn = hub.new_connection(
+        context.user.id,
+        context.session.id,
+        visible=visible,
+        presence_hidden=context.user.presence_hidden,
+    )
     await _send(
         websocket,
         HelloFrame(

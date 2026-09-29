@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.core.db import Db
 from app.core.errors import not_found
@@ -27,8 +27,12 @@ async def get_me(user: CurrentUser) -> UserMe:
 
 
 @router.patch("/me", response_model=UserMe)
-async def update_me(user: CurrentUser, body: UserUpdate, db: Db) -> UserMe:
-    return to_user_me(await service.update_me(db, user.id, body))
+async def update_me(request: Request, user: CurrentUser, body: UserUpdate, db: Db) -> UserMe:
+    updated = await service.update_me(db, user.id, body)
+    if body.presence_hidden is not None:
+        # L4: the hub (process-local presence) announces me as offline, or as I am again.
+        request.app.state.hub.set_presence_hidden(updated.id, updated.presence_hidden)
+    return to_user_me(updated)
 
 
 @router.get("/{user_id}", response_model=UserPublic)

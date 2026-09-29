@@ -21,6 +21,14 @@ class ReminderOut(BaseModel):
     status: Literal["pending", "fired", "done", "cancelled"]
     fired_at: datetime | None
     created_at: datetime
+    # L4: "ack" when the message's author asked me to acknowledge it.
+    kind: Literal["personal", "ack"] = "personal"
+
+
+class AckRemindOut(BaseModel):
+    """L4: how many members were reminded (those already reminded and still open are skipped)."""
+
+    reminded: int
 
 
 class ReminderUpdatedData(BaseModel):

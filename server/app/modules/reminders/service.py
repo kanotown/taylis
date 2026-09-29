@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, conflict, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
@@ -19,7 +19,7 @@ from app.modules.messages.mentions import notification_text
 from app.modules.reminders import repository as repo
 from app.modules.reminders.events import REMINDER_UPDATED, ReminderUpdatedData
 from app.modules.reminders.models import Reminder
-from app.modules.reminders.schemas import ReminderCreate, ReminderOut
+from app.modules.reminders.schemas import AckRemindOut, ReminderCreate, ReminderOut
 from app.modules.users.models import User
 
 MIN_LEAD = timedelta(seconds=30)
@@ -28,6 +28,8 @@ PREVIEW_LENGTH = 200
 # Open reminders (pending or fired) one person may have: it bounds GET /reminders too, whose
 # list is the open rows (SECURITY.md §5).
 MAX_OPEN_PER_USER = 200
+# L4: how often the members who have not acknowledged a message may be reminded of it.
+ACK_REMIND_INTERVAL = timedelta(hours=1)
 
 
 def _preview(body: str | None) -> str:
@@ -48,6 +50,7 @@ def to_out(row: Reminder, body: str | None) -> ReminderOut:
         status=row.status,  # type: ignore[arg-type]
         fired_at=row.fired_at,
         created_at=row.created_at,
+        kind=row.kind,  # type: ignore[arg-type]
     )
 
 
@@ -101,10 +104,91 @@ async def create(
 
 async def list_mine(db: AsyncSession, actor: User) -> list[ReminderOut]:
     """Reminders whose message is gone (or whose channel I left) are left out; the worker
-    cancels them when they come due."""
+    cancels them when they come due. A request to acknowledge that I have since acknowledged
+    is left out too (L4)."""
     rows = await repo.list_open_for_user(db, actor.id)
     bodies = await _visible_bodies(db, rows)
-    return [to_out(row, bodies[row.message_id]) for row in rows if row.message_id in bodies]
+    acked = {
+        row.message_id
+        for row in rows
+        if row.kind == "ack" and await messages.has_acked(db, row.message_id, actor.id)
+    }
+    return [
+        to_out(row, bodies[row.message_id])
+        for row in rows
+        if row.message_id in bodies and row.message_id not in acked
+    ]
+
+
+async def remind_unacknowledged(
+    db: AsyncSession, actor: User, message_id: uuid.UUID
+) -> AckRemindOut:
+    """L4 (LAB.md H): the author or an administrator nudges the members who have not
+    acknowledged, through a reminder only each of them sees (their list, push and badge), at
+    most once an hour per message. Someone whose earlier nudge is still open is not nudged again."""
+    message = await messages.require_ack_message(db, actor, message_id)
+    if message.sender_id != actor.id and not actor.is_admin:
+        raise forbidden("ack_remind_forbidden", "Only the author or an administrator can remind")
+    now = utcnow()
+    last = await repo.last_created(db, message.id, "ack")
+    if last is not None and now - last < ACK_REMIND_INTERVAL:
+        wait = int((ACK_REMIND_INTERVAL - (now - last)).total_seconds()) + 1
+        raise AppError(
+            429,
+            "ack_remind_too_soon",
+            "Reminded less than an hour ago",
+            details={"retry_after_seconds": wait},
+        )
+    pending = await messages.ack_pending_ids_in_tx(db, message)
+    already = await repo.open_user_ids(db, message.id, "ack")
+    note = f"{actor.display_name} さんから確認のお願い"[:200]
+    body = message.body or ""
+    reminded = 0
+    for user_id in pending:
+        if user_id in already:
+            continue
+        await create_system_in_tx(
+            db,
+            user_id=user_id,
+            message_id=message.id,
+            channel_id=message.channel_id,
+            note=note,
+            kind="ack",
+            body=body,
+            now=now,
+        )
+        reminded += 1
+    await db.commit()
+    return AckRemindOut(reminded=reminded)
+
+
+async def create_system_in_tx(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    message_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    note: str,
+    kind: str,
+    body: str,
+    now: datetime,
+) -> None:
+    """A reminder made for someone (LAB.md §3): fired at once, so it reaches their list, their
+    devices (the push planner) and their badge like one they set themselves."""
+    row = Reminder(
+        user_id=user_id,
+        message_id=message_id,
+        channel_id=channel_id,
+        note=note,
+        preview="",
+        remind_at=now,
+        status="fired",
+        fired_at=now,
+        kind=kind,
+    )
+    db.add(row)
+    await db.flush()
+    await _emit(db, row, body)
 
 
 async def close(db: AsyncSession, actor: User, reminder_id: uuid.UUID) -> None:

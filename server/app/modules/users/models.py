@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, SmallInteger, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, SmallInteger, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,8 @@ class User(Base):
     quiet_hours_tz: Mapped[str | None] = mapped_column(Text)
     # Keyword notifications (M12g): a message containing one counts as a mention of me.
     notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    # L4 (M31): others always see this person as offline (the hub announces nothing else).
+    presence_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
