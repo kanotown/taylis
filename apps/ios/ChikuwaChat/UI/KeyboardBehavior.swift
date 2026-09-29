@@ -80,8 +80,11 @@ enum KeyboardBehavior {
         private let duration: TimeInterval
         /// Where the slide goes, asked again on each frame (slideToEnd); nil keeps `to`.
         private let target: ((UIScrollView) -> CGFloat)?
-        /// The first frame's time: a stall before it (the send's own work) delays the slide instead of skipping its start.
-        private var started: CFTimeInterval?
+        /// The slide's own clock: each frame moves it by the time since the last one, two frames' worth at most, so a
+        /// stall of the main thread (the send's own work) delays the slide instead of skipping part of it — before the
+        /// first frame or after it (a stall mid-slide moved the list 26 pt in one frame, Codex's trace, 2026-09-30).
+        private var elapsed: CFTimeInterval = 0
+        private var lastTick: CFTimeInterval?
         private var link: CADisplayLink?
 
         init(scrollView: UIScrollView, from: CGFloat, to: CGFloat, duration: TimeInterval,
@@ -99,9 +102,9 @@ enum KeyboardBehavior {
             guard let scrollView else { return stop() }
             if let target { to = target(scrollView) }
             let now = CACurrentMediaTime()
-            let begun = started ?? now - 1.0 / 60
-            started = begun
-            let t = min(1, (now - begun) / duration)
+            elapsed += lastTick.map { min(now - $0, 1.0 / 30) } ?? 1.0 / 60
+            lastTick = now
+            let t = min(1, elapsed / duration)
             let eased = 1 - pow(1 - t, 2) // ease out
             scrollView.contentOffset.y = from + (to - from) * eased
             if t >= 1 { stop() }

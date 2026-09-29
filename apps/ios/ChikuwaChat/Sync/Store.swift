@@ -538,6 +538,7 @@ final class Store {
             oldestLoadedSeq: existing?.oldestLoadedSeq,
             firstUnreadAt: read != nil ? read?.firstUnreadAt : existing?.firstUnreadAt
         )
+        guard merged != existing else { return merged } // unchanged: nothing redraws (updateChannel)
         channels[channel.id] = merged
         persist { try $0.saveChannel(merged) }
         return merged
@@ -752,8 +753,12 @@ final class Store {
     }
 
     func updateChannel(_ id: String, _ mutate: (inout ChannelState) -> Void) {
-        guard var state = channels[id] else { return }
+        guard let old = channels[id] else { return }
+        var state = old
         mutate(&state)
+        // Unchanged: no write. Every write redraws each view reading the channels — the lists under the conversation
+        // and in the other tabs too — and a send made five (the list stalled as the row came in, 2026-09-30).
+        guard state != old else { return }
         channels[id] = state
         persist { try $0.saveChannel(state) }
     }
