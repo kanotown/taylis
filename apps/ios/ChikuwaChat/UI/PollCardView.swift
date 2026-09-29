@@ -60,7 +60,7 @@ struct PollCardView: View {
             HStack {
                 Text(poll.closedAt != nil ? "締め切りました · \(total) 票" : "\(total) 票").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                if canClose { Button("締め切る") { Task { _ = await controller.closePoll(message) } }.font(.caption) }
+                if canClose { Button("締め切る") { Task { _ = await controller.closePoll(message) } }.font(.caption).frame(minHeight: 32) }
             }
         }
         .padding(10)

@@ -832,7 +832,7 @@ struct MessageRow: View {
                 // Grouped under the previous message: its time, small, where the avatar would be, so where one message
                 // ends and the next begins shows (testers, 2026-09-28; the same on Android and the web).
                 Text(Timeline.timeLabel(message.createdAt))
-                    .font(.system(size: 10)).monospacedDigit().foregroundStyle(.tertiary)
+                    .font(.caption2).monospacedDigit().foregroundStyle(.tertiary) // scales with Dynamic Type (audit 2026-09-29)
                     .frame(width: 36, alignment: .center)
                     .padding(.top, 3)
             } else {
