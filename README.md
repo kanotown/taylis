@@ -32,3 +32,5 @@ docs/           設計文書
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | マイルストーン表 (M0〜M29) とバックログ |
 | [docs/THREADS.md](docs/THREADS.md) | フォロー中スレッド一覧の設計 (M11a で実装) |
 | [docs/WORKSPACES.md](docs/WORKSPACES.md) | 複数ワークスペース (サーバ) の切り替え (M16c) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 研究室向けの計画 (2026-09-28 の評価から) と、その番号と実際のマイルストーンの対応 |
+| [docs/LAB.md](docs/LAB.md) / [CANVAS.md](docs/CANVAS.md) / [MOBILE_UI.md](docs/MOBILE_UI.md) | 研究室向け機能 (L0〜L9)・Canvas・スマホ UI の設計 |
