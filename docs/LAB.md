@@ -1,6 +1,6 @@
 # LAB (研究室向け機能の設計)
 
-2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3 も実装済み (M30、仕様は DATA_MODEL.md message_templates)。**次は L4 (H 確認の拡張と教員の権限、J プライバシー)**。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
+2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3 も実装済み (M30、仕様は DATA_MODEL.md message_templates)。H (確認の拡張と教員の権限) と J (プライバシー) = L4 も実装済み (M31)。**次は L7 (I 4 月の受け入れ・年度更新・卒業、2027 年 3 月までに)**。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
 
 ## 0. 前提と方針
 
@@ -231,6 +231,8 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 
 ### H. お知らせの確認 (M15e の拡張) と教員の権限
 
+**実装済み (M31)**。決まった仕様は DATA_MODEL.md reminders と SECURITY.md。以下は設計時の文面。
+
 - 確認を求めた投稿に「未確認: 3 人」と名前の一覧を出す。
   - 未確認 = チャンネルのメンバー − 確認済みの人 − 投稿者 − bot と無効化された人。
 - 投稿者または admin が「未確認の人にリマインド」できる。
@@ -278,6 +280,8 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 - 連絡が不要な人は無効化する。本人の申し出があれば匿名化する (どちらも既存の機能)。
 
 ### J. 教員と学生のプライバシー
+
+**実装済み (M31)** (1・2・4。3 は作らない方針のまま)。以下は設計時の文面。
 
 **すでにあるもの**
 - 非公開チャンネルと DM は、admin でもメンバーでなければ読めない。
@@ -379,7 +383,7 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 | L1 | 研究室プロフィールと学年グループ | サーバ: 葉モジュール lab、マイグレーション (lab_profiles、user_groups.managed_key)、GET /lab/profiles、bootstrap の lab_profiles、lab_profile.updated (ゲストの絞り込みあり)、PUT /admin/lab/profiles/{id}、PATCH /users/me/lab、groups.sync_managed_in_tx と 409 group_managed。Desktop: 管理画面「研究室」タブ、カードのチップ、名簿の並びと絞り込み、@候補での人数表示。iOS / Android: カード、名簿、研究テーマの編集。 | M | 実装済み (M23) |
 | L2 | times (基本) | サーバ: channels.times_owner_id と一意インデックス、POST /users/me/times (冪等)、POST /admin/users/{id}/times、ChannelOut.times_owner_id、指導教員の自動フォロー、/sync/summary の静かな未読規則。3 端末: Times 節 (sectionChannels と同等の関数)、作成ボタン、Times 一覧 (フォロー / 全員フォロー)、hasUnread の静かな未読、共有テストベクタ。 | M | 実装済み (M24) |
 | L3 | 投稿テンプレートと /日程 | サーバ: message_templates、API、bootstrap の templates、template.updated。3 端末: 入力欄のテンプレートボタン、/日報 /週報、{date}/{weekday}/{week} の置換 (apps/shared のテストベクタ)、/日程 で日付の選択肢の投票を作るヘルパ (クライアントのみ)。 | S | 実装済み (M30) |
-| L4 | 確認の拡張・教員の権限・プライバシー | サーバ: reminders.create_system_in_tx、POST /messages/{id}/ack/remind (1 時間に 1 回)、PATCH /channels/{id}/members/{user_id} (ロール)、非公開→公開をメンバーの admin に限定、users.presence_hidden (Hub で絞る)。3 端末: 未確認の人の一覧とリマインドボタン、メンバーのロール変更、在席を隠す設定。 | M | 未着手 |
+| L4 | 確認の拡張・教員の権限・プライバシー | サーバ: reminders.create_system_in_tx、POST /messages/{id}/ack/remind (1 時間に 1 回)、PATCH /channels/{id}/members/{user_id} (ロール)、非公開→公開をメンバーの admin に限定、users.presence_hidden (Hub で絞る)。3 端末: 未確認の人の一覧とリマインドボタン、メンバーのロール変更、在席を隠す設定。 | M | 実装済み (M31) |
 | L5 | 締切 (学会・提出物) | サーバ: 葉モジュール deadlines (deadlines、deadline_notices)、CRUD API、deadline.updated、bootstrap に 90 日分、研究室 bot、scheduled ループでの事前通知 (冪等)。3 端末: 見出しのチップ、「締切」一覧、作成と編集。 | L | 未着手 |
 | L6 | 定期投稿と週報の回収 | サーバ: recurring_posts、messages.report、ワーカー (uuid5 の冪等キー、tz を使った次回計算)、GET /messages/{id}/report、MessageOut の report_summary、期限後の未提出者へ本人だけのリマインダー。Desktop: チャンネル ⋯ の「定期投稿」設定画面。3 端末: 提出状況のカード。 | L | 未着手 |
 | L7 | 年度更新・受け入れプリセット・卒業処理 | サーバ: rollover の preview と apply、lab_rollovers (二重適用は 409、before で取り消し)、招待プリセット (身分・学年・指導教員・times)、卒業処理 (alumni、ゲスト化、指定外のチャンネルから外す、times のアーカイブ)、監査ログ。Desktop: 年度更新の画面、招待プリセット。モバイル: 受諾時の表示。2027 年 2 月までに終える。 | M | 未着手 |
