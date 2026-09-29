@@ -643,13 +643,16 @@ final class Store {
     func listScheduled() -> [ScheduledOut] { scheduled.values.sorted { $0.sendAt < $1.sendAt } }
 
     func replaceScheduled(_ rows: [ScheduledOut]) {
-        scheduled = Dictionary(uniqueKeysWithValues: rows.filter { $0.status == "pending" }.map { ($0.id, $0) })
+        scheduled = Dictionary(uniqueKeysWithValues: rows.filter { Self.keepsScheduled($0) }.map { ($0.id, $0) })
     }
 
-    /// scheduled.updated: a pending row is kept (created / edited); any other status drops it.
+    /// scheduled.updated: a pending row is kept (created / edited), and a failed one (its time came and the send was
+    /// refused: 「下書き」 shows why, with 「今すぐ送信」 and 「取り消し」, as on the web and Android); sent or cancelled drops it.
     func applyScheduled(_ row: ScheduledOut) {
-        if row.status == "pending" { scheduled[row.id] = row } else { scheduled.removeValue(forKey: row.id) }
+        if Self.keepsScheduled(row) { scheduled[row.id] = row } else { scheduled.removeValue(forKey: row.id) }
     }
+
+    nonisolated static func keepsScheduled(_ row: ScheduledOut) -> Bool { row.status == "pending" || row.status == "failed" }
 
     // MARK: favorites (M12a)
 

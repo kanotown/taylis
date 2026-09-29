@@ -142,6 +142,8 @@ class APNsPushProvider:
             "channel_id": payload.get("channel_id"),
             "message_id": payload.get("message_id"),
             "seq": payload.get("seq"),
+            # A reply's thread, so a tap opens it (M28d); None for a top-level post.
+            "parent_id": payload.get("parent_id"),
         }
         return url, headers, body
 
@@ -260,6 +262,7 @@ class FCMPushProvider:
                 "workspace_id",
                 "channel_id",
                 "message_id",
+                "parent_id",
                 "seq",
                 "title",
                 "subtitle",

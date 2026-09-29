@@ -13,6 +13,8 @@ final class PushCenter {
     private(set) var token: String?
     /// A tapped notification's conversation in the workspace on screen; MainView opens it once the store knows it.
     var pendingChannelId: String?
+    /// The tapped notification's thread, when it was a reply (M28d): opened with the channel.
+    var pendingParentId: String?
     @ObservationIgnored private weak var controller: AppController?
     /// A tap that arrived before the app finished starting; routed after startup.
     @ObservationIgnored private var pendingTap: PushPayload?

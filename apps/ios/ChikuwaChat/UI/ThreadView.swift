@@ -19,6 +19,9 @@ struct ThreadView: View {
     /// The replies were fetched on this connection. They are fetched again on the next one, and when the thread stops
     /// being complete while online (a §7.3 reload of its channel drops its rows).
     @State private var fetchedOnline = false
+    /// A fetch of the replies or the thread's state failed while online; 「再読み込み」 bumps the attempt.
+    @State private var loadFailed = false
+    @State private var loadAttempt = 0
     /// M15c: "also send to the channel", unticked again after each send (Slack).
     @State private var alsoInChannel = false
     @State private var atBottom = true
@@ -133,7 +136,7 @@ struct ThreadView: View {
                 if let state = entry?.state, controller.store.channel(channelId)?.isMember == true {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            Task { await controller.engine?.setThreadFollow(parentId, following: !state.following) }
+                            Task { await controller.setThreadFollow(parentId, following: !state.following) }
                         } label: {
                             followLabel(state.following)
                         }
@@ -143,16 +146,19 @@ struct ThreadView: View {
                     }
                 }
             }
-            .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false)") {
+            .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false):\(loadAttempt)") {
                 guard let engine = controller.engine else { return }
                 guard engine.status == .online else { fetchedOnline = false; return }
                 if engine.threadComplete(parentId) && fetchedOnline { return }
                 fetchedOnline = await engine.loadReplies(channelId, parentId: parentId)
+                // A failed fetch (a 5xx, a timeout) left the thread half shown for good, with no word and no read marks
+                // (audit 2026-09-29): 「再読み込み」 tries again.
+                if !fetchedOnline && engine.status == .online { loadFailed = true }
             }
             // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
-            .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? "")") {
-                guard entry == nil, let parent, let out = MessageOut(parent) else { return }
-                await controller.engine?.loadThreadState(parentId, parent: out)
+            .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? ""):\(loadAttempt)") {
+                guard entry == nil, let parent, let out = MessageOut(parent), let engine = controller.engine else { return }
+                if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online { loadFailed = true }
             }
             .messageSheets(controller, sheet: $messageSheet)
         }
@@ -188,6 +194,16 @@ struct ThreadView: View {
             Text(replies.isEmpty ? "返信はまだありません" : "\(replies.count) 件の返信")
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
             Divider().padding(.horizontal, Self.margin)
+            if loadFailed {
+                HStack(spacing: 10) {
+                    Label("スレッドを読み込めませんでした", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Button("再読み込み") {
+                        loadFailed = false
+                        loadAttempt += 1
+                    }
+                }
+                .font(.footnote).padding(.horizontal, Self.margin)
+            }
             ForEach(replies, id: \.rowKey) { reply in
                 // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
                 VStack(alignment: .leading, spacing: 12) {

@@ -117,6 +117,14 @@ struct MessageActionsSheet: View {
 
     private var store: Store { controller.store }
     private var isMine: Bool { store.me?.id == message.senderId }
+    /// The quick reactions: the ones used lately first (the picker's recents, standard emoji only), then the palette,
+    /// six in all — as on the web and Android (parity audit 2026-09-29).
+    @AppStorage("emoji.recent") private var recentRaw = ""
+    private var quickReactions: [String] {
+        let recent = recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty && CustomEmoji.name(of: $0) == nil }
+        var seen: Set<String> = []
+        return (recent + reactionPalette).filter { seen.insert($0).inserted }.prefix(6).map { $0 }
+    }
     private var mine: Set<String> {
         guard let me = store.me?.id else { return [] }
         return Set(message.reactions.filter { $0.userIds.contains(me) }.map(\.emoji))
@@ -136,7 +144,7 @@ struct MessageActionsSheet: View {
         ScrollView {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    ForEach(reactionPalette, id: \.self) { emoji in
+                    ForEach(quickReactions, id: \.self) { emoji in
                         Button { run { await controller.toggleReaction(message, emoji: emoji) } } label: {
                             Text(emoji).font(.system(size: 26))
                                 .frame(width: 44, height: 44)
@@ -154,9 +162,10 @@ struct MessageActionsSheet: View {
                 }
                 .padding(.top, 22)
                 .padding(.bottom, 8)
-                if canThread { row("スレッドで返信", "bubble.left.and.bubble.right") { then(.thread) } }
-                // M27: who reacted (a long press on a reaction in Slack; here the message's own long press).
+                // M27: who reacted (a long press on a reaction in Slack; here the message's own long press), first as
+                // on the other clients.
                 if !message.reactions.isEmpty { row("リアクションした人", "person.2") { then(.reactors) } }
+                if canThread { row("スレッドで返信", "bubble.left.and.bubble.right") { then(.thread) } }
                 if isMine { row("編集", "pencil") { then(.edit) } }
                 if !message.body.isEmpty {
                     row("テキストをコピー", "doc.on.doc") {

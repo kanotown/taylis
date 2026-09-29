@@ -3,6 +3,17 @@ import SwiftUI
 struct MainView: View {
     @Bindable var controller: AppController
     @State private var selection: String?
+    /// A permalink into a channel I have not joined (M27): the preview opens around this message.
+    @State private var previewMessageId: String?
+    /// The lists a selection can name besides a channel.
+    private static let listIds: Set<String> = [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId,
+                                               RemindersView.selectionId, SavedView.selectionId, ThreadsListView.selectionId]
+    /// The selected channel left the store (I left it or was removed, it went private while previewed, a bootstrap
+    /// dropped it): the detail showed 「チャンネルを選択してください」 with the id kept (audit 2026-09-29).
+    private var selectionGone: Bool {
+        guard let id = selection, !Self.listIds.contains(id) else { return false }
+        return controller.store.channel(id) == nil
+    }
     @State private var sheet: Sheet?
     @State private var pendingThreadId: String?
 
@@ -94,7 +105,7 @@ struct MainView: View {
             } else if let id = selection, let channel = controller.store.channel(id) {
                 if !channel.isMember && channel.channel.type == "public" && !controller.isGuest {
                     // M27: a public channel I have not joined is read before joining (Slack); joining shows the channel.
-                    ChannelPreviewView(controller: controller, channelId: channel.id).id("preview " + channel.id)
+                    ChannelPreviewView(controller: controller, channelId: channel.id, focusMessageId: previewMessageId).id("preview " + channel.id)
                 } else {
                     // View state resets; conversation drafts live in the persistent Store.
                     ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
@@ -132,15 +143,20 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
             if let id = note.userInfo?["id"] as? String {
                 if sheet == .search { sheet = nil } // a conversation opened from a search result's profile or link
+                previewMessageId = note.userInfo?["messageId"] as? String
                 selection = id
                 if let parentId = note.userInfo?["parentId"] as? String { pendingThreadId = parentId }
             }
         }
+        .onChange(of: selection) { _, _ in if previewMessageId != nil && selection == nil { previewMessageId = nil } }
+        .onChange(of: selectionGone) { _, gone in if gone { selection = nil } }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {
                 selection = id
+                if let parentId = PushCenter.shared.pendingParentId { pendingThreadId = parentId } // a reply's thread (M28d)
                 PushCenter.shared.pendingChannelId = nil
+                PushCenter.shared.pendingParentId = nil
             }
         }
     }
