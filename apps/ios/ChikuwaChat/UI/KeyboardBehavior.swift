@@ -206,3 +206,98 @@ private struct KeepsBottom: ViewModifier {
         }
     }
 }
+
+extension View {
+    /// Swiping back from a conversation with the keyboard up (testers, 2026-09-29): while the pop followed the finger the
+    /// conversation lost the keyboard's room, so the input went under the keyboard and the messages slid down with the
+    /// finger, and a swipe let go half way put them back in one frame. Until the swipe has settled, the conversation
+    /// keeps its bottom edge where it was (the keyboard's top); the keyboard itself stays, as UIKit leaves it.
+    func keepsKeyboardRoomWhileSwipingBack() -> some View { modifier(KeyboardRoomDuringBackSwipe()) }
+}
+
+private struct KeyboardRoomDuringBackSwipe: ViewModifier {
+    /// The distance from the screen's bottom to the conversation's while a swipe back is under way.
+    @State private var held: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .background(BackSwipeWatcher { held = $0 })
+            .padding(.bottom, held ?? 0)
+            // The same modifiers either way, so the conversation keeps its identity (and its scroll position).
+            .ignoresSafeArea(held == nil ? [] : .all, edges: .bottom)
+    }
+}
+
+/// Watches the navigation's swipe-back gestures (the edge, and from iOS 26 the content) from a view laid out like the
+/// conversation. It reports how far the conversation's bottom is from the screen's as a swipe starts with the keyboard up,
+/// and nil once the swipe has settled either way.
+private struct BackSwipeWatcher: UIViewRepresentable {
+    let onChange: (CGFloat?) -> Void
+
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) { view.onChange = onChange }
+    static func dismantleUIView(_ view: Probe, coordinator: ()) { view.detach() }
+
+    final class Probe: UIView {
+        var onChange: (CGFloat?) -> Void = { _ in }
+        private var recognizers: [UIGestureRecognizer] = []
+        private var holding = false
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            detach()
+            guard window != nil, let navigation = navigationController else { return }
+            var found = [navigation.interactivePopGestureRecognizer].compactMap { $0 }
+            if #available(iOS 26.0, *), let content = navigation.interactiveContentPopGestureRecognizer { found.append(content) }
+            found.forEach { $0.addTarget(self, action: #selector(swiped(_:))) }
+            recognizers = found
+        }
+
+        func detach() {
+            recognizers.forEach { $0.removeTarget(self, action: #selector(swiped(_:))) }
+            recognizers = []
+        }
+
+        @objc private func swiped(_ recognizer: UIGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                guard let window else { return }
+                let below = window.bounds.maxY - convert(bounds, to: window).maxY
+                // Only with the keyboard up (the home indicator alone is some 34 pt).
+                guard below > 100 else { return }
+                holding = true
+                onChange(below)
+            case .ended, .cancelled, .failed:
+                guard holding else { return }
+                let release = { [weak self] in
+                    guard let self, self.holding else { return }
+                    self.holding = false
+                    self.onChange(nil)
+                }
+                if let coordinator = navigationController?.transitionCoordinator {
+                    coordinator.animate(alongsideTransition: nil) { _ in DispatchQueue.main.async(execute: release) }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: release)
+                }
+            default:
+                break
+            }
+        }
+
+        private var navigationController: UINavigationController? {
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let controller = current as? UIViewController, let navigation = controller.navigationController { return navigation }
+                responder = current.next
+            }
+            return nil
+        }
+    }
+}
+

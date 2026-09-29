@@ -483,6 +483,7 @@ struct ChannelView: View {
                 }
             }
         }
+        .keepsKeyboardRoomWhileSwipingBack()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
