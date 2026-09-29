@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -707,6 +707,26 @@ export class FakeServer {
     this.emit(audience, { type: "event", id: ++this.eventId, event: "channel.updated", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, membership: null }, member_ids: memberIds } });
   }
 
+  /** L4 (M31): owners made or taken back ("channel:user" → role); the creator is an owner unless changed here. */
+  readonly roles = new Map<string, "owner" | "member">();
+
+  roleOf(channelId: string, userId: string): "owner" | "member" {
+    return this.roles.get(`${channelId}:${userId}`) ?? (this.record(channelId).channel.created_by === userId ? "owner" : "member");
+  }
+
+  /** GET /channels/{id}/members as the server answers it. */
+  memberList(channelId: string): MemberOut[] {
+    return [...this.record(channelId).members].map((userId) => ({ user_id: userId, role: this.roleOf(channelId, userId), joined_at: now() }));
+  }
+
+  /** PATCH /channels/{id}/members/{user_id} (L4): channel.member_updated to the channel's members. */
+  setMemberRole(channelId: string, userId: string, role: "owner" | "member"): MemberOut {
+    const record = this.record(channelId);
+    this.roles.set(`${channelId}:${userId}`, role);
+    this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.member_updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, user_id: userId, role } });
+    return { user_id: userId, role, joined_at: now() };
+  }
+
   /** What the real server emits after a join / add: member_added to the channel, channel.created to the user. */
   emitMembership(channelId: string, userId: string): void {
     const record = this.record(channelId);
@@ -756,7 +776,7 @@ export class FakeServer {
           .map((r) => ({
             ...r.channel,
             member_count: r.members.size,
-            membership: { role: r.channel.created_by === userId ? "owner" : "member", joined_at: now() },
+            membership: { role: this.roleOf(r.channel.id, userId), joined_at: now() },
             read_state: this.readState(userId, r.channel.id),
           }));
         return {

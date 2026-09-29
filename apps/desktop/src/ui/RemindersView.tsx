@@ -4,10 +4,10 @@ import type { ReminderOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { channelTitle } from "./MainScreen";
 import { BackButton } from "./compact";
-import { Button } from "./primitives";
+import { Badge, Button } from "./primitives";
 import { scheduleLabel } from "./schedule";
 
-/** 「リマインダー」 (M12e): fired nudges wait for 完了 on top; pending ones list their time. */
+/** 「リマインダー」 (M12e): fired nudges wait for 完了 on top; pending ones list their time; 「確認のお願い」 marked (L4). */
 export function RemindersView({ controller, onOpen }: { controller: AppController; onOpen: (row: ReminderOut) => void }) {
   const store = controller.store;
   const rows = store.listReminders();
@@ -23,6 +23,8 @@ export function RemindersView({ controller, onOpen }: { controller: AppControlle
             <li key={row.id} className="flex items-start gap-3 px-3 py-2.5">
               <button type="button" className="min-w-0 flex-1 text-left" title="メッセージを表示" onClick={() => onOpen(row)}>
                 <div className="flex items-center gap-2 text-xs text-muted">
+                  {/* L4: asked by the author or an admin (the note names who). */}
+                  {row.kind === "ack" && <Badge tone="accent">確認のお願い</Badge>}
                   <span className="font-medium text-ink">{channel ? channelTitle(channel, controller) : "?"}</span>
                   <span>· {row.status === "fired" ? `${scheduleLabel(row.remind_at)} にリマインド` : `${scheduleLabel(row.remind_at)} にリマインド予定`}</span>
                 </div>

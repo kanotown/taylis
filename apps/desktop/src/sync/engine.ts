@@ -607,6 +607,14 @@ export class SyncEngine {
         const data = frame.data as { channel_id: string; user_id: string };
         const channel = store.getChannel(data.channel_id);
         if (channel && channel.member_count != null) store.updateChannel(data.channel_id, { member_count: channel.member_count + 1 });
+        store.membersChanged(data.channel_id);
+        return;
+      }
+      case "channel.member_updated": {
+        // L4 (M31): an owner made or taken back. Mine moves the owner-only menus at once; open member lists load again.
+        const data = frame.data as { channel_id: string; user_id: string; role: string };
+        if (store.me && data.user_id === store.me.id) store.setMyRole(data.channel_id, data.role);
+        store.membersChanged(data.channel_id);
         return;
       }
       case "channel.member_removed": {
@@ -617,6 +625,7 @@ export class SyncEngine {
         }
         const channel = store.getChannel(data.channel_id);
         if (channel && channel.member_count != null) store.updateChannel(data.channel_id, { member_count: Math.max(0, channel.member_count - 1) });
+        store.membersChanged(data.channel_id);
         return;
       }
       case "user.created":

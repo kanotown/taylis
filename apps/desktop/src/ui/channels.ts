@@ -18,6 +18,14 @@ export function canPostTopLevel(channel: ChannelState, isAdmin: boolean): boolea
   return channel.posting_policy !== "owners" || isAdmin || channel.membership?.role === "owner";
 }
 
+/**
+ * M15b / L4 (M31): private → public shows the whole history to everyone, so only an admin who is a member of the channel
+ * may (SECURITY.md; the server says 403 admin_not_member otherwise).
+ */
+export function canMakePublic(channel: ChannelState, isAdmin: boolean): boolean {
+  return channel.type === "private" && isAdmin && channel.isMember;
+}
+
 /** Level "none" or an active timed mute. */
 export function isMutedChannel(channel: ChannelState, now: Date = new Date()): boolean {
   if (channel.notificationLevel === "none") return true;

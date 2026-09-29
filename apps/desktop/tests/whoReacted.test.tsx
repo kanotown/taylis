@@ -39,7 +39,7 @@ function world() {
   const onOpenThread = vi.fn();
   const controller = {
     store, engine: null, api: { baseUrl: "http://server", fetchBlob: vi.fn(async () => new Blob(["png"])) }, version: 0, setError: vi.fn(), messageFocus: null, editing: null, isAdmin: false, sendKey: "shift-enter",
-    linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {}, subscribe: () => () => {}, toggleReaction: vi.fn(async () => {}), toggleAck: vi.fn(async () => {}),
+    linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {}, subscribe: () => () => {}, toggleReaction: vi.fn(async () => {}), toggleAck: vi.fn(async () => {}), ackPending: vi.fn(async () => users.slice(3).map((u) => u.id)), remindAck: vi.fn(async () => ({ ok: true, text: "" })),
   };
   function View() {
     useSyncExternalStore((l) => store.subscribe(l), () => store.version);
@@ -127,6 +127,19 @@ describe("確認した人 (M27)", () => {
     expect(line.textContent).toBe("Carol、Alice、Dave ほか 1 人が確認");
     fireEvent.click(line);
     const list = screen.getByRole("dialog", { name: "確認した人" });
-    expect([...list.querySelectorAll("li")].map((li) => li.querySelector("span.font-medium")?.textContent)).toEqual(["Carol", "Alice", "Dave", "Erin"]);
+    // The first list (who confirmed); 「未確認」 below has its own (M31).
+    expect([...list.querySelector("ul")!.querySelectorAll("li")].map((li) => li.querySelector("span.font-medium")?.textContent)).toEqual(["Carol", "Alice", "Dave", "Erin"]);
+  });
+
+  it("「まだ誰も確認していません」 opens the list too, with who has not confirmed (M31)", async () => {
+    touchScreen(false);
+    const w = world();
+    fireEvent.click(within(w.row()).getByRole("button", { name: "まだ誰も確認していません" }));
+    const list = screen.getByRole("dialog", { name: "確認した人" });
+    expect(await within(list).findByText("未確認 2 人")).toBeTruthy();
+    expect(within(list).getByText("Dave")).toBeTruthy();
+    expect(within(list).getByText("Erin")).toBeTruthy();
+    // Alice is neither the author (Bob is) nor an admin: no reminder button.
+    expect(within(list).queryByRole("button", { name: "未確認の人にリマインド" })).toBeNull();
   });
 });

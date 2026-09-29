@@ -89,6 +89,24 @@ export class Store {
   linksOf(channelId: string): ChannelLinkOut[] {
     return this.channelLinks.get(channelId) ?? [];
   }
+  /**
+   * L4 (M31): bumped per conversation when its members change (added, removed, an owner made or taken back), so an open
+   * member list loads again. Not persisted: a list opened later loads anyway.
+   */
+  private readonly memberRevisions = new Map<string, number>();
+  membersRevision(channelId: string): number {
+    return this.memberRevisions.get(channelId) ?? 0;
+  }
+  membersChanged(channelId: string): void {
+    this.memberRevisions.set(channelId, this.membersRevision(channelId) + 1);
+    this.emit();
+  }
+  /** L4 (M31): my role in a conversation changed (channel.member_updated, or my own PATCH). */
+  setMyRole(channelId: string, role: string): void {
+    const channel = this.channels.get(channelId);
+    if (!channel) return;
+    this.updateChannel(channelId, { membership: { joined_at: channel.membership?.joined_at ?? new Date().toISOString(), role } });
+  }
   /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
   sidebarSections: SidebarSectionOut[] = [];
   version = 0;

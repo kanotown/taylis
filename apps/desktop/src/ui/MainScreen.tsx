@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { canPostTopLevel, conversationTitle, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
+import { canMakePublic, canPostTopLevel, conversationTitle, hasUnread, isDmChannel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -545,7 +545,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         </MenuItem>
       )}
       {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}
-      {controller.isAdmin && current.type === "private" && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
+      {canMakePublic(current, controller.isAdmin) && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
       <MenuSeparator />
       <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
       {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
