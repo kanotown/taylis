@@ -3035,6 +3035,101 @@
         "type": "object"
       }
     },
+    "template.updated": {
+      "audience": "all (a personal template: user)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "TemplateOut": {
+            "properties": {
+              "body": {
+                "title": "Body",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "owner_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Owner Id"
+              },
+              "position": {
+                "title": "Position",
+                "type": "integer"
+              },
+              "scope": {
+                "enum": [
+                  "workspace",
+                  "user"
+                ],
+                "title": "Scope",
+                "type": "string"
+              },
+              "suggest_in": {
+                "enum": [
+                  "any",
+                  "times"
+                ],
+                "title": "Suggest In",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "scope",
+              "owner_id",
+              "name",
+              "body",
+              "suggest_in",
+              "position",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "TemplateOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "template": {
+            "$ref": "#/$defs/TemplateOut"
+          }
+        },
+        "required": [
+          "template",
+          "deleted"
+        ],
+        "title": "TemplateUpdatedData",
+        "type": "object"
+      }
+    },
     "thread.updated": {
       "audience": "user",
       "consumes_seq": false,

@@ -459,6 +459,14 @@
             "title": "Sidebar Sections",
             "type": "array"
           },
+          "templates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          },
           "threads": {
             "$ref": "#/components/schemas/ThreadSummary",
             "default": {
@@ -3708,6 +3716,193 @@
           "channel_ids"
         ],
         "title": "SidebarSectionOut",
+        "type": "object"
+      },
+      "TemplateCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "scope": {
+            "default": "user",
+            "enum": [
+              "workspace",
+              "user"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "suggest_in": {
+            "default": "any",
+            "enum": [
+              "any",
+              "times"
+            ],
+            "title": "Suggest In",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "body"
+        ],
+        "title": "TemplateCreate",
+        "type": "object"
+      },
+      "TemplateOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "workspace",
+              "user"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "suggest_in": {
+            "enum": [
+              "any",
+              "times"
+            ],
+            "title": "Suggest In",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "owner_id",
+          "name",
+          "body",
+          "suggest_in",
+          "position",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TemplateOut",
+        "type": "object"
+      },
+      "TemplateUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "suggest_in": {
+            "anyOf": [
+              {
+                "enum": [
+                  "any",
+                  "times"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggest In"
+          }
+        },
+        "title": "TemplateUpdate",
         "type": "object"
       },
       "TemporaryPasswordOut": {
@@ -10226,6 +10421,179 @@
         "summary": "Unread Summary",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "description": "M30: the workspace's templates, then mine (also part of bootstrap).",
+        "operationId": "list_templates_api_v1_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateOut"
+                  },
+                  "title": "Response List Templates Api V1 Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "templates"
+        ]
+      },
+      "post": {
+        "description": "A personal template, or (admins) one for the whole workspace.",
+        "operationId": "create_template_api_v1_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Template",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
+    "/api/v1/templates/{template_id}": {
+      "delete": {
+        "operationId": "delete_template_api_v1_templates__template_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Template",
+        "tags": [
+          "templates"
+        ]
+      },
+      "patch": {
+        "operationId": "update_template_api_v1_templates__template_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Template",
+        "tags": [
+          "templates"
         ]
       }
     },

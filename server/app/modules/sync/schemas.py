@@ -10,6 +10,7 @@ from app.modules.emoji.schemas import CustomEmojiOut
 from app.modules.groups.schemas import GroupOut
 from app.modules.lab.schemas import LabProfileOut
 from app.modules.sidebar.schemas import SidebarSectionOut
+from app.modules.templates.schemas import TemplateOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
 
@@ -41,6 +42,8 @@ class BootstrapOut(BaseModel):
     favorites: list[UUID] = []
     # Custom emoji (M12f): the whole table, by name; changes arrive as emoji.updated.
     custom_emoji: list[CustomEmojiOut] = []
+    # Post templates (M30): the workspace's, then mine; changes arrive as template.updated.
+    templates: list[TemplateOut] = []
     # User groups (M12k): every group with its members; changes arrive as group.updated.
     groups: list[GroupOut] = []
     # The lab roster (M23) in roster order; changes arrive as roster.updated.

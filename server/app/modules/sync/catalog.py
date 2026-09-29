@@ -19,6 +19,7 @@ from app.modules.reads import events as read_events
 from app.modules.reminders import events as reminder_events
 from app.modules.scheduled import events as scheduled_events
 from app.modules.sidebar import events as sidebar_events
+from app.modules.templates import events as template_events
 from app.modules.threads import events as thread_events
 from app.modules.users import events as user_events
 from app.realtime.protocol import (
@@ -65,6 +66,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),
+    template_events.TEMPLATE_UPDATED: (
+        template_events.TemplateUpdatedData,
+        "all (a personal template: user)",
+        False,
+    ),
     group_events.GROUP_UPDATED: (group_events.GroupUpdatedData, "all", False),
     lab_events.ROSTER_UPDATED: (lab_events.RosterUpdatedData, "all", False),
     notification_events.NOTIFICATION_PREFERENCE_UPDATED: (

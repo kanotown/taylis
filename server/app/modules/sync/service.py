@@ -21,6 +21,7 @@ from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.sidebar import service as sidebar
 from app.modules.sync.schemas import BootstrapOut, Limits, PresenceEntry, UnreadSummaryOut
+from app.modules.templates import service as templates
 from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.models import User
@@ -65,6 +66,7 @@ async def bootstrap(
         bookmarks=await bookmarks.ids_for(db, actor.id),
         favorites=await favorites.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
+        templates=await templates.list_for(db, actor),
         groups=await groups.list_visible(db, visible),
         roster=await lab.roster(db, visible),
         sidebar_sections=await sidebar.list_for(db, actor.id),

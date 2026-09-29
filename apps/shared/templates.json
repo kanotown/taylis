@@ -1,0 +1,269 @@
+{
+  "_comment": "M30 (DATA_MODEL.md message_templates): what a template's placeholders become and what /日程 makes, for the three clients. `today` is the device's local date. expand: the body inserted into the input. schedule: `args` after /日程 → the poll's question and options, or error (the command is refused, nothing is posted). weekdays: the options /日程 alone offers (the next 5 weekdays after today).",
+  "expand": [
+    {
+      "name": "the three placeholders",
+      "today": "2026-09-28",
+      "input": "**日報 {date}**\n曜日: {weekday}\n週: {week}",
+      "output": "**日報 2026/09/28 (月)**\n曜日: 月\n週: 2026-W40"
+    },
+    {
+      "name": "zero-padded date, Sunday",
+      "today": "2026-01-04",
+      "input": "{date} {weekday}",
+      "output": "2026/01/04 (日) 日"
+    },
+    {
+      "name": "ISO week 53 at the end of the year",
+      "today": "2026-12-31",
+      "input": "{week}",
+      "output": "2026-W53"
+    },
+    {
+      "name": "the ISO week of 1 January belongs to the year before",
+      "today": "2027-01-01",
+      "input": "{date} {week}",
+      "output": "2027/01/01 (金) 2026-W53"
+    },
+    {
+      "name": "ISO week 1 starts in December",
+      "today": "2025-12-29",
+      "input": "{week}",
+      "output": "2026-W01"
+    },
+    {
+      "name": "repeated placeholders",
+      "today": "2026-09-29",
+      "input": "{date}〜{date} ({weekday}/{weekday})",
+      "output": "2026/09/29 (火)〜2026/09/29 (火) (火/火)"
+    },
+    {
+      "name": "unknown or other-case placeholders stay",
+      "today": "2026-09-29",
+      "input": "{Date} {time} {name} {{date}} {week",
+      "output": "{Date} {time} {name} {2026/09/29 (火)} {week"
+    },
+    {
+      "name": "no placeholder",
+      "today": "2026-09-29",
+      "input": "今日やったこと\n- ",
+      "output": "今日やったこと\n- "
+    }
+  ],
+  "schedule": [
+    {
+      "name": "question and three dates",
+      "today": "2026-09-29",
+      "args": "ゼミ 10/3 10/4 10/6",
+      "question": "ゼミ",
+      "options": [
+        "10/3 (土)",
+        "10/4 (日)",
+        "10/6 (火)"
+      ]
+    },
+    {
+      "name": "no question",
+      "today": "2026-09-29",
+      "args": "10/1 10/2",
+      "question": "日程調整",
+      "options": [
+        "10/1 (木)",
+        "10/2 (金)"
+      ]
+    },
+    {
+      "name": "a question of several words",
+      "today": "2026-09-29",
+      "args": "前期 最終 ゼミ 10/1 10/2",
+      "question": "前期 最終 ゼミ",
+      "options": [
+        "10/1 (木)",
+        "10/2 (金)"
+      ]
+    },
+    {
+      "name": "a date with a year",
+      "today": "2026-09-29",
+      "args": "打ち合わせ 2026/10/1 2027/1/8",
+      "question": "打ち合わせ",
+      "options": [
+        "10/1 (木)",
+        "2027/1/8 (金)"
+      ]
+    },
+    {
+      "name": "a range",
+      "today": "2026-09-29",
+      "args": "合宿 10/5-10/9",
+      "question": "合宿",
+      "options": [
+        "10/5 (月)",
+        "10/6 (火)",
+        "10/7 (水)",
+        "10/8 (木)",
+        "10/9 (金)"
+      ]
+    },
+    {
+      "name": "a range ending with a day",
+      "today": "2026-09-29",
+      "args": "合宿 10/5〜7",
+      "question": "合宿",
+      "options": [
+        "10/5 (月)",
+        "10/6 (火)",
+        "10/7 (水)"
+      ]
+    },
+    {
+      "name": "a range across the new year",
+      "today": "2026-12-20",
+      "args": "12/30~1/2",
+      "question": "日程調整",
+      "options": [
+        "12/30 (水)",
+        "12/31 (木)",
+        "2027/1/1 (金)",
+        "2027/1/2 (土)"
+      ]
+    },
+    {
+      "name": "a time",
+      "today": "2026-09-29",
+      "args": "面談 10/1 13:00 10/2 9:30",
+      "question": "面談",
+      "options": [
+        "10/1 (木) 13:00",
+        "10/2 (金) 9:30"
+      ]
+    },
+    {
+      "name": "a time range for every day of a range",
+      "today": "2026-09-29",
+      "args": "ゼミ 10/5-10/6 13:00-14:30",
+      "question": "ゼミ",
+      "options": [
+        "10/5 (月) 13:00〜14:30",
+        "10/6 (火) 13:00〜14:30"
+      ]
+    },
+    {
+      "name": "the same day twice",
+      "today": "2026-09-29",
+      "args": "10/1 10/1 10/2",
+      "question": "日程調整",
+      "options": [
+        "10/1 (木)",
+        "10/2 (金)"
+      ]
+    },
+    {
+      "name": "a recent past date stays in this year",
+      "today": "2026-09-29",
+      "args": "9/10 9/11",
+      "question": "日程調整",
+      "options": [
+        "9/10 (木)",
+        "9/11 (金)"
+      ]
+    },
+    {
+      "name": "a date long past is next year",
+      "today": "2026-12-20",
+      "args": "1/7 1/8",
+      "question": "日程調整",
+      "options": [
+        "2027/1/7 (木)",
+        "2027/1/8 (金)"
+      ]
+    }
+  ],
+  "schedule_errors": [
+    {
+      "name": "only one option",
+      "today": "2026-09-29",
+      "args": "ゼミ 10/1"
+    },
+    {
+      "name": "no date at all",
+      "today": "2026-09-29",
+      "args": "ゼミの日程"
+    },
+    {
+      "name": "not a real date",
+      "today": "2026-09-29",
+      "args": "2/30 3/1"
+    },
+    {
+      "name": "month 13",
+      "today": "2026-09-29",
+      "args": "13/1 10/1"
+    },
+    {
+      "name": "text after the dates",
+      "today": "2026-09-29",
+      "args": "ゼミ 10/1 10/2 午後"
+    },
+    {
+      "name": "a range backwards",
+      "today": "2026-09-29",
+      "args": "10/9-10/5 10/10"
+    },
+    {
+      "name": "a range over 14 days",
+      "today": "2026-09-29",
+      "args": "10/1-10/20"
+    },
+    {
+      "name": "more than 10 options",
+      "today": "2026-09-29",
+      "args": "10/1-10/11"
+    },
+    {
+      "name": "a bad time",
+      "today": "2026-09-29",
+      "args": "10/1 25:00 10/2"
+    },
+    {
+      "name": "a time range that ends first",
+      "today": "2026-09-29",
+      "args": "10/1 14:00-13:00 10/2"
+    }
+  ],
+  "weekdays": [
+    {
+      "name": "from a Tuesday",
+      "today": "2026-09-29",
+      "options": [
+        "9/30 (水)",
+        "10/1 (木)",
+        "10/2 (金)",
+        "10/5 (月)",
+        "10/6 (火)"
+      ]
+    },
+    {
+      "name": "from a Friday",
+      "today": "2026-10-02",
+      "options": [
+        "10/5 (月)",
+        "10/6 (火)",
+        "10/7 (水)",
+        "10/8 (木)",
+        "10/9 (金)"
+      ]
+    },
+    {
+      "name": "across the new year",
+      "today": "2026-12-29",
+      "options": [
+        "12/30 (水)",
+        "12/31 (木)",
+        "2027/1/1 (金)",
+        "2027/1/4 (月)",
+        "2027/1/5 (火)"
+      ]
+    }
+  ]
+}
