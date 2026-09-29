@@ -4,7 +4,7 @@ import Foundation
 /// (BodyTokenizer), put around the selected text or at the cursor. A line style goes at the start of each line the
 /// selection touches.
 enum ComposerFormat: String, CaseIterable, Identifiable {
-    case bold, italic, strike, code, codeBlock, quote, bullet, numbered, link
+    case bold, italic, strike, code, codeBlock, heading, quote, bullet, numbered, link
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum ComposerFormat: String, CaseIterable, Identifiable {
         case .strike: "取り消し線"
         case .code: "コード"
         case .codeBlock: "コードブロック"
+        case .heading: "見出し"
         case .quote: "引用"
         case .bullet: "箇条書き"
         case .numbered: "番号付きリスト"
@@ -29,6 +30,7 @@ enum ComposerFormat: String, CaseIterable, Identifiable {
         case .strike: "strikethrough"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .codeBlock: "curlybraces"
+        case .heading: "textformat.size"
         case .quote: "text.quote"
         case .bullet: "list.bullet"
         case .numbered: "list.number"
@@ -59,7 +61,7 @@ enum ComposerFormat: String, CaseIterable, Identifiable {
             chars.replaceSubrange(lower..<upper, with: Array("[" + selected + "](https://)"))
             let cursor = lower + selected.count + "[](https://".count
             return (String(chars), cursor..<cursor)
-        case .quote, .bullet, .numbered:
+        case .heading, .quote, .bullet, .numbered:
             // Every line the selection touches, from the start of the first one.
             var start = lower
             while start > 0 && chars[start - 1] != "\n" { start -= 1 }
@@ -67,7 +69,7 @@ enum ComposerFormat: String, CaseIterable, Identifiable {
             while end < chars.count && chars[end] != "\n" { end += 1 }
             let lines = String(chars[start..<end]).split(separator: "\n", omittingEmptySubsequences: false)
             let marked = lines.enumerated().map { index, line in
-                (self == .quote ? "> " : self == .bullet ? "- " : "\(index + 1). ") + line
+                (self == .heading ? "## " : self == .quote ? "> " : self == .bullet ? "- " : "\(index + 1). ") + line
             }.joined(separator: "\n")
             chars.replaceSubrange(start..<end, with: Array(marked))
             let added = marked.count - (end - start)
