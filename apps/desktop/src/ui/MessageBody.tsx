@@ -38,7 +38,8 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
 function BlockView({ block, users, options }: { block: Block; users: Map<string, UserPublic>; options?: InlineOptions }) {
   switch (block.kind) {
     case "heading": {
-      const size = block.level === 1 ? "text-xl font-bold" : block.level === 2 ? "text-lg font-bold" : "text-base font-semibold";
+      // Larger than they were (testers, 2026-09-29); custom emoji in them grow with the text (em).
+      const size = block.level === 1 ? "text-2xl font-bold" : block.level === 2 ? "text-xl font-bold" : "text-lg font-bold";
       return <div className={cn("mt-1 leading-tight", size)}>{inline(block.tokens, users, options)}</div>;
     }
     case "paragraph":
@@ -128,7 +129,7 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
     const pieces = splitCustomEmoji(replaced, customEmoji);
     if (pieces.length === 1 && typeof pieces[0] === "string") return keywordNodes(replaced, "k");
     return pieces.map((piece, index) =>
-      typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} />,
+      typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} size="1.375em" />,
     );
   };
   return tokens.map((token, i) => {

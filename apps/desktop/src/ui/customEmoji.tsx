@@ -37,6 +37,8 @@ export function splitCustomEmoji(text: string, known: { has(name: string): boole
 
 const urls = new Map<string, string>();
 const loading = new Map<string, Promise<string | null>>();
+/** Emoji whose image could not be fetched: they show as `:name:` (while loading they take their room, blank). */
+const failed = new Set<string>();
 
 /** Fetches the image once per emoji id (with the bearer token) and keeps the object URL for the session. */
 export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): Promise<string | null> {
@@ -51,6 +53,7 @@ export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmoji
         urls.set(emoji.id, url);
         return url;
       } catch {
+        failed.add(emoji.id);
         return null;
       } finally {
         loading.delete(emoji.id);
@@ -74,10 +77,17 @@ export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiO
   return url;
 }
 
-export function CustomEmojiImage({ controller, emoji, size = 20, className }: { controller: AppController; emoji: CustomEmojiOut; size?: number; className?: string }) {
+/**
+ * A custom emoji's image. `size` in pixels, or a CSS length such as "1.375em" to follow the text around it (a
+ * heading's emoji is as large as the heading).
+ */
+export function CustomEmojiImage({ controller, emoji, size = 20, className }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string }) {
   const url = useCustomEmojiUrl(controller, emoji);
-  if (!url) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
-  return <img src={url} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} className={cn("inline-block align-text-bottom", className)} style={{ height: size, width: "auto", maxWidth: size * 2 }} />;
+  if (!url && failed.has(emoji.id)) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
+  // Loading: its room, blank (the name as text was wider than a picker's cell).
+  if (!url) return <span aria-hidden className={cn("inline-block align-text-bottom", className)} style={{ height: size, width: size }} />;
+  const maxWidth = typeof size === "number" ? size * 2 : `calc(${size} * 2)`;
+  return <img src={url} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} className={cn("inline-block align-text-bottom", className)} style={{ height: size, width: "auto", maxWidth }} />;
 }
 
 /** Add a custom emoji (M12f): a name and a small image; any member may. */

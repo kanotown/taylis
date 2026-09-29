@@ -246,7 +246,9 @@ struct MessageBodyView: View {
     private func blockView(_ block: BodyBlock) -> some View {
         switch block {
         case .heading(let level, let tokens):
-            inlineText(tokens).font(level == 1 ? .title3.bold() : level == 2 ? .headline : .subheadline.bold())
+            // Larger than they were (testers, 2026-09-29), custom emoji with them.
+            inlineText(tokens, emojiHeight: level == 1 ? 32 : level == 2 ? 26 : 23)
+                .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : .title3.bold())
         case .paragraph(let lines):
             joined(lines)
         case .quote(let lines):
@@ -323,20 +325,20 @@ struct MessageBodyView: View {
         }
     }
 
-    private func inlineText(_ tokens: [BodyToken]) -> Text {
-        tokens.reduce(Text("")) { $0 + render($1) }
+    private func inlineText(_ tokens: [BodyToken], emojiHeight: CGFloat = CustomEmoji.inlineHeight) -> Text {
+        tokens.reduce(Text("")) { $0 + render($1, emojiHeight: emojiHeight) }
     }
 
-    private func emojiText(_ text: String) -> Text {
-        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage)
+    private func emojiText(_ text: String, height: CGFloat = CustomEmoji.inlineHeight) -> Text {
+        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage, height: height)
     }
 
-    private func render(_ token: BodyToken) -> Text {
+    private func render(_ token: BodyToken, emojiHeight: CGFloat = CustomEmoji.inlineHeight) -> Text {
         switch token {
-        case .text(let text): return emojiText(text)
-        case .bold(let text): return emojiText(text).bold()
-        case .italic(let text): return emojiText(text).italic()
-        case .strike(let text): return emojiText(text).strikethrough()
+        case .text(let text): return emojiText(text, height: emojiHeight)
+        case .bold(let text): return emojiText(text, height: emojiHeight).bold()
+        case .italic(let text): return emojiText(text, height: emojiHeight).italic()
+        case .strike(let text): return emojiText(text, height: emojiHeight).strikethrough()
         case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
         case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
         case .link(let url, let label):

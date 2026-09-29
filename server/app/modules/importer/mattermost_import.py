@@ -88,6 +88,18 @@ _GLYPHS: dict[str, str] = json.loads(
 )
 
 
+def standard_glyph(name: str) -> str | None:
+    """The glyph of a standard emoji name. Mattermost writes some names with hyphens and the
+    person first (``woman-bowing``, ``rainbow-flag``) where the table has ``bowing_woman`` and
+    ``rainbow_flag``."""
+    underscored = name.replace("-", "_")
+    candidates = [name, underscored]
+    for person in ("woman", "man"):
+        if underscored.startswith(person + "_"):
+            candidates.append(f"{underscored[len(person) + 1 :]}_{person}")
+    return next((_GLYPHS[c] for c in candidates if c in _GLYPHS), None)
+
+
 class ImportFailed(Exception):
     """The dump or the options cannot be imported; nothing was committed by the failing step."""
 
@@ -648,7 +660,7 @@ class MattermostImport:
     def reaction_emoji(self, mm_name: str) -> str | None:
         """A custom emoji stays ``:name:``; a standard one becomes its glyph, as clients send it."""
         name = mm_name.lower()
-        glyph = _GLYPHS.get(name)
+        glyph = standard_glyph(name)
         if name not in self.custom_emoji and glyph is not None and _REACTION.match(glyph):
             return glyph
         token = f":{name}:"
@@ -689,7 +701,7 @@ class MattermostImport:
         name = match.group(1)
         if name in self.custom_emoji:
             return match.group(0)
-        return _GLYPHS.get(name, match.group(0))
+        return standard_glyph(name) or match.group(0)
 
     # ---- files -------------------------------------------------------------------------------
 

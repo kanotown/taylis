@@ -35,6 +35,42 @@ struct EmojiPickerView: View {
         dismiss()
     }
 
+    /// The recent ones that can be shown: a custom emoji only while it exists (testers, 2026-09-29: a removed or unknown
+    /// `:name:` was shown as its text, wider than its cell).
+    private var recentShown: [String] {
+        recent.filter { glyph in
+            guard let name = CustomEmoji.name(of: glyph) else { return true }
+            return custom.contains { $0.name == name }
+        }
+    }
+
+    @ViewBuilder
+    private func customCell(_ emoji: CustomEmojiOut) -> some View {
+        Button { pick(":\(emoji.name):") } label: {
+            Group {
+                if let image = images[emoji.id] {
+                    Image(uiImage: image).resizable().scaledToFit()
+                } else {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .frame(width: 30, height: 30)
+            .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(":\(emoji.name):")
+        .onAppear { onNeedImage?(emoji) }
+    }
+
+    @ViewBuilder
+    private func recentCell(_ glyph: String) -> some View {
+        if let name = CustomEmoji.name(of: glyph), let emoji = custom.first(where: { $0.name == name }) {
+            customCell(emoji)
+        } else {
+            Button(glyph) { pick(glyph) }.font(.title2).frame(maxWidth: .infinity, minHeight: 36)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 8) {
@@ -49,40 +85,11 @@ struct EmojiPickerView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                    if !recent.isEmpty {
+                    if !recentShown.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("最近").font(.caption2).foregroundStyle(.secondary)
-                            if !customShown.isEmpty {
-
-                                LazyVGrid(columns: columns, spacing: 4) {
-
-                                    ForEach(customShown) { emoji in
-
-                                        Button { onPick(":\(emoji.name):") } label: {
-
-                                            Group {
-
-                                                if let image = images[emoji.id] { Image(uiImage: image).resizable().scaledToFit() } else { Text(":\(emoji.name):").font(.caption2).lineLimit(1).minimumScaleFactor(0.5) }
-
-                                            }
-
-                                            .frame(width: 32, height: 32)
-
-                                        }
-
-                                        .buttonStyle(.plain)
-
-                                        .onAppear { onNeedImage?(emoji) }
-
-                                    }
-
-                                }
-
-                            }
                             LazyVGrid(columns: columns, spacing: 4) {
-                                ForEach(recent, id: \.self) { glyph in
-                                    Button(glyph) { pick(glyph) }.font(.title2)
-                                }
+                                ForEach(recentShown, id: \.self) { recentCell($0) }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -90,14 +97,16 @@ struct EmojiPickerView: View {
                 }
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 4) {
+                        ForEach(customShown) { customCell($0) }
                         ForEach(shown, id: \.shortcode) { entry in
                             Button(entry.glyph) { pick(entry.glyph) }
                                 .font(.title2)
+                                .frame(maxWidth: .infinity, minHeight: 36)
                                 .accessibilityLabel(":\(entry.shortcode):")
                         }
                     }
                     .padding(.horizontal, 16)
-                    if shown.isEmpty { Text("見つかりません").font(.footnote).foregroundStyle(.secondary).padding() }
+                    if shown.isEmpty && customShown.isEmpty { Text("見つかりません").font(.footnote).foregroundStyle(.secondary).padding() }
                 }
             }
             .padding(.top, 8)

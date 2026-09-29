@@ -36,23 +36,34 @@ enum CustomEmoji {
         return pieces
     }
 
-    /// A copy scaled to the inline text height (keeps GIF's first frame; animation is out of scope).
+    /// The height the cached copy is drawn at: large enough to stay sharp in a heading (testers, 2026-09-29: emoji
+    /// in a heading stayed body-sized). `sized(_:height:)` shows it at any height without drawing again.
+    static let storedHeight: CGFloat = 48
+
+    /// A copy scaled to `storedHeight` (keeps GIF's first frame; animation is out of scope).
     static func inlineImage(_ image: UIImage) -> UIImage {
-        let scale = inlineHeight / max(image.size.height, 1)
-        let size = CGSize(width: max(image.size.width * scale, 1), height: inlineHeight)
+        let scale = storedHeight / max(image.size.height, 1)
+        let size = CGSize(width: max(image.size.width * scale, 1), height: storedHeight)
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
     }
 
+    /// The same pixels at `height` points (Text(Image) takes an image at its own size).
+    static func sized(_ image: UIImage, height: CGFloat) -> UIImage {
+        guard let cgImage = image.cgImage, height > 0 else { return image }
+        return UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) / height, orientation: .up)
+    }
+
     /// A Text made of runs and inline images; falls back to `:name:` until the image is cached.
-    static func text(_ text: String, custom: [String: CustomEmojiOut], images: [String: UIImage], onNeed: ((CustomEmojiOut) -> Void)?) -> Text {
+    static func text(_ text: String, custom: [String: CustomEmojiOut], images: [String: UIImage], onNeed: ((CustomEmojiOut) -> Void)?,
+                     height: CGFloat = inlineHeight) -> Text {
         guard !custom.isEmpty else { return Text(text) }
         return split(text, known: { custom[$0] != nil }).reduce(Text("")) { acc, piece in
             switch piece {
             case .text(let run): return acc + Text(run)
             case .emoji(let name):
                 guard let emoji = custom[name] else { return acc + Text(":\(name):") }
-                if let image = images[emoji.id] { return acc + Text(Image(uiImage: image)) }
+                if let image = images[emoji.id] { return acc + Text(Image(uiImage: sized(image, height: height))) }
                 onNeed?(emoji)
                 return acc + Text(":\(name):")
             }

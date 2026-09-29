@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 
 import type { CustomEmojiOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { CustomEmojiImage } from "./customEmoji";
+import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { customEmojiCandidates, EMOJI_CATEGORIES, type EmojiEntry, searchEmoji } from "./emoji";
 import { cn, Input } from "./primitives";
 
@@ -24,6 +24,12 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   const customHits = searching ? customEmojiCandidates(query, customByName, 16) : category === "custom" ? custom.map((c) => ({ shortcode: c.name, glyph: `:${c.name}:`, category: "custom", keywords: c.name })) : [];
   const categories: Array<readonly [string, string]> = custom.length > 0 || onAddCustom ? [...EMOJI_CATEGORIES, ["custom", "カスタム"] as const] : [...EMOJI_CATEGORIES];
   const shown = searching ? hits : category === "custom" ? [] : hits.filter((e) => e.category === category);
+  // A recent custom emoji shows as its image, and only while it exists (testers, 2026-09-29: 「:hanpen:」 as text, wider
+  // than its cell, also for names with no emoji).
+  const recentShown = recent.filter((glyph) => {
+    const name = customEmojiName(glyph);
+    return !name || (!!controller && customByName.has(name));
+  });
   return (
     <div className="w-80" onKeyDown={(event) => event.stopPropagation()}>
       <div className="relative">
@@ -44,15 +50,18 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
           ))}
         </div>
       )}
-      {!searching && recent.length > 0 && (
+      {!searching && recentShown.length > 0 && (
         <div className="mt-2">
           <div className="text-[10px] uppercase tracking-wide text-muted">最近</div>
           <div className="flex flex-wrap">
-            {recent.map((glyph) => (
-              <button key={glyph} type="button" className="flex h-8 w-8 items-center justify-center rounded-md text-xl hover:bg-panel-2" onClick={() => onPick({ shortcode: "", glyph, category: "", keywords: "" })}>
-                {glyph}
-              </button>
-            ))}
+            {recentShown.map((glyph) => {
+              const emoji = customByName.get(customEmojiName(glyph) ?? "");
+              return (
+                <button key={glyph} type="button" title={emoji ? glyph : undefined} className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md text-xl hover:bg-panel-2" onClick={() => onPick({ shortcode: emoji?.name ?? "", glyph, category: emoji ? "custom" : "", keywords: "" })}>
+                  {emoji && controller ? <CustomEmojiImage controller={controller} emoji={emoji} size={22} /> : glyph}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
