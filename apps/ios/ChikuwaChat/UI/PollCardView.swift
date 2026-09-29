@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A poll under a message (M14b): options with counts and bars; tapping votes, the author or an admin can close it.
+/// A poll under a message (M14b): options with counts and bars; tapping votes, only its author can close it.
 struct PollCardView: View {
     let poll: PollOut
     let message: MessageState
@@ -8,7 +8,15 @@ struct PollCardView: View {
 
     private var me: String? { controller.store.me?.id }
     private var total: Int { poll.votes.reduce(0) { $0 + $1.count } }
-    private var canClose: Bool { poll.closedAt == nil && (message.senderId == me || controller.isAdmin) }
+    /// Not an admin either (testers, 2026-09-29): the poll is its author's.
+    private var canClose: Bool { poll.closedAt == nil && message.senderId == me }
+
+    /// The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows
+    /// the question again, and testers saw it twice in a row (2026-09-29). Text the author wrote stays.
+    static func hidesBody(_ body: String, poll: PollOut?) -> Bool {
+        guard let poll else { return false }
+        return body.trimmingCharacters(in: .whitespacesAndNewlines) == "📊 \(poll.question)".trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

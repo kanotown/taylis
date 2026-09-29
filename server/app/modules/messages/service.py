@@ -488,13 +488,14 @@ async def set_ack(
 
 
 async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
-    """The author or an administrator ends the voting; results stay visible."""
+    """Only the author ends the voting (not an administrator either: testers, 2026-09-29); results
+    stay visible."""
     message = await _require_live_message(db, actor, message_id)
     poll = message.poll
     if not poll:
         raise not_found("poll_not_found", "This message has no poll")
-    if message.sender_id != actor.id and not actor.is_admin:
-        raise forbidden("forbidden", "Only the author or an administrator can close a poll")
+    if message.sender_id != actor.id:
+        raise forbidden("forbidden", "Only the author can close a poll")
     if poll.get("closed_at"):
         return await message_out(db, message)
     message.poll = {**poll, "closed_at": utcnow().isoformat()}

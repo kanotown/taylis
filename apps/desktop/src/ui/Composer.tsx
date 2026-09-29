@@ -415,8 +415,8 @@ export function Composer({
             <Loader2 size={12} className="animate-spin" /> 添付をアップロード中… 完了後に送信できます
           </div>
         )}
-        <div className={cn(pending.length > 0 && "px-2 pt-2")}>
-          <PendingAttachments items={pending} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
+        <div className={cn((pending.length > 0 || uploading > 0) && "px-2 pt-2")}>
+          <PendingAttachments items={pending} uploading={uploading} controller={controller} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
         </div>
         <input
           ref={fileInput}

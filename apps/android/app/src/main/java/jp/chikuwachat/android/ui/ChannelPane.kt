@@ -515,7 +515,7 @@ fun MessageRow(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (message.body.isNotEmpty()) {
+                if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
@@ -610,7 +610,6 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents(), ::uploadPicked)
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10), ::uploadPicked)
     Column {
-        if (uploading > 0) Text("添付をアップロード中…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp))
         val query = Mentions.query(draft)
         val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
@@ -649,7 +648,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
         }
-        PendingAttachments(pendingUploads) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
+        PendingAttachments(pendingUploads, controller, uploading) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
         // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack).
         var alsoInChannel by remember(channelId, parentId) { mutableStateOf(false) }
         val channel = store.channel(channelId)

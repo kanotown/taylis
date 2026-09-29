@@ -25,13 +25,19 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
 
-/** A poll under a message (M14b): options with counts and bars; tapping votes, the author or an admin can close it. */
+/**
+ * The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows the
+ * question again, and testers saw it twice in a row (2026-09-29). Text the author wrote stays.
+ */
+fun pollHidesBody(body: String, poll: PollOut?): Boolean = poll != null && body.trim() == "📊 ${poll.question}".trim()
+
+/** A poll under a message (M14b): options with counts and bars; tapping votes, only its author can close it. */
 @Composable
 fun PollCard(poll: PollOut, message: MessageState, controller: AppController) {
     val me = controller.store.me?.id
     val total = poll.votes.sumOf { it.size }
     val closed = poll.closedAt != null
-    val canClose = !closed && (message.senderId == me || controller.isAdmin)
+    val canClose = !closed && message.senderId == me // not an admin either (testers, 2026-09-29)
     val shape = RoundedCornerShape(10.dp)
     Column(
         Modifier.fillMaxWidth().padding(top = 4.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)

@@ -5,12 +5,20 @@ import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { Button, cn } from "./primitives";
 
-/** A poll under a message (M14b): options with counts and bars; a click votes, the author or an admin can close it. */
+/**
+ * The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows the
+ * question again, and testers saw it twice in a row (2026-09-29). Text the author wrote stays.
+ */
+export function pollHidesBody(message: { body: string; poll?: PollOut | null }): boolean {
+  return !!message.poll && message.body.trim() === `📊 ${message.poll.question}`.trim();
+}
+
+/** A poll under a message (M14b): options with counts and bars; a click votes, only its author can close it. */
 export function PollCard({ poll, message, controller }: { poll: PollOut; message: MessageState; controller: AppController }) {
   const me = controller.store.me?.id;
   const total = poll.votes.reduce((sum, voters) => sum + voters.length, 0);
   const closed = !!poll.closed_at;
-  const canClose = !closed && (message.sender_id === me || controller.isAdmin);
+  const canClose = !closed && message.sender_id === me; // not an admin either (testers, 2026-09-29)
   const names = (voters: string[]) => voters.map((id) => controller.store.users.get(id)?.display_name ?? "?").join(", ");
   return (
     <div className="mt-1.5 max-w-xl rounded-xl border border-line bg-panel/60 p-3 text-sm">

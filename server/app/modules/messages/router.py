@@ -162,7 +162,7 @@ async def unacknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageO
 
 @router.post("/messages/{message_id}/poll/close", response_model=MessageOut)
 async def close_poll(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
-    """M14b: the author or an administrator ends the voting."""
+    """M14b: the author ends the voting (only the author, not an administrator)."""
     return await service.close_poll(db, user, message_id)
 
 

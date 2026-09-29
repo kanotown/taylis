@@ -1,26 +1,31 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.material3.Icon
-import androidx.compose.material3.InputChip
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -37,15 +43,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import java.io.File
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 fun formatSize(bytes: Long): String = when {
     bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0)
@@ -92,7 +100,7 @@ private fun FileRow(attachment: AttachmentOut, controller: AppController) {
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, shape).clickable { controller.openAttachment(attachment) }.padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(if (attachment.contentType.startsWith("video/")) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column {
             Text(attachment.filename, style = MaterialTheme.typography.bodyMedium)
             Text(formatSize(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -100,21 +108,68 @@ private fun FileRow(attachment: AttachmentOut, controller: AppController) {
     }
 }
 
-/** Chips for uploads waiting in the composer. */
+/**
+ * Uploads waiting in the composer, as Slack and Mattermost show them (testers, 2026-09-29): small square thumbnails
+ * with a × to take one out; a tap previews a photo (the same viewer as in the conversation) or opens a video or file
+ * in another app. They were chips with the file name, and a tap took the file out. `uploading` adds a tile with a
+ * spinner for each file still on its way.
+ */
 @Composable
-fun PendingAttachments(items: List<AttachmentOut>, onRemove: (AttachmentOut) -> Unit) {
-    if (items.isEmpty()) return
-    LazyRow(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(items, key = { it.id }) { item ->
-            InputChip(
-                selected = false,
-                onClick = { onRemove(item) },
-                label = { Text(item.filename, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = null) },
-                modifier = Modifier.widthIn(max = 260.dp).semantics { contentDescription = "${item.filename} を取り消す" },
-            )
+fun PendingAttachments(items: List<AttachmentOut>, controller: AppController, uploading: Int = 0, onRemove: (AttachmentOut) -> Unit) {
+    if (items.isEmpty() && uploading == 0) return
+    LazyRow(
+        Modifier.fillMaxWidth(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(items, key = { it.id }) { item -> PendingTile(item, controller) { onRemove(item) } }
+        items(uploading) {
+            Box(Modifier.size(PENDING_TILE).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = "アップロード中" }, strokeWidth = 2.dp)
+            }
         }
     }
+}
+
+private val PENDING_TILE = 64.dp
+
+@Composable
+private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove: () -> Unit) {
+    var bitmap by remember(item.id) { mutableStateOf<ImageBitmap?>(null) }
+    var viewing by remember(item.id) { mutableStateOf(false) }
+    if (item.isImage) LaunchedEffect(item.id) {
+        bitmap = runCatching {
+            val bytes = controller.fetchBytes("/api/v1/attachments/${item.id}/thumbnail")
+            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        }.getOrNull()
+    }
+    val video = item.contentType.startsWith("video/")
+    val shape = RoundedCornerShape(10.dp)
+    // Room above and to the right for the × over the corner.
+    Box(Modifier.padding(top = 6.dp, end = 6.dp)) {
+        Box(
+            Modifier.size(PENDING_TILE).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClickLabel = "プレビュー") { if (item.isImage) viewing = true else controller.openAttachment(item) }
+                .semantics { contentDescription = "${if (item.isImage) "写真" else if (video) "動画" else "ファイル"} ${item.filename}" },
+            contentAlignment = Alignment.Center,
+        ) {
+            val image = bitmap
+            if (image != null) Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(PENDING_TILE))
+            else if (item.isImage) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
+                Icon(if (video) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(item.filename, fontSize = 9.sp, lineHeight = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Box(
+            Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).size(22.dp).clip(CircleShape)
+                .background(MaterialTheme.colorScheme.inverseSurface).clickable(onClick = onRemove)
+                .semantics { contentDescription = "${item.filename} を取り消す" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Close, contentDescription = null, tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(14.dp))
+        }
+    }
+    if (viewing) ImageViewer(item, controller, onDismiss = { viewing = false })
 }
 
 /** Download to the cache and hand the file to another app (FileProvider; SECURITY.md §4: never inline HTML). */

@@ -84,10 +84,13 @@ async def test_poll_lifecycle(
     )
     assert {r.payload["change"] for r in rows} == {"poll"} and len(rows) == 4
 
-    # Only the author or an admin closes; a closed poll takes no votes.
+    # Only the author closes, not an admin either; a closed poll takes no votes.
     denied = await client.post(f"/api/v1/messages/{message['id']}/poll/close")
     assert denied.status_code == 403
     as_user(root)
+    admin = await client.post(f"/api/v1/messages/{message['id']}/poll/close")
+    assert admin.status_code == 403
+    as_user(alice)
     closed = await client.post(f"/api/v1/messages/{message['id']}/poll/close")
     assert closed.status_code == 200 and closed.json()["poll"]["closed_at"] is not None
     as_user(bob)
