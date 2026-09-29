@@ -4,7 +4,7 @@
 modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android のクライアントを持つ。
 
 開発方針は [CLAUDE.md](CLAUDE.md)。進捗は [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) の
-マイルストーン表を参照 (M0〜M27 まで実装済み、2026-09-29 時点)。
+マイルストーン表を参照 (M0〜M29 まで実装済み、2026-09-29 時点)。
 
 ## 構成
 
@@ -29,6 +29,6 @@ docs/           設計文書
 | [docs/SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md) | REST + WebSocket による同期、再接続、冪等性、既読 |
 | [docs/PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md) | APNs / FCM、重複・欠落・遅延への対応 |
 | [docs/SECURITY.md](docs/SECURITY.md) | 認証・認可・添付・デプロイ |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | マイルストーン表 (M0〜M27) とバックログ |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | マイルストーン表 (M0〜M29) とバックログ |
 | [docs/THREADS.md](docs/THREADS.md) | フォロー中スレッド一覧の設計 (M11a で実装) |
 | [docs/WORKSPACES.md](docs/WORKSPACES.md) | 複数ワークスペース (サーバ) の切り替え (M16c) |
