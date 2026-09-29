@@ -254,7 +254,8 @@ async def list_files(
 
 
 async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID) -> Attachment:
-    """SECURITY.md §4: attached → channel members, pending → uploader only, deleted → 404."""
+    """SECURITY.md §4: attached → channel members (and in a public channel anyone but a guest,
+    who reads it before joining: M27), pending → uploader only, deleted → 404."""
     attachment = await repo.get(db, attachment_id)
     if attachment is None or attachment.status == "deleted":
         raise not_found("attachment_not_found", "Attachment not found")
@@ -264,7 +265,7 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
         return attachment
     if attachment.channel_id is None:
         raise not_found("attachment_not_found", "Attachment not found")
-    await channels.require_member(db, actor.id, attachment.channel_id)
+    await channels.require_readable(db, actor, attachment.channel_id)
     return attachment
 
 

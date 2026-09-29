@@ -154,7 +154,11 @@ async def test_bind_download_delete_and_gc(
     assert html.headers["content-disposition"].startswith("attachment;")
     assert html.headers["content-type"] == "application/octet-stream"
     assert (await client.get(f"/api/v1/attachments/{image_id}")).json()["filename"] == "photo.png"
+    # M27: a public channel's files are read before joining (its preview), not by a guest.
     as_user(carol)
+    assert (await client.get(f"/api/v1/attachments/{image_id}/content")).status_code == 200
+    visitor = await make_user(db, "visitor", role="guest")
+    as_user(visitor)
     assert (await client.get(f"/api/v1/attachments/{image_id}/content")).status_code == 403
 
     # Deleting the message hides the files at once; GC removes the bytes and expired uploads.
