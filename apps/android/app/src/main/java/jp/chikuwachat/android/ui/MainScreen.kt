@@ -286,6 +286,8 @@ fun MainScreen(controller: AppController) {
 
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
+    // M27 (SYNC_PROTOCOL.md §7.6.1): a public channel I have not joined opens read-only, until 「参加する」.
+    val previewing = selectedChannel?.isMember == false
 
     // A permalink tapped in a body (M12b): the controller fetched the message; show it in its conversation.
     LaunchedEffect(controller.pendingReveal) {
@@ -319,6 +321,7 @@ fun MainScreen(controller: AppController) {
                         when {
                             pinsOpen && selectedChannel != null -> TwoLineTitle("ピン留め", channelTitle(selectedChannel, store))
                             threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
+                            selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
                             selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
                                 TwoLineTitle(
                                     channelTitle(selectedChannel, store),
@@ -486,11 +489,13 @@ fun MainScreen(controller: AppController) {
                         }
                     }
                 } else if (selectedChannel != null && openThread != null) {
-                    ThreadPane(controller, selectedChannel.id, openThread, version)
+                    if (previewing) PreviewThreadPane(controller, selectedChannel.id, openThread, version)
+                    else ThreadPane(controller, selectedChannel.id, openThread, version)
                 } else if (showSaved) {
                     SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
-                    ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
+                    if (previewing) PreviewPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
+                    else ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
                 } else if (showReminders) {
                     RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
                 } else if (showMentions) {
@@ -511,7 +516,6 @@ fun MainScreen(controller: AppController) {
                     ChannelList(
                         store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly },
                         onSelect = { controller.messageFocus = null; openConversation(it) },
-                        onJoin = { id -> scope.launch { if (controller.joinChannel(id)) openConversation(id) } },
                         onThreads = { showThreads = true },
                         onSaved = { showSaved = true },
                         onMentions = { showMentions = true },
@@ -622,8 +626,8 @@ private fun ChannelList(
     version: Int,
     unreadOnly: Boolean,
     onToggleUnreadOnly: () -> Unit,
+    /** Opens a conversation; one under 「参加できるチャンネル」 opens as a preview (M27, SYNC_PROTOCOL.md §7.6.1). */
     onSelect: (String) -> Unit,
-    onJoin: (String) -> Unit,
     onThreads: () -> Unit,
     onSaved: () -> Unit,
     onMentions: () -> Unit,
@@ -706,12 +710,12 @@ private fun ChannelList(
         if (dms.isEmpty() && !dmsFolded) item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") } }
         if (browsable.isNotEmpty()) {
             item(key = "header:browse") { Box(Modifier.folding(this)) { SectionHeader("参加できるチャンネル") } }
+            // M27: a tap reads the channel first (§7.6.1); joining is the button at the bottom of its preview.
             items(browsable, key = { "browse:" + it.id }) { channel ->
-                Row(Modifier.folding(this).fillMaxWidth().clickable { onJoin(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.folding(this).fillMaxWidth().clickable(onClickLabel = "プレビュー") { onSelect(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     ChannelGlyph(channel)
                     Spacer(Modifier.width(12.dp))
                     Text(channel.channel.name ?: "", modifier = Modifier.weight(1f))
-                    Text("参加", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

@@ -127,12 +127,18 @@ class AppController(private val app: Application) {
     suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean =
         revealMessage(message.id, message.channelId, message.parentId)
 
-    /** Focus a message known only by its ids (M11i files list): the context comes from the server. */
+    /**
+     * Focus a message known only by its ids (M11i files list): the context comes from the server. M27: a link into a
+     * public channel I have not joined opens its preview (SYNC_PROTOCOL.md §7.6.1): the channel joins the list as
+     * browsable when it was not there (an archived one), and its rows stay out of the store (the preview's thread pane
+     * fetches the replies itself).
+     */
     suspend fun revealMessage(messageId: String, channelId: String, parentId: String?): Boolean {
         val api = api ?: return false
         return try {
             val context = api.messageContext(messageId)
-            parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
+            if (store.channel(channelId) == null) api.channel(channelId).takeIf { it.membership == null }?.let { store.upsertChannel(it, isMember = false) }
+            if (store.channel(channelId)?.isMember == true) parentId?.let { parent -> api.replies(parent).forEach { store.upsertMessage(it) } }
             messageFocus = MessageFocus(channelId, messageId, parentId, context.map { MessageState.from(it) })
             true
         } catch (e: Exception) { report(e); false }
@@ -792,6 +798,25 @@ class AppController(private val app: Application) {
     fun closeChannel() {
         // The engine keeps currentChannelId for its own suppression; pushes check what is on screen now.
         openChannelId = null
+        engine?.closePreview() // §7.6.1: a closed preview is not kept
+    }
+
+    /** §7.6.1: more of a previewed channel as the reader scrolls up. */
+    suspend fun loadOlderPreview(channelId: String) {
+        try { engine?.loadOlderPreview(channelId) } catch (e: Exception) { report(e) }
+    }
+
+    /** §7.6.1: a thread opened from a preview; its replies stay in the preview. */
+    suspend fun loadPreviewReplies(channelId: String, parentId: String) {
+        try { engine?.loadPreviewReplies(channelId, parentId) } catch (e: Exception) { report(e) }
+    }
+
+    /**
+     * A public channel from the browser's list, opened to read before joining (§7.6.1): the list it came from may be
+     * newer than the sidebar's, so it joins the store as browsable first (the screen only opens channels it knows).
+     */
+    fun notePublicChannel(channel: jp.chikuwachat.android.api.ChannelOut) {
+        if (store.channel(channel.id) == null && channel.type == "public" && channel.membership == null) store.upsertChannel(channel, isMember = false)
     }
 
     /** 「ログアウト」: sign out of the workspace on screen; it leaves the list and the next one opens (§5.3). */
@@ -911,11 +936,15 @@ class AppController(private val app: Application) {
         store.upsertChannel(channel, isMember = true).id
     }
 
+    /**
+     * Joining; a channel on screen (its preview, §7.6.1) then opens as a joined one: the preview goes and the timeline
+     * loads like any conversation (§7.3).
+     */
     suspend fun joinChannel(channelId: String): Boolean = attempt {
         val channel = api!!.joinChannel(channelId)
         store.upsertChannel(channel, isMember = true)
         true
-    }.getOrElse { error = describe(it); false }
+    }.getOrElse { error = describe(it); false }.also { joined -> if (joined && openChannelId == channelId) openChannel(channelId) }
 
     /**
      * M24: my times (made on the first call; the supervisors on the roster join it); returns its id to open, or null
@@ -1357,16 +1386,18 @@ class AppController(private val app: Application) {
 
     // --- polls (M14b) ------------------------------------------------------------------------
 
+    /** M27: the response's `mine` is mine whatever arrived meanwhile (Store.applyMyPollResponse). */
     suspend fun vote(message: MessageState, option: Int, present: Boolean): Boolean = attempt {
-        store.upsertMessage(api!!.vote(message.id, option, present)); true
+        store.applyMyPollResponse(api!!.vote(message.id, option, present)); true
     }.getOrElse { error = describe(it); false }
 
     suspend fun closePoll(message: MessageState): Boolean = attempt {
-        store.upsertMessage(api!!.closePoll(message.id)); true
+        store.applyMyPollResponse(api!!.closePoll(message.id)); true
     }.getOrElse { error = describe(it); false }
 
-    suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): Boolean = attempt {
-        val message = api!!.postPoll(channelId, parentId, question, options, multiple)
+    /** M27: `anonymous` hides who voted from everyone (fixed once made). */
+    suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean, anonymous: Boolean = false): Boolean = attempt {
+        val message = api!!.postPoll(channelId, parentId, question, options, multiple, anonymous)
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
         true
     }.getOrElse { error = describe(it); false }

@@ -16,9 +16,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.app.AppController
@@ -31,39 +36,57 @@ import kotlinx.coroutines.launch
  */
 fun pollHidesBody(body: String, poll: PollOut?): Boolean = poll != null && body.trim() == "📊 ${poll.question}".trim()
 
-/** A poll under a message (M14b): options with counts and bars; tapping votes, only its author can close it. */
+/**
+ * A poll under a message (M14b): options with counts and bars; tapping votes, only its author can close it. M27: a named
+ * poll says under each option who voted (up to three names, then 「ほか N 人」; tapping them lists everyone), an
+ * anonymous one says 「匿名」 and names nobody. `readOnly`: a channel only previewed (SYNC_PROTOCOL.md §7.6.1), where
+ * nobody votes or closes. `version` is read: the voters' names live in the Store.
+ */
 @Composable
-fun PollCard(poll: PollOut, message: MessageState, controller: AppController) {
-    val me = controller.store.me?.id
-    val total = poll.votes.sumOf { it.size }
+fun PollCard(poll: PollOut, message: MessageState, controller: AppController, version: Int, readOnly: Boolean = false) {
+    val store = controller.store
+    val me = remember(version) { store.me?.id }
+    val total = poll.total
+    val mine = poll.mineFor(me)
+    val voters = remember(version, poll) { poll.options.indices.map { PeopleText.people(store, poll.voters(it)) } }
     val closed = poll.closedAt != null
-    val canClose = !closed && message.senderId == me // not an admin either (testers, 2026-09-29)
+    val canClose = !readOnly && !closed && message.senderId == me // not an admin either (testers, 2026-09-29)
+    var listing by remember { mutableStateOf<Int?>(null) }
     val shape = RoundedCornerShape(10.dp)
     Column(
         Modifier.fillMaxWidth().padding(top = 4.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .background(MaterialTheme.colorScheme.surface, shape).padding(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("📊 " + poll.question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            if (poll.multiple) { Spacer(Modifier.width(6.dp)); Text("複数選択可", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text("📊 " + poll.question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+            if (poll.anonymous) { Spacer(Modifier.width(6.dp)); PollTag("匿名") }
+            if (poll.multiple) { Spacer(Modifier.width(6.dp)); PollTag("複数選択可") }
         }
         poll.options.forEachIndexed { index, option ->
-            val voters = poll.votes.getOrNull(index) ?: emptyList()
-            val mine = me != null && me in voters
-            val share = if (total == 0) 0f else voters.size.toFloat() / total
+            val count = poll.count(index)
+            val picked = index in mine
+            val share = if (total == 0) 0f else count.toFloat() / total
             Column(
                 Modifier.fillMaxWidth().padding(top = 6.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                    .clickable(enabled = !closed && !message.pending) { controller.scope.launch { controller.vote(message, index, !mine) } }
+                    .clickable(enabled = !readOnly && !closed && !message.pending) { controller.scope.launch { controller.vote(message, index, !picked) } }
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (mine) { Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); Spacer(Modifier.width(4.dp)) }
+                    if (picked) { Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); Spacer(Modifier.width(4.dp)) }
                     Text(option, modifier = Modifier.weight(1f))
-                    Text("${voters.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(5.dp).background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))) {
-                    Box(Modifier.fillMaxWidth(share).height(5.dp).background(if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(3.dp)))
+                    Box(Modifier.fillMaxWidth(share).height(5.dp).background(if (picked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(3.dp)))
+                }
+                val people = voters.getOrNull(index) ?: emptyList()
+                if (people.isNotEmpty()) {
+                    Text(
+                        PeopleText.compact(people.map { it.name }), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp).clickable(onClickLabel = "投票した人") { listing = index },
+                    )
                 }
             }
         }
@@ -72,4 +95,16 @@ fun PollCard(poll: PollOut, message: MessageState, controller: AppController) {
             if (canClose) TextButton(onClick = { controller.scope.launch { controller.closePoll(message) } }) { Text("締め切る") }
         }
     }
+    listing?.let { index ->
+        PeopleDialog(poll.options.getOrNull(index) ?: "", voters.getOrNull(index) ?: emptyList(), onDismiss = { listing = null })
+    }
+}
+
+/** 「匿名」 / 「複数選択可」 beside the question. */
+@Composable
+private fun PollTag(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+    )
 }

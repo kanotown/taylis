@@ -51,7 +51,8 @@ import kotlinx.coroutines.launch
 /**
  * 「チャンネルを探す」 (M11h): every public channel plus my private ones, with member counts; join, leave or
  * create. Archived channels are left out of the sidebar, so this is where they are opened (read-only; an
- * owner or admin can unarchive from its channel info).
+ * owner or admin can unarchive from its channel info). M27: tapping a public channel I have not joined opens its
+ * preview (read before joining).
  */
 @Composable
 fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () -> Unit, onOpen: (String) -> Unit, onCreate: () -> Unit) {
@@ -94,9 +95,15 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
                         else -> items(rows, key = { it.id }) { channel ->
                             // `version` keeps membership current after a join / leave elsewhere.
                             val mine = remember(version, channel.id) { store.channel(channel.id)?.isMember ?: (channel.membership != null) }
+                            // M27: a public channel I have not joined opens to be read first (SYNC_PROTOCOL.md §7.6.1);
+                            // 「参加」 still joins at once.
+                            val previewable = !mine && channel.type == "public" && !controller.isGuest
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .clickable(enabled = mine) { onOpen(channel.id); onDismiss() }
+                                    .clickable(enabled = mine || previewable) {
+                                        if (!mine) controller.notePublicChannel(channel)
+                                        onOpen(channel.id); onDismiss()
+                                    }
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
                                     .alpha(if (channel.archived) 0.6f else 1f),
                                 verticalAlignment = Alignment.CenterVertically,

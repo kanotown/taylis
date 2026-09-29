@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonObject
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -291,6 +292,30 @@ class ApiClientTest {
         val sections = jp.chikuwachat.android.ui.Channels.sections(store.channels.values, meId = "u")
         assertEquals(listOf("c9"), sections.times.map { it.id })
         assertTrue(sections.channels.isEmpty())
+    }
+
+    /**
+     * M27: `anonymous` goes out only when set (a server before M27 refuses unknown poll fields with 422, and named polls
+     * must still work there); the response's counts and mine decode.
+     */
+    @Test fun aPollRequestCarriesAnonymousOnlyWhenSet() = runBlocking {
+        val bodies = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            val buffer = okio.Buffer(); request.body?.writeTo(buffer); bodies.add(buffer.readUtf8())
+            201 to """{"id":"m1","channel_id":"c1","sender_id":"u","seq":4,"updated_seq":4,"body":"📊 Q","created_at":"2026-09-29T00:00:00Z","deleted":false,
+                "poll":{"question":"Q","options":["A","B"],"multiple":false,"anonymous":true,"closed_at":null,"votes":[[],[]],"counts":[0,0],"mine":[]}}"""
+        })
+        client.accessToken = "a"
+        client.postPoll("c1", null, "Q", listOf("A", "B"), multiple = false)
+        val made = client.postPoll("c1", null, "Q", listOf("A", "B"), multiple = false, anonymous = true)
+        val named = kotlinx.serialization.json.Json.parseToJsonElement(bodies[0]).jsonObject.getValue("poll").jsonObject
+        assertFalse(bodies[0], "anonymous" in named)
+        assertEquals(setOf("question", "options", "multiple"), named.keys)
+        val anonymous = kotlinx.serialization.json.Json.parseToJsonElement(bodies[1]).jsonObject.getValue("poll").jsonObject
+        assertEquals("true", anonymous["anonymous"].toString())
+        assertTrue(made.poll!!.anonymous)
+        assertEquals(listOf(0, 0), made.poll!!.counts)
+        assertEquals(emptyList<Int>(), made.poll!!.mine)
     }
 
     @Test fun ensureTimesRefusalIsAnApiError() = runBlocking { // M24: guests cannot have a times

@@ -1,8 +1,10 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MarkEmailUnread
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
@@ -106,6 +109,8 @@ fun MessageMenu(
     onRemind: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onCopyText: (() -> Unit)? = null,
+    /** M27: 「リアクションした人」, offered when the message has reactions. */
+    onShowReactors: (() -> Unit)? = null,
     reacted: Set<String> = emptySet(),
     quick: List<String> = REACTION_PALETTE,
 ) {
@@ -150,6 +155,7 @@ fun MessageMenu(
                 }
             }
             if (onReply != null) item("スレッドで返信", Icons.Outlined.ChatBubbleOutline, action = onReply)
+            if (onShowReactors != null) item("リアクションした人", Icons.Outlined.People, action = onShowReactors)
             if (canEdit) item("編集", Icons.Outlined.Edit, action = onEdit)
             if (onCopyText != null) item("テキストをコピー", Icons.Outlined.ContentCopy, action = onCopyText)
             if (onBookmark != null) item(if (bookmarked) "保存を解除" else "あとで見る (保存)", if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
@@ -165,18 +171,22 @@ fun MessageMenu(
 
 /**
  * Reaction chips under a message; tapping toggles my reaction. M25: a 「＋」 chip after them adds another one without
- * the long press (as on the web, Timeline.tsx).
+ * the long press (as on the web, Timeline.tsx). M27: a long press on a chip shows who reacted ([ReactorsDialog]).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ReactionChips(
     message: MessageState,
     store: Store,
-    onToggle: (String) -> Unit,
+    /** Null: the chips only show (a channel previewed before joining, SYNC_PROTOCOL.md §7.6.1). */
+    onToggle: ((String) -> Unit)?,
     onNeedEmojiImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null,
     /** The 「＋」 chip: the picker the sheet's 「その他のリアクション」 opens. Null = no chip. */
     onAdd: (() -> Unit)? = null,
     /** The Store's version: custom emoji images land in the Store, not in `message` (strong skipping). */
     version: Int = 0,
+    /** M27: a long press on a chip; the caller opens 「リアクションした人」. */
+    onShowReactors: (() -> Unit)? = null,
 ) {
     if (message.reactions.isEmpty()) return
     // Read on purpose (MessageBody): an unread parameter is left out of the skip check, and a custom emoji's image that
@@ -195,7 +205,12 @@ fun ReactionChips(
                 modifier = Modifier
                     .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
                     .background(background, shape)
-                    .clickable { onToggle(reaction.emoji) }
+                    .combinedClickable(
+                        enabled = onToggle != null || onShowReactors != null,
+                        onLongClickLabel = "リアクションした人",
+                        onLongClick = onShowReactors,
+                        onClick = { onToggle?.invoke(reaction.emoji) },
+                    )
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 if (image != null) {

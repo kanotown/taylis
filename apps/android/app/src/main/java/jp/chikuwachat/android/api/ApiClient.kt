@@ -174,6 +174,9 @@ class ApiClient(
 
     override suspend fun publicChannels(): List<ChannelOut> = channels(includePublic = true).filter { it.membership == null }
 
+    /** One channel: mine, or any public one (a link into a channel not in the browse list, M27 preview). */
+    suspend fun channel(id: String): ChannelOut = request("GET", "/api/v1/channels/$id")
+
     suspend fun createChannel(name: String, type: String): ChannelOut =
         request("POST", "/api/v1/channels", buildJsonObject { put("name", name); put("type", type) })
 
@@ -539,8 +542,11 @@ class ApiClient(
 
     suspend fun closePoll(messageId: String): MessageOut = request("POST", "/api/v1/messages/$messageId/poll/close", buildJsonObject {})
 
-    /** A message that carries a poll; posted directly (not through the offline queue). */
-    suspend fun postPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean): MessageOut =
+    /**
+     * A message that carries a poll; posted directly (not through the offline queue). `anonymous` (M27) is sent only when
+     * set: a server before M27 refuses unknown poll fields (422), and a named poll must still go through there.
+     */
+    suspend fun postPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean, anonymous: Boolean = false): MessageOut =
         request("POST", "/api/v1/channels/$channelId/messages", buildJsonObject {
             put("client_msg_id", java.util.UUID.randomUUID().toString())
             put("body", "")
@@ -549,6 +555,7 @@ class ApiClient(
                 put("question", question)
                 put("options", buildJsonArray { options.forEach { add(JsonPrimitive(it)) } })
                 put("multiple", multiple)
+                if (anonymous) put("anonymous", true)
             })
         })
 

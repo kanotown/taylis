@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,13 +47,19 @@ object PollForm {
 
 /**
  * 「アンケートを作成」 (testers asked for a form like Polly, and for polls with several answers): a question, 2-10
- * options, and whether one person may pick several. `/poll 質問 | A | B` still makes a single-answer poll at once.
+ * options, and whether one person may pick several. M27: 「匿名にする」 (off unless chosen) hides who voted from everyone,
+ * the author too; it cannot be changed afterwards. `/poll 質問 | A | B` still makes a named single-answer poll at once.
  */
 @Composable
-fun PollDialog(onDismiss: () -> Unit, onCreate: suspend (question: String, options: List<String>, multiple: Boolean) -> Boolean, launch: (suspend () -> Unit) -> Unit) {
+fun PollDialog(
+    onDismiss: () -> Unit,
+    onCreate: suspend (question: String, options: List<String>, multiple: Boolean, anonymous: Boolean) -> Boolean,
+    launch: (suspend () -> Unit) -> Unit,
+) {
     var question by remember { mutableStateOf("") }
     val options = remember { mutableStateListOf("", "") }
     var multiple by remember { mutableStateOf(false) }
+    var anonymous by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var tried by remember { mutableStateOf(false) }
     val problem = PollForm.problem(question, options)
@@ -86,6 +93,10 @@ fun PollDialog(onDismiss: () -> Unit, onCreate: suspend (question: String, optio
                     Checkbox(checked = multiple, onCheckedChange = { multiple = it })
                     Text("複数選択を許可する")
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = anonymous, onCheckedChange = { anonymous = it })
+                    Text("匿名にする (誰が投票したか表示しない)", modifier = Modifier.padding(start = 8.dp))
+                }
                 if (tried && problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         },
@@ -95,7 +106,7 @@ fun PollDialog(onDismiss: () -> Unit, onCreate: suspend (question: String, optio
                 if (problem != null) return@TextButton
                 busy = true
                 launch {
-                    val made = onCreate(question.trim(), options.map { it.trim() }.filter { it.isNotEmpty() }, multiple)
+                    val made = onCreate(question.trim(), options.map { it.trim() }.filter { it.isNotEmpty() }, multiple, anonymous)
                     busy = false
                     if (made) onDismiss()
                 }

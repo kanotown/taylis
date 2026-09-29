@@ -175,9 +175,42 @@ data class AttachmentOut(
     val isImage: Boolean get() = hasThumbnail
 }
 
-/** A poll on a message (M14b): who voted for each option; counts and "mine" are derived here. */
+/**
+ * A poll on a message (M14b). M27 (DATA_MODEL.md 「投票」): `anonymous` polls list no voters (`votes` holds an empty list
+ * per option), `counts` says how many voted for each option, and `mine` is the options the reader voted for. `mine` is
+ * only in responses to the reader: events carry null, and the store keeps what it knew (SYNC_PROTOCOL.md §8). All three
+ * default so a server before M27 (and rows persisted before) still decode; the counts then come from `votes`.
+ */
 @Serializable
-data class PollOut(val question: String, val options: List<String>, val multiple: Boolean = false, val closedAt: String? = null, val votes: List<List<String>> = emptyList())
+data class PollOut(
+    val question: String,
+    val options: List<String>,
+    val multiple: Boolean = false,
+    val closedAt: String? = null,
+    val votes: List<List<String>> = emptyList(),
+    val anonymous: Boolean = false,
+    val counts: List<Int> = emptyList(),
+    val mine: List<Int>? = null,
+) {
+    /** How many voted for the option: the server's count, else (a server before M27) its voters. */
+    fun count(option: Int): Int = counts.getOrNull(option) ?: votes.getOrNull(option)?.size ?: 0
+
+    /** Votes over all options (a person counts once per option picked). */
+    val total: Int get() = options.indices.sumOf { count(it) }
+
+    /** Who voted for the option, in order of voting; nobody for an anonymous poll. */
+    fun voters(option: Int): List<String> = if (anonymous) emptyList() else votes.getOrNull(option) ?: emptyList()
+
+    /**
+     * The options `userId` (the reader) voted for. A named poll reads its votes, which every event carries whole: the
+     * `mine` kept across an event would still show a vote taken back on another device. An anonymous poll has only
+     * `mine` (none known yet = none).
+     */
+    fun mineFor(userId: String?): Set<Int> {
+        if (anonymous || userId == null) return mine?.toSet() ?: emptySet()
+        return votes.indices.filter { userId in votes[it] }.toSet()
+    }
+}
 
 /** A body an edit replaced (M14c); the current body is the message's own. */
 @Serializable

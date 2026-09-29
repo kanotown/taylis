@@ -15,6 +15,7 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
@@ -196,6 +197,35 @@ data class ThreadEntry(val parent: MessageOut, val state: ThreadState) {
     val id: String get() = parent.id
 }
 
+/**
+ * A public channel read before joining (SYNC_PROTOCOL.md §7.6.1): the pages GET /channels/{id}/messages gave when it
+ * opened (older ones as the reader scrolls up) and the threads opened from it. Events only reach members, so nothing
+ * keeps it current. Memory only: no cursor, read position or unread, never persisted nor in a snapshot; it goes when
+ * the conversation closes or another one opens.
+ */
+data class ChannelPreview(
+    val channelId: String,
+    /** Timeline rows (top-level, or replies also sent to the channel), oldest first. */
+    val messages: List<MessageState> = emptyList(),
+    /** The first page has arrived; a failed load leaves it false with `failed` set (opening again retries). */
+    val loaded: Boolean = false,
+    val failed: Boolean = false,
+    val hasOlder: Boolean = false,
+    /** Replies of the threads opened from the preview, by parent id, oldest first. */
+    val replies: Map<String, List<MessageState>> = emptyMap(),
+) {
+    /** Where the next older page starts (`before_seq`). */
+    val oldestSeq: Int? get() = messages.firstOrNull()?.seq
+
+    /** A history page: the latest one replaces the rows, an older one goes before them. */
+    fun withPage(page: HistoryOut, older: Boolean): ChannelPreview {
+        val rows = LinkedHashMap<String, MessageState>()
+        if (older) messages.forEach { rows[it.id] = it }
+        page.messages.filter { !it.deleted }.forEach { rows[it.id] = MessageState.from(it) }
+        return copy(messages = rows.values.sortedBy { it.seq }, loaded = true, failed = false, hasOlder = page.hasMore)
+    }
+}
+
 /** A confirmed local row in the server shape (thread rows built from the timeline). */
 fun MessageState.toOut(): MessageOut? {
     val seq = seq ?: return null
@@ -263,6 +293,22 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
     fun linksOf(channelId: String): List<ChannelLinkOut> = channelLinks[channelId] ?: emptyList()
+
+    /** §7.6.1: the public channel being read before joining, if any (never persisted, see ChannelPreview). */
+    var preview: ChannelPreview? = null
+        private set
+
+    fun setPreview(value: ChannelPreview?) {
+        if (preview == value) return
+        preview = value
+        emit()
+    }
+
+    /** Changes the preview of `channelId`; nothing when another channel's (or none) is held. */
+    fun updatePreview(channelId: String, change: (ChannelPreview) -> ChannelPreview) {
+        val current = preview?.takeIf { it.channelId == channelId } ?: return
+        setPreview(change(current))
+    }
     private val drafts = LinkedHashMap<String, Draft>()
     private val uploads = HashMap<String, Int>()
     private fun draftKey(channelId: String, parentId: String?) = "draft:$channelId:${parentId ?: ""}"
@@ -465,6 +511,7 @@ class Store(private val persistence: Persistence? = null) {
     fun removeChannel(id: String) {
         channels.remove(id)
         messagesByChannel.remove(id)
+        if (preview?.channelId == id) preview = null // made private, or no longer listed: its preview goes too
         persist { it.clearMessages(id); it.deleteChannel(id) }
         emit()
     }
@@ -736,16 +783,62 @@ class Store(private val persistence: Persistence? = null) {
             if (bucket.remove(placeholder) != null) persist { it.deleteMessage(placeholder) }
         }
         val local = bucket[message.id]
-        if (local != null && message.updatedSeq <= local.updatedSeq) return false
+        if (local != null && message.updatedSeq <= local.updatedSeq) {
+            val merged = withMyVotes(local, message) ?: return false
+            bucket[message.id] = merged
+            persist { it.saveMessage(merged) }
+            emit()
+            return true
+        }
         if (message.deleted) {
             bucket.remove(message.id)
             persist { it.deleteMessage(message.id) }
         } else {
-            bucket[message.id] = message
-            persist { it.saveMessage(message) }
+            val stored = keepingMyVotes(message, local)
+            bucket[message.id] = stored
+            persist { it.saveMessage(stored) }
         }
         emit()
         return true
+    }
+
+    /**
+     * The response to my own vote, unvote or close (M27): merged like any row, then its `mine` goes in whatever the
+     * updated_seq order. Someone else's vote event can overtake it (a newer row without `mine`), and the plain rule would
+     * then drop the response and with it my vote. The newer row's counts stay.
+     */
+    fun applyMyPollResponse(message: MessageOut) {
+        upsertMessage(message)
+        val mine = message.poll?.mine ?: return
+        val bucket = bucket(message.channelId)
+        val stored = bucket[message.id] ?: return
+        val poll = stored.poll ?: return
+        if (poll.mine == mine) return
+        val updated = stored.copy(poll = poll.copy(mine = mine))
+        bucket[message.id] = updated
+        persist { it.saveMessage(updated) }
+        emit()
+    }
+
+    /**
+     * §8 poll.mine (M27): an event carries no `mine` (every member gets the same one), so a newer row keeps the votes I
+     * was known to have made; only a response to me says them again.
+     */
+    private fun keepingMyVotes(message: MessageState, local: MessageState?): MessageState {
+        val poll = message.poll ?: return message
+        val known = local?.poll?.mine ?: return message
+        return if (poll.mine == null) message.copy(poll = poll.copy(mine = known)) else message
+    }
+
+    /**
+     * §8 poll.mine (M27): the response to my vote can arrive after its event (same updated_seq), which the plain rule
+     * ignores as a duplicate; its `mine` still goes in. Null when there is nothing to take.
+     */
+    private fun withMyVotes(local: MessageState, message: MessageState): MessageState? {
+        if (message.updatedSeq != local.updatedSeq) return null
+        val mine = message.poll?.mine ?: return null
+        val poll = local.poll ?: return null
+        return if (poll.mine == mine) null else local.copy(poll = poll.copy(mine = mine))
     }
 
     fun putPlaceholder(message: MessageState) {
