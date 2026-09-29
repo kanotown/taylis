@@ -256,7 +256,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // Laid out from the bottom: the newest message stays above the input when the keyboard comes up. A tap on the
             // list closes the keyboard (KeyboardBehavior.kt).
-            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(items, key = { it.key }) { item ->
                     when (item) {
                         is TimelineItem.DateSeparator -> DaySeparator(item.label)
@@ -445,7 +445,6 @@ fun MessageRow(
     var savingEdit by remember { mutableStateOf(false) }
     val rowScope = rememberCoroutineScope()
     var confirmingDelete by remember { mutableStateOf(false) }
-    var showTime by remember { mutableStateOf(false) }
     var showingProfile by remember { mutableStateOf(false) }
     var pickingReaction by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
@@ -453,11 +452,13 @@ fun MessageRow(
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
-        onClickLabel = if (message.replyCount > 0 && onOpenThread != null) "スレッドを開く" else if (!compact) null else if (showTime) "時刻を隠す" else "時刻を表示",
+        onClickLabel = if (onOpenThread != null) "スレッドを開く" else null,
         onLongClickLabel = "メッセージの操作",
         onLongClick = if (message.pending) null else ({ menuOpen = true }),
-        // A tap on a message with replies opens its thread (Slack; tester request); else a grouped row shows its time.
-        onClick = { if (message.replyCount > 0 && onOpenThread != null) onOpenThread() else if (compact) showTime = !showTime },
+        // A tap on a message in the channel opens its thread, to read or to reply (Slack; testers, 2026-09-29; a grouped
+        // row showed its time before, which its gutter shows now). With the keyboard up the tap only closes it
+        // (closesKeyboardOnTap), as on iOS.
+        onClick = { if (!message.pending && onOpenThread != null && !KeyboardBehavior.upAtTouch) onOpenThread() },
     )
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
@@ -509,7 +510,7 @@ fun MessageRow(
                             )
                         }
                     }
-                } else if (showTime || message.editedAt != null) {
+                } else if (message.editedAt != null) {
                     Text(
                         Timeline.fullLabel(message.createdAt) + if (message.editedAt != null) " (編集済み)" else "",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -4,24 +4,36 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * How a conversation lives with the keyboard, as on iOS (KeyboardBehavior.swift):
  * - when the list's height changes (the keyboard coming or going, the input growing to several lines) its bottom edge
  *   stays: at the end the newest message stays just above the input, higher up the row that was just above it stays
  *   there ([KeepBottomOnResize]; the channel's list is laid out from the bottom and does this by itself);
- * - a tap on the list closes the keyboard ([closesKeyboardOnTap]), besides the system back.
+ * - a tap on the list closes the keyboard ([closesKeyboardOnTap]), besides the system back, and does nothing else on a
+ *   message (which a tap otherwise opens the thread of).
  */
 object KeyboardBehavior {
+    /**
+     * Whether the keyboard was up when the list's latest touch came down ([closesKeyboardOnTap]): that tap only closes
+     * it. Asked when the row gets the tap, the window already says the keyboard is gone.
+     */
+    var upAtTouch = false
+        internal set
+
     /**
      * How far to scroll (positive: towards the end) so that the row last shown in full above the old bottom edge ends
      * as far above the new bottom edge as it did before. Null when there is nothing to keep (no row, same height).
@@ -54,13 +66,26 @@ fun KeepBottomOnResize(listState: LazyListState, enabled: Boolean) {
 }
 
 /**
- * Closes the keyboard on a tap (`LocalFocusManager.current`), watching the touches before the rows do, so their clicks
- * still work. A drag or a long press (a message's menu) is not a tap.
+ * Whether the keyboard is up now, for a touch handler: the keyboard's inset, read when called. (The window's insets did
+ * not report the keyboard on this app's window.)
  */
-fun Modifier.closesKeyboardOnTap(focusManager: FocusManager): Modifier =
-    pointerInput(focusManager) {
+@Composable
+fun rememberKeyboardUp(): () -> Boolean {
+    val ime = WindowInsets.ime
+    val density = LocalDensity.current
+    return remember(ime, density) { { ime.getBottom(density) > 0 } }
+}
+
+/**
+ * Closes the keyboard on a tap (`LocalFocusManager.current`), watching the touches before the rows do, so their clicks
+ * still work. A drag or a long press (a message's menu) is not a tap. Notes whether the keyboard was up as the touch
+ * came down ([KeyboardBehavior.upAtTouch], from [rememberKeyboardUp]).
+ */
+fun Modifier.closesKeyboardOnTap(focusManager: FocusManager, keyboardUp: () -> Boolean): Modifier =
+    pointerInput(focusManager, keyboardUp) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            KeyboardBehavior.upAtTouch = keyboardUp()
             val up = waitForUpOrCancellation(pass = PointerEventPass.Initial) ?: return@awaitEachGesture
             val moved = (up.position - down.position).getDistance() > viewConfiguration.touchSlop
             val held = up.uptimeMillis - down.uptimeMillis > viewConfiguration.longPressTimeoutMillis

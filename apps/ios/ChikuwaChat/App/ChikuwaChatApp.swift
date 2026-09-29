@@ -6,6 +6,8 @@ struct ChikuwaChatApp: App {
     @State private var controller = AppController()
     @Environment(\.scenePhase) private var scenePhase
 
+    init() { KeyboardBehavior.watch() }
+
     var body: some Scene {
         WindowGroup {
             RootView(controller: controller)

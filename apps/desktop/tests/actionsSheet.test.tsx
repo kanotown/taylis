@@ -91,14 +91,35 @@ describe("the long-press sheet (M25)", () => {
     localStorage.removeItem("chikuwa.emoji.recent");
   });
 
-  it("a tap on a message with replies opens its thread on a phone", () => {
+  it("a tap on a message opens its thread on a phone, not while typing and not with a mouse", () => {
     touchScreen(false);
     const onOpenThread = vi.fn();
     const w = world(onOpenThread, 2);
     fireEvent.click(document.getElementById(`timeline-${w.theirs.id}`)!.querySelector("p, div")!);
     expect(onOpenThread).toHaveBeenCalledWith(w.theirs.id);
     onOpenThread.mockClear();
-    fireEvent.click(document.getElementById(`timeline-${w.mine.id}`)!); // no replies
+    const mine = document.getElementById(`timeline-${w.mine.id}`)!;
+    fireEvent.click(mine); // no replies yet: its thread, to reply
+    expect(onOpenThread).toHaveBeenCalledWith(w.mine.id);
+    onOpenThread.mockClear();
+    // The keyboard was up when the finger came down: the tap only closes it.
+    const input = document.body.appendChild(document.createElement("textarea"));
+    input.focus();
+    fireEvent.touchStart(mine, { touches: [{ clientX: 10, clientY: 10 }] });
+    input.blur();
+    fireEvent.touchEnd(mine);
+    fireEvent.click(mine);
+    expect(onOpenThread).not.toHaveBeenCalled();
+    input.remove();
+    fireEvent.touchStart(mine, { touches: [{ clientX: 10, clientY: 10 }] });
+    fireEvent.touchEnd(mine);
+    fireEvent.click(mine);
+    expect(onOpenThread).toHaveBeenCalledWith(w.mine.id);
+    onOpenThread.mockClear();
+    cleanup();
+    touchScreen(true);
+    const desk = world(onOpenThread, 2);
+    fireEvent.click(document.getElementById(`timeline-${desk.theirs.id}`)!);
     expect(onOpenThread).not.toHaveBeenCalled();
   });
 
