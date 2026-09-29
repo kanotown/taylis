@@ -37,6 +37,10 @@ final class TabsTests: XCTestCase {
             channel("general", last: "2026-09-29T02:00:00Z"),
         ]
         XCTAssertEqual(DMList.ordered(rows, meId: "me").map(\.id), ["notes", "new", "old"])
+        // The row for my DM with myself stands in until it exists.
+        XCTAssertFalse(DMList.notesMissing(rows, meId: "me"))
+        XCTAssertTrue(DMList.notesMissing(rows.filter { $0.id != "notes" }, meId: "me"))
+        XCTAssertFalse(DMList.notesMissing([], meId: nil))
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
         let now = parseIsoDate("2026-09-29T12:00:00+09:00")! // Tuesday

@@ -21,8 +21,8 @@ struct NewDmView: View {
                         Button { open([me]) } label: {
                             Label {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("自分へのメモ")
-                                    Text("自分だけが見られる DM").foregroundStyle(.secondary).font(.footnote)
+                                    Text(controller.store.me?.displayName ?? "…")
+                                    Text("メモや下書きに使える、自分だけの DM").foregroundStyle(.secondary).font(.footnote)
                                 }
                             } icon: { Image(systemName: "square.and.pencil") }
                         }

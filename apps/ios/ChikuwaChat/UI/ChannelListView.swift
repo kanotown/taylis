@@ -48,7 +48,17 @@ struct ChannelListView: View {
         guard let meId, !controller.isGuest else { return false }
         return !channels.contains { $0.channel.timesOwnerId == meId }
     }
-    private var dms: [ChannelState] { channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && !placed($0) && keep($0) }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") } }
+    /// My DM with myself first (as in Slack), then the newest.
+    private var dms: [ChannelState] {
+        channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && !placed($0) && keep($0) }.sorted { a, b in
+            let selfA = DMList.isNotesToSelf(a, meId: meId), selfB = DMList.isNotesToSelf(b, meId: meId)
+            if selfA != selfB { return selfA }
+            return (a.channel.lastMessageAt ?? "") > (b.channel.lastMessageAt ?? "")
+        }
+    }
+    /// Until my DM with myself exists, its row stands first all the same; a tap makes it.
+    private var showsNotesRow: Bool { !unreadOnly && DMList.notesMissing(channels, meId: meId) }
+    @State private var openingNotes = false
     private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
     var body: some View {
@@ -86,8 +96,9 @@ struct ChannelListView: View {
             }
             let dmsFolded = folded.contains("dms")
             Section {
+                if showsNotesRow && !dmsFolded { notesRow }
                 ForEach(shown(dms, dmsFolded)) { row($0) }
-                if dms.isEmpty && !dmsFolded { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
+                if dms.isEmpty && !dmsFolded && !showsNotesRow { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
             } header: { foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") } }
             if !browse.isEmpty {
                 Section("参加できるチャンネル") {
@@ -251,6 +262,30 @@ struct ChannelListView: View {
     }
 
     /// 「自分の times を作る」 (M24): POST /times, then open it.
+    /// My DM with myself before it exists, like a DM row: my picture and my name.
+    private var notesRow: some View {
+        Button {
+            guard let meId, !openingNotes else { return }
+            openingNotes = true
+            Task {
+                if let id = await controller.openDmWith(meId) { selection = id }
+                openingNotes = false
+            }
+        } label: {
+            HStack(spacing: 10) {
+                AvatarView(id: meId ?? "", name: controller.store.me?.displayName ?? "?", size: 22)
+                Text(controller.store.me?.displayName ?? "…").foregroundStyle(Color.primary.opacity(0.72)).lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(openingNotes)
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
+    }
+
     private var makeTimesRow: some View {
         Button { makeTimes() } label: {
             HStack(spacing: 10) {

@@ -347,7 +347,8 @@ struct ErrorToast: View {
 func channelTitle(_ channel: ChannelState, store: Store) -> String {
     if !channel.channel.isDm { return "#\(channel.channel.name ?? "")" }
     let others = (channel.channel.dmUserIds ?? []).filter { $0 != store.me?.id }
-    if others.isEmpty { return "自分へのメモ" }
+    // A DM with only me (notes to self) goes by my own name, as in Slack and Mattermost.
+    if others.isEmpty { return store.me.map { $0.displayName.isEmpty ? $0.username : $0.displayName } ?? "…" }
     return others.map { store.users[$0]?.displayName ?? "…" }.joined(separator: ", ")
 }
 

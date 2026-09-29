@@ -23,7 +23,9 @@ struct ChannelIntroView: View {
 
     private func summary(store: Store, title: String) -> String {
         let out = channel.channel
-        if out.isDm { return "\(title) との会話の始まりです。" }
+        if out.isDm {
+            return DMList.isNotesToSelf(channel, meId: store.me?.id) ? DMList.notesIntro : "\(title) との会話の始まりです。"
+        }
         var text = ""
         if let creator = out.createdBy.flatMap({ store.users[$0]?.displayName }) { text += "\(creator) が" }
         if let date = Self.date(out.createdAt) { text += Self.dayFormatter.string(from: date) + "に" }
