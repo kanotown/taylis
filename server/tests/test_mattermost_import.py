@@ -387,6 +387,56 @@ async def test_bad_options_fail_before_writing(
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 4
 
 
+def _gif(side: int, frames: int = 3) -> bytes:
+    from PIL import Image
+
+    images = [Image.new("RGB", (side, side), (40 * i, 120, 200 - 40 * i)) for i in range(frames)]
+    out = io.BytesIO()
+    images[0].save(out, format="GIF", save_all=True, append_images=images[1:], duration=80, loop=0)
+    return out.getvalue()
+
+
+def test_a_large_animated_emoji_stays_animated() -> None:
+    """Testers, 2026-09-29: imported GIFs did not move (a large one was stored as one frame)."""
+    from PIL import Image
+
+    from app.modules.importer.mattermost_import import _shrink_emoji
+
+    data, width, height, content_type = _shrink_emoji(_gif(600), 256 * 1024)
+    assert content_type == "image/gif" and max(width, height) <= 128
+    with Image.open(io.BytesIO(data)) as image:
+        assert getattr(image, "n_frames", 1) == 3
+    still = _shrink_emoji(_png(600, 600), 256 * 1024)
+    assert still[3] == "image/png"
+
+
+async def test_refresh_emoji_brings_back_the_animation(
+    app: FastAPI, db: AsyncSession, tmp_path: Path, mm_files: Path
+) -> None:
+    await _people(db)
+    path = _write(tmp_path / "ebi.jsonl", _records())
+    await _run(app, db, path, mm_files)
+    emoji = (await db.execute(select(CustomEmoji))).scalar_one()
+    assert emoji.content_type == "image/png"
+
+    (mm_files / "emoji" / "e-ok" / "image").write_bytes(_gif(600))  # the Mattermost file is a GIF
+    settings: Settings = app.state.settings
+    report = await import_mattermost(
+        db,
+        path,
+        files_root=mm_files,
+        user_map={"kanotown": "kano", "bobmm": "ebi"},
+        actor_username="admin",
+        blobs=app.state.blobs,
+        settings=settings,
+        dry_run=False,
+        refresh_emoji=True,
+    )
+    assert report.counts["emoji_refreshed"] == 1 and report.counts["emoji_created"] == 0
+    refreshed = (await db.execute(select(CustomEmoji))).scalar_one()
+    assert refreshed.content_type == "image/gif" and max(refreshed.width, refreshed.height) <= 128
+
+
 def test_mattermost_emoji_names_with_hyphens_find_their_glyph() -> None:
     """The 🍤 team's dry run left :woman-bowing: and :rainbow-flag: unmatched (2026-09-29)."""
     from app.modules.importer.mattermost_import import standard_glyph

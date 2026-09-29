@@ -518,7 +518,7 @@ fun MessageRow(
                 if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
-                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
+                        customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller) }  // M14b
@@ -563,7 +563,7 @@ fun MessageRow(
     }
     if (sharing) ShareDialog(controller, message, onDismiss = { sharing = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
-    if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
+    if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
@@ -618,7 +618,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             (names.map { EmojiEntry(shortcode = it, glyph = ":$it:", category = "custom", keywords = it) } + Emoji.candidates(q)).take(8)
         } ?: emptyList() else emptyList()
         var pickingEmoji by remember { mutableStateOf(false) }
-        if (pickingEmoji) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
+        if (pickingEmoji) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
         if (emojiHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(emojiHits, key = { it.shortcode }) { entry ->

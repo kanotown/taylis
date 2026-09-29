@@ -29,6 +29,7 @@
 		2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */; };
 		2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551D58741D5F426321F75F3F /* AppDelegate.swift */; };
 		31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */; };
+		3254F9BB576535AC2148731D /* PollFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9506961B0BB337D742C6CD06 /* PollFormView.swift */; };
 		33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC121C06BFAA7AB89AC54106 /* DNDTests.swift */; };
 		34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */; };
 		366C98EBC4A19B3450E5B7EE /* OlderPagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1CDECCB37A118143D382F0 /* OlderPagingTests.swift */; };
@@ -213,6 +214,7 @@
 		8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		91851A02B144D3F57EB66170 /* ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTests.swift; sourceTree = "<group>"; };
+		9506961B0BB337D742C6CD06 /* PollFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollFormView.swift; sourceTree = "<group>"; };
 		95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerView.swift; sourceTree = "<group>"; };
 		9762241E8CC66308A104F181 /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
 		97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTests.swift; sourceTree = "<group>"; };
@@ -427,6 +429,7 @@
 				C5B17C0044CEFA7773C29BDC /* Permalink.swift */,
 				B5CFB01E67A972B78B96D8C2 /* PinsView.swift */,
 				11ADABD71F51A91011248A1E /* PollCardView.swift */,
+				9506961B0BB337D742C6CD06 /* PollFormView.swift */,
 				7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */,
 				62B9AE41DC03738ACC485851 /* ProfileSheet.swift */,
 				D5025810DA770D8747ACC610 /* RemindersView.swift */,
@@ -688,6 +691,7 @@
 				028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */,
 				DD186BA276E115EA76964F24 /* PinsView.swift in Sources */,
 				A99FA5C06C95385D0101DF52 /* PollCardView.swift in Sources */,
+				3254F9BB576535AC2148731D /* PollFormView.swift in Sources */,
 				31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */,
 				6FC3F67CB482231A52586E10 /* ProfileSheet.swift in Sources */,
 				6B2FA428DA0DFA1858ACA00C /* PushCenter.swift in Sources */,

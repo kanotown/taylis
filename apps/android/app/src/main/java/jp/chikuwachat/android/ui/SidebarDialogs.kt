@@ -124,7 +124,7 @@ fun SectionIcon(controller: AppController, emoji: String?, size: Dp = 18.dp) {
     val custom = CustomEmoji.name(emoji)?.let { controller.store.customEmoji[it] }
     val image = custom?.let { controller.store.emojiImages[it.id] }
     if (custom != null && image == null) LaunchedEffect(custom.id) { controller.loadEmojiImage(custom) }
-    if (image != null) Image(image, contentDescription = null, modifier = Modifier.size(size))
+    if (image != null) EmojiImage(image, custom?.let { controller.store.emojiAnimations[it.id] }, contentDescription = null, modifier = Modifier.size(size))
     else Text(emoji, fontSize = (size.value * 0.9f).sp, maxLines = 1)
 }
 
@@ -216,7 +216,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
     )
     if (picking) {
         EmojiPickerDialog(
-            custom = store.customEmoji.values.toList(), images = store.emojiImages, onNeedImage = { controller.loadEmojiImage(it) },
+            custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) },
             onDismiss = { picking = false }, onPick = { emoji = it; picking = false },
         )
     }

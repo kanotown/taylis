@@ -328,6 +328,8 @@ final class Store {
     /// Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched.
     var customEmoji: [String: CustomEmojiOut] = [:]
     var emojiImages: [String: UIImage] = [:]
+    /// The frames of the animated ones (GIF), by id; their first frame is in `emojiImages`.
+    var emojiAnimations: [String: EmojiAnimation] = [:]
     /// User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server.
     var groups: [String: GroupOut] = [:]
     /// The lab roster by user id (M23, DATA_MODEL.md lab_profiles); from bootstrap and roster.updated, not persisted.

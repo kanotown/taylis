@@ -1,3 +1,4 @@
+import ImageIO
 import XCTest
 @testable import ChikuwaChat
 
@@ -8,6 +9,40 @@ final class PollTests: XCTestCase {
         XCTAssertTrue(PollCardView.hidesBody("📊 ランチはどこ?", poll: poll))
         XCTAssertFalse(PollCardView.hidesBody("明日のランチを決めたいです", poll: poll))  // written by the author
         XCTAssertFalse(PollCardView.hidesBody("📊 ランチはどこ?", poll: nil))
+    }
+}
+
+final class PollFormTests: XCTestCase {
+    /// The phone's 「アンケートを作成」 checks what the web and Android check, in the same words.
+    func testChecksTheQuestionAndTheOptions() {
+        XCTAssertEqual(PollForm.problem(question: "", options: ["a", "b"]), "質問を入れてください")
+        XCTAssertEqual(PollForm.problem(question: "いつ？", options: ["月曜", " "]), "選択肢を 2 つ以上入れてください")
+        XCTAssertEqual(PollForm.problem(question: "いつ？", options: ["月曜", "月曜 "]), "同じ選択肢が重なっています")
+        XCTAssertNil(PollForm.problem(question: "いつ？", options: ["月曜", "火曜", ""]))
+    }
+}
+
+final class EmojiAnimationTests: XCTestCase {
+    /// Testers, 2026-09-29: GIF emoji did not move. A GIF gives its frames and when each shows.
+    func testAnAnimatedGifGivesItsFrames() throws {
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, "com.compuserve.gif" as CFString, 3, nil))
+        for color in [UIColor.red, .green, .blue] {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16)).image { context in
+                color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+            }
+            CGImageDestinationAddImage(destination, image.cgImage!, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.2]] as CFDictionary)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let decoded = try XCTUnwrap(CustomEmoji.decode(data as Data))
+        let animation = try XCTUnwrap(decoded.animation)
+        XCTAssertEqual(animation.frames.count, 3)
+        XCTAssertEqual(animation.duration, 0.6, accuracy: 0.01)
+        XCTAssertTrue(animation.frame(at: 0.1) === animation.frames[0])
+        XCTAssertTrue(animation.frame(at: 0.3) === animation.frames[1])
+        XCTAssertTrue(animation.frame(at: 1.1) === animation.frames[2]) // the second loop
+        let still = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16)).image { _ in }.pngData()!
+        XCTAssertNil(try XCTUnwrap(CustomEmoji.decode(still)).animation)
     }
 }
 

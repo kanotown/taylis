@@ -68,7 +68,8 @@ private struct MessageSheets: ViewModifier {
                     MessageActionsSheet(message: message, controller: controller, canThread: openThread != nil, canMarkUnread: unread != nil,
                                         onMarkUnread: { unread?() }, followUp: { next = ($0, message) })
                 case .reactions:
-                    EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, onNeedImage: { controller.loadEmojiImage($0) }) { glyph in
+                    EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
+                                    onNeedImage: { controller.loadEmojiImage($0) }) { glyph in
                         Task { await controller.toggleReaction(current(message), emoji: glyph) }
                     }
                 case .share:

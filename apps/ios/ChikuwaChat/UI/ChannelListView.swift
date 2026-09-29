@@ -98,7 +98,7 @@ struct ChannelListView: View {
         }
         // Plain and compact like Slack's (testers, 2026-09-29: widely spaced rows were hard to scan with many channels).
         .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 34)
+        .environment(\.defaultMinListRowHeight, 40)
         .sheet(item: $sectionForm) { target in
             SectionFormView(controller: controller, section: target.section, preselected: target.preselected)
         }
@@ -300,8 +300,8 @@ struct ChannelListView: View {
         Text(text).font(.footnote).foregroundStyle(.secondary).listRowInsets(Self.rowInsets).listRowSeparator(.hidden)
     }
 
-    /// A compact row, like Slack's sidebar.
-    static let rowInsets = EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16)
+    /// A compact row, like Slack's sidebar (a little more room than at first: testers found 34 pt too tight).
+    static let rowInsets = EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
 
     private func join(_ id: String) {
         Task {

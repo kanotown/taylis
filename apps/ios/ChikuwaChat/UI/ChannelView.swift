@@ -329,6 +329,7 @@ struct ChannelView: View {
                         // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                         .containerRelativeFrame(.horizontal)
                         .background(ScrollViewProbe.Marker(probe: scroller))
+                        .background(StatusBarTapStays())
                     }
                     .coordinateSpace(name: "conversation")
                     .onUserScroll {
@@ -834,7 +835,8 @@ struct MessageRow: View {
                 }
                 if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
                     MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
-                                    customEmoji: store.customEmoji, emojiImages: store.emojiImages, onNeedEmojiImage: { controller.loadEmojiImage($0) })
+                                    customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
+                                    onNeedEmojiImage: { controller.loadEmojiImage($0) })
                         .environment(\.openURL, OpenURLAction { url in
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
                             Task { await controller.openPermalink(id) }
@@ -858,7 +860,7 @@ struct MessageRow: View {
                                 if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
                                     HStack(spacing: 3) {
                                         if let image = store.emojiImages[custom.id] {
-                                            Image(uiImage: image).resizable().scaledToFit().frame(height: 16)
+                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(height: 16)
                                         } else {
                                             Text(reaction.emoji).font(.caption2).onAppear { controller.loadEmojiImage(custom) }
                                         }
@@ -1071,6 +1073,8 @@ struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showCamera = false
     @State private var showEmojiPicker = false
+    /// 「アンケートを作成」: from the ＋ menu, or `/poll` sent alone.
+    @State private var showPollForm = false
     @State private var showSchedule = false
     @State private var showCustomSchedule = false
     @State private var customSendAt = Date().addingTimeInterval(3600)
@@ -1170,6 +1174,11 @@ struct ComposerView: View {
         if let command = SlashCommands.parse(trimmed) {  // M13b
             guard let controller else { return }
             if !command.known { controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"; return }
+            if command.name == "poll" && command.args.isEmpty {  // the form instead of the syntax
+                controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
+                showPollForm = true
+                return
+            }
             controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
             Task { _ = await controller.runCommand(command, channelId: channelId, parentId: parentId) }
             return
@@ -1205,6 +1214,7 @@ struct ComposerView: View {
             Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
             if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
             Button("ファイル", systemImage: "folder") { showFileImporter = true }
+            Button("アンケート", systemImage: "chart.bar.doc.horizontal") { showPollForm = true }
             if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
             if parentId == nil {
                 Divider()
@@ -1422,7 +1432,11 @@ struct ComposerView: View {
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
         .sheet(isPresented: $showEmojiPicker) {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
+                            animations: controller?.store.emojiAnimations ?? [:],
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
+        }
+        .sheet(isPresented: $showPollForm) {
+            if let controller { PollFormView(controller: controller, channelId: channelId, parentId: parentId) }
         }
         // Videos too (testers, 2026-09-29: they were not in the list at all).
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))

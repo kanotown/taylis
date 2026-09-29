@@ -315,3 +315,23 @@ private struct BackSwipeWatcher: UIViewRepresentable {
     }
 }
 
+/// A tap on the status bar leaves a conversation where it is (testers, 2026-09-29): in a long channel it climbed to
+/// the top of what was loaded, loaded older pages one after another, and the list could end up shifted. The header
+/// opens the channel's details instead, as in Slack. Placed inside the scroll view's content.
+struct StatusBarTapStays: UIViewRepresentable {
+    func makeUIView(context: Context) -> Marker { Marker() }
+    func updateUIView(_ view: Marker, context: Context) {}
+
+    final class Marker: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            isUserInteractionEnabled = false
+            var next = superview
+            while let current = next {
+                if let scrollView = current as? UIScrollView { scrollView.scrollsToTop = false; return }
+                next = current.superview
+            }
+        }
+    }
+}
+

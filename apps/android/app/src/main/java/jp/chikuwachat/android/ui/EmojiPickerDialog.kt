@@ -36,6 +36,8 @@ fun EmojiPickerDialog(
     /** M12f: custom emoji shown under 「カスタム」 and found by name; a pick hands back `:name:`. */
     custom: List<jp.chikuwachat.android.api.CustomEmojiOut> = emptyList(),
     images: Map<String, androidx.compose.ui.graphics.ImageBitmap> = emptyMap(),
+    /** The animated ones' frames (GIF), shown moving. */
+    animations: Map<String, EmojiAnimation> = emptyMap(),
     onNeedImage: ((jp.chikuwachat.android.api.CustomEmojiOut) -> Unit)? = null,
 ) {
     var query by remember { mutableStateOf("") }
@@ -64,7 +66,7 @@ fun EmojiPickerDialog(
 
                         androidx.compose.foundation.layout.Box(Modifier.size(40.dp).clickable { onPick(":" + emoji.name + ":") }, contentAlignment = androidx.compose.ui.Alignment.Center) {
 
-                            if (image != null) androidx.compose.foundation.Image(image, contentDescription = ":" + emoji.name + ":", modifier = Modifier.size(28.dp))
+                            if (image != null) EmojiImage(image, animations[emoji.id], contentDescription = ":" + emoji.name + ":", modifier = Modifier.size(28.dp))
 
                             else Text(":" + emoji.name + ":", style = MaterialTheme.typography.labelSmall, maxLines = 1)
 

@@ -200,14 +200,47 @@ def _clip(text: str, limit: int) -> str | None:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _shrink_emoji(data: bytes) -> tuple[bytes, int, int]:
-    """A too-large custom emoji as a 128 px PNG (an animated GIF keeps its first frame)."""
+def _shrink_emoji(data: bytes, max_bytes: int) -> tuple[bytes, int, int, str]:
+    """A too-large custom emoji made smaller: an animated one stays an animated GIF (testers,
+    2026-09-29: imported GIFs did not move) at 128, 96 or 64 px, the first that fits `max_bytes`;
+    otherwise, and for a still one, a 128 px PNG."""
     with Image.open(io.BytesIO(data)) as image:
+        if getattr(image, "n_frames", 1) > 1:
+            for side in (EMOJI_THUMB_PX, 96, 64):
+                animated = _animated_gif(image, side)
+                if animated is not None and len(animated[0]) <= max_bytes:
+                    return (*animated, "image/gif")
+            image.seek(0)
         image.thumbnail((EMOJI_THUMB_PX, EMOJI_THUMB_PX))
         canvas = image.convert("RGBA")
     out = io.BytesIO()
     canvas.save(out, format="PNG", optimize=True)
-    return out.getvalue(), canvas.width, canvas.height
+    return out.getvalue(), canvas.width, canvas.height, "image/png"
+
+
+def _animated_gif(image: Image.Image, side: int) -> tuple[bytes, int, int] | None:
+    frames: list[Image.Image] = []
+    durations: list[int] = []
+    for index in range(min(getattr(image, "n_frames", 1), 200)):
+        image.seek(index)
+        frame = image.convert("RGBA")
+        frame.thumbnail((side, side))
+        frames.append(frame)
+        durations.append(int(image.info.get("duration", 100)) or 100)
+    if len(frames) < 2:
+        return None
+    out = io.BytesIO()
+    frames[0].save(
+        out,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=0,
+        disposal=2,
+        optimize=True,
+    )
+    return out.getvalue(), frames[0].width, frames[0].height
 
 
 def _dimensions(data: bytes) -> tuple[int, int]:
@@ -227,7 +260,9 @@ class MattermostImport:
         blobs: BlobStore,
         settings: Settings,
         dry_run: bool,
+        refresh_emoji: bool = False,
     ) -> None:
+        self.refresh_emoji = refresh_emoji
         self.db = db
         self.dump = dump
         self.files_root = files_root.resolve() if files_root is not None else None
@@ -402,6 +437,9 @@ class MattermostImport:
         refs = await self._refs("emoji")
         for mm in self.dump.emoji:
             name = mm["name"].lower()
+            if mm["id"] in refs and self.refresh_emoji:
+                await self._refresh_emoji(mm, refs[mm["id"]])
+                continue
             if mm["id"] in refs or name in self.custom_emoji:
                 continue  # imported before, or ChikuwaChat already has one by that name
             if not emoji_service.NAME.match(name):
@@ -422,8 +460,9 @@ class MattermostImport:
                     max(width, height) > emoji_service.MAX_PIXELS
                     or len(data) > self.settings.emoji_max_bytes
                 ):
-                    data, width, height = await run_in_threadpool(_shrink_emoji, data)
-                    content_type = "image/png"
+                    data, width, height, content_type = await run_in_threadpool(
+                        _shrink_emoji, data, self.settings.emoji_max_bytes
+                    )
             except Exception as exc:
                 self.report.warn(f":{name}: の画像を読めないため未移行 ({exc})")
                 continue
@@ -445,6 +484,42 @@ class MattermostImport:
             self.new_emoji.append(row)
             self.custom_emoji.add(name)
             self.report.counts["emoji_created"] += 1
+
+    async def _refresh_emoji(self, mm: dict[str, Any], target_id: uuid.UUID) -> None:
+        """--refresh-emoji: an emoji imported before is read again from Mattermost, so one that was
+        stored as its first frame gets its animation."""
+        row = await self.db.get(CustomEmoji, target_id)
+        raw = self._read_file(Path("emoji") / mm["id"] / "image", f":{mm['name']}:")
+        if row is None or raw is None:
+            return
+        data: bytes = raw
+        kind = filetype.guess(data[:8192])
+        content_type = kind.mime if kind is not None else ""
+        if content_type not in IMAGE_TYPES:
+            return
+        try:
+            width, height = await run_in_threadpool(_dimensions, data)
+            if (
+                max(width, height) > emoji_service.MAX_PIXELS
+                or len(data) > self.settings.emoji_max_bytes
+            ):
+                data, width, height, content_type = await run_in_threadpool(
+                    _shrink_emoji, data, self.settings.emoji_max_bytes
+                )
+        except Exception as exc:
+            self.report.warn(f":{row.name}: の画像を読めないため更新せず ({exc})")
+            return
+        if content_type == row.content_type and len(data) == row.size_bytes:
+            return
+        if not self.dry_run:
+            await self.blobs.put(row.storage_key, data, content_type)
+        row.content_type, row.size_bytes, row.width, row.height = (
+            content_type,
+            len(data),
+            width,
+            height,
+        )
+        self.report.counts["emoji_refreshed"] += 1
 
     def _person_id(self, mm_user_id: str | None) -> uuid.UUID:
         person = self.people.get(mm_user_id or "")
@@ -865,6 +940,7 @@ async def import_mattermost(
     blobs: BlobStore,
     settings: Settings,
     dry_run: bool,
+    refresh_emoji: bool = False,
 ) -> Report:
     dump = read_dump(dump_path)
     actor = (
@@ -881,5 +957,6 @@ async def import_mattermost(
         blobs=blobs,
         settings=settings,
         dry_run=dry_run,
+        refresh_emoji=refresh_emoji,
     )
     return await job.run()
