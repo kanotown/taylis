@@ -80,6 +80,34 @@ describe("SyncEngine", () => {
     }
   });
 
+  it("counts every unread row a live gap's catch-up brings, once, like the server (§7.4)", async () => {
+    // Before, only the event that showed the gap was counted; the rows whose events were lost waited for the next
+    // bootstrap (Android had it right).
+    const { server, alice, bob, channel, store, engine } = await setup();
+    for (let i = 1; i <= 3; i++) server.post(channel.id, alice.id, `m${i}`);
+    server.markRead(bob.id, channel.id, 3);
+    await engine.start();
+    await engine.openChannel(channel.id);
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(0);
+    for (const socket of server.socketsOf(bob.id)) socket.dropNext = 1;
+    const lost = server.post(channel.id, alice.id, "lost").message; // 4, its event lost
+    server.react(channel.id, alice.id, lost.id, "👍", true); // 5: a gap, and no new row
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.syncedSeq).toBe(5);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(1);
+    expect(server.readState(bob.id, channel.id).unread_count).toBe(1);
+    for (const socket of server.socketsOf(bob.id)) socket.dropNext = 1;
+    server.post(channel.id, alice.id, "lost too"); // 6, lost
+    server.post(channel.id, alice.id, "opens the gap"); // 7
+    server.post(channel.id, alice.id, "live"); // 8
+    await engine.idle();
+    expect(store.getChannel(channel.id)?.syncedSeq).toBe(8);
+    expect(store.getChannel(channel.id)?.unreadCount).toBe(4);
+    expect(server.readState(bob.id, channel.id).unread_count).toBe(4);
+    engine.stop();
+  });
+
   it("catches up a conversation opened while the connection was still starting", async () => {
     // Start-up: the connection catches up the conversation open at that moment; the reader taps another one before
     // the engine is online. That one used to stay empty ("まだメッセージはありません") until something else synced it.

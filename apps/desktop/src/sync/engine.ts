@@ -741,13 +741,13 @@ export class SyncEngine {
       return;
     }
     if (seq > channel.syncedSeq + 1) {
+      // A gap: the catch-up brings the rows lost with it and counts every one past what was counted so far (this one
+      // too; §7.4 — before, only this one was counted and the lost ones waited for the next bootstrap).
+      const countedTo = channel.lastSeq;
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
-      await this.catchUp(channel.id);
+      await this.catchUp(channel.id, countedTo);
       this.trimIfFull(channel.id);
-      if (isNew) {
-        this.countUnread(message);
-        this.maybeNotify(message, channel, thread);
-      }
+      if (isNew) this.maybeNotify(message, channel, thread);
     }
     // seq <= syncedSeq: already applied.
   }
@@ -1191,7 +1191,24 @@ export class SyncEngine {
     await this.flushReads();
   }
 
-  async catchUp(channelId: string): Promise<void> {
+  /**
+   * §7.3, and §7.4 for the count: the unread count covers the rows up to `countedTo` (the bootstrap's and the live
+   * events'); what the catch-up brings past it, up to the new synced seq, is counted here — their events were lost, and
+   * nothing else counts them until the next bootstrap. The channel's last seq when not given (a reconnect's catch-up
+   * after the bootstrap counted everything).
+   */
+  async catchUp(channelId: string, countedTo?: number): Promise<void> {
+    const store = this.deps.store;
+    const before = store.getChannel(channelId);
+    if (!before || !before.isMember) return;
+    const counted = countedTo ?? before.lastSeq;
+    const brought = new Map<string, MessageOut>(); // by id: a row changed between two pages counts once, as it is now
+    await this.catchUpRows(channelId, brought);
+    const synced = store.getChannel(channelId)?.syncedSeq ?? counted;
+    for (const message of [...brought.values()].filter((m) => m.seq > counted && m.seq <= synced).sort((a, b) => a.seq - b.seq)) this.countUnread(message);
+  }
+
+  private async catchUpRows(channelId: string, brought: Map<string, MessageOut>): Promise<void> {
     const store = this.deps.store;
     this.stats.catchUps += 1;
     let channel = store.getChannel(channelId);
@@ -1206,7 +1223,10 @@ export class SyncEngine {
     }
     if (channel.syncedSeq === null) {
       const page = await this.deps.api.history(channelId, null, this.opts.pageSize);
-      for (const message of page.messages) store.upsertMessage(message);
+      for (const message of page.messages) {
+        store.upsertMessage(message);
+        brought.set(message.id, message);
+      }
       store.updateChannel(channelId, {
         syncedSeq: page.channel_last_seq,
         lastSeq: Math.max(channel.lastSeq, page.channel_last_seq),
@@ -1217,7 +1237,10 @@ export class SyncEngine {
     let since = channel.syncedSeq;
     for (;;) {
       const delta = await this.deps.api.delta(channelId, since, this.opts.deltaLimit);
-      for (const message of delta.messages) store.upsertMessage(message);
+      for (const message of delta.messages) {
+        store.upsertMessage(message);
+        brought.set(message.id, message);
+      }
       since = delta.next_since_seq;
       const current = store.getChannel(channelId);
       store.updateChannel(channelId, { syncedSeq: since, lastSeq: Math.max(current?.lastSeq ?? 0, since) });
