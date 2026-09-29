@@ -1275,7 +1275,9 @@ export class AppController {
   async vote(message: MessageState, option: number, present: boolean): Promise<boolean> {
     if (!this.api) return false;
     try {
-      this.store.upsertMessage(await this.api.vote(message.id, option, present));
+      const answer = await this.api.vote(message.id, option, present);
+      this.store.upsertMessage(answer);
+      this.store.setMyVotes(answer); // also when another vote's event came first (§8)
       return true;
     } catch (error) {
       this.setError(error);
@@ -1334,7 +1336,9 @@ export class AppController {
   async closePoll(message: MessageState): Promise<boolean> {
     if (!this.api) return false;
     try {
-      this.store.upsertMessage(await this.api.closePoll(message.id));
+      const answer = await this.api.closePoll(message.id);
+      this.store.upsertMessage(answer);
+      this.store.setMyVotes(answer);
       return true;
     } catch (error) {
       this.setError(error);

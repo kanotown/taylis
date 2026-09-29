@@ -409,6 +409,9 @@ merge poll.mine (upsert の後):
         local.poll.mine = m.poll.mine               # 投票の応答がイベントより後に着いても自分の票は入る
 ```
 
+自分の投票・取り消し・締め切りの応答は、上のマージの後に `updated_seq` に関係なく `mine` を入れる (setMyVotes)。
+他のメンバーの投票のイベント (より新しい `updated_seq`) が応答より先に着くと、応答はマージで捨てられるため。
+
 ### 下書きの同期 (M15d)
 
 下書きは入力欄 (`channel_id` + `parent_id`) ごとに端末に置き、本文だけをサーバと共有する。

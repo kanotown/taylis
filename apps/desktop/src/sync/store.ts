@@ -708,6 +708,21 @@ export class Store {
     return true;
   }
 
+  /**
+   * The answer to my own vote or close (SYNC_PROTOCOL.md §8, M27): its `mine` goes in whatever the order. Another
+   * member's vote event may have come first with a newer updated_seq, and the merge above then drops the answer.
+   */
+  setMyVotes(message: MessageState): void {
+    const mine = message.poll?.mine;
+    const local = this.bucket(message.channel_id).get(message.id);
+    if (mine == null || !local?.poll || sameOptions(local.poll.mine, mine)) return;
+    const stored = { ...local, poll: { ...local.poll, mine } };
+    this.bucket(stored.channel_id).set(stored.id, stored);
+    this.timelines.delete(stored.channel_id);
+    this.persist((p) => p.saveMessage(stored));
+    this.emit();
+  }
+
   putPlaceholder(message: MessageState): void {
     this.bucket(message.channel_id).set(message.id, message);
     this.timelines.delete(message.channel_id);
