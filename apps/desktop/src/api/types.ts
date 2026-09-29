@@ -150,3 +150,8 @@ export interface DraftUpdated extends DraftOut {
 }
 export type ServerInfoOut = components["schemas"]["ServerInfoOut"];
 export type UnreadSummaryOut = components["schemas"]["UnreadSummaryOut"];
+
+/** Post templates (M30); template.updated carries `{ template, deleted }`. */
+export type TemplateOut = components["schemas"]["TemplateOut"];
+export type TemplateCreate = components["schemas"]["TemplateCreate"];
+export type TemplateUpdate = components["schemas"]["TemplateUpdate"];

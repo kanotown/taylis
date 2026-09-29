@@ -1,7 +1,7 @@
-import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, Vote, X } from "lucide-react";
+import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, Vote, X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { AttachmentOut, Priority } from "../api/types";
+import type { AttachmentOut, Priority, TemplateOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
@@ -18,6 +18,7 @@ import { MessageBody } from "./MessageBody";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
+import { appendTemplate, expandTemplate, findTemplate, nextWeekdays, orderTemplates, parseSchedule, SCHEDULE_QUESTION, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
@@ -97,26 +98,52 @@ export function Composer({
   const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
   const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
-  // `/st` at the very start offers the slash commands (M13b).
-  const commandHits = query || emojiAt || !listShown ? [] : commandCandidates(text);
-  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : commandHits.length;
+  // M30: the templates in the order they are offered here (a times channel puts `suggest_in = times` first).
+  const templates = orderTemplates(store.templates.values(), !!channel.times_owner_id);
+  // `/st` at the very start offers the slash commands (M13b), then the templates whose name fits (M30).
+  const slashHits: SlashHit[] = query || emojiAt || !listShown ? [] : [
+    ...commandCandidates(text).map((command) => ({ kind: "command" as const, command })),
+    ...templateCandidates(text, templates).map((template) => ({ kind: "template" as const, template })),
+  ];
+  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : slashHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
-  const [pollOpen, setPollOpen] = useState(false);
+  // The poll form and what it starts with (`/日程` alone fills it in, M30).
+  const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const send = () => {
     const command = parseSlashCommand(text);
     if (command) {
       if (!command.known) {
+        // M30: `/name` (or `/name text`) of a template is not sent: the input takes the template instead.
+        const template = findTemplate(templates, command.name);
+        if (template) {
+          putText(templateWithText(expandTemplate(template.body), command.args));
+          return;
+        }
         controller.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
         return;
       }
       if (command.name === "poll" && !command.args.trim()) {
         // `/poll` alone opens the form (a question and its options can still be typed after it).
         setText("");
-        setPollOpen(true);
+        setPollForm({});
         return;
+      }
+      if (command.name === "日程") {
+        if (!command.args) {
+          // `/日程` alone: the form, with the next five weekdays as the options.
+          setText("");
+          setPollForm({ question: SCHEDULE_QUESTION, options: nextWeekdays(new Date(), 5), multiple: true });
+          return;
+        }
+        if (!parseSchedule(command.args)) {
+          // Nothing is posted; what was typed stays to be corrected.
+          controller.setError(SCHEDULE_USAGE);
+          return;
+        }
       }
       setText("");
       void controller.runCommand(command, channel, parentId);
@@ -194,6 +221,30 @@ export function Composer({
       area.current?.focus();
       area.current?.setSelectionRange(position, position);
     });
+  };
+
+  /** Replaces the input and puts the caret at its end (a template inserted, M30). */
+  const putText = (next: string) => {
+    setText(next);
+    setSelected(0);
+    setCaret(next.length);
+    const restore = () => {
+      area.current?.focus();
+      area.current?.setSelectionRange(next.length, next.length);
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
+    else setTimeout(restore, 0);
+  };
+
+  /** The 「テンプレート」 button: the body alone in an empty input, else after what is there and a blank line. */
+  const insertTemplate = (template: TemplateOut) => {
+    setTemplatesOpen(false);
+    putText(appendTemplate(store.draft(channel.id, parentId).text, expandTemplate(template.body)));
+  };
+
+  const pickSlash = (hit: SlashHit) => {
+    if (hit.kind === "command") pickCommand(hit.command);
+    else putText(expandTemplate(hit.template.body)); // the whole input is `/na…`: it becomes the template at once
   };
 
   const pickCommand = (command: SlashCommand) => {
@@ -287,7 +338,7 @@ export function Composer({
         const candidate = candidates[active];
         if (candidate) pick(candidate);
         else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
-        else if (commandHits[active]) pickCommand(commandHits[active]!);
+        else if (slashHits[active]) pickSlash(slashHits[active]!);
         return;
       }
     }
@@ -357,7 +408,7 @@ export function Composer({
       }}
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
-      {pollOpen && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} onClose={() => setPollOpen(false)} />}
+      {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
       {emojiHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
           {emojiHits.map((entry, index) => (
@@ -395,18 +446,28 @@ export function Composer({
           ))}
         </ul>
       )}
-      {commandHits.length > 0 && (
-        <ul className="absolute bottom-full left-4 z-20 mb-1 w-96 rounded-xl border border-line bg-canvas p-1 shadow-xl">
-          {commandHits.map((command, index) => (
+      {slashHits.length > 0 && (
+        <ul className="absolute bottom-full left-4 z-20 mb-1 max-h-80 w-96 max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="コマンドの候補">
+          {slashHits.map((hit, index) => (
             <li
-              key={command.name}
+              key={hit.kind === "command" ? hit.command.name : hit.template.id}
               className={cn("flex items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
               onMouseDown={(event) => {
                 event.preventDefault();
-                pickCommand(command);
+                pickSlash(hit);
               }}
             >
-              <strong className="font-mono">{command.usage}</strong> <span className="text-muted">{command.description}</span>
+              {hit.kind === "command" ? (
+                <>
+                  <strong className="font-mono">{hit.command.usage}</strong> <span className="text-muted">{hit.command.description}</span>
+                </>
+              ) : (
+                <>
+                  <strong className="shrink-0 font-mono">/{hit.template.name}</strong>
+                  <span className="min-w-0 flex-1 truncate text-muted">{templateSummary(hit.template.body)}</span>
+                  {hit.template.scope === "user" && <TemplateMark />}
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -544,9 +605,34 @@ export function Composer({
                 <MenuItem onSelect={() => fileInput.current?.click()}>ファイル</MenuItem>
               </MenuContent>
             </Menu>
-            <IconButton label="アンケートを作成" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setPollOpen(true)}>
+            <IconButton label="アンケートを作成" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setPollForm({})}>
               <Vote size={15} />
             </IconButton>
+            <PopoverRoot open={templatesOpen} onOpenChange={setTemplatesOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" title="テンプレート" aria-label="テンプレート" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
+                  <LayoutTemplate size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="w-80 p-1" onCloseAutoFocus={(e) => e.preventDefault()}>
+                <div className="px-2 pb-1 pt-1 text-xs font-semibold text-muted">テンプレート</div>
+                {templates.length === 0 ? (
+                  <p className="px-2 pb-2 text-sm text-muted">テンプレートはありません (設定で追加できます)</p>
+                ) : (
+                  <ul className="max-h-72 overflow-y-auto" aria-label="テンプレートの一覧">
+                    {templates.map((template) => (
+                      <li key={template.id}>
+                        <button type="button" className="flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => insertTemplate(template)}>
+                          <span className="shrink-0 font-medium">{template.name}</span>
+                          <span className="min-w-0 flex-1 truncate text-xs text-muted">{templateSummary(template.body)}</span>
+                          {template.scope === "user" && <TemplateMark />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PopoverContent>
+            </PopoverRoot>
             <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </IconButton>
@@ -617,6 +703,13 @@ export function Composer({
       )}
     </div>
   );
+}
+
+type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut };
+
+/** Marks my own templates in the lists (the workspace's have none). */
+function TemplateMark() {
+  return <span className="ml-auto shrink-0 rounded bg-accent-soft px-1.5 text-[10px] text-accent">個人</span>;
 }
 
 const SYNTAX: Array<[string, string]> = [

@@ -1,5 +1,5 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { LabProfileOut } from "../api/types";
+import type { LabProfileOut, TemplateOut } from "../api/types";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -76,6 +76,8 @@ export class Store {
   readonly customEmoji = new Map<string, CustomEmojiOut>();
   /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
   readonly groups = new Map<string, GroupOut>();
+  /** Post templates by id (M30): the workspace's and mine; from bootstrap and template.updated. */
+  readonly templates = new Map<string, TemplateOut>();
   /** The lab roster (M23) by user id; the order is ui/roster.ts's. */
   readonly roster = new Map<string, LabProfileOut>();
   /** M15f: link bars of the conversations opened so far (not persisted). */
@@ -498,6 +500,21 @@ export class Store {
   /** The id of my section the conversation sits in, if any. */
   sectionOf(channelId: string): string | null {
     return this.sidebarSections.find((section) => section.channel_ids.includes(channelId))?.id ?? null;
+  }
+
+  // --- post templates (M30) -----------------------------------------------------------------
+
+  replaceTemplates(rows: TemplateOut[]): void {
+    this.templates.clear();
+    for (const row of rows) this.templates.set(row.id, row);
+    this.emit();
+  }
+
+  /** template.updated (or my own save): replace by id, or remove it. */
+  applyTemplate(row: TemplateOut, deleted: boolean): void {
+    if (deleted) this.templates.delete(row.id);
+    else this.templates.set(row.id, row);
+    this.emit();
   }
 
   // --- lab roster (M23) ---------------------------------------------------------------------

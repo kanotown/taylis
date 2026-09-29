@@ -12,8 +12,18 @@ describe("slash commands (M13b)", () => {
     expect(parseSlashCommand("/path/to/file")).toBeNull();
   });
 
+  it("reads names in any script (M30: /日程 and templates such as /日報)", () => {
+    expect(parseSlashCommand("/日程 ゼミ 10/3 10/4")).toEqual({ name: "日程", args: "ゼミ 10/3 10/4", known: true });
+    expect(parseSlashCommand("/日報")).toEqual({ name: "日報", args: "", known: false });
+    expect(parseSlashCommand("/日報　今日は短め")).toEqual({ name: "日報", args: "今日は短め", known: false }); // a full-width space
+    expect(parseSlashCommand("/Weekly-1_a text")).toEqual({ name: "weekly-1_a", args: "text", known: false });
+    expect(parseSlashCommand("/日報/2")).toBeNull();
+    expect(commandCandidates("/日").map((c) => c.name)).toEqual(["日程"]);
+    expect(commandCandidates("/日報 ")).toEqual([]);
+  });
+
   it("suggests commands while the name is being typed", () => {
-    expect(commandCandidates("/").length).toBe(13);
+    expect(commandCandidates("/").length).toBe(14);
     expect(commandCandidates("/s").map((c) => c.name)).toEqual(["status", "shrug"]);
     expect(commandCandidates("/status ")).toEqual([]);
     expect(commandCandidates("text /s")).toEqual([]);

@@ -21,10 +21,20 @@ export function pollProblem(question: string, options: readonly string[]): strin
  * options, whether one person may pick several, and whether it is anonymous (M27: nobody sees who voted, only how many;
  * fixed once made). `/poll 質問 | A | B` still makes a named single-answer poll at once.
  */
-export function PollDialog({ controller, channelId, parentId, onClose }: { controller: AppController; channelId: string; parentId: string | null; onClose: () => void }) {
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState(["", ""]);
-  const [multiple, setMultiple] = useState(false);
+export function PollDialog({ controller, channelId, parentId, onClose, initial }: {
+  controller: AppController;
+  channelId: string;
+  parentId: string | null;
+  onClose: () => void;
+  /** What the form starts with (M30: `/日程` alone offers the next weekdays, several answers allowed). */
+  initial?: { question?: string; options?: string[]; multiple?: boolean };
+}) {
+  const [question, setQuestion] = useState(initial?.question ?? "");
+  const [options, setOptions] = useState(() => {
+    const start = (initial?.options ?? []).slice(0, POLL_MAX_OPTIONS);
+    return start.length >= 2 ? start : [...start, "", ""].slice(0, 2);
+  });
+  const [multiple, setMultiple] = useState(initial?.multiple ?? false);
   const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
