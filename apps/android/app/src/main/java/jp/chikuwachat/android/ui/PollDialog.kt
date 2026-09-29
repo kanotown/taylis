@@ -24,7 +24,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -45,6 +49,9 @@ object PollForm {
     }
 }
 
+/** The option fields as a saveable list of strings (M28c). */
+private val OptionsSaver = listSaver<SnapshotStateList<String>, String>(save = { it.toList() }, restore = { it.toMutableStateList() })
+
 /**
  * 「アンケートを作成」 (testers asked for a form like Polly, and for polls with several answers): a question, 2-10
  * options, and whether one person may pick several. M27: 「匿名にする」 (off unless chosen) hides who voted from everyone,
@@ -56,12 +63,14 @@ fun PollDialog(
     onCreate: suspend (question: String, options: List<String>, multiple: Boolean, anonymous: Boolean) -> Boolean,
     launch: (suspend () -> Unit) -> Unit,
 ) {
-    var question by remember { mutableStateOf("") }
-    val options = remember { mutableStateListOf("", "") }
-    var multiple by remember { mutableStateOf(false) }
-    var anonymous by remember { mutableStateOf(false) }
+    // Saveable (M28c): a rotation while filling the form emptied it. `busy` is not: the request runs in the controller's
+    // scope and reports to the state that started it.
+    var question by rememberSaveable { mutableStateOf("") }
+    val options = rememberSaveable(saver = OptionsSaver) { mutableStateListOf("", "") }
+    var multiple by rememberSaveable { mutableStateOf(false) }
+    var anonymous by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var tried by remember { mutableStateOf(false) }
+    var tried by rememberSaveable { mutableStateOf(false) }
     val problem = PollForm.problem(question, options)
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },

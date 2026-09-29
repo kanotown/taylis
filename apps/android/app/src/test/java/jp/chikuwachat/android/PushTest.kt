@@ -42,6 +42,14 @@ class PushTest {
         assertNull(PushMessage.parse(mapOf("kind" to "message", "workspace_id" to "", "badge" to "x"))!!.workspaceId)
     }
 
+    @Test fun readsTheThreadParentOfAReply() { // M28c: the tap opens the thread at the reply
+        val reply = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "message_id" to "m2", "parent_id" to "m1", "title" to "t", "body" to "b"))!!
+        assertEquals("m1", reply.parentId)
+        val post = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "message_id" to "m3", "parent_id" to "", "title" to "t", "body" to "b"))!!
+        assertNull(post.parentId)
+        assertNull(PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "message_id" to "m4", "title" to "t", "body" to "b"))!!.parentId)
+    }
+
     @Test fun titlesNameTheSenderAndRemindersStandApart() {
         val channel = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "title" to "#general", "subtitle" to "Alice", "body" to "hi", "collapse_key" to "c1"))!!
         assertEquals("#general · Alice", channel.displayTitle)

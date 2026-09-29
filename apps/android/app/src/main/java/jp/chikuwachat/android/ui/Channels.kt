@@ -91,6 +91,15 @@ object Channels {
         if (!collapsed) rows else rows.filter { it.id == currentId || hasUnread(it, meId, now) }
 }
 
+/** M28c: the list's 「未読のみ」 filter as it was left on this device (it came back off at every start), like the folds below. */
+object UnreadFilter {
+    private const val KEY = "sidebar.unreadOnly"
+
+    fun read(store: KeyValueStore): Boolean = store.getString(KEY) == "1"
+
+    fun write(store: KeyValueStore, on: Boolean) = store.putString(KEY, if (on) "1" else null)
+}
+
 /**
  * M26: which default sections (favorites, channels, times, dms) are folded on this device. My own sections fold on all
  * my devices through the server (`SidebarSectionOut.collapsed`); these are a per-device convenience, like the web's.

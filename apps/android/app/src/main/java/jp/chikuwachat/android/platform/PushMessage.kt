@@ -5,6 +5,8 @@ data class PushMessage(
     val kind: String,
     val channelId: String?,
     val messageId: String?,
+    /** The thread the message replies in (its parent's id); absent for a top-level post. A tap opens the thread then. */
+    val parentId: String? = null,
     val seq: Int?,
     val title: String,
     val body: String,
@@ -35,6 +37,7 @@ data class PushMessage(
                 kind = kind,
                 channelId = data["channel_id"]?.takeIf { it.isNotBlank() },
                 messageId = data["message_id"]?.takeIf { it.isNotBlank() },
+                parentId = data["parent_id"]?.takeIf { it.isNotBlank() },
                 seq = data["seq"]?.toIntOrNull(),
                 title = data["title"] ?: "",
                 body = data["body"] ?: "",

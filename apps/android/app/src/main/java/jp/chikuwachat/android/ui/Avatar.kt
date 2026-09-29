@@ -2,6 +2,9 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import jp.chikuwachat.android.platform.AvatarCache
@@ -21,11 +24,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The profile picture when the user has one (M14a), else initials on a colour derived from the user id; `presence` adds the online / away dot (SYNC_PROTOCOL.md §5.2). */
+/**
+ * The profile picture when the user has one (M14a), else initials on a colour derived from the user id; `presence` adds
+ * the online / away dot (SYNC_PROTOCOL.md §5.2). `onClick` (M28c) opens the person's profile: TalkBack then names the
+ * person and the action, and the touch target is at least 48 dp around a small avatar; a plain avatar stays decorative.
+ */
 @Composable
-fun Avatar(id: String, name: String, size: Dp = 36.dp, modifier: Modifier = Modifier, presence: String? = null) {
+fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null) {
     val color = Color.hsl(Timeline.hue(id).toFloat(), 0.55f, 0.45f)
-    Box(modifier.size(size)) {
+    val tappable = if (onClick == null) modifier else modifier.touchTarget { source ->
+        Modifier.semantics { contentDescription = name }.clickable(interactionSource = source, indication = null, onClickLabel = "プロフィールを開く", onClick = onClick)
+    }
+    Box(tappable.size(size)) {
         val picture = AvatarCache.image(id)  // M14a
         if (picture != null) {
             Image(picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(RoundedCornerShape(size / 4)))

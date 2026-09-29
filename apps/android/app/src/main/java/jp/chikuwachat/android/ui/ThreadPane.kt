@@ -71,8 +71,9 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     // Successful reply fetches in this open: a fetch that changed no row bumps no store version, yet makes the thread complete.
     var loads by remember(parentId) { mutableIntStateOf(0) }
     // The rows, my read position and the engine's complete flag in one read, so the read gate judges the rows the
-    // list shows (the store is live, and a scroll can lay out the old rows before the next recomposition).
-    val shown = remember(version, parentId, loads) {
+    // list shows (the store is live, and a scroll can lay out the old rows before the next recomposition). The same
+    // instance while nothing changed (M28c): the read effect below is keyed on it.
+    val shown = rememberUnchanged(version, parentId, loads) {
         ThreadShown(store.replies(channelId, parentId), store.threads[parentId]?.state?.lastReadSeq, controller.engine?.threadComplete(parentId) == true)
     }
     val replies = shown.replies

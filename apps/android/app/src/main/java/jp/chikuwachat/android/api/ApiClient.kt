@@ -40,8 +40,12 @@ sealed class ApiException(message: String) : Exception(message) {
 
 fun Throwable.isRetryable(): Boolean = this is ApiException.Network || (this is ApiException.Api && isRetryable)
 
-/** Refused for good (4xx other than 429): sending the same request again cannot succeed. */
-fun Throwable.isRefusal(): Boolean = this is ApiException.Api && status in 400..499 && status != 429
+/**
+ * Refused for good (4xx other than 429 and 401): sending the same request again cannot succeed. A 401 is temporary
+ * (§7.2, M28c): the reconnect renews the token, or signs the workspace out; the desktop keeps the send queued and iOS
+ * treats it the same, so an unsent message or read mark waits rather than being dropped or marked failed.
+ */
+fun Throwable.isRefusal(): Boolean = this is ApiException.Api && status in 400..499 && status != 429 && status != 401
 
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 class ApiClient(

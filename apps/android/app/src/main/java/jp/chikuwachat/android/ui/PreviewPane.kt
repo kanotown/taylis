@@ -20,6 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,9 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
     val items = remember(messages, me) { Timeline.build(messages, null, me).asReversed() }
     val listState = rememberLazyListState()
     var loadingOlder by remember(channelId) { mutableStateOf(false) }
+    // M28c: a failed older page offers 「再読み込み」 instead of spinning for good (the effect only ran again on a new row).
+    var olderFailed by remember(channelId) { mutableStateOf(false) }
+    var olderAttempt by remember(channelId) { mutableIntStateOf(0) }
     // A link's message (or its thread's parent) centred once its rows are there.
     LaunchedEffect(channelId, focus?.messageId, items.isEmpty()) {
         val id = focus?.let { it.parentId ?: it.messageId } ?: return@LaunchedEffect
@@ -80,19 +84,20 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
                     }
                     if (focus == null && preview?.hasOlder == true) {
                         item(key = "older") {
-                            LaunchedEffect(messages.size, controller.engineStatus) {
-                                if (controller.engineStatus != EngineStatus.ONLINE || loadingOlder) return@LaunchedEffect
+                            LaunchedEffect(messages.size, controller.engineStatus, olderAttempt) {
+                                if (controller.engineStatus != EngineStatus.ONLINE || loadingOlder || olderFailed) return@LaunchedEffect
                                 loadingOlder = true
-                                try { controller.loadOlderPreview(channelId) } finally { loadingOlder = false }
+                                try { olderFailed = !controller.loadOlderPreview(channelId) } finally { loadingOlder = false }
                             }
-                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
+                            if (olderFailed) LoadFailedRow("以前のメッセージを読み込めませんでした") { olderFailed = false; olderAttempt += 1 }
+                            else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                         }
                     } else if (messages.isEmpty()) {
                         item(key = "empty") {
                             Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().padding(32.dp))
                         }
                     } else if (focus == null) {
-                        item(key = "start") { ChannelIntro(channel, store) }
+                        item(key = "start") { ChannelIntro(channel, store, version) }
                     }
                 }
             }
@@ -117,8 +122,11 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
     }
     val replies = preview?.replies?.get(parentId)
     val listState = rememberLazyListState()
-    LaunchedEffect(parentId, controller.engineStatus) {
-        if (replies == null && controller.engineStatus == EngineStatus.ONLINE) controller.loadPreviewReplies(channelId, parentId)
+    // M28c: a failed fetch says so with 「再読み込み」 instead of 「返信を読み込んでいます…」 for good.
+    var repliesFailed by remember(parentId) { mutableStateOf(false) }
+    var repliesAttempt by remember(parentId) { mutableIntStateOf(0) }
+    LaunchedEffect(parentId, controller.engineStatus, repliesAttempt) {
+        if (replies == null && controller.engineStatus == EngineStatus.ONLINE) repliesFailed = !controller.loadPreviewReplies(channelId, parentId)
     }
     // A link to a reply: centred once the replies are there (the parent and the count line come first).
     LaunchedEffect(parentId, focus?.messageId, replies == null) {
@@ -132,15 +140,19 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
                 else Text("元のメッセージはこのプレビューにありません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
             }
             item(key = "divider") {
-                Text(
-                    when {
-                        replies == null -> "返信を読み込んでいます…"
-                        replies.isEmpty() -> "返信はまだありません"
-                        else -> "${replies.size} 件の返信"
-                    },
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                )
+                if (replies == null && repliesFailed) {
+                    LoadFailedRow("返信を読み込めませんでした") { repliesFailed = false; repliesAttempt += 1 }
+                } else {
+                    Text(
+                        when {
+                            replies == null -> "返信を読み込んでいます…"
+                            replies.isEmpty() -> "返信はまだありません"
+                            else -> "${replies.size} 件の返信"
+                        },
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
                 HorizontalDivider()
             }
             items(replies ?: emptyList(), key = { it.id }) { PreviewRow(it, controller, version) }

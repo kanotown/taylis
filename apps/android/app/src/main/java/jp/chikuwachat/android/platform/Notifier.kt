@@ -32,13 +32,21 @@ class Notifier(private val context: Context) {
      * one; a read clears it), "reminder:<id>" for a reminder so it stands on its own. The socket and FCM may
      * both post the same message: the replacement does not ring a second time.
      */
-    fun notifyMessage(channelId: String, title: String, body: String, key: String = channelId, workspace: String? = null, subText: String? = null) {
+    fun notifyMessage(
+        channelId: String, title: String, body: String, key: String = channelId, workspace: String? = null, subText: String? = null,
+        /** M28c: the message and, for a reply, its thread: the tap opens the thread at the reply (as a permalink does). */
+        messageId: String? = null, parentId: String? = null,
+        /** M28c: my unread count across the workspaces, for launchers that show a number on the app icon. */
+        badge: Int? = null,
+    ) {
         if (!permitted) return
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(EXTRA_CHANNEL_ID, channelId)
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
+            if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
+            if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
         }
         val request = ((workspace ?: "") + "|" + key).hashCode()
         val pending = PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -53,6 +61,9 @@ class Notifier(private val context: Context) {
         // With two or more workspaces the name tells them apart.
         if (subText != null) builder.setSubText(subText)
         if (workspace != null) builder.addExtras(Bundle().apply { putString(EXTRA_WORKSPACE, workspace) })
+        // The launcher badge (PUSH_NOTIFICATIONS.md §4.2 is iOS; here the standard notification number, which some launchers
+        // show on the icon and Pixel's turns into a dot): nothing beyond the platform API, so no ShortcutBadger.
+        if (badge != null && badge > 0) builder.setNumber(badge)
         manager.notify(key, NOTIFICATION_ID, builder.build())
     }
 
@@ -79,6 +90,9 @@ class Notifier(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "messages"
         const val EXTRA_CHANNEL_ID = "channel_id"
+        /** M28c: the message the notification is about and, for a reply, its thread's parent. */
+        const val EXTRA_MESSAGE_ID = "message_id"
+        const val EXTRA_PARENT_ID = "parent_id"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

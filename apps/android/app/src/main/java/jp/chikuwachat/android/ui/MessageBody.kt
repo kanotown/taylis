@@ -74,6 +74,10 @@ fun MessageBody(
      */
     version: Int = 0,
 ) {
+    // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
+    // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
+    // emoji images that arrived after the first draw stayed `:name:`, 2026-09-29). The images are what it keys.
+    val images = remember(version, emojiImages) { emojiImages }
     val inlineContent = HashMap<String, InlineTextContent>()
     fun AnnotatedString.Builder.appendWithEmoji(text: String) {
         val replaced = Emoji.replaceShortcodes(text)
@@ -83,7 +87,7 @@ fun MessageBody(
                 is CustomEmoji.Piece.Text -> append(piece.text)
                 is CustomEmoji.Piece.Emoji -> {
                     val emoji = customEmoji[piece.name]!!
-                    val image = emojiImages[emoji.id]
+                    val image = images[emoji.id]
                     if (image == null) { onNeedEmojiImage?.invoke(emoji); append(":${piece.name}:") }
                     else {
                         val key = "emoji:" + emoji.id
@@ -135,10 +139,9 @@ fun MessageBody(
         }
     }
 
-    // `version` is read here on purpose: the Compose compiler leaves a parameter the body never reads out of the skip
-    // check, so the body was never drawn again and custom emoji images that arrived after the first draw stayed
-    // `:name:` (2026-09-29).
-    val blocks = remember(text, version) { parseBlocks(text) }
+    // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
+    // row on screen again).
+    val blocks = remember(text) { parseBlocks(text) }
     Column(modifier = modifier) {
         for (block in blocks) {
             when (block) {

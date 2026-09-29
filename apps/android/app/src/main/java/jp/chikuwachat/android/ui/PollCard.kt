@@ -82,10 +82,13 @@ fun PollCard(poll: PollOut, message: MessageState, controller: AppController, ve
                 }
                 val people = voters.getOrNull(index) ?: emptyList()
                 if (people.isNotEmpty()) {
+                    // M28c: a 40 dp touch target around the names line (48 would take the option's own tap area above it).
                     Text(
                         PeopleText.compact(people.map { it.name }), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp).clickable(onClickLabel = "投票した人") { listing = index },
+                        modifier = Modifier.padding(top = 4.dp).touchTarget(min = 40.dp) { source ->
+                            Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "投票した人") { listing = index }
+                        },
                     )
                 }
             }

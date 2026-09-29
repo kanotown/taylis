@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,9 +29,12 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
 
-/** 「別のチャンネルに共有」(M13c): pick a conversation, add a comment, post the quote and permalink there. */
+/**
+ * 「別のチャンネルに共有」(M13c): pick a conversation, add a comment, post the quote and permalink there. `version` (M28c):
+ * the conversations and their partners' names live in the Store; the comment and the choice survive a rotation.
+ */
 @Composable
-fun ShareDialog(controller: AppController, message: MessageState, onDismiss: () -> Unit) {
+fun ShareDialog(controller: AppController, message: MessageState, version: Int, onDismiss: () -> Unit) {
     val store = controller.store
     val scope = rememberCoroutineScope()
     val me = store.me?.id
@@ -40,9 +44,9 @@ fun ShareDialog(controller: AppController, message: MessageState, onDismiss: () 
             (channel.dmUserIds ?: emptyList()).filter { it != me }.mapNotNull { store.users[it]?.displayName }.joinToString(", ").ifEmpty { "自分" }
         } else (if (channel.type == "private") "🔒" else "#") + (channel.name ?: "")
     }
-    val targets = remember { store.channels.values.filter { it.isMember && !it.channel.archived && it.id != message.channelId }.sortedBy { label(it) } }
-    var targetId by remember { mutableStateOf(targets.firstOrNull()?.id) }
-    var comment by remember { mutableStateOf("") }
+    val targets = remember(version) { store.channels.values.filter { it.isMember && !it.channel.archived && it.id != message.channelId }.sortedBy { label(it) } }
+    var targetId by rememberSaveable { mutableStateOf(targets.firstOrNull()?.id) }
+    var comment by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,

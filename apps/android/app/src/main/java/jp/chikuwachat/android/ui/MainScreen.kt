@@ -1,6 +1,10 @@
 package jp.chikuwachat.android.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -10,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -81,6 +86,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -89,6 +95,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.platform.NotificationPermission
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
@@ -122,9 +129,10 @@ fun MainScreen(controller: AppController) {
     val searchFilesState = rememberLazyListState()
     val recentKey = controller.accountKey?.let { RecentSearches.key(it) }
     var recentSearches by remember(recentKey) { mutableStateOf(recentKey?.let { RecentSearches.read(controller.prefs, it) } ?: emptyList()) }
-    var dialog by remember { mutableStateOf<MainDialog?>(null) }
+    // Saveable (M28c): an open dialog (and what was typed in it) survives a rotation.
+    var dialog by rememberSaveable { mutableStateOf<MainDialog?>(null) }
     // M14f: the conversation whose long-press menu is open, and the section whose 「…」 is.
-    var channelMenuFor by remember { mutableStateOf<String?>(null) }
+    var channelMenuFor by rememberSaveable { mutableStateOf<String?>(null) }
     var sectionMenuFor by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut, Int>?>(null) }
     // M26: making (no section) or editing one of my sections; the conversations a long-press 「新しいセクション…」 ticks.
     var sectionForm by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut?, List<String>>?>(null) }
@@ -132,7 +140,8 @@ fun MainScreen(controller: AppController) {
     var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
-    var unreadOnly by rememberSaveable { mutableStateOf(false) }
+    // M28c: 「未読のみ」 as it was left on this device (like the folded sections), not only across a rotation.
+    var unreadOnly by remember { mutableStateOf(UnreadFilter.read(controller.prefs)) }
     // THREADS.md §5: the followed-threads list replaces the channel list; a row opens its thread with the list behind it.
     var showThreads by rememberSaveable { mutableStateOf(false) }
     var threadFromList by rememberSaveable { mutableStateOf(false) }
@@ -150,6 +159,15 @@ fun MainScreen(controller: AppController) {
     val closeLists = { showThreads = false; showSaved = false; showMentions = false; showDrafts = false; showFiles = false; showReminders = false }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    // M28c: the notification permission (Android 13+) is asked once, here after the first sign-in (it was asked at every
+    // start of the activity, a rotation included); a refusal shows in the settings with the way to the system's page.
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 && NotificationPermission.shouldAsk(controller.prefs, Build.VERSION.SDK_INT, controller.notificationsPermitted)) {
+            NotificationPermission.markAsked(controller.prefs)
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     /**
      * Opens a conversation (and optionally one of its threads) from anywhere: a notification, a profile's
      * 「メッセージを送る」, /dm, /join, the dialogs, a list row. Whatever belonged to the previous one closes,
@@ -180,13 +198,17 @@ fun MainScreen(controller: AppController) {
         snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
         if (controller.notice == message) controller.notice = null
     }
-    // A tapped notification (or /dm, /join, a profile's DM button) opens its channel once the store knows it.
+    // A tapped notification (or /dm, /join, a profile's DM button) opens its channel once the store knows it. M28c: a
+    // reply's notification opens its thread at the reply, as a permalink does (the reveal fetches its context first).
     LaunchedEffect(controller.pendingChannelId, version) {
         val id = controller.pendingChannelId ?: return@LaunchedEffect
         if (store.channel(id) != null) {
             controller.pendingChannelId = null
+            val reply = controller.pendingReply
+            controller.pendingReply = null
             controller.messageFocus = null
-            openConversation(id)
+            if (reply == null) openConversation(id)
+            else scope.launch { if (controller.revealMessage(reply.first, id, reply.second)) openConversation(id, reply.second) else openConversation(id) }
         }
     }
     LaunchedEffect(selection) {
@@ -363,7 +385,8 @@ fun MainScreen(controller: AppController) {
                                 )
                             }
                             val bell = if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone
-                            val toggle = { scope.launch { controller.engine?.setThreadFollow(openId, !threadState.following) } }
+                            // Through the controller (M28c): offline it says so instead of silently doing nothing.
+                            val toggle = { scope.launch { controller.setThreadFollow(openId, !threadState.following) } }
                             if (labelled) {
                                 FilterChip(
                                     selected = threadState.following,
@@ -456,7 +479,9 @@ fun MainScreen(controller: AppController) {
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
+        // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             ConnectionBanner(status)
             val shownSearch = searchParams
             if (!searching && backToSearch && shownSearch != null && selectedChannel != null) {
@@ -514,7 +539,7 @@ fun MainScreen(controller: AppController) {
                     }
                 } else {
                     ChannelList(
-                        store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly },
+                        store, version, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly; UnreadFilter.write(controller.prefs, unreadOnly) },
                         onSelect = { controller.messageFocus = null; openConversation(it) },
                         onThreads = { showThreads = true },
                         onSaved = { showSaved = true },
@@ -536,7 +561,7 @@ fun MainScreen(controller: AppController) {
                         folded = folded,
                         onToggleFolded = { folded = FoldedSections.toggle(controller.prefs, it) },
                         onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
-                        sectionIcon = { emoji -> SectionIcon(controller, emoji) },
+                        sectionIcon = { emoji -> SectionIcon(controller, emoji, version) },
                     )
                 }
             }
@@ -548,7 +573,7 @@ fun MainScreen(controller: AppController) {
         MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
-        MainDialog.CHANNEL_INFO -> selectedChannel?.let { ChannelInfoDialog(controller, it, onDismiss = { dialog = null }, onAddMember = { dialog = MainDialog.ADD_MEMBER }) }
+        MainDialog.CHANNEL_INFO -> selectedChannel?.let { ChannelInfoDialog(controller, it, version, onDismiss = { dialog = null }, onAddMember = { dialog = MainDialog.ADD_MEMBER }) }
         MainDialog.SETTINGS -> SettingsDialog(controller, onDismiss = { dialog = null })
         MainDialog.BROWSE -> ChannelBrowserDialog(
             controller, version, onDismiss = { dialog = null },
@@ -558,16 +583,16 @@ fun MainScreen(controller: AppController) {
         null -> Unit
     }
     channelMenuFor?.let { id ->
-        ChannelSectionDialog(controller, id, onDismiss = { channelMenuFor = null }, onNewSection = { channelMenuFor = null; sectionForm = null to listOf(id) })
+        ChannelSectionDialog(controller, id, version, onDismiss = { channelMenuFor = null }, onNewSection = { channelMenuFor = null; sectionForm = null to listOf(id) })
     }
     sectionMenuFor?.let { (section, index) ->
         SectionActionsDialog(
-            controller, section, index, controller.store.sidebarSections.size, onDismiss = { sectionMenuFor = null },
+            controller, section, index, controller.store.sidebarSections.size, version, onDismiss = { sectionMenuFor = null },
             onEdit = { sectionMenuFor = null; sectionForm = section to emptyList() },
             onNewSection = { sectionMenuFor = null; sectionForm = null to emptyList() },
         )
     }
-    sectionForm?.let { (section, preselected) -> SectionDialog(controller, section, preselected, onDismiss = { sectionForm = null }) }
+    sectionForm?.let { (section, preselected) -> SectionDialog(controller, section, preselected, version, onDismiss = { sectionForm = null }) }
 }
 
 /**
@@ -907,12 +932,20 @@ private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClic
     }
 }
 
+/** The connection dot in the app bar; M28c: TalkBack reads the state it shows (the dot said nothing). */
 @Composable
 fun StatusBadge(status: EngineStatus) {
+    val label = when (status) {
+        EngineStatus.ONLINE -> "サーバに接続中"
+        EngineStatus.CONNECTING -> "サーバに接続しています"
+        EngineStatus.OFFLINE -> "オフライン"
+        else -> null
+    }
+    val described = if (label == null) Modifier else Modifier.semantics { contentDescription = label }
     when (status) {
-        EngineStatus.ONLINE -> Box(Modifier.padding(8.dp).size(10.dp).background(Color(0xFF34C759), CircleShape))
-        EngineStatus.CONNECTING -> CircularProgressIndicator(Modifier.padding(8.dp).size(14.dp), strokeWidth = 2.dp)
-        EngineStatus.OFFLINE -> Box(Modifier.padding(8.dp).size(10.dp).background(Color(0xFFFF9500), CircleShape))
+        EngineStatus.ONLINE -> Box(described.padding(8.dp).size(10.dp).background(Color(0xFF34C759), CircleShape))
+        EngineStatus.CONNECTING -> CircularProgressIndicator(described.padding(8.dp).size(14.dp), strokeWidth = 2.dp)
+        EngineStatus.OFFLINE -> Box(described.padding(8.dp).size(10.dp).background(Color(0xFFFF9500), CircleShape))
         else -> Spacer(Modifier.width(0.dp))
     }
 }

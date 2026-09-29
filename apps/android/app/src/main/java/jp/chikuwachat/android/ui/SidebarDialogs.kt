@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,13 +46,16 @@ import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
 
-/** Long-press on a conversation (M14f): star it, or move it into one of my sections (M26: or a new one, made with it). */
+/**
+ * Long-press on a conversation (M14f): star it, or move it into one of my sections (M26: or a new one, made with it).
+ * `version` (M28c): the sections, the star and the icons' images live in the Store.
+ */
 @Composable
-fun ChannelSectionDialog(controller: AppController, channelId: String, onDismiss: () -> Unit, onNewSection: () -> Unit) {
+fun ChannelSectionDialog(controller: AppController, channelId: String, version: Int, onDismiss: () -> Unit, onNewSection: () -> Unit) {
     val store = controller.store
     val channel = store.channels[channelId] ?: return onDismiss()
-    val current = store.sectionOf(channelId)
-    val starred = channelId in store.favorites
+    val current = remember(version, channelId) { store.sectionOf(channelId) }
+    val starred = remember(version, channelId) { channelId in store.favorites }
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -70,7 +74,7 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, onDismiss
                     ) {
                         RadioButton(selected = section.id == current, onClick = null)
                         Spacer(Modifier.width(8.dp))
-                        SectionIcon(controller, section.emoji)
+                        SectionIcon(controller, section.emoji, version)
                         Text(section.name, modifier = Modifier.padding(start = if (section.emoji != null) 6.dp else 0.dp))
                     }
                 }
@@ -84,10 +88,10 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, onDismiss
     )
 }
 
-/** The 「…」 on a custom section: name and icon, move up / down, new section, delete. */
+/** The 「…」 on a custom section: name and icon, move up / down, new section, delete. `version`: the icon's image (M28c). */
 @Composable
 fun SectionActionsDialog(
-    controller: AppController, section: SidebarSectionOut, index: Int, count: Int,
+    controller: AppController, section: SidebarSectionOut, index: Int, count: Int, version: Int,
     onDismiss: () -> Unit, onEdit: () -> Unit, onNewSection: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -95,7 +99,7 @@ fun SectionActionsDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionIcon(controller, section.emoji, size = 22.dp)
+                SectionIcon(controller, section.emoji, version, size = 22.dp)
                 Text(section.name, modifier = Modifier.padding(start = if (section.emoji != null) 8.dp else 0.dp))
             }
         },
@@ -117,12 +121,15 @@ fun SectionActionsDialog(
     )
 }
 
-/** A section's icon (M26): an emoji, or a custom emoji drawn from its image (its `:name:` until the image is here). */
+/**
+ * A section's icon (M26): an emoji, or a custom emoji drawn from its image (its `:name:` until the image is here).
+ * `version` (M28c): the image lands in the Store after the first draw; without it strong skipping kept the `:name:`.
+ */
 @Composable
-fun SectionIcon(controller: AppController, emoji: String?, size: Dp = 18.dp) {
+fun SectionIcon(controller: AppController, emoji: String?, version: Int, size: Dp = 18.dp) {
     if (emoji == null) return
-    val custom = CustomEmoji.name(emoji)?.let { controller.store.customEmoji[it] }
-    val image = custom?.let { controller.store.emojiImages[it.id] }
+    val custom = remember(version, emoji) { CustomEmoji.name(emoji)?.let { controller.store.customEmoji[it] } }
+    val image = remember(version, custom) { custom?.let { controller.store.emojiImages[it.id] } }
     if (custom != null && image == null) LaunchedEffect(custom.id) { controller.loadEmojiImage(custom) }
     if (image != null) EmojiImage(image, custom?.let { controller.store.emojiAnimations[it.id] }, contentDescription = null, modifier = Modifier.size(size))
     else Text(emoji, fontSize = (size.value * 0.9f).sp, maxLines = 1)
@@ -134,19 +141,22 @@ fun SectionIcon(controller: AppController, emoji: String?, size: Dp = 18.dp) {
  * a long-press 「新しいセクション…」 started from.
  */
 @Composable
-fun SectionDialog(controller: AppController, section: SidebarSectionOut?, preselected: List<String>, onDismiss: () -> Unit) {
+fun SectionDialog(controller: AppController, section: SidebarSectionOut?, preselected: List<String>, version: Int, onDismiss: () -> Unit) {
     val store = controller.store
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(section?.name ?: "") }
-    var emoji by remember { mutableStateOf(section?.emoji) }
-    var picking by remember { mutableStateOf(false) }
-    var chosen by remember { mutableStateOf(preselected.toSet()) }
-    var query by remember { mutableStateOf("") }
+    // The form survives a rotation (M28c); the picked conversations as a joined line (a Set is not saveable as such).
+    var name by rememberSaveable { mutableStateOf(section?.name ?: "") }
+    var emoji by rememberSaveable { mutableStateOf(section?.emoji) }
+    var picking by rememberSaveable { mutableStateOf(false) }
+    var chosenLine by rememberSaveable { mutableStateOf(preselected.joinToString("\n")) }
+    val chosen = chosenLine.split("\n").filter { it.isNotEmpty() }.toSet()
+    fun choose(ids: Set<String>) { chosenLine = ids.joinToString("\n") }
+    var query by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val creating = section == null
-    val sectionOf = remember(store.sidebarSections) { store.sidebarSections.flatMap { s -> s.channelIds.map { it to s } }.toMap() }
+    val sectionOf = remember(version) { store.sidebarSections.flatMap { s -> s.channelIds.map { it to s } }.toMap() }
     val collator = remember { Collator.getInstance(Locale.JAPANESE) }
-    val conversations = remember(query, store.channels.size) {
+    val conversations = remember(query, version) {
         val q = query.trim().lowercase()
         store.channels.values.filter { it.isMember && !it.channel.archived }
             .map { it to channelTitle(it, store) }
@@ -163,7 +173,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                         Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)).clickable { picking = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (emoji != null) SectionIcon(controller, emoji, size = 26.dp)
+                        if (emoji != null) SectionIcon(controller, emoji, version, size = 26.dp)
                         else Icon(Icons.Outlined.AddReaction, contentDescription = "アイコンを選ぶ", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.width(8.dp))
@@ -183,7 +193,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                         items(conversations, key = { it.first.id }) { (channel, title) ->
                             val current = sectionOf[channel.id]
                             Row(
-                                Modifier.fillMaxWidth().clickable { chosen = if (channel.id in chosen) chosen - channel.id else chosen + channel.id }.padding(vertical = 2.dp),
+                                Modifier.fillMaxWidth().clickable { choose(if (channel.id in chosen) chosen - channel.id else chosen + channel.id) }.padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Checkbox(checked = channel.id in chosen, onCheckedChange = null, modifier = Modifier.padding(8.dp))

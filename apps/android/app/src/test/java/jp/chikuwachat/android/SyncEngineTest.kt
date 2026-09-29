@@ -906,6 +906,87 @@ class SyncEngineTest {
         assertEquals(message.createdAt, w.store.channel(dm.id)?.channel?.lastMessageAt)
         w.server.post(dm.id, w.alice, "in a thread", parentId = message.id); settle(w.engine)
         assertEquals(message.createdAt, w.store.channel(dm.id)?.channel?.lastMessageAt) // replies do not reorder
+        // M28c: a reply also sent to the channel is in the timeline, so it reorders like a post (desktop, iOS).
+        val (shared, _) = w.server.post(dm.id, w.alice, "shared reply", parentId = message.id, options = SendOptions(alsoInChannel = true)); settle(w.engine)
+        assertEquals(shared.createdAt, w.store.channel(dm.id)?.channel?.lastMessageAt)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    // --- M28c (the Android audit and the cross-client spec audit) ----------------------------------------
+
+    @Test fun closingTheConversationEndsTheHoldAndAnnouncesItsMentionsAgain() = runBlocking { // §7.7 / §10
+        val w = world()
+        w.engine.isActive = { true }
+        listOf("m1", "m2", "m3").forEach { w.server.post(w.channelId, w.alice, it) }
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        assertEquals(w.channelId, w.engine.currentChannelId)
+        assertEquals(1, w.engine.markUnread(w.channelId, 2)); settle(w.engine)
+        assertNotNull(w.engine.heldUnread(w.channelId))
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}> (open)"); settle(w.engine)
+        assertEquals(0, w.notifications.size) // the conversation on screen is not announced
+        w.engine.closeConversation(); settle(w.engine)
+        assertNull(w.engine.currentChannelId)
+        assertNull(w.engine.heldUnread(w.channelId))
+        w.server.post(w.channelId, w.alice, "hey <@${w.bob}> (closed)"); settle(w.engine)
+        assertEquals(listOf("hey <@${w.bob}> (closed)"), w.notifications)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun a401AfterTheRefreshIsTemporaryForReadMarksAndSends() = runBlocking { // §7.2 / §9 / §10
+        val w = world()
+        w.engine.isActive = { true }
+        w.server.post(w.channelId, w.alice, "m1")
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        // The read mark waits for the reconnect (which renews the token) instead of being dropped as refused.
+        w.api.pendingFailure = ApiException.Api(401, "token_expired", "expired")
+        w.engine.markRead(w.channelId, 1); w.engine.flushReads(); settle(w.engine)
+        assertEquals(1, w.store.channel(w.channelId)?.unsentReadSeq)
+        assertEquals(0, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        // The send stays queued (not failed) and goes out on the retry timer.
+        w.api.postFailures.add(ApiException.Api(401, "token_expired", "expired"))
+        w.engine.send(w.channelId, "kept")
+        assertEquals(listOf("kept" to null), w.store.outbox.map { it.body to it.failed })
+        w.time.advance(2_000); settle(w.engine)
+        assertEquals(0, w.store.outbox.size)
+        assertEquals("kept", w.server.channels.getValue(w.channelId).messages.last().body)
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun anUnsentReadMarkIsAppliedOverTheBootstrapBeforeItIsSentAgain() = runBlocking { // §10
+        val w = world()
+        w.engine.isActive = { true }
+        listOf("m1", "m2", "m3").forEach { w.server.post(w.channelId, w.alice, it) }
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        w.api.pendingFailure = ApiException.Network(IOException("lost"))
+        w.engine.markRead(w.channelId, 3); w.engine.flushReads(); settle(w.engine)
+        assertEquals(Triple(3, 0, 3), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.unsentReadSeq) })
+        // The reconnect's bootstrap says 0 read / 3 unread; while the resend is still on its way the rows do not flash unread.
+        w.engine.stop()
+        val gate = CompletableDeferred<Unit>()
+        w.api.readGate = gate
+        w.engine.start(); settle(w.engine)
+        assertEquals(EngineStatus.ONLINE, w.engine.status.value)
+        assertEquals(Triple(3, 0, 3), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.unsentReadSeq) })
+        gate.complete(Unit); settle(w.engine)
+        assertEquals(3, w.server.readState(w.bob, w.channelId).lastReadSeq)
+        assertEquals(Triple(3, 0, null), w.store.channel(w.channelId)!!.let { Triple(it.lastReadSeq, it.unreadCount, it.unsentReadSeq) })
+        w.engine.stop(); w.scope.cancel()
+    }
+
+    @Test fun aPushForAnotherConversationCatchesItUpWhenItsRowIsMissing() = runBlocking { // PUSH_NOTIFICATIONS.md §9
+        val w = world()
+        val other = w.server.createChannel("random", w.alice).id.also { w.server.join(it, w.bob) }
+        w.engine.start(); w.engine.openChannel(w.channelId); settle(w.engine)
+        w.server.socketsOf(w.bob).forEach { it.dropNext = 1 }
+        val (lost, _) = w.server.post(other, w.alice, "lost event"); settle(w.engine)
+        assertNull(w.store.message(other, lost.id))
+        // The open conversation catches up as before (reconnectNow), and the push's own conversation with it.
+        val before = w.engine.catchUps
+        w.engine.pushReceived(other, lost.id); settle(w.engine)
+        assertEquals(before + 2, w.engine.catchUps)
+        assertEquals("lost event", w.store.message(other, lost.id)?.body)
+        w.engine.pushReceived(other, lost.id); settle(w.engine) // the row is here: only the open conversation again
+        assertEquals(before + 3, w.engine.catchUps)
         w.engine.stop(); w.scope.cancel()
     }
 }

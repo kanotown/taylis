@@ -182,10 +182,13 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
                 Text(item.filename, fontSize = 9.sp, lineHeight = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        // M28c: the × keeps its 22 dp look but takes touches from 48 dp around it (over the tile's corner, being on top).
         Box(
-            Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).size(22.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.inverseSurface).clickable(onClick = onRemove)
-                .semantics { contentDescription = "${item.filename} を取り消す" },
+            Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp)
+                .touchTarget { source ->
+                    Modifier.semantics { contentDescription = "${item.filename} を取り消す" }.clickable(interactionSource = source, indication = null, onClick = onRemove)
+                }
+                .size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.inverseSurface),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.Close, contentDescription = null, tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(14.dp))
