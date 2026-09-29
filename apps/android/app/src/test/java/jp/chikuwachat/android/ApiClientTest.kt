@@ -323,4 +323,24 @@ class ApiClientTest {
         client.accessToken = "a"
         try { client.ensureTimes(); fail("expected failure") } catch (e: ApiException.Api) { assertEquals("guest_restricted", e.code); assertEquals(403, e.status) }
     }
+
+    @Test fun notificationPreferenceSendsNullLevelAndMutedOnlyWhenGiven() = runBlocking { // M35
+        val sent = ArrayList<String>()
+        val client = ApiClient("http://server", stubbed { request ->
+            val buffer = okio.Buffer(); request.body?.writeTo(buffer); sent.add(buffer.readUtf8())
+            assertEquals("PUT", request.method)
+            assertEquals("/api/v1/channels/c/notification-preference", request.url.encodedPath)
+            200 to """{"channel_id":"c","level":"mentions","muted_until":null,"follows_default":true,"muted":true}"""
+        })
+        client.accessToken = "a"
+        val pref = client.setNotificationPreference("c", null, null, muted = true)
+        assertTrue(pref.followsDefault)
+        assertTrue(pref.muted)
+        assertNull(pref.ownLevel)
+        client.setNotificationPreference("c", "all", "2026-09-30T08:00:00Z")
+        assertEquals(
+            listOf("""{"level":null,"muted_until":null,"muted":true}""", """{"level":"all","muted_until":"2026-09-30T08:00:00Z"}"""),
+            sent,
+        )
+    }
 }

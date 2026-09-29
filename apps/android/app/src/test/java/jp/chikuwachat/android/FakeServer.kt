@@ -20,6 +20,7 @@ import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.MembershipOut
+import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.PresenceEntry
@@ -52,6 +53,8 @@ import kotlinx.serialization.json.put
 class FakeServer {
     /** M12g notification keywords per user; like the server, hits never appear in mentionedUserIds. */
     val keywords = mutableMapOf<String, List<String>>()
+    /** M35: users.notification_default per user (absent = "mentions"), in UserMe at bootstrap. */
+    val notificationDefaults = mutableMapOf<String, String>()
 
     inner class Socket(val userId: String) : WsTransport {
         override var onMessage: ((String) -> Unit)? = null
@@ -745,6 +748,11 @@ class FakeServer {
         emit(record.members, event("channel.member_updated", channelId, null, buildJsonObject { put("channel_id", channelId); put("user_id", userId); put("role", role) }))
     }
 
+    /** PUT /channels/{id}/notification-preference as the real server announces it: to the user's own devices (M35 fields too). */
+    fun emitNotificationPreference(userId: String, pref: NotificationPreferenceOut) {
+        emit(setOf(userId), event("notification_preference.updated", pref.channelId, null, Codec.snake.encodeToJsonElement(NotificationPreferenceOut.serializer(), pref).jsonObject))
+    }
+
     fun revokeSession(userId: String) {
         sockets.toList().filter { it.userId == userId }.forEach { socket ->
             socket.deliver(event("session.revoked", null, null, buildJsonObject { put("reason", "logout") }))
@@ -758,7 +766,7 @@ class FakeServer {
 
     fun bootstrap(userId: String): BootstrapOut {
         val user = users.getValue(userId)
-        val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false, notifyKeywords = keywords[userId] ?: emptyList())
+        val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false, notifyKeywords = keywords[userId] ?: emptyList(), notificationDefault = notificationDefaults[userId] ?: "mentions")
         val mine = channels.values.filter { userId in it.members }.map { record ->
             record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id), memberCount = record.members.size)
         }

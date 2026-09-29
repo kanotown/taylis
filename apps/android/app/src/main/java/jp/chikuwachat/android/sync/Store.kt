@@ -507,8 +507,9 @@ class Store(private val persistence: Persistence? = null) {
         return merged
     }
 
-    fun setNotification(channelId: String, level: String, mutedUntil: String?) {
-        updateChannel(channelId) { it.copy(channel = it.channel.copy(notification = NotificationPreferenceOut(channelId, level, mutedUntil))) }
+    /** A PUT's answer or `notification_preference.updated` (with follows_default and muted, M35). */
+    fun setNotification(pref: NotificationPreferenceOut) {
+        updateChannel(pref.channelId) { it.copy(channel = it.channel.copy(notification = pref)) }
     }
 
     fun updateChannel(id: String, mutate: (ChannelState) -> ChannelState): ChannelState? {

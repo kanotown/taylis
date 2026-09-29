@@ -20,6 +20,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DeltaOut
 import jp.chikuwachat.android.api.HistoryOut
 import jp.chikuwachat.android.api.MessageOut
+import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
@@ -689,7 +690,9 @@ class SyncEngine(
             }
             "notification_preference.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
-                store.setNotification(channelId, frame.data.str("level") ?: "mentions", frame.data.str("muted_until"))
+                val pref = runCatching { Codec.snake.decodeFromJsonElement(NotificationPreferenceOut.serializer(), frame.data) }.getOrNull()
+                    ?: NotificationPreferenceOut(channelId, frame.data.str("level") ?: NotificationLevels.MENTIONS, frame.data.str("muted_until"))
+                store.setNotification(pref.copy(channelId = channelId))
             }
             "session.revoked" -> signOut()
         }
@@ -804,12 +807,9 @@ class SyncEngine(
     private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
-        // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
-        val level = channel.channel.notification?.level ?: if (channel.channel.isDm) "all" else "mentions"
-        val mutedUntil = channel.channel.notification?.mutedUntil?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
-        if (level == "none" || (mutedUntil != null && mutedUntil.isAfter(java.time.Instant.now()))) return
+        // Same rule as the server's PushPlanner (§4): the level resolved with my overall setting (M35), and a mute.
         val involved = message.mentions(me.id, me.notifyKeywords) || (thread != null && me.id in thread.participantIds)
-        if (level == "mentions" && !involved) return
+        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved)) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
     }

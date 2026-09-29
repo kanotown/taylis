@@ -59,6 +59,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.TotpStatusOut
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.NotificationLevels
 import java.time.Instant
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
@@ -250,7 +251,10 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
             store.users[it.userId] ?: UserPublic(it.userId, "", "", "member", createdAt = "", updatedAt = "")
         })
     }
-    val level = channel.channel.notification?.level ?: if (isChannel) "mentions" else "all"
+    // M35: the channel's own level (null = it follows the overall setting), the mute until unmuted, the timed mute.
+    val ownLevel = NotificationLevels.own(channel)
+    val overall = (store.me ?: controller.me)?.notificationDefault ?: NotificationLevels.MENTIONS
+    val mutedOn = NotificationLevels.mutedUntilUnmuted(channel)
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
 
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -282,22 +286,36 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
             SectionLabel("通知")
             // Whole rows as radio buttons, 48 dp high (TalkBack reads the choice and its state).
             Column(Modifier.selectableGroup()) {
-                listOf("all" to "すべてのメッセージ", "mentions" to "メンションのみ", "none" to "通知しない").forEach { (value, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).selectable(selected = level == value, role = Role.RadioButton) {
-                            scope.launch { controller.setNotification(channel.id, value, channel.channel.notification?.mutedUntil) }
-                        },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = level == value, onClick = null)
-                        Text(label, modifier = Modifier.padding(start = 8.dp))
+                (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(overall)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
+                    .forEach { (value, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).selectable(selected = ownLevel == value, role = Role.RadioButton) {
+                                scope.launch { controller.setChannelLevel(channel.id, value) }
+                            },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = ownLevel == value, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 8.dp))
+                        }
                     }
+            }
+            // M35: muted until unmuted; the whole row toggles it (48 dp, TalkBack reads it as a switch).
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = mutedOn, role = Role.Switch) { on ->
+                    scope.launch { controller.setChannelMuted(channel.id, on) }
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("ミュート")
+                    Text("解除するまで通知しません (メンションだけ未読になります)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Switch(checked = mutedOn, onCheckedChange = null, modifier = Modifier.padding(start = 8.dp))
             }
             if (mute != null) {
-                TextButton(onClick = { scope.launch { controller.setNotification(channel.id, level, null) } }, contentPadding = PaddingValues(0.dp)) { Text("ミュート解除 ($mute)") }
+                TextButton(onClick = { scope.launch { controller.setChannelTimedMute(channel.id, null) } }, contentPadding = PaddingValues(0.dp)) { Text("ミュート解除 ($mute)") }
             } else {
-                TextButton(onClick = { scope.launch { controller.setNotification(channel.id, level, Instant.now().plusSeconds(8 * 3600).toString()) } }, contentPadding = PaddingValues(0.dp)) { Text("8 時間ミュート") }
+                TextButton(onClick = { scope.launch { controller.setChannelTimedMute(channel.id, Instant.now().plusSeconds(8 * 3600).toString()) } }, contentPadding = PaddingValues(0.dp)) { Text("8 時間ミュート") }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -548,12 +566,34 @@ fun YouScreen(controller: AppController, version: Int, scrollState: ScrollState)
             ) { Text("プロフィールを保存") }
             if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        // M35: the overall notification setting, for channels without a level of their own (pushes only).
+        SectionLabel("通知")
+        val overall = remember(version) { (controller.store.me ?: controller.me)?.notificationDefault ?: NotificationLevels.MENTIONS }
+        var savingOverall by remember { mutableStateOf(false) }
+        Column(Modifier.selectableGroup()) {
+            NotificationLevels.levels.forEach { value ->
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
+                        .selectable(selected = overall == value, enabled = !savingOverall, role = Role.RadioButton) {
+                            if (overall != value) scope.launch {
+                                savingOverall = true
+                                controller.setNotificationDefault(value)
+                                savingOverall = false
+                            }
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = overall == value, onClick = null, enabled = !savingOverall)
+                    Text(NotificationLabels.overallLabel(value), modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
+        Text(NotificationLabels.OVERALL_FOOTNOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // M28c: the notification permission is asked once after sign-in; a refusal shows here with the way to the
         // system's page (checked again when the app comes back from it).
         val notificationsPermitted = remember(controller.appForeground) { controller.notificationsPermitted }
         if (!notificationsPermitted) {
-            SectionLabel("通知")
-            Text("通知が許可されていないため、新しいメッセージの通知は届きません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("通知が許可されていないため、新しいメッセージの通知は届きません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             TextButton(onClick = { controller.openNotificationSettings() }, contentPadding = PaddingValues(0.dp)) { Text("端末の設定で許可する") }
         }
         SectionLabel("2 要素認証")

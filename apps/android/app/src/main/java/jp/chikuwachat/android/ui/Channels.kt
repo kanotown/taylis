@@ -3,25 +3,24 @@ package jp.chikuwachat.android.ui
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.NotificationLevels
 import java.time.Instant
 
 /** Channel-list rules shared by the list, the badge and notifications (Slack / Mattermost conventions). */
 object Channels {
-    /** Level "none" or an active timed mute (PUSH_NOTIFICATIONS.md §4). */
-    fun isMuted(channel: ChannelState, now: Instant = Instant.now()): Boolean {
-        val pref = channel.channel.notification ?: return false
-        if (pref.level == "none") return true
-        val until = pref.mutedUntil?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return false
-        return until.isAfter(now)
-    }
+    /**
+     * The channel's own level "none", muted until unmuted (M35) or an active timed mute (SYNC_PROTOCOL.md §10.5). The
+     * overall setting (M35) is not part of it: it only decides pushes.
+     */
+    fun isMuted(channel: ChannelState, now: Instant = Instant.now()): Boolean = NotificationLevels.isMuted(channel, now)
 
     /**
-     * M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a faint
+     * M24: someone else's times that I have not set to level "all" (its own level, M35) is quiet unread: unread only with a mention, a faint
      * dot otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json). A mute takes precedence.
      */
     fun isQuiet(channel: ChannelState, meId: String?, now: Instant = Instant.now()): Boolean {
         val owner = channel.channel.timesOwnerId ?: return false
-        return owner != meId && channel.channel.notification?.level != "all" && !isMuted(channel, now)
+        return owner != meId && NotificationLevels.own(channel) != NotificationLevels.ALL && !isMuted(channel, now)
     }
 
     /**

@@ -30,12 +30,14 @@ class ChannelsTest {
     private fun channel(
         id: String, type: String = "public", unread: Int = 0, mentions: Int = 0, member: Boolean = true,
         level: String? = null, mutedUntil: String? = null, lastMessageAt: String? = null, timesOwner: String? = null,
+        muted: Boolean = false,
     ) = ChannelState(
         channel = ChannelOut(
             id = id, type = type, name = id, archived = false, lastSeq = 0, createdAt = "", updatedAt = "", lastMessageAt = lastMessageAt,
-            // A timed mute at the default level (null) is a preference row with the type's default level.
-            notification = if (level == null && mutedUntil == null) null
-            else NotificationPreferenceOut(id, level ?: if (type == "dm" || type == "group_dm") "all" else "mentions", mutedUntil),
+            // M35: `level` is the channel's own one; without it the server sends the resolved level with follows_default
+            // (here the overall setting "none", to show the rules never read it).
+            notification = if (level == null && mutedUntil == null && !muted) null
+            else NotificationPreferenceOut(id, level ?: "none", mutedUntil, followsDefault = level == null, muted = muted),
             timesOwnerId = timesOwner,
         ),
         isMember = member, unreadCount = unread, mentionCount = mentions,
@@ -129,16 +131,21 @@ class ChannelsTest {
         val cases = vectors()
         assertTrue(cases.isNotEmpty())
         for (case in cases) {
-            val row = channel(
-                "c", type = case.type, unread = case.unread, mentions = case.mentions, level = case.level,
-                mutedUntil = if (case.muted) "2026-09-27T00:00:00Z" else null,
-                timesOwner = when (case.times) { "mine" -> "me"; "others" -> "someone"; else -> null },
-            )
-            assertEquals(case.name, case.expect.hasUnread, Channels.hasUnread(row, "me", now))
-            assertEquals(case.name, case.expect.badge, Channels.badgeCount(row, now))
-            assertEquals(case.name, case.expect.quiet, Channels.isQuiet(row, "me", now))
-            // The faint dot: quiet, something new, and not already shown as unread.
-            assertEquals(case.name, case.expect.quiet && case.unread > 0 && !case.expect.hasUnread, Channels.showsQuietDot(row, "me", now))
+            // "muted" is a timed mute still running or (M35) muted until unmuted: both must give the same answers.
+            val variants = if (case.muted) listOf("timed" to true, "until unmuted" to false) else listOf("" to false)
+            for ((variant, timed) in variants) {
+                val row = channel(
+                    "c", type = case.type, unread = case.unread, mentions = case.mentions, level = case.level,
+                    mutedUntil = if (case.muted && timed) "2026-09-27T00:00:00Z" else null, muted = case.muted && !timed,
+                    timesOwner = when (case.times) { "mine" -> "me"; "others" -> "someone"; else -> null },
+                )
+                val name = "${case.name} $variant".trim()
+                assertEquals(name, case.expect.hasUnread, Channels.hasUnread(row, "me", now))
+                assertEquals(name, case.expect.badge, Channels.badgeCount(row, now))
+                assertEquals(name, case.expect.quiet, Channels.isQuiet(row, "me", now))
+                // The faint dot: quiet, something new, and not already shown as unread.
+                assertEquals(name, case.expect.quiet && case.unread > 0 && !case.expect.hasUnread, Channels.showsQuietDot(row, "me", now))
+            }
         }
     }
 

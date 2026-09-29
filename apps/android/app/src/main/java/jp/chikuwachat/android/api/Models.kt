@@ -52,6 +52,11 @@ data class UserMe(
     val avatarUpdatedAt: String? = null,
     /** L4 (M31): others always see me offline (the server never sends my presence). */
     val presenceHidden: Boolean = false,
+    /**
+     * M35: what channels without a level of their own notify me of ("all" / "mentions" / "none"; PUSH_NOTIFICATIONS.md
+     * §4). Pushes only: the unread rules never read it (SYNC_PROTOCOL.md §10.5).
+     */
+    val notificationDefault: String = "mentions",
 ) {
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
@@ -132,8 +137,21 @@ data class TokenResponse(
 @Serializable
 data class MembershipOut(val role: String, val joinedAt: String)
 
+/**
+ * `level` is RESOLVED (M35): the channel's own level, else what my overall setting makes of it; `followsDefault` says
+ * it has none of its own. `muted`: muted until unmuted (M35), apart from the timed `mutedUntil`.
+ */
 @Serializable
-data class NotificationPreferenceOut(val channelId: String, val level: String, val mutedUntil: String? = null)
+data class NotificationPreferenceOut(
+    val channelId: String,
+    val level: String,
+    val mutedUntil: String? = null,
+    val followsDefault: Boolean = true,
+    val muted: Boolean = false,
+) {
+    /** The channel's own level, null when it follows the overall setting (the unread rules take this one, §10.5). */
+    val ownLevel: String? get() = if (followsDefault) null else level
+}
 
 /**
  * `firstUnreadAt`: created_at of the oldest message counted in unreadCount, null when nothing is unread or the
