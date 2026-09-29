@@ -16,7 +16,13 @@ import { Badge, Button, cn } from "./primitives";
  * Rows are the parent message with the channel, the reply count and the unread badge; a row opens
  * the thread in the right pane.
  */
-export function ThreadsView({ controller, selectedId, onOpen }: { controller: AppController; selectedId: string | null; onOpen: (entry: ThreadEntry) => void }) {
+export function ThreadsView({ controller, selectedId, onOpen, embedded = false }: {
+  controller: AppController;
+  selectedId: string | null;
+  onOpen: (entry: ThreadEntry) => void;
+  /** M34: inside the phone's activity tab, which has its own header: only the filter is left here. */
+  embedded?: boolean;
+}) {
   const store = controller.store;
   const engine = controller.engine;
   const filter = store.threadsFilter;
@@ -34,12 +40,16 @@ export function ThreadsView({ controller, selectedId, onOpen }: { controller: Ap
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <BackButton />
-        <span className="text-muted max-md:hidden">
-          <MessagesSquare size={18} />
-        </span>
-        <strong className="shrink-0 whitespace-nowrap text-[15px]">スレッド</strong>
+      <header className={cn("flex items-center gap-3 border-b border-line px-4", embedded ? "h-11" : "h-[52px]")}>
+        {!embedded && (
+          <>
+            <BackButton />
+            <span className="text-muted max-md:hidden">
+              <MessagesSquare size={18} />
+            </span>
+            <strong className="shrink-0 whitespace-nowrap text-[15px]">スレッド</strong>
+          </>
+        )}
         <span className="min-w-0 truncate text-xs text-muted">{summary.unread_count > 0 ? `未読 ${summary.unread_count} 件` : "フォロー中のスレッド"}</span>
         <div className="ml-auto flex shrink-0 rounded-lg bg-panel p-0.5 text-xs font-medium" role="tablist" aria-label="表示">
           {(["all", "unread"] as const).map((value) => (

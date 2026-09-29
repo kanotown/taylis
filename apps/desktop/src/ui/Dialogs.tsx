@@ -399,6 +399,18 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
 
 /** Profile (display name), password change and logout. */
 export function SettingsDialog({ controller, onClose, onStatus }: { controller: AppController; onClose: () => void; onStatus?: () => void }) {
+  return (
+    <Modal onClose={onClose} title="設定" className="w-[480px]">
+      <SettingsBody controller={controller} onClose={onClose} onStatus={onStatus} className="mt-4" />
+    </Modal>
+  );
+}
+
+/**
+ * The settings' content: in the dialog above, and as the phone's 「自分」 tab page (M34), which has no 「閉じる」
+ * (`onClose` absent).
+ */
+export function SettingsBody({ controller, onClose, onStatus, className }: { controller: AppController; onClose?: () => void; onStatus?: () => void; className?: string }) {
   const me = controller.store.me ?? controller.me;
   const [displayName, setDisplayName] = useState(me?.display_name ?? "");
   const [title, setTitle] = useState(me?.title ?? "");
@@ -463,7 +475,7 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   };
 
   return (
-    <Modal onClose={onClose} title="設定" className="w-[480px]">
+    <>
       {cropping && (
         <AvatarCropDialog
           file={cropping}
@@ -474,7 +486,7 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
           }}
         />
       )}
-      <div className="mt-4 space-y-6">
+      <div className={cn("space-y-6", className)}>
         {me && (
           <div className="flex items-center gap-3 rounded-xl bg-panel p-3">
             <Avatar id={me.id} name={me.display_name} size={44} className="rounded-xl" />
@@ -653,14 +665,16 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
           <Button variant="secondary" size="sm" onClick={() => void controller.logout()}>
             <LogOut size={14} /> ログアウト
           </Button>
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            閉じる
-          </Button>
+          {onClose && (
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              閉じる
+            </Button>
+          )}
         </div>
       </div>
       {totpDialog === "setup" && <TotpSetupDialog controller={controller} onClose={() => setTotpDialog(null)} onEnabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
       {totpDialog === "disable" && <TotpDisableDialog controller={controller} onClose={() => setTotpDialog(null)} onDisabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
-    </Modal>
+    </>
   );
 }
 
