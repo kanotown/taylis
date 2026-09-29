@@ -325,6 +325,9 @@ struct ChannelView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
+                        // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
+                        // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
+                        .containerRelativeFrame(.horizontal)
                         .background(ScrollViewProbe.Marker(probe: scroller))
                     }
                     .coordinateSpace(name: "conversation")
@@ -1273,7 +1276,7 @@ struct ComposerView: View {
     /// The cursor or selection as character offsets (iOS 18 reports it; before, the end of the text).
     private func selectedRange() -> Range<Int> {
         let end = text.count
-        if #available(iOS 18.0, *), let current = selection.raw as? TextSelection, case .selection(let range) = current.indices {
+        if #available(iOS 18.0, *), let current = selection.raw(for: text) as? TextSelection, case .selection(let range) = current.indices {
             func offset(_ index: String.Index) -> Int {
                 let utf16 = min(max(0, index.utf16Offset(in: text)), text.utf16.count)
                 return text[..<String.Index(utf16Offset: utf16, in: text)].count
@@ -1290,6 +1293,7 @@ struct ComposerView: View {
             let lower = value.index(value.startIndex, offsetBy: min(range.lowerBound, value.count))
             let upper = value.index(value.startIndex, offsetBy: min(range.upperBound, value.count))
             selection.raw = lower == upper ? TextSelection(insertionPoint: lower) : TextSelection(range: lower..<upper)
+            selection.text = value
         }
         focused = true
     }
@@ -1510,6 +1514,12 @@ extension MessageRow: Equatable {
 /// The composer's cursor and selection: a `TextSelection?` from iOS 18, kept untyped so the view builds for iOS 17.
 final class ComposerSelection {
     var raw: Any?
+    /// The text the selection belongs to. Its indices are only good for that text: after a send cleared the input,
+    /// an emoji chosen from the picker went in at an index past the end and the app crashed (testers, 2026-09-29).
+    var text: String?
+
+    /// The selection when it still belongs to `current`, else nil.
+    func raw(for current: String) -> Any? { text == current ? raw : nil }
 }
 
 /// The input with its selection reported (iOS 18), for the formatting menu and inserting at the cursor.
@@ -1520,6 +1530,7 @@ private struct SelectingTextField: View {
     let box: ComposerSelection
 
     var body: some View {
-        TextField(placeholder, text: text, selection: Binding(get: { box.raw as? TextSelection }, set: { box.raw = $0 }), axis: .vertical)
+        TextField(placeholder, text: text, selection: Binding(get: { box.raw(for: text.wrappedValue) as? TextSelection },
+                                                              set: { box.raw = $0; box.text = text.wrappedValue }), axis: .vertical)
     }
 }

@@ -55,6 +55,7 @@ struct ThreadView: View {
                         ScrollView {
                             rowStack(viewportHeight: viewport.size.height)
                             .padding()
+                            .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
                             .background(ScrollViewProbe.Marker(probe: scroller))
                         }
                         .coordinateSpace(name: "threadViewport")

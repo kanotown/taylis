@@ -44,22 +44,12 @@ struct ChannelListView: View {
 
     var body: some View {
         List(selection: $selection) {
-            Section {
-                Picker("表示", selection: $unreadOnly) {
-                    Text("すべて").tag(false)
-                    Text("未読").tag(true)
-                }
-                .pickerStyle(.segmented)
+            // The unread filter and the lists (threads, mentions, drafts, reminders, files, saved) in one row of chips
+            // (testers, 2026-09-29: the home screen took a lot of room before the first channel).
+            shortcutChips
+                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 10, trailing: 0))
+                .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-            }
-            Section {
-                threadsRow
-                mentionsRow
-                draftsRow
-                remindersRow
-                filesRow
-                savedRow
-            }
             // M26: a folded section keeps its unread rows (and the open one); its hints and actions go.
             if !favorites.isEmpty {
                 let fold = folded.contains("favorites")
@@ -93,18 +83,22 @@ struct ChannelListView: View {
                 Section("参加できるチャンネル") {
                     ForEach(browse) { channel in
                         Button { join(channel.id) } label: {
-                            HStack(spacing: 12) {
-                                ChannelGlyph(channel: channel.channel)
-                                Text(rowTitle(channel)).foregroundStyle(.primary)
+                            HStack(spacing: 10) {
+                                Image(systemName: "number").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
+                                Text(rowTitle(channel)).foregroundStyle(Color.primary.opacity(0.72))
                                 Spacer()
                                 Text("参加").font(.footnote).foregroundStyle(Color.accentColor)
                             }
                         }
+                        .listRowInsets(Self.rowInsets)
+                        .listRowSeparator(.hidden)
                     }
                 }
             }
         }
-        .listStyle(.sidebar)
+        // Plain and compact like Slack's (testers, 2026-09-29: widely spaced rows were hard to scan with many channels).
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 34)
         .sheet(item: $sectionForm) { target in
             SectionFormView(controller: controller, section: target.section, preselected: target.preselected)
         }
@@ -148,6 +142,9 @@ struct ChannelListView: View {
                 SectionIcon(controller: controller, emoji: icon, size: 16)
                 Text(title)
             }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
             // The whole header row folds it, not only the title (the row is as wide as the list).
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -221,126 +218,75 @@ struct ChannelListView: View {
         }
     }
 
-    /// 「メンション」 (M11h): messages that mention me or everyone.
-    private var mentionsRow: some View {
-        NavigationLink(value: MentionsView.selectionId) {
-            HStack(spacing: 12) {
-                Image(systemName: "at").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                Text("メンション")
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    /// 「下書き」 (M11h): listed only while something is unsent.
-    @ViewBuilder
-    private var draftsRow: some View {
-        let count = controller.store.listDrafts().count + controller.store.scheduled.count
-        if count > 0 {
-            NavigationLink(value: DraftsView.selectionId) {
-                HStack(spacing: 12) {
-                    Image(systemName: "doc.text").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                    Text("下書き")
-                    Spacer()
-                    Text("\(count)").font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-    }
-
     /// 「チャンネルを探す」 (M11h): the browser with member counts, join / leave and create.
     private var browseRow: some View {
         Button { showBrowser = true } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "safari").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                Text("チャンネルを探す").foregroundStyle(.primary)
+            HStack(spacing: 10) {
+                Image(systemName: "safari").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 22)
+                Text("チャンネルを探す").foregroundStyle(Color.primary.opacity(0.72))
             }
-            .padding(.vertical, 2)
         }
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
     }
 
     /// 「自分の times を作る」 (M24): POST /times, then open it.
     private var makeTimesRow: some View {
         Button { makeTimes() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "plus").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("自分の times を作る").foregroundStyle(.primary)
-                    Text("作業ログ用の公開チャンネル").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Image(systemName: "plus").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 22)
+                Text("自分の times を作る (作業ログ)").foregroundStyle(Color.primary.opacity(0.72))
+            }
+        }
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
+    }
+
+    /// One chip of the top row: an icon, a name and a count or a badge; `active` fills it.
+    private func chip(_ title: String, icon: String, count: Int = 0, badge: Int = 0, alert: Bool = false, active: Bool = false,
+                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.footnote.weight(.semibold))
+                Text(title).font(.subheadline.weight(badge > 0 ? .semibold : .regular))
+                if badge > 0 {
+                    Text("\(badge)").font(.caption2.bold()).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(alert ? Color.red : Color.accentColor, in: Capsule())
+                } else if count > 0 {
+                    Text("\(count)").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 2)
+            .foregroundStyle(active ? Color.white : Color.primary)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(active ? Color.accentColor : Color(.secondarySystemFill), in: Capsule())
         }
+        .buttonStyle(.plain)
     }
 
-    /// 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
-    private var threadsRow: some View {
-        let summary = controller.store.threadSummary
-        let active = selection == ThreadsListView.selectionId
-        let unread = summary.unreadCount > 0 && !active
-        return NavigationLink(value: ThreadsListView.selectionId) {
-            HStack(spacing: 12) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.body).foregroundStyle(.secondary).frame(width: 28)
-                Text("スレッド").fontWeight(unread ? .semibold : .regular)
-                Spacer()
-                if unread {
-                    Text("\(summary.unreadCount)")
-                        .font(.caption2).bold().foregroundStyle(.white)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(summary.mentionCount > 0 ? Color.red : Color.accentColor, in: Capsule())
+    /// The top row: the unread filter, then スレッド, メンション, 下書き and リマインダー (while any), ファイル, 保存済み.
+    private var shortcutChips: some View {
+        let store = controller.store
+        let threads = store.threadSummary
+        let drafts = store.listDrafts().count + store.scheduled.count
+        let reminders = store.reminders.count, fired = store.firedReminderCount
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("未読", icon: "line.3.horizontal.decrease", active: unreadOnly) { unreadOnly.toggle() }
+                    .accessibilityValue(unreadOnly ? "オン" : "オフ")
+                chip("スレッド", icon: "bubble.left.and.text.bubble.right",
+                     badge: selection == ThreadsListView.selectionId ? 0 : threads.unreadCount, alert: threads.mentionCount > 0) {
+                    selection = ThreadsListView.selectionId
                 }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    /// 「リマインダー」 (M12e): listed while any is open; red when a nudge waits.
-    @ViewBuilder
-    private var remindersRow: some View {
-        let count = controller.store.reminders.count
-        let fired = controller.store.firedReminderCount
-        if count > 0 {
-            NavigationLink(value: RemindersView.selectionId) {
-                HStack(spacing: 12) {
-                    Image(systemName: "alarm").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                    Text("リマインダー").fontWeight(fired > 0 ? .semibold : .regular)
-                    Spacer()
-                    if fired > 0 {
-                        Text("\(fired)").font(.caption2).bold().foregroundStyle(.white)
-                            .padding(.horizontal, 7).padding(.vertical, 2).background(Color.red, in: Capsule())
-                    } else {
-                        Text("\(count)").font(.caption).foregroundStyle(.secondary)
-                    }
+                chip("メンション", icon: "at") { selection = MentionsView.selectionId }
+                if drafts > 0 { chip("下書き", icon: "doc.text", count: drafts) { selection = DraftsView.selectionId } }
+                if reminders > 0 {
+                    chip("リマインダー", icon: "alarm", count: fired > 0 ? 0 : reminders, badge: fired, alert: true) { selection = RemindersView.selectionId }
                 }
-                .padding(.vertical, 2)
+                chip("ファイル", icon: "doc.on.doc") { selection = FilesView.selectionId }
+                chip("保存済み", icon: "bookmark", count: store.bookmarks.count) { selection = SavedView.selectionId }
             }
-        }
-    }
-
-    /// 「ファイル」 (M11i): attachments in my channels.
-    private var filesRow: some View {
-        NavigationLink(value: FilesView.selectionId) {
-            HStack(spacing: 12) {
-                Image(systemName: "doc.on.doc").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                Text("ファイル")
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    /// 「保存済み」 (M11c): my bookmarked messages.
-    private var savedRow: some View {
-        let count = controller.store.bookmarks.count
-        return NavigationLink(value: SavedView.selectionId) {
-            HStack(spacing: 12) {
-                Image(systemName: "bookmark").font(.body).foregroundStyle(.secondary).frame(width: 28)
-                Text("保存済み")
-                Spacer()
-                if count > 0 { Text("\(count)").font(.caption).foregroundStyle(.secondary) }
-            }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 16)
         }
     }
 
@@ -351,8 +297,11 @@ struct ChannelListView: View {
     }
 
     private func hint(_ text: String) -> some View {
-        Text(text).font(.footnote).foregroundStyle(.secondary)
+        Text(text).font(.footnote).foregroundStyle(.secondary).listRowInsets(Self.rowInsets).listRowSeparator(.hidden)
     }
+
+    /// A compact row, like Slack's sidebar.
+    static let rowInsets = EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16)
 
     private func join(_ id: String) {
         Task {
@@ -377,20 +326,20 @@ struct ChannelListView: View {
         let quietUnread = !unread && channel.id != selection && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
         let store = controller.store
         return NavigationLink(value: channel.id) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 if channel.channel.isDm {
                     let other = (channel.channel.dmUserIds ?? []).first { $0 != store.me?.id } ?? store.me?.id ?? channel.id
-                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", presence: store.presenceOf(other))
+                    AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", size: 22, presence: store.presenceOf(other))
                 } else {
-                    ChannelGlyph(channel: channel.channel)
+                    Image(systemName: channel.channel.type == "private" ? "lock" : "number")
+                        .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
+                        .frame(width: 22).accessibilityHidden(true)
                 }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(rowTitle(channel)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
-                    if !channel.channel.isDm, let topic = channel.channel.topic, !topic.isEmpty {
-                        Text(topic).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
-                Spacer()
+                Text(rowTitle(channel))
+                    .fontWeight(unread ? .semibold : .regular)
+                    .foregroundStyle(unread ? Color.primary : Color.primary.opacity(0.72))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
                 if channel.channel.isDm, let other = (channel.channel.dmUserIds ?? []).first(where: { $0 != store.me?.id }) {
                     StatusEmojiView(user: store.users[other])
                 }
@@ -406,9 +355,10 @@ struct ChannelListView: View {
                     Circle().fill(Color.secondary.opacity(0.5)).frame(width: 6, height: 6)
                 }
             }
-            .padding(.vertical, 2)
             .opacity(muted && !unread ? 0.6 : 1)
         }
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
         .contextMenu { rowMenu(channel) }
         .swipeActions(edge: .leading) {
             Button(starred(channel) ? "お気に入りから外す" : "お気に入り", systemImage: starred(channel) ? "star.slash" : "star") {
