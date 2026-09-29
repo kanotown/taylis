@@ -31,11 +31,14 @@ from app.modules.invites.models import Invite
 from app.modules.invites.schemas import (
     InviteAccept,
     InviteCreate,
+    InviteLabPreview,
     InviteOut,
     InvitePreviewOut,
     status_of,
     to_invite_out,
 )
+from app.modules.lab import service as lab
+from app.modules.lab.schemas import LabPreset
 from app.modules.users import service as users
 from app.modules.users.models import User
 
@@ -62,6 +65,11 @@ async def _invite_channels(db: AsyncSession, actor: User, ids: list[uuid.UUID]) 
 
 async def create(db: AsyncSession, actor: User, data: InviteCreate) -> tuple[InviteOut, str]:
     selected = await _invite_channels(db, actor, data.channel_ids)
+    if data.lab is not None:
+        if data.lab.times and data.role == "guest":
+            raise bad_request("guest_restricted", "A guest cannot have a times channel")
+        if data.lab.supervisor_id is not None:
+            await lab.check_supervisor(db, data.lab.supervisor_id)
     token = secrets.token_urlsafe(32)
     now = utcnow()
     invite = Invite(
@@ -75,6 +83,7 @@ async def create(db: AsyncSession, actor: User, data: InviteCreate) -> tuple[Inv
         used_by=[],
         expires_at=now + timedelta(hours=data.expires_in_hours),
         created_at=now,
+        lab_preset=data.lab.model_dump(mode="json") if data.lab else None,
     )
     db.add(invite)
     await db.flush()
@@ -89,6 +98,7 @@ async def create(db: AsyncSession, actor: User, data: InviteCreate) -> tuple[Inv
             "channel_ids": [str(c.id) for c in selected],
             "max_uses": invite.max_uses,
             "expires_at": invite.expires_at.isoformat(),
+            "lab": invite.lab_preset,
         },
     )
     await db.commit()
@@ -130,6 +140,23 @@ async def _require_live(
     return invite
 
 
+async def _apply_lab_preset(db: AsyncSession, invite: Invite, user: User) -> None:
+    """L7: the roster line, the managed groups and (for members) a times, in the acceptance's
+    transaction. A supervisor who is no longer faculty is dropped rather than failing the join."""
+    preset = LabPreset.model_validate(invite.lab_preset)
+    put = preset.as_put()
+    if put.supervisor_id is not None:
+        try:
+            await lab.check_supervisor(db, put.supervisor_id)
+        except AppError:
+            put = put.model_copy(update={"supervisor_id": None})
+    if preset.times and user.role != "guest":
+        followers = [put.supervisor_id] if put.supervisor_id else []
+        await channels.create_times_in_tx(db, user, followers)
+    issuer = await users.get_user(db, invite.created_by)
+    await lab.put_in_tx(db, issuer, user.id, put)
+
+
 async def preview(db: AsyncSession, token: str, settings: Settings) -> InvitePreviewOut:
     invite = await _require_live(db, token, utcnow())
     issuer = await users.get_user(db, invite.created_by)
@@ -138,12 +165,26 @@ async def preview(db: AsyncSession, token: str, settings: Settings) -> InvitePre
         channel = await channels.find_channel(db, channel_id)
         if channel is not None and channel.name and not channel.is_archived:
             names.append(channel.name)
+    lab_preview = None
+    if invite.lab_preset:
+        preset = LabPreset.model_validate(invite.lab_preset)
+        supervisor = (
+            await users.get_user(db, preset.supervisor_id) if preset.supervisor_id else None
+        )
+        lab_preview = InviteLabPreview(
+            affiliation=preset.affiliation,
+            rank=preset.rank,
+            grade=preset.grade,
+            supervisor_name=supervisor.display_name if supervisor else None,
+            times=preset.times and invite.role != "guest",
+        )
     return InvitePreviewOut(
         invited_by=issuer.display_name if issuer else "管理者",
         role=invite.role,
         channels=names,
         expires_at=invite.expires_at,
         password_min_length=settings.password_min_length,
+        lab=lab_preview,
     )
 
 
@@ -188,6 +229,8 @@ async def accept(
             ):
                 continue  # made private since, or the issuer left: not theirs to hand out
             await channels.add_member_in_tx(db, channel, user.id)
+        if invite.lab_preset:
+            await _apply_lab_preset(db, invite, user)
         invite.use_count += 1
         invite.used_by = [*(invite.used_by or []), user.id]
         await db.commit()

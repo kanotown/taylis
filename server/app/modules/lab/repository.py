@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.lab.models import LabProfile
+from app.modules.lab.models import LabProfile, LabRollover
 
 
 async def lock_roster(db: AsyncSession) -> None:
@@ -23,3 +23,12 @@ async def list_all(db: AsyncSession) -> list[LabProfile]:
 async def remove(db: AsyncSession, user_id: uuid.UUID) -> bool:
     result = await db.execute(delete(LabProfile).where(LabProfile.user_id == user_id))
     return bool(getattr(result, "rowcount", 0))
+
+
+async def get_rollover(db: AsyncSession, academic_year: int) -> LabRollover | None:
+    return await db.get(LabRollover, academic_year)
+
+
+async def list_rollovers(db: AsyncSession) -> list[LabRollover]:
+    stmt = select(LabRollover).order_by(LabRollover.academic_year.desc())
+    return list((await db.execute(stmt)).scalars().all())

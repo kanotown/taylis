@@ -117,3 +117,13 @@ async def count_owners(db: AsyncSession, channel_id: uuid.UUID) -> int:
             )
         ).scalar_one()
     )
+
+
+async def channel_memberships_of(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Channel, str]]:
+    stmt = (
+        select(Channel, ChannelMember.role)
+        .join(ChannelMember, ChannelMember.channel_id == Channel.id)
+        .where(ChannelMember.user_id == user_id, Channel.type.in_(("public", "private")))
+        .order_by(Channel.name)
+    )
+    return [(channel, role) for channel, role in (await db.execute(stmt)).all()]

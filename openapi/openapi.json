@@ -1697,6 +1697,16 @@
             "title": "Expires In Hours",
             "type": "integer"
           },
+          "lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabPreset"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "max_uses": {
             "anyOf": [
               {
@@ -1757,6 +1767,82 @@
         "title": "InviteCreated",
         "type": "object"
       },
+      "InviteLabPreview": {
+        "description": "L7: the roster line the invitee will get, for the acceptance screen.",
+        "properties": {
+          "affiliation": {
+            "enum": [
+              "faculty",
+              "student",
+              "alumni",
+              "other"
+            ],
+            "title": "Affiliation",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "enum": [
+                  "professor",
+                  "associate_professor",
+                  "lecturer",
+                  "assistant_professor"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "supervisor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supervisor Name"
+          },
+          "times": {
+            "title": "Times",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "affiliation",
+          "rank",
+          "grade",
+          "supervisor_name",
+          "times"
+        ],
+        "title": "InviteLabPreview",
+        "type": "object"
+      },
       "InviteOut": {
         "properties": {
           "channel_ids": {
@@ -1786,6 +1872,16 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabPreset"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "max_uses": {
             "anyOf": [
@@ -1884,6 +1980,16 @@
             "title": "Invited By",
             "type": "string"
           },
+          "lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InviteLabPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "password_min_length": {
             "title": "Password Min Length",
             "type": "integer"
@@ -1901,6 +2007,81 @@
           "password_min_length"
         ],
         "title": "InvitePreviewOut",
+        "type": "object"
+      },
+      "LabPreset": {
+        "additionalProperties": false,
+        "description": "L7: the roster line an invite link gives on acceptance (and whether to make a times).",
+        "properties": {
+          "affiliation": {
+            "enum": [
+              "faculty",
+              "student",
+              "alumni",
+              "other"
+            ],
+            "title": "Affiliation",
+            "type": "string"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "enum": [
+                  "professor",
+                  "associate_professor",
+                  "lecturer",
+                  "assistant_professor"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "supervisor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supervisor Id"
+          },
+          "times": {
+            "default": false,
+            "title": "Times",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "affiliation"
+        ],
+        "title": "LabPreset",
         "type": "object"
       },
       "LabProfileOut": {
@@ -3254,6 +3435,305 @@
           "created_at"
         ],
         "title": "ReminderOut",
+        "type": "object"
+      },
+      "RolloverApply": {
+        "additionalProperties": false,
+        "properties": {
+          "academic_year": {
+            "maximum": 2100.0,
+            "minimum": 2000.0,
+            "title": "Academic Year",
+            "type": "integer"
+          },
+          "alumni_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alumni Channel Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RolloverItem"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "academic_year",
+          "items"
+        ],
+        "title": "RolloverApply",
+        "type": "object"
+      },
+      "RolloverChannelOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "title": "RolloverChannelOut",
+        "type": "object"
+      },
+      "RolloverItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "advance",
+              "stay",
+              "graduate"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "guest": {
+            "default": false,
+            "title": "Guest",
+            "type": "boolean"
+          },
+          "keep_channel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Keep Channel Ids",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "action"
+        ],
+        "title": "RolloverItem",
+        "type": "object"
+      },
+      "RolloverOut": {
+        "properties": {
+          "academic_year": {
+            "title": "Academic Year",
+            "type": "integer"
+          },
+          "advanced": {
+            "title": "Advanced",
+            "type": "integer"
+          },
+          "applied_at": {
+            "format": "date-time",
+            "title": "Applied At",
+            "type": "string"
+          },
+          "applied_by": {
+            "format": "uuid",
+            "title": "Applied By",
+            "type": "string"
+          },
+          "graduated": {
+            "title": "Graduated",
+            "type": "integer"
+          },
+          "stayed": {
+            "title": "Stayed",
+            "type": "integer"
+          },
+          "undone_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undone At"
+          }
+        },
+        "required": [
+          "academic_year",
+          "applied_by",
+          "applied_at",
+          "undone_at",
+          "advanced",
+          "stayed",
+          "graduated"
+        ],
+        "title": "RolloverOut",
+        "type": "object"
+      },
+      "RolloverPreviewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "academic_year": {
+            "maximum": 2100.0,
+            "minimum": 2000.0,
+            "title": "Academic Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "academic_year"
+        ],
+        "title": "RolloverPreviewIn",
+        "type": "object"
+      },
+      "RolloverPreviewItem": {
+        "description": "A student on the roster, with the proposed step and the channels a graduate would leave.",
+        "properties": {
+          "action": {
+            "enum": [
+              "advance",
+              "stay",
+              "graduate"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/RolloverChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "next_grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "B3",
+                  "B4",
+                  "M1",
+                  "M2",
+                  "D1",
+                  "D2",
+                  "D3"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Grade"
+          },
+          "times_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times Channel Id"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "grade",
+          "action",
+          "next_grade",
+          "times_channel_id",
+          "channels"
+        ],
+        "title": "RolloverPreviewItem",
+        "type": "object"
+      },
+      "RolloverPreviewOut": {
+        "properties": {
+          "academic_year": {
+            "title": "Academic Year",
+            "type": "integer"
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RolloverPreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "academic_year",
+          "applied_at",
+          "items"
+        ],
+        "title": "RolloverPreviewOut",
         "type": "object"
       },
       "ScheduledCreate": {
@@ -8387,6 +8867,175 @@
         "summary": "Accept Invite",
         "tags": [
           "invites"
+        ]
+      }
+    },
+    "/api/v1/lab/rollover/preview": {
+      "post": {
+        "description": "Every student with the proposed step (up a grade, or graduation for M2 and D3) and the\nchannels a graduate would leave.",
+        "operationId": "preview_rollover_api_v1_lab_rollover_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolloverPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloverPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Rollover",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/api/v1/lab/rollovers": {
+      "get": {
+        "operationId": "list_rollovers_api_v1_lab_rollovers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RolloverOut"
+                  },
+                  "title": "Response List Rollovers Api V1 Lab Rollovers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Rollovers",
+        "tags": [
+          "lab"
+        ]
+      },
+      "post": {
+        "description": "One transaction for the whole year (409 rollover_applied when it is in force already).",
+        "operationId": "apply_rollover_api_v1_lab_rollovers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolloverApply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloverOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Rollover",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/api/v1/lab/rollovers/{academic_year}/undo": {
+      "post": {
+        "operationId": "undo_rollover_api_v1_lab_rollovers__academic_year__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "academic_year",
+            "required": true,
+            "schema": {
+              "title": "Academic Year",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloverOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Undo Rollover",
+        "tags": [
+          "lab"
         ]
       }
     },

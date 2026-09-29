@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.admin.schemas import USERNAME_PATTERN, Role
 from app.modules.auth.schemas import DeviceCreate
 from app.modules.invites.models import Invite
+from app.modules.lab.schemas import Affiliation, Grade, LabPreset, Rank
 
 InviteStatus = Literal["active", "expired", "exhausted", "revoked"]
 
@@ -20,6 +21,8 @@ class InviteCreate(BaseModel):
     note: str | None = Field(default=None, max_length=80, description="Who it is for")
     max_uses: int | None = Field(default=1, ge=1, le=100, description="null = unlimited")
     expires_in_hours: int = Field(default=168, ge=1, le=720)
+    # L7: put the new account on the lab roster (and make its times); e.g. 「2027 年度 B4」.
+    lab: LabPreset | None = None
 
 
 class InviteOut(BaseModel):
@@ -35,6 +38,7 @@ class InviteOut(BaseModel):
     revoked_at: datetime | None
     created_at: datetime
     status: InviteStatus
+    lab: LabPreset | None = None
 
 
 class InviteCreated(BaseModel):
@@ -42,6 +46,16 @@ class InviteCreated(BaseModel):
 
     invite: InviteOut
     token: str = Field(repr=False)
+
+
+class InviteLabPreview(BaseModel):
+    """L7: the roster line the invitee will get, for the acceptance screen."""
+
+    affiliation: Affiliation
+    rank: Rank | None
+    grade: Grade | None
+    supervisor_name: str | None
+    times: bool
 
 
 class InvitePreviewOut(BaseModel):
@@ -52,6 +66,7 @@ class InvitePreviewOut(BaseModel):
     channels: list[str]
     expires_at: datetime
     password_min_length: int
+    lab: InviteLabPreview | None = None
 
 
 class InviteAccept(BaseModel):
@@ -97,4 +112,5 @@ def to_invite_out(invite: Invite, now: datetime) -> InviteOut:
         revoked_at=invite.revoked_at,
         created_at=invite.created_at,
         status=status_of(invite, now),
+        lab=LabPreset.model_validate(invite.lab_preset) if invite.lab_preset else None,
     )

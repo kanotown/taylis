@@ -101,6 +101,16 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
     return user
 
 
+async def set_role_in_tx(db: AsyncSession, user: User, role: str) -> None:
+    """For the lab module's graduation (L7): a graduate may become a guest; the caller commits."""
+    if user.role == role:
+        return
+    user.role = role
+    user.updated_at = utcnow()
+    await db.flush()
+    await emit_user_event(db, USER_UPDATED, user)
+
+
 async def set_avatar(db: AsyncSession, user_id: uuid.UUID, key: str | None) -> User:
     """M14a: point the profile at a new picture (or none) and tell every device."""
     user = await require_user(db, user_id)

@@ -444,6 +444,11 @@ CREATE INDEX invites_created_idx ON invites (created_at);
   監査行に `invite_id`)、`channel_ids` のうち残っている (アーカイブされていない) チャンネルに参加、
   `use_count` / `used_by` を更新。その後は通常の login と同じ経路でセッションを作る。
 - イベントは出さない (管理画面は都度取得)。新しいアカウントは既存の `user.created` で全端末に届く。
+- **研究室のプリセット (`lab_preset jsonb`、L7 / M32)**: `{affiliation, rank, grade, supervisor_id, times}` (名簿の行と同じ
+  規則。times はゲストには付けられない `400 guest_restricted`、指導教員は名簿の教員 `422 invalid_supervisor`)。受諾の
+  トランザクションで、times を作り (指導教員が参加)、名簿の行を入れ、管理グループを揃える。受諾までに指導教員が教員で
+  なくなっていたら、指導教員なしで入れる (受諾は失敗させない)。`GET /invites/{token}` の `lab` (身分・職位・学年・
+  指導教員の名前・times) を受諾画面に出す。例: 「2027 年度 B4」、10 回まで、7 日。
 
 ### user_totp (2 要素認証、M12i)
 
@@ -526,6 +531,33 @@ CREATE TABLE lab_profiles (
   作らない (`@name` が一意でなくなるため)。無効化されたユーザーは名簿に残るが、メンションの展開は従来どおり
   有効なユーザーだけ。
 - 匿名化 (admin) は名簿の行も消す。
+
+### lab_rollovers (年度更新、L7 / M32、LAB.md I)
+
+```sql
+CREATE TABLE lab_rollovers (
+  academic_year smallint PRIMARY KEY,
+  applied_by    uuid NOT NULL REFERENCES users(id),
+  applied_at    timestamptz NOT NULL DEFAULT now(),
+  before        jsonb NOT NULL,   -- 人ごとの適用前: 名簿の行、ロール、外したチャンネルとそのロール、加えたチャンネル、アーカイブした times
+  undone_at     timestamptz       -- 取り消した時刻 (取り消した年度は適用し直せる)
+);
+```
+
+- `POST /lab/rollover/preview {academic_year}` (admin): 名簿の学生全員について、今の学年、既定の案 (B3・B4・M1・D1・D2 は
+  進級、M2・D3 は卒業)、進級後の学年、times、卒業したら外れるチャンネル (自分の times 以外の公開・非公開) を返す。
+  その年度が適用中なら `applied_at`。
+- `POST /lab/rollovers {academic_year, items: [{user_id, action: advance | stay | graduate, guest, keep_channel_ids}],
+  alumni_channel_id}` (admin): 1 トランザクションで適用する。適用中の年度は `409 rollover_applied`、学生でない人は
+  `422 rollover_not_student`、D3 の進級は `422 rollover_cannot_advance`。
+  - advance は学年を 1 つ上げる、stay は何もしない (記録だけ)。
+  - graduate: 名簿を alumni に (学年と職位を外す。指導教員は残す)、自分の times をアーカイブ (本人はオーナーのまま)、
+    `keep_channel_ids` と卒業生のチャンネル以外の公開・非公開チャンネルから外す (DM は残す)、卒業生のチャンネルに加える、
+    `guest` ならロールを guest にする (その人の接続は張り直させ、見える範囲がすぐ狭まる)。自分自身はゲストにできない。
+  - 名簿の変化は人ごとに `roster.updated`、管理グループは最後に 1 回揃える。監査ログ `lab.rollover_applied`。
+- `GET /lab/rollovers`: 年度の新しい順 (進級・据え置き・卒業の人数、取り消し済みか)。
+- `POST /lab/rollovers/{year}/undo`: `before` から名簿の行・ロール・外したチャンネル (元のロールで)・times のアーカイブを
+  戻し、加えた卒業生のチャンネルから外す。取り消し済みは `409 rollover_undone`。監査ログ `lab.rollover_undone`。
 
 ### webhooks (受信 Webhook、M13a)
 
