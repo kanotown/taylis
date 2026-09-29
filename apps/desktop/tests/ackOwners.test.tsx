@@ -34,7 +34,7 @@ function controllerFor(me: UserPublic, api: Record<string, unknown>, store?: Sto
   const controller = new AppController();
   controller.api = { baseUrl: "http://server", ...api } as unknown as ApiClient;
   if (store) (controller as unknown as { active: { store: Store } }).active.store = store;
-  controller.store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false } as UserMe);
+  controller.store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions" } as UserMe);
   controller.store.upsertUser(me);
   return controller;
 }

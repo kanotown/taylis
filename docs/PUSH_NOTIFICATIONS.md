@@ -80,19 +80,30 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 
 ## 4. 通知対象の判定 (PushPlanner)
 
-対象イベントは `message.created` のみ (v1)。受信者は次の順で絞り込む。通知設定は
-`notification_preferences` (行が無ければチャンネル種別の既定: DM は `all`、チャンネルは `mentions`)。
+対象イベントは `message.created` のみ (v1)。受信者は次の順で絞り込む。
+
+通知の level (M35) は、チャンネル自身の `notification_preferences.level` があればそれ。無ければ (行が無い、または
+NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `none`、初期値 `mentions`) から:
+
+| 全体設定 | DM / グループ DM | 他の人の times (M24) | ほかのチャンネル |
+| --- | --- | --- | --- |
+| `all` | `all` | `mentions` | `all` |
+| `mentions` | `all` | `mentions` | `mentions` |
+| `none` | `none` | `none` | `none` |
+
+全体設定はプッシュだけに効く (未読の規則には入らない。SYNC_PROTOCOL.md §10.5)。クライアントの画面は「既定 (全体設定)
+/ すべて / メンションのみ / 通知しない」と「ミュート」(解除するまで) と「8 時間ミュート」(期限つき) を出す。
 
 | 条件 | 判定 | 実装時期 |
 | --- | --- | --- |
 | 送信者本人 | 除外 | M5 |
 | `type = system` のメッセージ | 除外 | M5 |
-| `level = none`、または `muted_until > now()` | 除外 | M5 |
+| `level = none`、`muted` (M35、解除するまで)、または `muted_until > now()` | 除外 | M5 / M35 |
 | 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `messages.keyword_user_ids` に入り、`level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる。この列はクライアントに送らない (他のメンバーに本人のキーワードが分かってしまうため。M16a)。PushPlanner は行から読む | M12g / M16a |
 | `reminder.updated` (status=fired、M12e) | 本人の端末へ `kind = reminder` (タイトル「リマインダー」、本文はメモ + 設定時の本文、`channel_id` / `message_id` で該当メッセージを開く)。DND 中は出さない | M12e |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
-| `level = all` (DM / グループ DM の既定) | 対象 | M5 |
-| `level = mentions` (チャンネルの既定) | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
+| `level = all` | 対象 | M5 |
+| `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
 | 既に既読 (`last_read_seq >= message.seq`) | 除外。スレッドの返信 (チャンネルにも送信したものを除く) は `thread_follows.last_read_seq` で判定する (Desktop でスレッドを読んだ返信がスマホに届いていた。M28a) | M8b (実装済み。送信直前にも再判定し `skipped / already_read`。返信の再判定のために `push_deliveries.payload` に `parent_id` を添える) |
 | 有効なセッションの無い端末 (期限切れ) | 送信直前に除外 (`skipped / session_expired`)。1 時間ごとの掃除がその端末を無効にする (DATA_MODEL.md devices) | M28a |

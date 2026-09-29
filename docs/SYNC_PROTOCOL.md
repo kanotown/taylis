@@ -522,12 +522,14 @@ reconcile(client_msg_id, message):
 テストが同じファイルを読む)。
 
 ```
-muted(c)      = level == "none" or muted_until > now
+muted(c)      = level == "none" or muted or muted_until > now   -- level はチャンネル自身の値 (全体設定は入れない)。muted は M35
 quiet(c)      = c.times_owner_id != null and c.times_owner_id != me and level != "all" and not muted(c)
 has_unread(c) = member and (muted(c) or quiet(c) ? mention_count > 0 : unread_count > 0)
 badge(c)      = muted(c) ? mention_count : (DM ? unread_count : mention_count)
 ```
 
+- 通知の全体設定 (M35、`users.notification_default`) はプッシュだけに効き、未読の規則には入らない (全体を「なし」に
+  しても会話が全部ミュート扱いにならないように)。規則の `level` はチャンネル自身の値 (無ければ null)。
 - 静かな未読の会話は、メンションが無ければ太字にしない。未読があることは名前の横の控えめな点で示す (ミュートは
   何も示さない、という違い)。プッシュはチャンネルの既定 (`mentions`) どおりメンションのときだけ。
 - 通知レベルを `all` にすると普通のチャンネルと同じになる (太字、全件のプッシュ)。

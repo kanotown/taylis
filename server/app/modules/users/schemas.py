@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -84,6 +85,8 @@ class UserMe(UserPublic):
     notify_keywords: list[str] = []
     # L4 (M31): others see me as offline.
     presence_hidden: bool = False
+    # M35: what channels without a level of their own notify me of (PUSH_NOTIFICATIONS.md §4).
+    notification_default: Literal["all", "mentions", "none"] = "mentions"
 
 
 class UserUpdate(BaseModel):
@@ -103,6 +106,8 @@ class UserUpdate(BaseModel):
     notify_keywords: list[str] | None = Field(default=None, max_length=20)
     # L4 (M31): hide my presence from everyone else.
     presence_hidden: bool | None = None
+    # M35: my overall notification setting.
+    notification_default: Literal["all", "mentions", "none"] | None = None
 
     @field_validator("notify_keywords")
     @classmethod
@@ -169,4 +174,5 @@ def to_user_me(user: User) -> UserMe:
         must_change_password=user.must_change_password,
         notify_keywords=list(user.notify_keywords or []),
         presence_hidden=user.presence_hidden,
+        notification_default=user.notification_default,  # type: ignore[arg-type]
     )

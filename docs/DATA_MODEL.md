@@ -87,6 +87,7 @@ CREATE TABLE users (
   quiet_hours_tz        text,                   -- IANA タイムゾーン。API では quiet_hours {start, end, days, tz}
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
   presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える
+  notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   created_at            timestamptz NOT NULL DEFAULT now(),
@@ -714,15 +715,18 @@ CREATE UNIQUE INDEX drafts_user_composer_uniq ON drafts (user_id, channel_id, pa
 CREATE TABLE notification_preferences (
   user_id      uuid NOT NULL REFERENCES users(id),
   channel_id   uuid NOT NULL REFERENCES channels(id),
-  level        text NOT NULL,                    -- 'all' | 'mentions' | 'none'
+  level        text,                             -- 'all' | 'mentions' | 'none'。NULL = 本人の全体設定 (M35)
   muted_until  timestamptz,                      -- 一時ミュート
+  muted        boolean NOT NULL DEFAULT false,   -- M35 解除するまでミュート
   updated_at   timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, channel_id)
 );
 ```
 
-行が無ければチャンネル種別の既定 (dm / group_dm は `all`、public / private は `mentions`)。
-ユーザー全体の既定 (quiet hours など) が必要になったら `users` に列を足す。
+行が無い、または `level` が NULL なら本人の全体設定 `users.notification_default` に従う (M35。解決の規則は
+PUSH_NOTIFICATIONS.md §4)。M35 の移行で、種別の旧既定と同じ `level` (dm / group_dm の `all`、public / private の
+`mentions`) は NULL にした (全体設定の初期値 `mentions` と結果は同じ)。API の `level` は解決後の値を返し、
+`follows_default` が全体設定に従っているかを、`muted` が解除するまでのミュートかを表す。
 
 ### messages
 
