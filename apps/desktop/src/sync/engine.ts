@@ -885,6 +885,17 @@ export class SyncEngine {
     });
   }
 
+  /**
+   * M34: no conversation is on screen (a phone's list, or a tab's root): none is open, so its new messages notify
+   * again and its rows may be trimmed. A "mark unread" hold stays for when it opens again.
+   */
+  closeChannel(): void {
+    const previous = this.currentChannelId;
+    this.currentChannelId = null;
+    if (previous !== null) this.trimLater(previous);
+    this.closePreview();
+  }
+
   // --- §7.6.1 preview before joining -----------------------------------------------------
 
   /**

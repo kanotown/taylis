@@ -43,6 +43,40 @@ import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
 import { focusChatRegion } from "./messageKeyboard";
+import { ActivityView } from "./ActivityView";
+import { DmListView } from "./DmListView";
+import { MobileTabBar } from "./MobileTabBar";
+import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
+import { YouView } from "./YouView";
+
+type CentreView = "channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders" | "search";
+
+/**
+ * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
+ * tabs' are kept as one of these). `pane` "list" is the tab's root.
+ */
+interface Nav {
+  currentId: string | null;
+  view: CentreView;
+  threadId: string | null;
+  threadChannelId: string | null;
+  pinsOpen: boolean;
+  pane: "list" | "main";
+  filesChannelId: string | null;
+  search: SearchParams | null;
+  searchTab: SearchTab;
+  backToSearch: boolean;
+  tab: ConversationTab;
+  details: boolean;
+  results: SearchSnapshot | null;
+}
+
+/** A tab's root: its list, nothing of a conversation over it (the last conversation's id may stay, unopened). */
+function rootNav(nav: Nav): Nav {
+  return { ...nav, pane: "list", view: "channel", threadId: null, threadChannelId: null, pinsOpen: false, tab: "messages", details: false, backToSearch: false };
+}
+
+const isRootNav = (nav: Nav) => nav.pane === "list";
 
 type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
 
@@ -64,7 +98,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
-  const [view, setView] = useState<"channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders" | "search">("channel");
+  const [view, setView] = useState<CentreView>("channel");
   /** M11i: the channel the files view is scoped to (null: all my channels). */
   const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
@@ -100,29 +134,41 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [tab, setTab] = useState<ConversationTab>("messages");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [membersVersion, setMembersVersion] = useState(0);
+  // M34, phones only: the bottom tab, and the other tabs' screens as they were left (the selected tab's are live above).
+  const [mobileTab, setMobileTab] = useState<MobileTab>(() => (controller.messageFocus ? landingTab(store.getChannel(controller.messageFocus.channelId)) : "home"));
+  const [savedTabs, setSavedTabs] = useState<Partial<Record<MobileTab, Nav>>>({});
   const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch, tab, details: detailsOpen };
   const focus = controller.messageFocus;
-  // One entry for 「ピン留め」 and 「ファイル」 together: Back from either returns to 「メッセージ」 first (M29).
-  const navigationKey = JSON.stringify({ ...navigation, tab: tab !== "messages", focus: focus?.messageId ?? null });
-  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current }, (previous) => {
-    controller.messageFocus = previous.focus;
-    controller.setEditing(null);
-    setCurrentId(previous.currentId);
-    setView(previous.view);
-    setThreadId(previous.threadId);
-    setThreadChannelId(previous.threadChannelId);
-    setPinsOpen(previous.pinsOpen);
-    setTab(previous.tab);
-    setDetailsOpen(previous.details);
-    setPane(previous.pane);
-    setFilesChannelId(previous.filesChannelId);
-    setSearch(previous.search);
-    setSearchTab(previous.searchTab);
-    setBackToSearch(previous.backToSearch);
-    searchSnapshot.current = previous.results;
+  /** Put a screen on (a history entry coming back, a tab's screens coming back or landing). */
+  const applyNav = (nav: Nav) => {
+    setCurrentId(nav.currentId);
+    setView(nav.view);
+    setThreadId(nav.threadId);
+    setThreadChannelId(nav.threadChannelId);
+    setPinsOpen(nav.pinsOpen);
+    setTab(nav.tab);
+    setDetailsOpen(nav.details);
+    setPane(nav.pane);
+    setFilesChannelId(nav.filesChannelId);
+    setSearch(nav.search);
+    setSearchTab(nav.searchTab);
+    setBackToSearch(nav.backToSearch);
+    searchSnapshot.current = nav.results;
     setSearchOpen(false);
     setDialog(null);
     setSwitcher(false);
+  };
+  /** The live screen of the selected tab. */
+  const currentNav = (): Nav => ({ ...navigation, results: searchSnapshot.current });
+  // One entry for 「ピン留め」 and 「ファイル」 together: Back from either returns to 「メッセージ」 first (M29). A tab
+  // switch is an entry too (M34): Back after it returns to the tab before, with every tab's screens as they were then.
+  const navigationKey = JSON.stringify({ ...navigation, mobileTab, tab: tab !== "messages", focus: focus?.messageId ?? null });
+  useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current, mobileTab, savedTabs }, (previous) => {
+    controller.messageFocus = previous.focus;
+    controller.setEditing(null);
+    applyNav(previous);
+    setMobileTab(previous.mobileTab);
+    setSavedTabs(previous.savedTabs);
   }, isWeb());
   // The sidebar's views toggle back to the conversation on a desktop; on a phone a tap always opens them.
   const compactRef = useRef(compact);
@@ -139,6 +185,41 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setPane("list");
       }
     : null;
+
+  // M34: each tab's root stays mounted once shown (its scroll position survives), hidden while another is on screen.
+  const tabRoots = useRef<Partial<Record<MobileTab, HTMLDivElement | null>>>({});
+  const visitedTabs = useRef(new Set<MobileTab>(["home"]));
+  visitedTabs.current.add(mobileTab);
+  /** A tap on the bottom bar (MOBILE_UI.md §5): another tab brings its screens back; the selected one pops to its root, or scrolls it up. */
+  const selectTab = (target: MobileTab, live: Nav = currentNav()) => {
+    const result = tapTab({ tab: mobileTab, saved: savedTabs }, live, target, rootNav, isRootNav);
+    if (result.scrollTop) {
+      for (const element of tabRoots.current[target]?.querySelectorAll<HTMLElement>("*") ?? []) {
+        if (element.scrollTop <= 0) continue;
+        if (typeof element.scrollTo === "function") element.scrollTo({ top: 0, behavior: "smooth" });
+        else element.scrollTop = 0;
+      }
+      return;
+    }
+    if (controller.messageFocus) controller.clearMessageFocus();
+    if (controller.editing) controller.setEditing(null);
+    setMobileTab(result.stacks.tab);
+    setSavedTabs(result.stacks.saved);
+    applyNav(result.live);
+  };
+  /**
+   * A notification, permalink or search result on a phone (M34 (7)): a DM on the DM tab, a channel (and its thread) on
+   * the home tab, replacing that tab's screens; the other tabs keep theirs.
+   */
+  const land = (channelId: string, parentId: string | null, patch: Partial<Nav> = {}) => {
+    const live = currentNav();
+    const target = landingTab(store.getChannel(channelId));
+    const screen: Nav = { ...rootNav(live), pane: "main", currentId: channelId, threadChannelId: channelId, threadId: parentId, ...patch };
+    const result = landOn({ tab: mobileTab, saved: savedTabs }, live, target, screen);
+    setMobileTab(result.stacks.tab);
+    setSavedTabs(result.stacks.saved);
+    applyNav(result.live);
+  };
 
   // Drag the strip between the sidebar and the conversation to resize; double-click resets.
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -197,8 +278,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const banner = useConnectionBanner(status);
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen });
-  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen };
+  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab });
+  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab };
   /** A conversation always opens on 「メッセージ」, without its details page (M29). */
   const resetConversation = () => {
     setTab("messages");
@@ -227,10 +308,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
     resetConversation();
   }, [currentGone, currentId, engine]);
 
-  // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation.
+  // A row of this screen's lists being revealed is placed by its own handler (M34: an activity row stays on its tab).
+  const revealing = useRef<string | null>(null);
+  // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation. On a phone it
+  // lands on its tab (M34), unless its conversation is the one on screen.
   useEffect(() => {
     const focus = controller.messageFocus;
-    if (!focus || (focus.channelId === currentId && view === "channel")) return;
+    if (!focus || (compact && revealing.current === focus.messageId) || (focus.channelId === currentId && view === "channel" && (!compact || pane === "main"))) return;
+    if (compact) {
+      land(focus.channelId, focus.parentId);
+      return;
+    }
     setPane("main");
     setView("channel");
     setSearchOpen(false);
@@ -252,12 +340,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
   }, [controller.openChannelRequest]);
 
   // A channel of mine opens through the member path; one I have not joined as its preview. Joining flips `previewing`,
-  // and the conversation then loads like any other of mine.
+  // and the conversation then loads like any other of mine. On a phone the engine's open conversation is the one on
+  // the selected tab's screen, none at a tab's root (M34 (8), MOBILE_UI.md §10 1.).
+  const engineChannelId = !compact || (pane === "main" && view === "channel") ? currentId : null;
   useEffect(() => {
-    if (!currentId || !engine) return;
-    const opened = previewing ? engine.openPreview(currentId) : engine.openChannel(currentId);
+    if (!engine) return;
+    if (!engineChannelId) {
+      if (compact) engine.closeChannel();
+      return;
+    }
+    const opened = previewing ? engine.openPreview(engineChannelId) : engine.openChannel(engineChannelId);
     void opened.catch((error) => controller.setError(error));
-  }, [currentId, engine, previewing]);
+  }, [engineChannelId, engine, previewing, compact]);
 
   const open = (id: string) => {
     controller.clearMessageFocus();
@@ -288,8 +382,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   /** A card in the pins pane / saved view (or a phone's pins / files tab): show the message in its conversation. */
   const revealFromList = (message: MessageOut) => {
+    revealing.current = message.id;
     void controller.revealMessage(message).then((ok) => {
+      revealing.current = null;
       if (!ok) return;
+      if (compactRef.current) setPane("main"); // from the activity tab's mentions (M34): onto that tab's screens
       setView("channel");
       setSearchOpen(false);
       setBackToSearch(false);
@@ -319,8 +416,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   /** A result: its conversation (or thread) around the message, with 「検索結果に戻る」. */
   const openSearchResult = (message: MessageOut) => {
+    revealing.current = message.id;
     void controller.revealMessage(message).then((ok) => {
+      revealing.current = null;
       if (!ok) return;
+      // A phone: on the result's tab (M34 (7)); the search stays on the home tab's screens.
+      if (compactRef.current) {
+        land(message.channel_id, message.parent_id ?? null, { backToSearch: true, search, searchTab, results: searchSnapshot.current });
+        return;
+      }
       setView("channel");
       setPinsOpen(false);
       resetConversation();
@@ -374,6 +478,30 @@ export function MainScreen({ controller }: { controller: AppController }) {
     controller.clearMessageFocus();
     setThreadChannelId(entry.state.channel_id);
     setThreadId(entry.parent.id);
+  };
+
+  /** M34: a thread row of the activity tab: the thread goes over that tab's root. */
+  const openActivityThread = (entry: ThreadEntry) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    resetConversation();
+    setPinsOpen(false);
+    setBackToSearch(false);
+    setView("threads");
+    setThreadChannelId(entry.state.channel_id);
+    setThreadId(entry.parent.id);
+    setPane("main");
+  };
+
+  /** The thread's ← / ✕ / Esc: back to what is under it (on a phone's activity tab, its root). */
+  const closeThread = () => {
+    const s = state.current;
+    if (s.compact && s.mobileTab === "activity" && s.view === "threads") {
+      setThreadId(null);
+      setThreadChannelId(null);
+      setView("channel");
+      setPane("list");
+    } else setThreadId(null);
   };
 
   const toggleUnreadOnly = () => {
@@ -440,7 +568,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         else if (s.searchOpen) setSearchOpen(false);
         else if (s.detailsOpen) setDetailsOpen(false);
         else if (s.pinsOpen) setPinsOpen(false);
-        else if (s.threadId) setThreadId(null);
+        else if (s.threadId) closeThread();
         else if (controller.editing) controller.setEditing(null);
         else if (s.tab !== "messages") setTab("messages");
         else if (s.view !== "channel") setView("channel");
@@ -507,21 +635,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
     <Sidebar
       controller={controller}
       channels={channels}
-      currentId={currentId}
+      currentId={compact ? null : currentId}
       unreadOnly={unreadOnly}
       onToggleUnreadOnly={toggleUnreadOnly}
       onOpen={open}
       onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
       onNewChannel={() => setDialog("channel")}
       onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
-      onSettings={() => setDialog("settings")}
+      onSettings={() => (compact ? selectTab("you") : setDialog("settings"))}
       onThreads={openThreads}
       threadsActive={view === "threads"}
       onSaved={openSaved}
       savedActive={view === "saved"}
       onAdmin={() => setDialog("admin")}
       onBrowse={() => setDialog("browse")}
-      onMentions={() => openView("mentions")}
+      onMentions={compact ? undefined : () => openView("mentions")}
       mentionsActive={view === "mentions"}
       onDrafts={() => openView("drafts")}
       draftsActive={view === "drafts"}
@@ -558,9 +686,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
     pinsOpen && !compact && current && view === "channel" ? (
       <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
     ) : threadId && threadChannel && threadChannel.isMember ? (
-      <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+      <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={closeThread} />
     ) : threadId && threadChannel && previewing && threadChannel.id === current?.id ? (
-      <PreviewThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+      <PreviewThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={closeThread} />
     ) : null;
   // M29, phones: the conversation's tab row and details page (joined conversations, not a preview).
   const tabbed = compact && !!current && current.isMember && !previewing;
@@ -601,6 +729,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
           }}
           snapshot={searchSnapshot}
         />
+      ) : view === "threads" && compact && mobileTab === "activity" ? (
+        // M34: a thread from the activity tab covers this; the tab's own list is under it.
+        null
       ) : view === "threads" ? (
         <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
       ) : view === "saved" ? (
@@ -619,8 +750,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
             <button
               type="button"
               onClick={() => {
-                setBackToSearch(false);
-                setView("search");
+                // A phone's DM tab (M34): the search is on the home tab's screens.
+                if (compact && mobileTab !== "home" && savedTabs.home?.view === "search") selectTab("home", { ...currentNav(), backToSearch: false });
+                else {
+                  setBackToSearch(false);
+                  setView("search");
+                }
               }}
               className="flex shrink-0 items-center gap-1.5 border-b border-line bg-accent-soft/70 px-4 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent-soft"
             >
@@ -875,35 +1010,67 @@ export function MainScreen({ controller }: { controller: AppController }) {
   );
 
   if (compact) {
+    const atRoot = pane === "list";
+    // Hidden inside a conversation, a thread or the details page (Slack); shown on the roots and the lists pushed on them.
+    const showTabBar = atRoot || (view !== "channel" && !sidePane && !showDetails);
+    const rootContent = (value: MobileTab) =>
+      value === "home" ? (
+        <>
+          <div className="flex h-11 shrink-0 items-center px-2">
+            <WorkspaceMenu controller={controller} />
+          </div>
+          <div className="shrink-0 px-3 pb-2">{searchBar}</div>
+          <div className="min-h-0 flex-1">{sidebar}</div>
+        </>
+      ) : value === "dm" ? (
+        <DmListView controller={controller} onOpen={open} onNew={() => setDialog("dm")} />
+      ) : value === "activity" ? (
+        <ActivityView controller={controller} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
+      ) : (
+        <YouView controller={controller} onStatus={() => setDialog("status")} onAdmin={() => setDialog("admin")} />
+      );
     return (
       <BackToList.Provider value={back}>
-        <div className="relative h-full overflow-hidden bg-canvas text-ink">
-          {/* The list stays mounted under a centre view, so its scroll position survives the round trip. */}
-          <div className={cn("absolute inset-0 flex flex-col bg-sidebar", pane === "main" && "invisible")}>
-            <div className="flex h-11 shrink-0 items-center px-2">
-              <WorkspaceMenu controller={controller} />
-            </div>
-            <div className="shrink-0 px-3 pb-2">{searchBar}</div>
-            <div className="min-h-0 flex-1">{sidebar}</div>
+        <div className="flex h-full flex-col overflow-hidden bg-canvas text-ink">
+          <div className="relative min-h-0 flex-1">
+            {/* M34: every tab's root stays mounted once shown, so its scroll position survives; only the selected
+                tab's shows, and none under a conversation or a view. */}
+            {MOBILE_TABS.filter((value) => visitedTabs.current.has(value)).map((value) => {
+              const hidden = !atRoot || value !== mobileTab;
+              return (
+                <div
+                  key={value}
+                  ref={(element) => { tabRoots.current[value] = element; }}
+                  data-tab-root={value}
+                  className={cn("absolute inset-0 flex flex-col", value === "home" ? "bg-sidebar" : "bg-canvas", hidden && "invisible")}
+                  aria-hidden={hidden || undefined}
+                  inert={hidden || undefined}
+                >
+                  {rootContent(value)}
+                </div>
+              );
+            })}
+            {/* Mounted only while on screen: a hidden timeline would mark messages read. */}
+            {pane === "main" && <main className="absolute inset-0 flex min-h-0 flex-col bg-canvas">{centre}</main>}
+            {pane === "main" && sidePane && <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">{sidePane}</div>}
+            {/* M29: the details page over the conversation, which stays mounted under it. */}
+            {pane === "main" && showDetails && current && (
+              <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">
+                <ChannelDetails
+                  controller={controller}
+                  channel={current}
+                  membersVersion={membersVersion}
+                  onClose={() => setDetailsOpen(false)}
+                  onDialog={(next) => {
+                    if (next === "link") setEditingLink(null);
+                    setDialog(next);
+                  }}
+                />
+              </div>
+            )}
           </div>
-          {/* Mounted only while on screen: a hidden timeline would mark messages read. */}
-          {pane === "main" && <main className="absolute inset-0 flex min-h-0 flex-col bg-canvas">{centre}</main>}
-          {pane === "main" && sidePane && <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">{sidePane}</div>}
-          {/* M29: the details page over the conversation, which stays mounted under it. */}
-          {pane === "main" && showDetails && current && (
-            <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">
-              <ChannelDetails
-                controller={controller}
-                channel={current}
-                membersVersion={membersVersion}
-                onClose={() => setDetailsOpen(false)}
-                onDialog={(next) => {
-                  if (next === "link") setEditingLink(null);
-                  setDialog(next);
-                }}
-              />
-            </div>
-          )}
+          {/* The bottom tabs, except in a conversation, a thread or the details page (Slack). */}
+          {showTabBar && <MobileTabBar controller={controller} tab={mobileTab} onTab={(value) => selectTab(value)} />}
           {overlays}
         </div>
       </BackToList.Provider>

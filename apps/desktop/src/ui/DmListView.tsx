@@ -1,0 +1,104 @@
+import { BellOff, Search, SquarePen, Users } from "lucide-react";
+import { useState } from "react";
+
+import type { AppController } from "../state/app";
+import type { ChannelState } from "../sync/types";
+import { Avatar, presenceLabel } from "./Avatar";
+import { badgeCount, hasUnread, isMutedChannel } from "./channels";
+import { fullTimestamp } from "./format";
+import { channelTitle } from "./MainScreen";
+import { dmList, dmTimeLabel, isSelfNotes } from "./mobileTabs";
+import { Badge, cn, IconButton } from "./primitives";
+import { activeStatus } from "./users";
+
+/**
+ * M34, the phone's DM tab (MOBILE_UI.md §6.3): my DMs and group DMs, 「自分へのメモ」 first, then the newest. A row shows
+ * the name and the time, the presence and status (the last message's preview comes with M37), unread in bold with its
+ * count.
+ */
+export function DmListView({ controller, onOpen, onNew }: { controller: AppController; onOpen: (id: string) => void; onNew: () => void }) {
+  const store = controller.store;
+  const meId = store.me?.id ?? controller.me?.id ?? null;
+  const [query, setQuery] = useState("");
+  const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query);
+  const now = new Date();
+  return (
+    <section aria-label="ダイレクトメッセージ" className="flex min-h-0 flex-1 flex-col bg-canvas">
+      <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line pl-4 pr-2">
+        <strong className="min-w-0 flex-1 truncate text-[17px]">ダイレクトメッセージ</strong>
+        <IconButton label="新しいメッセージ" className="h-11 w-11" onClick={onNew}>
+          <SquarePen size={20} />
+        </IconButton>
+      </header>
+      <div className="shrink-0 px-3 py-2">
+        <label className="flex h-10 items-center gap-2 rounded-xl bg-panel px-3 text-muted">
+          <Search size={16} className="shrink-0" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="DM を検索"
+            aria-label="DM を名前で絞り込む"
+            className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
+          />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {rows.length === 0 ? (
+          <p className="px-6 py-12 text-center text-sm text-muted">{query.trim() ? "一致する DM はありません" : "まだ DM はありません"}</p>
+        ) : (
+          <ul>
+            {rows.map((channel) => (
+              <DmRow key={channel.id} controller={controller} channel={channel} meId={meId} now={now} onOpen={() => onOpen(channel.id)} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppController; channel: ChannelState; meId: string | null; now: Date; onOpen: () => void }) {
+  const store = controller.store;
+  const others = (channel.dm_user_ids ?? []).filter((id) => id !== meId);
+  const self = isSelfNotes(channel, meId);
+  const other = others[0] ?? meId;
+  const single = others.length === 1 ? others[0]! : null;
+  const presence = single ? store.presenceOf(single) : undefined;
+  const status = single ? activeStatus(store.users.get(single)) : self && meId ? activeStatus(store.users.get(meId)) : null;
+  const unread = hasUnread(channel, meId);
+  const badge = badgeCount(channel);
+  const muted = isMutedChannel(channel);
+  const title = channelTitle(channel, controller);
+  const time = dmTimeLabel(channel.last_message_at, now);
+  const second = status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? `${others.length + 1} 人` : "";
+  return (
+    <li>
+      <button type="button" onClick={onOpen} className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-panel active:bg-panel">
+        {others.length > 1 ? (
+          <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-muted" aria-hidden="true">
+            <Users size={18} />
+          </span>
+        ) : other ? (
+          <Avatar id={other} name={store.users.get(other)?.display_name ?? "?"} size={40} className="rounded-xl" presence={presence} presenceClassName="border-2 border-canvas" />
+        ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className={cn("min-w-0 flex-1 truncate text-[15px]", unread ? "font-bold text-ink" : "font-medium text-ink/90")}>{title}</span>
+            {time && (
+              <span className={cn("shrink-0 text-xs", unread ? "font-semibold text-ink" : "text-muted")} title={channel.last_message_at ? fullTimestamp(channel.last_message_at) : undefined}>
+                {time}
+              </span>
+            )}
+          </span>
+          <span className="mt-0.5 flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{second}</span>
+            {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label="ミュート中" />}
+            {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}
+            {unread && badge === 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label="未読" />}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}

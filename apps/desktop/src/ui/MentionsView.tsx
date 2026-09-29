@@ -8,7 +8,12 @@ import { Button } from "./primitives";
 import { MessageCard } from "./PinsPane";
 
 /** The centre column 「メンション」 (M11h): messages that mention me or everyone, newest first. */
-export function MentionsView({ controller, onOpen }: { controller: AppController; onOpen: (message: MessageOut) => void }) {
+export function MentionsView({ controller, onOpen, embedded = false }: {
+  controller: AppController;
+  onOpen: (message: MessageOut) => void;
+  /** M34: inside the phone's activity tab, which has its own header. */
+  embedded?: boolean;
+}) {
   const [items, setItems] = useState<MessageOut[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -28,12 +33,14 @@ export function MentionsView({ controller, onOpen }: { controller: AppController
   }, [controller.api, controller.engine?.status]);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
-        <BackButton />
-        <span className="text-muted max-md:hidden"><AtSign size={18} /></span>
-        <strong className="shrink-0 whitespace-nowrap text-[15px]">メンション</strong>
-        <span className="min-w-0 truncate text-xs text-muted">自分宛てと @channel</span>
-      </header>
+      {!embedded && (
+        <header className="flex h-[52px] items-center gap-3 border-b border-line px-4">
+          <BackButton />
+          <span className="text-muted max-md:hidden"><AtSign size={18} /></span>
+          <strong className="shrink-0 whitespace-nowrap text-[15px]">メンション</strong>
+          <span className="min-w-0 truncate text-xs text-muted">自分宛てと @channel</span>
+        </header>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
           <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
