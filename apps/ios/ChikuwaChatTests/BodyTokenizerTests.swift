@@ -80,4 +80,13 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(excerpt.count, 80)
         XCTAssertTrue(excerpt.hasSuffix("…"))
     }
+
+    /// M28d: keyword pieces, case-insensitive, the longest keyword first, the rest of the text kept.
+    func testKeywordPiecesCutTheTextWhereTheKeywordsAre() {
+        let pieces = NotifyKeywords.pieces("Deadline は来週。deadline extension は無し", ["deadline", "deadline extension"])
+        XCTAssertEqual(pieces.map(\.text), ["Deadline", " は来週。", "deadline extension", " は無し"])
+        XCTAssertEqual(pieces.map(\.hit), [true, false, true, false])
+        XCTAssertEqual(NotifyKeywords.pieces("plain", nil).map(\.hit), [false])
+        XCTAssertEqual(NotifyKeywords.pieces("plain", [" "]).map(\.text), ["plain"])
+    }
 }

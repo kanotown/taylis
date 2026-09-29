@@ -233,6 +233,8 @@ struct MessageBodyView: View {
     /// The animated ones' frames by id: a body with one of them is drawn again as its frames change (GIF).
     var emojiAnimations: [String: EmojiAnimation] = [:]
     var onNeedEmojiImage: ((CustomEmojiOut) -> Void)? = nil
+    /// M12g: my notification keywords, highlighted where they occur (as on the web; M28d).
+    var keywords: [String] = []
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -355,6 +357,13 @@ struct MessageBodyView: View {
     }
 
     private func emojiText(_ text: String, height: CGFloat = CustomEmoji.inlineHeight) -> Text {
+        guard !keywords.isEmpty else { return plainEmojiText(text, height: height) }
+        return NotifyKeywords.pieces(text, keywords).reduce(Text("")) { sum, piece in
+            sum + (piece.hit ? Text(piece.text).bold().foregroundStyle(Color.accentColor) : plainEmojiText(piece.text, height: height))
+        }
+    }
+
+    private func plainEmojiText(_ text: String, height: CGFloat) -> Text {
         CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage, height: height)
     }
 
