@@ -7,6 +7,7 @@ import { fullTimestamp } from "./format";
 import { inviteErrorText, parseInviteLink } from "./invite";
 import { AuthShell } from "./LoginScreen";
 import { Button, Field, Input } from "./primitives";
+import { inviteLabLine } from "./roster";
 
 /** Joining with an invite link (M12h): paste the link, see who invites, choose a name and a password. */
 export function InviteScreen({ controller, onBack, onDone, initialLink }: { controller: AppController; onBack: () => void; onDone: () => void; initialLink?: string }) {
@@ -85,6 +86,7 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
               <div>
                 <span className="font-medium">{preview?.invited_by}</span> さんから招待されています{preview?.role === "admin" && " (管理者として参加します)"}
               </div>
+              {preview?.lab && <div className="mt-0.5 text-xs">{inviteLabLine(preview.lab)}</div>}
               {preview && preview.channels.length > 0 && <div className="mt-0.5 text-xs text-muted">参加するチャンネル: {preview.channels.map((name) => `#${name}`).join(" ")}</div>}
               {preview && <div className="text-xs text-muted">有効期限: {fullTimestamp(preview.expires_at)} · サーバ {target.server}</div>}
             </div>

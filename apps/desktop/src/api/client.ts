@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -527,6 +527,27 @@ export class ApiClient {
   /** My research topic and reading (404 roster_entry_not_found while I am not on the roster). */
   updateMyRosterLine(body: MyLabProfileUpdate): Promise<LabProfileOut> {
     return this.request("PATCH", "/api/v1/lab/roster/me", body);
+  }
+
+  // --- the yearly rollover (L7 / M32, administrators) -------------------------------------------
+
+  /** Every student with the proposed step and the channels a graduate would leave; `applied_at` while the year is in force. */
+  rolloverPreview(academicYear: number): Promise<RolloverPreviewOut> {
+    return this.request("POST", "/api/v1/lab/rollover/preview", { academic_year: academicYear });
+  }
+
+  /** One transaction for the year (409 rollover_applied while it is in force). */
+  applyRollover(body: RolloverApply): Promise<RolloverOut> {
+    return this.request("POST", "/api/v1/lab/rollovers", body);
+  }
+
+  /** Newest year first. */
+  rollovers(): Promise<RolloverOut[]> {
+    return this.request("GET", "/api/v1/lab/rollovers");
+  }
+
+  undoRollover(academicYear: number): Promise<RolloverOut> {
+    return this.request("POST", `/api/v1/lab/rollovers/${academicYear}/undo`);
   }
 
   // --- incoming webhooks (M13a) --------------------------------------------------------------

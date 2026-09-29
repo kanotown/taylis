@@ -593,7 +593,18 @@ export class SyncEngine {
       case "channel.updated": {
         const data = frame.data as { channel: ChannelOut; member_ids: string[] };
         const isMember = store.me !== null && data.member_ids.includes(store.me.id);
-        if (isMember || data.channel.type === "public") store.upsertChannel(data.channel, { isMember });
+        // A channel I made on another device: events carry no membership, but its creator is its owner, so the
+        // owner-only actions show before the next bootstrap (the same rule on every client).
+        const madeByMe =
+          frame.event === "channel.created" &&
+          isMember &&
+          data.channel.type !== "dm" &&
+          data.channel.type !== "group_dm" &&
+          data.channel.created_by === store.me?.id &&
+          !data.channel.membership &&
+          !store.getChannel(data.channel.id)?.membership;
+        if (madeByMe) store.upsertChannel(data.channel, { isMember, membership: { role: "owner", joined_at: data.channel.created_at } });
+        else if (isMember || data.channel.type === "public") store.upsertChannel(data.channel, { isMember });
         else if (store.getChannel(data.channel.id)) this.removeChannel(data.channel.id); // made private (M15b)
         return;
       }

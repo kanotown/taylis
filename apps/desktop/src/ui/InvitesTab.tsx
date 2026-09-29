@@ -1,11 +1,15 @@
 import { Ban, Copy, Link2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import type { InviteOut } from "../api/types";
+import { describeError } from "../api/errors";
+import type { Affiliation, FacultyRank, Grade, InviteOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
-import { INVITE_STATUS_LABELS, inviteLink, inviteUsesLabel } from "./invite";
+import { EMPTY_PRESET, INVITE_STATUS_LABELS, type InvitePresetForm, inviteLink, invitePreset, inviteUsesLabel } from "./invite";
 import { Badge, Button, cn, Field, Input } from "./primitives";
+import { AFFILIATIONS, GRADES, invitePresetSummary, RANKS } from "./roster";
+
+const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
 const USES = [
   ["1", "1 回 (1 人だけ)"],
@@ -35,6 +39,14 @@ export function InvitesTab({ controller }: { controller: AppController }) {
     expiry: "168" as (typeof EXPIRY)[number][0],
     channelIds: new Set(channels.filter((c) => c.name === "general").map((c) => c.id)),
   }));
+  const [preset, setPreset] = useState<InvitePresetForm>(EMPTY_PRESET);
+  // The admin toast sits behind this dialog: a failed issue (e.g. 422 invalid_supervisor) is said inside the form.
+  const [formError, setFormError] = useState<string | null>(null);
+  // The server takes faculty on the roster only as supervisors (422 invalid_supervisor).
+  const faculty = [...store.roster.values()]
+    .filter((line) => line.affiliation === "faculty")
+    .map((line) => store.users.get(line.user_id))
+    .filter((u): u is UserPublic => !!u && !u.deactivated_at);
 
   const load = async () => {
     if (!controller.api) return;
@@ -60,21 +72,30 @@ export function InvitesTab({ controller }: { controller: AppController }) {
     }
   };
 
-  const create = (event: FormEvent) => {
+  const create = async (event: FormEvent) => {
     event.preventDefault();
-    void run(async () => {
-      const api = controller.api!;
+    const api = controller.api!;
+    const lab = invitePreset(preset, form.role);
+    setBusy(true);
+    setFormError(null);
+    try {
       const created = await api.adminCreateInvite({
         note: form.note.trim() || null,
         role: form.role,
         max_uses: form.uses === "unlimited" ? null : Number(form.uses),
         expires_in_hours: Number(form.expiry),
         channel_ids: [...form.channelIds],
+        ...(lab ? { lab } : {}), // only when the section is on: older servers reject unknown fields
       });
       setIssued({ url: inviteLink(api.baseUrl, created.token), note: created.invite.note });
       setCreating(false);
       setForm((f) => ({ ...f, note: "" }));
-    });
+      await load();
+    } catch (error) {
+      setFormError(describeError(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const copy = async (url: string) => {
@@ -118,7 +139,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
         </Button>
       </div>
       {creating && (
-        <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={create}>
+        <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={(e) => void create(e)}>
           <Field label="メモ (任意、誰向けか)">
             <Input value={form.note} maxLength={80} autoFocus onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </Field>
@@ -151,6 +172,53 @@ export function InvitesTab({ controller }: { controller: AppController }) {
               {channels.length === 0 && <span className="text-xs text-muted">チャンネルがありません</span>}
             </div>
           </div>
+          <fieldset className="col-span-2 rounded-lg border border-line p-3">
+            <legend className="px-1">
+              <label className="flex items-center gap-1.5 text-sm font-medium">
+                <input type="checkbox" checked={preset.on} onChange={(e) => setPreset({ ...preset, on: e.target.checked })} />
+                研究室の名簿に載せる
+              </label>
+            </legend>
+            {preset.on ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="身分">
+                  <select value={preset.affiliation} onChange={(e) => setPreset({ ...preset, affiliation: e.target.value as Affiliation })} className={SELECT}>
+                    {AFFILIATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </Field>
+                {preset.affiliation === "faculty" && (
+                  <Field label="職位">
+                    <select value={preset.rank} onChange={(e) => setPreset({ ...preset, rank: e.target.value as FacultyRank | "" })} className={SELECT}>
+                      <option value="">指定しない</option>
+                      {RANKS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </Field>
+                )}
+                {preset.affiliation === "student" && (
+                  <Field label="学年">
+                    <select value={preset.grade} onChange={(e) => setPreset({ ...preset, grade: e.target.value as Grade | "" })} className={SELECT}>
+                      <option value="">指定しない</option>
+                      {[...GRADES].reverse().map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Field label="指導教員" hint={faculty.length === 0 ? "先に教員を名簿に載せると選べます" : undefined}>
+                  <select value={preset.supervisorId} onChange={(e) => setPreset({ ...preset, supervisorId: e.target.value })} className={SELECT} disabled={faculty.length === 0}>
+                    <option value="">なし</option>
+                    {faculty.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+                  </select>
+                </Field>
+                <label className={cn("col-span-2 flex items-center gap-1.5 text-sm", form.role === "guest" && "opacity-60")}>
+                  <input type="checkbox" checked={form.role !== "guest" && preset.times} disabled={form.role === "guest"} onChange={(e) => setPreset({ ...preset, times: e.target.checked })} />
+                  times を作る
+                  {form.role === "guest" && <span className="text-xs text-muted">(ゲストには作れません)</span>}
+                </label>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">参加と同時に名簿の行・学年グループ・times を用意します (例: 「2027 年度 B4」)。</p>
+            )}
+          </fieldset>
+          {formError && <p role="alert" className="col-span-2 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{formError}</p>}
           <div className="col-span-2 flex justify-end gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>キャンセル</Button>
             <Button type="submit" size="sm" disabled={busy}>リンクを発行</Button>
@@ -177,6 +245,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
                     {invite.channel_ids.length > 0 && ` · ${invite.channel_ids.map((id) => store.channels.get(id)?.name).filter(Boolean).map((name) => `#${name}`).join(" ")}`}
                     {invite.used_by.length > 0 && ` · 参加: ${invite.used_by.map(nameOf).join(", ")}`}
                   </div>
+                  {invite.lab && <div className="truncate text-[11px] text-muted">名簿: {invitePresetSummary(invite.lab, store.users)}</div>}
                 </div>
                 {active && (
                   <Button size="sm" variant="ghost" className="text-danger" title="このリンクを無効にする" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminRevokeInvite(invite.id); })}>

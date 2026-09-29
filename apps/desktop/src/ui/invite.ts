@@ -1,7 +1,7 @@
 /** Invite links (M12h): `<server>/invite/<token>`; the token is 20-128 URL-safe characters. */
 
 import { ApiError, describeError } from "../api/errors";
-import type { InviteOut } from "../api/types";
+import type { Affiliation, FacultyRank, Grade, InviteOut, LabPreset } from "../api/types";
 
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 
@@ -42,4 +42,31 @@ const ERROR_TEXT: Record<string, string> = {
 /** Invite failures in words; anything else gets the shared Japanese error text (ARCHITECTURE.md §9). */
 export function inviteErrorText(error: unknown): string {
   return (error instanceof ApiError ? ERROR_TEXT[error.code] : undefined) ?? describeError(error);
+}
+
+/** The invite form's 「研究室の名簿に載せる」 section (L7 / M32). */
+export interface InvitePresetForm {
+  on: boolean;
+  affiliation: Affiliation;
+  rank: FacultyRank | "";
+  grade: Grade | "";
+  supervisorId: string;
+  times: boolean;
+}
+
+export const EMPTY_PRESET: InvitePresetForm = { on: false, affiliation: "student", rank: "", grade: "", supervisorId: "", times: true };
+
+/**
+ * The `lab` to send, or undefined while the section is off (older servers reject unknown fields). Rank goes with
+ * faculty and grade with students only, as on the roster; a guest gets no times (400 guest_restricted).
+ */
+export function invitePreset(form: InvitePresetForm, role: string): LabPreset | undefined {
+  if (!form.on) return undefined;
+  return {
+    affiliation: form.affiliation,
+    rank: form.affiliation === "faculty" && form.rank ? form.rank : null,
+    grade: form.affiliation === "student" && form.grade ? form.grade : null,
+    supervisor_id: form.supervisorId || null,
+    times: role !== "guest" && form.times,
+  };
 }
