@@ -4,7 +4,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
 import { canEditLinks } from "./ChannelLinks";
-import { canMakePublic } from "./channels";
+import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
@@ -33,7 +33,9 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
   const canManage = controller.isAdmin || channel.membership?.role === "owner";
   const canEdit = channel.isMember && !channel.archived;
   const [members, setMembers] = useMembers(controller, channel.id, `${membersVersion}:${channel.member_count}`);
-  const level: NotificationLevel = channel.notificationLevel ?? (isChannel ? "mentions" : "all");
+  // M35: the conversation's own level (null = follows my overall setting, 「既定 (…)」).
+  const ownLevel: NotificationLevel | null = channel.notificationLevel ?? null;
+  const overall = overallLevel(controller.store.me ?? controller.me);
   const muteLabel = formatMuted(channel.mutedUntil);
   const title = channelTitle(channel, controller);
   return (
@@ -69,23 +71,36 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <section>
             <h3 className={HEADING}>通知</h3>
             <div role="radiogroup" aria-label="通知" className="mt-1">
-              {([["all", "すべてのメッセージ"], ["mentions", "メンションのみ"], ["none", "通知しない"]] as const).map(([value, label]) => (
-                <label key={value} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-panel">
+              {notificationChoices(overall).map((choice) => (
+                <label key={choice.value} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-panel">
                   <input
                     type="radio"
                     name={`notify-${channel.id}`}
                     className="h-4 w-4 accent-[var(--accent)]"
-                    checked={level === value}
-                    onChange={() => void controller.setNotification(channel.id, value, null)}
+                    checked={ownLevel === choice.level}
+                    // M35: a level change keeps both mutes (the timed one is sent back as it is, `muted` is left out).
+                    onChange={() => void controller.setNotification(channel.id, choice.level, channel.mutedUntil)}
                   />
-                  {label}
+                  {choice.label}
                 </label>
               ))}
             </div>
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-panel">
+              <input
+                type="checkbox"
+                role="switch"
+                className="h-4 w-4 accent-[var(--accent)]"
+                checked={!!channel.muted}
+                onChange={(e) => void controller.setNotification(channel.id, ownLevel, channel.mutedUntil, e.target.checked)}
+              />
+              <span>
+                ミュート <span className="ml-1 text-xs text-muted">解除するまで通知せず、メンションだけ未読にします</span>
+              </span>
+            </label>
             {muteLabel ? (
-              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, level, null)}>ミュート解除 ({muteLabel})</button>
+              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, null)}>ミュート解除 ({muteLabel})</button>
             ) : (
-              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</button>
+              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</button>
             )}
           </section>
         )}

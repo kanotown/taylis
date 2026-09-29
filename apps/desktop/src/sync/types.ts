@@ -34,9 +34,14 @@ export interface ChannelState extends ChannelOut {
    * the start is reached; null while no timeline is loaded). Only rows at or after it are shown.
    */
   oldestLoadedSeq: number | null;
-  /** Per-user notification preference (PUSH_NOTIFICATIONS.md §4); null = the channel type's default. */
+  /**
+   * My notification preference (PUSH_NOTIFICATIONS.md §4): the conversation's OWN level, null while it follows my
+   * overall setting (M35; the server's `level` is resolved, `follows_default` says which). ui/channels.ts resolves it.
+   */
   notificationLevel: NotificationLevel | null;
   mutedUntil: string | null;
+  /** M35: muted until unmuted (rows persisted earlier lack it: not muted). */
+  muted?: boolean;
 }
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */

@@ -1,4 +1,5 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
+import { isMutedChannel, type NotifyLevel } from "../sync/notifications";
 import type { ChannelState, SidebarSectionOut, UserPublic } from "../sync/types";
 
 export function isDmChannel(channel: ChannelState): boolean {
@@ -75,13 +76,41 @@ export function canMakePublic(channel: ChannelState, isAdmin: boolean): boolean 
   return channel.type === "private" && isAdmin && channel.isMember;
 }
 
-/** Level "none" or an active timed mute. */
-export function isMutedChannel(channel: ChannelState, now: Date = new Date()): boolean {
-  if (channel.notificationLevel === "none") return true;
-  if (!channel.mutedUntil) return false;
-  const until = new Date(channel.mutedUntil).getTime();
-  return !Number.isNaN(until) && until > now.getTime();
+// --- notification level and mute (M35; the rules live in sync/notifications.ts, which the engine uses too) --------
+
+export { DEFAULT_OVERALL_LEVEL, effectiveNotificationLevel, isMutedChannel, isTimedMuted, overallLevel, ownNotification, resolveNotificationLevel } from "../sync/notifications";
+export type { NotifyLevel } from "../sync/notifications";
+
+/** The overall setting's choices, as the settings and a conversation's 「既定 (…)」 name them. */
+export const OVERALL_LEVEL_LABELS: Record<NotifyLevel, string> = {
+  all: "すべての新着メッセージ",
+  mentions: "メンションと DM のみ",
+  none: "なし",
+};
+
+/** A conversation's own levels, as its notification menu names them. */
+export const CHANNEL_LEVEL_LABELS: Record<NotifyLevel, string> = {
+  all: "すべてのメッセージ",
+  mentions: "メンションのみ",
+  none: "通知しない",
+};
+
+/** The value a conversation's notification menu uses for "no level of its own" (radio values cannot be null). */
+export const FOLLOW_DEFAULT = "default";
+
+/**
+ * A conversation's notification menu: 「既定 (<my overall setting>)」 (level null), then its own levels. The first label
+ * follows the overall setting, so it changes when that does.
+ */
+export function notificationChoices(overall: NotifyLevel): Array<{ value: typeof FOLLOW_DEFAULT | NotifyLevel; level: NotifyLevel | null; label: string }> {
+  return [
+    { value: FOLLOW_DEFAULT, level: null, label: `既定 (${OVERALL_LEVEL_LABELS[overall]})` },
+    ...(["all", "mentions", "none"] as const).map((level) => ({ value: level, level, label: CHANNEL_LEVEL_LABELS[level] })),
+  ];
 }
+
+/** The footnote under the overall setting. */
+export const OVERALL_LEVEL_NOTE = "チャンネルごとの設定が優先されます。DM は『なし』以外なら常に通知されます。";
 
 /**
  * M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a faint dot

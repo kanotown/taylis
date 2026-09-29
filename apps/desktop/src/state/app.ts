@@ -859,14 +859,24 @@ export class AppController {
     }
   }
 
-  async setNotification(channelId: string, level: NotificationLevel, mutedUntil: string | null = null): Promise<void> {
+  /**
+   * A conversation's notifications (PUSH_NOTIFICATIONS.md §4): its own level (null: follow my overall setting, M35),
+   * the timed mute, and the mute until unmuted (`muted`; omitted = unchanged).
+   */
+  async setNotification(channelId: string, level: NotificationLevel | null, mutedUntil: string | null = null, muted?: boolean): Promise<void> {
     if (!this.api) return;
     try {
-      const out = await this.api.setNotificationPreference(channelId, level, mutedUntil);
-      this.store.setNotification(channelId, out.level, out.muted_until ?? null);
+      const out = await this.api.setNotificationPreference(channelId, level, mutedUntil, muted);
+      // An older server's answer lacks follows_default: what was asked for tells whether the level is the channel's own.
+      this.store.applyNotificationPreference({ ...out, channel_id: channelId, follows_default: out.follows_default ?? level === null });
     } catch (error) {
       this.setError(error);
     }
+  }
+
+  /** M35: my overall notification setting (「通知」 in the settings); other devices learn it on their next bootstrap. */
+  setNotificationDefault(level: NotificationLevel): Promise<boolean> {
+    return this.updateProfile({ notification_default: level });
   }
 
   /** M11d: profile card fields (title, custom status). Null clears; omitted fields keep their value. */
@@ -1516,7 +1526,8 @@ export class AppController {
       const name = handle.replace(/^@/, "").toLowerCase();
       return [...this.store.users.values()].find((u) => u.username.toLowerCase() === name);
     };
-    const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
+    // M35: /mute and /unmute keep the conversation's own level (null while it follows the overall setting).
+    const level = channel.notificationLevel;
     switch (command.name) {
       case "help": {
         // M30: the templates too, after the commands.
@@ -1616,7 +1627,8 @@ export class AppController {
         return true;
       }
       case "unmute":
-        await this.setNotification(channel.id, level, null);
+        // Ends both mutes: the timed one and the one until unmuted (M35).
+        await this.setNotification(channel.id, level, null, false);
         this.setNotice("通知を再開しました");
         return true;
       case "me":

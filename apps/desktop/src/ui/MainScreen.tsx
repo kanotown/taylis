@@ -5,13 +5,13 @@ import type { AppController } from "../state/app";
 import type { ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { canMakePublic, canPostTopLevel, conversationTitle, hasUnread, isDmChannel, myName, sectionChannels, stepChannel } from "./channels";
+import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
 import { PANE_DEFAULT, PANE_MAX, PANE_MIN, readPaneWidth, readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writePaneWidth, writeSidebarWidth } from "./prefs";
-import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
+import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
@@ -611,7 +611,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   };
 
   const muteLabel = current ? formatMuted(current.mutedUntil) : null;
-  const level: NotificationLevel = current?.notificationLevel ?? (current && (current.type === "dm" || current.type === "group_dm") ? "all" : "mentions");
+  // M35: the conversation's own level (null = follows my overall setting) and what it comes to.
+  const ownLevel: NotificationLevel | null = current?.notificationLevel ?? null;
+  const overall = overallLevel(store.me ?? controller.me);
+  const silenced = !!current && (effectiveNotificationLevel(current, store.me?.id ?? null, overall) === "none" || isMutedChannel(current));
   const isChannel = current?.type === "public" || current?.type === "private";
   const canManage = !!current && (controller.isAdmin || current.membership?.role === "owner");
   const [busyAction, setBusyAction] = useState(false);
@@ -846,23 +849,30 @@ export function MainScreen({ controller }: { controller: AppController }) {
                       type="button"
                       aria-label="通知設定"
                       title="通知設定"
-                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", (level === "none" || muteLabel) ? "text-muted" : "text-ink")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", silenced ? "text-muted" : "text-ink")}
                     >
-                      {level === "none" || muteLabel ? <BellOff size={18} /> : <Bell size={18} />}
+                      {silenced ? <BellOff size={18} /> : <Bell size={18} />}
                     </button>
                   </MenuTrigger>
                   <MenuContent>
                     <MenuLabel>通知</MenuLabel>
-                    <MenuRadioGroup value={level} onValueChange={(value) => void controller.setNotification(current.id, value as NotificationLevel, null)}>
-                      <MenuRadioItem value="all">すべてのメッセージ</MenuRadioItem>
-                      <MenuRadioItem value="mentions">メンションのみ</MenuRadioItem>
-                      <MenuRadioItem value="none">通知しない</MenuRadioItem>
+                    {/* M35: a level change keeps both mutes (the timed one is sent back as it is, `muted` is left out). */}
+                    <MenuRadioGroup
+                      value={ownLevel ?? FOLLOW_DEFAULT}
+                      onValueChange={(value) => void controller.setNotification(current.id, value === FOLLOW_DEFAULT ? null : (value as NotificationLevel), current.mutedUntil)}
+                    >
+                      {notificationChoices(overall).map((choice) => (
+                        <MenuRadioItem key={choice.value} value={choice.value}>{choice.label}</MenuRadioItem>
+                      ))}
                     </MenuRadioGroup>
                     <MenuSeparator />
+                    <MenuCheckboxItem checked={!!current.muted} onCheckedChange={(on) => void controller.setNotification(current.id, ownLevel, current.mutedUntil, on === true)}>
+                      ミュート
+                    </MenuCheckboxItem>
                     {muteLabel ? (
-                      <MenuItem onSelect={() => void controller.setNotification(current.id, level, null)}>ミュート解除 ({muteLabel})</MenuItem>
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, null)}>ミュート解除 ({muteLabel})</MenuItem>
                     ) : (
-                      <MenuItem onSelect={() => void controller.setNotification(current.id, level, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
                     )}
                   </MenuContent>
                 </Menu>

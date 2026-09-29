@@ -1,5 +1,6 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { LabProfileOut, TemplateOut } from "../api/types";
+import type { LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
 
 /** Write-through persistence (SQLite in Tauri). Everything is also kept in memory. */
@@ -338,8 +339,10 @@ export class Store {
       pendingReadSeq: existing?.pendingReadSeq ?? null,
       hasOlder: existing?.hasOlder ?? true,
       oldestLoadedSeq: existing?.oldestLoadedSeq ?? null,
-      notificationLevel: channel.notification?.level ?? existing?.notificationLevel ?? null,
-      mutedUntil: channel.notification ? (channel.notification.muted_until ?? null) : (existing?.mutedUntil ?? null),
+      // M35: the conversation's own level (null while it follows my overall setting) and both mutes.
+      ...(channel.notification
+        ? ownNotification(channel.notification)
+        : { notificationLevel: existing?.notificationLevel ?? null, mutedUntil: existing?.mutedUntil ?? null, muted: existing?.muted ?? false }),
       ...patch,
     };
     this.channels.set(channel.id, merged);
@@ -349,8 +352,16 @@ export class Store {
     return merged;
   }
 
-  setNotification(channelId: string, level: NotificationLevel, mutedUntil: string | null): void {
-    this.updateChannel(channelId, { notificationLevel: level, mutedUntil });
+  /** The conversation's own level (null = follows my overall setting), timed mute and mute until unmuted (M35). */
+  setNotification(channelId: string, level: NotificationLevel | null, mutedUntil: string | null, muted = false): void {
+    this.updateChannel(channelId, { notificationLevel: level, mutedUntil, muted });
+  }
+
+  /** A preference as the server sends it (the PUT's response, notification_preference.updated). */
+  applyNotificationPreference(
+    pref: Pick<NotificationPreferenceOut, "channel_id" | "level"> & Partial<Pick<NotificationPreferenceOut, "muted_until" | "follows_default" | "muted">>,
+  ): void {
+    this.updateChannel(pref.channel_id, ownNotification(pref));
   }
 
   updateChannel(id: string, patch: Partial<ChannelState>): ChannelState | undefined {
@@ -840,7 +851,7 @@ export class Store {
 
 /** A channel row as persisted; rows from older versions lack the §7.3 range, the §10 unsent mark and the §10.1 time. */
 function restoredChannel(row: ChannelState): ChannelState {
-  const channel: ChannelState = { ...row, pendingReadSeq: row.pendingReadSeq ?? null, firstUnreadAt: row.firstUnreadAt ?? null };
+  const channel: ChannelState = { ...row, pendingReadSeq: row.pendingReadSeq ?? null, firstUnreadAt: row.firstUnreadAt ?? null, muted: row.muted ?? false };
   if ((row as Partial<ChannelState>).oldestLoadedSeq === undefined) {
     // Fully paged back: the range starts at 0. Otherwise the range is unknown: reload the latest page.
     channel.oldestLoadedSeq = row.syncedSeq !== null && !row.hasOlder ? 0 : null;

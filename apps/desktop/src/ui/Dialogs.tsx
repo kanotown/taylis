@@ -6,7 +6,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar, presenceLabel } from "./Avatar";
-import { myName, SELF_NOTES_HINT } from "./channels";
+import { myName, OVERALL_LEVEL_LABELS, OVERALL_LEVEL_NOTE, overallLevel, SELF_NOTES_HINT } from "./channels";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
@@ -578,6 +578,23 @@ export function SettingsBody({ controller, onClose, onStatus, className }: { con
         <TemplatesSettings controller={controller} />
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">通知</h3>
+          {/* M35: the overall setting; a conversation with a level of its own follows that instead (PUSH_NOTIFICATIONS.md §4). */}
+          <div role="radiogroup" aria-label="通知" className="rounded-xl border border-line p-1">
+            {(["all", "mentions", "none"] as const).map((level) => (
+              <label key={level} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
+                <input
+                  type="radio"
+                  name="notification-default"
+                  className="h-4 w-4 accent-[var(--accent)]"
+                  checked={overallLevel(me) === level}
+                  disabled={busy}
+                  onChange={() => { setBusy(true); void controller.setNotificationDefault(level).finally(() => setBusy(false)); }}
+                />
+                {OVERALL_LEVEL_LABELS[level]}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted">{OVERALL_LEVEL_NOTE}</p>
           <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
             <Bell size={18} className={permission === "granted" ? "text-success" : "text-muted"} />
             <div className="min-w-0 flex-1 text-sm">
