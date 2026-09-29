@@ -548,11 +548,13 @@ CREATE TABLE lab_rollovers (
   進級、M2・D3 は卒業)、進級後の学年、times、卒業したら外れるチャンネル (自分の times 以外の公開・非公開) を返す。
   その年度が適用中なら `applied_at`。
 - `POST /lab/rollovers {academic_year, items: [{user_id, action: advance | stay | graduate, guest, keep_channel_ids}],
-  alumni_channel_id}` (admin): 1 トランザクションで適用する。適用中の年度は `409 rollover_applied`、学生でない人は
+  stay_channel_ids, alumni_channel_id}` (admin)。`stay_channel_ids` (20 個まで) は卒業生全員が入って残るチャンネル
+  (OB・OG 用、全体連絡など。`alumni_channel_id` は 1 つだけの古い書き方で、同じ扱い)。研究室の既定の運用は「ゲストにする」を
+  オンにし、卒業生にはこれらのチャンネルと DM だけが見えるようにする (2026-09-29 の利用者の決定): 1 トランザクションで適用する。適用中の年度は `409 rollover_applied`、学生でない人は
   `422 rollover_not_student`、D3 の進級は `422 rollover_cannot_advance`。
   - advance は学年を 1 つ上げる、stay は何もしない (記録だけ)。
   - graduate: 名簿を alumni に (学年と職位を外す。指導教員は残す)、自分の times をアーカイブ (本人はオーナーのまま)、
-    `keep_channel_ids` と卒業生のチャンネル以外の公開・非公開チャンネルから外す (DM は残す)、卒業生のチャンネルに加える、
+    `keep_channel_ids` と `stay_channel_ids` 以外の公開・非公開チャンネルから外す (DM は残す)、`stay_channel_ids` に加える、
     `guest` ならロールを guest にする (その人の接続は張り直させ、見える範囲がすぐ狭まる)。自分自身はゲストにできない。
   - 名簿の変化は人ごとに `roster.updated`、管理グループは最後に 1 回揃える。監査ログ `lab.rollover_applied`。
 - `GET /lab/rollovers`: 年度の新しい順 (進級・据え置き・卒業の人数、取り消し済みか)。

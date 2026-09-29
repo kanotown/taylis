@@ -32,16 +32,20 @@ export function defaultChoice(item: RolloverPreviewItem, guestByDefault: boolean
   return { action, guest: guestByDefault, keep: new Set() };
 }
 
-/** Everyone in the preview, as chosen: guest and kept channels only for graduates, the alumni channel if picked. */
+/**
+ * Everyone in the preview, as chosen: guest and kept channels only for graduates; the channels every graduate joins and
+ * stays in (the OB/OG one, the all-hands one: with DMs, all a graduate still sees).
+ */
 export function rolloverBody(
   year: number,
   items: readonly RolloverPreviewItem[],
   choices: ReadonlyMap<string, RolloverChoice>,
-  alumniChannelId: string | null,
+  stayChannelIds: readonly string[],
 ): RolloverApply {
+  const stay = new Set(stayChannelIds);
   return {
     academic_year: year,
-    alumni_channel_id: alumniChannelId || null,
+    stay_channel_ids: [...stay],
     items: items.map((item) => {
       const choice = choices.get(item.user_id) ?? defaultChoice(item, false);
       const graduate = choice.action === "graduate";
@@ -50,7 +54,7 @@ export function rolloverBody(
         user_id: item.user_id,
         action: choice.action,
         guest: graduate && choice.guest,
-        keep_channel_ids: graduate ? [...choice.keep].filter((id) => listed.has(id) && id !== alumniChannelId) : [],
+        keep_channel_ids: graduate ? [...choice.keep].filter((id) => listed.has(id) && !stay.has(id)) : [],
       };
     }),
   };

@@ -3,7 +3,8 @@ grade, keeps them where they are, or lets them graduate, in one transaction.
 
 A graduate becomes alumni on the roster (the managed groups follow), their times is archived
 (read-only, still searchable), they may become a guest, and they leave every public and private
-channel except the ones kept for them and the alumni channel, which they join. Leaving matters: a
+channel except the ones kept for them and the channels every graduate stays in (the OB/OG and the
+all-hands ones), which they join. Leaving matters: a
 guest sees what they belong to, so changing the role alone would keep the lab's channels in view.
 DMs stay. What each person was before is kept, so a rollover can be undone; the same year cannot
 be applied twice while it is in force.
@@ -118,11 +119,14 @@ async def apply(
     if existing is not None:
         await db.delete(existing)  # undone: this one takes its place (the audit log keeps both)
         await db.flush()
-    alumni = None
-    if data.alumni_channel_id is not None:
-        alumni = await channels.find_channel(db, data.alumni_channel_id)
-        if alumni is None or alumni.is_dm or alumni.is_archived:
-            raise AppError(422, "invalid_alumni_channel", "Pick a live public or private channel")
+    stay: list[Any] = []
+    for channel_id in dict.fromkeys(
+        ([data.alumni_channel_id] if data.alumni_channel_id else []) + data.stay_channel_ids
+    ):
+        channel = await channels.find_channel(db, channel_id)
+        if channel is None or channel.is_dm or channel.is_archived:
+            raise AppError(422, "invalid_alumni_channel", "Pick live public or private channels")
+        stay.append(channel)
     if len({i.user_id for i in data.items}) != len(data.items):
         raise AppError(422, "rollover_duplicate", "Each person appears once")
     records: list[dict[str, Any]] = []
@@ -147,7 +151,7 @@ async def apply(
             row.grade = next_grade
         elif item.action == "graduate":
             await _graduate(
-                db, actor, item.user_id, row, item.guest, set(item.keep_channel_ids), alumni, record
+                db, actor, item.user_id, row, item.guest, set(item.keep_channel_ids), stay, record
             )
             if record["role"] is not None:
                 role_changed.append(item.user_id)
@@ -155,7 +159,7 @@ async def apply(
         records.append(record)
     await db.flush()
     await _announce(db, actor, [uuid.UUID(r["user_id"]) for r in records])
-    before = {"alumni_channel_id": str(alumni.id) if alumni else None, "items": records}
+    before = {"stay_channel_ids": [str(c.id) for c in stay], "items": records}
     rollover = LabRollover(academic_year=data.academic_year, applied_by=actor.id, before=before)
     db.add(rollover)
     await db.flush()
@@ -178,7 +182,7 @@ async def _graduate(
     row: LabProfile,
     guest: bool,
     keep: set[uuid.UUID],
-    alumni: Any,
+    stay: list[Any],
     record: dict[str, Any],
 ) -> None:
     row.affiliation = "alumni"
@@ -188,14 +192,15 @@ async def _graduate(
     if times is not None and await channels.set_archived_in_tx(db, times, True):
         record["archived_times"] = str(times.id)
     for channel, role in await channels.conversations_of(db, user_id):
-        if channel.id in keep or (alumni is not None and channel.id == alumni.id):
+        if channel.id in keep or any(channel.id == c.id for c in stay):
             continue
         if channel.times_owner_id == user_id:
             continue  # their own times stays theirs, archived
         if await channels.remove_member_in_tx(db, channel, user_id):
             record["left"].append({"channel_id": str(channel.id), "role": role})
-    if alumni is not None and await channels.add_member_in_tx(db, alumni, user_id):
-        record["joined"].append(str(alumni.id))
+    for channel in stay:
+        if await channels.add_member_in_tx(db, channel, user_id):
+            record["joined"].append(str(channel.id))
     if guest:
         user = await users.require_user(db, user_id)
         if user.id == actor.id:

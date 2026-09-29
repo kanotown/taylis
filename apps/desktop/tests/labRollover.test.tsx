@@ -225,13 +225,13 @@ describe("年度更新 (L7)", () => {
     fireEvent.click(within(within(rowOf("Bob")).getByRole("group", { name: "Bob の残すチャンネル" })).getByRole("checkbox", { name: "🔒paper" }));
     fireEvent.change(actionOf("Carol"), { target: { value: "stay" } });
     expect(within(rowOf("Carol")).queryByRole("checkbox", { name: "ゲストにする" })).toBeNull();
-    fireEvent.change(selectIn("卒業生のチャンネル (任意、卒業・修了する人が加わります)"), { target: { value: w.alumni.id } });
+    fireEvent.click(within(screen.getByRole("group", { name: /卒業生が入って残るチャンネル/ })).getByRole("checkbox", { name: "#alumni" }));
 
     fireEvent.click(screen.getByRole("button", { name: "適用…" }));
     const dialog = screen.getByRole("dialog", { name: "2026 年度の年度更新を適用しますか？" });
     expect(within(dialog).getByText("卒業・修了: 2 人 (うちゲストにする 1 人)")).toBeTruthy();
     expect(within(dialog).getByText(/DM は残ります/)).toBeTruthy();
-    expect(within(dialog).getByText("卒業生のチャンネル: #alumni")).toBeTruthy();
+    expect(within(dialog).getByText("卒業生が入って残るチャンネル: #alumni")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "適用する" }));
     await flush();
     await flush();
@@ -239,7 +239,7 @@ describe("年度更新 (L7)", () => {
     expect(w.calls.applied).toEqual([
       {
         academic_year: 2026,
-        alumni_channel_id: w.alumni.id,
+        stay_channel_ids: [w.alumni.id],
         items: [
           { user_id: w.carol.id, action: "stay", guest: false, keep_channel_ids: [] },
           { user_id: w.me.id, action: "graduate", guest: false, keep_channel_ids: [] },
@@ -287,10 +287,10 @@ describe("年度更新 (L7)", () => {
   it("sends kept channels only for graduates and only from their own list", () => {
     const item = { user_id: "u", grade: "B4" as const, next_grade: "M1" as const, action: "advance" as const, times_channel_id: null, channels: [{ id: "a", name: "a", type: "public" }] };
     const choices = new Map<string, RolloverChoice>([["u", { action: "advance", guest: true, keep: new Set(["a"]) }]]);
-    expect(rolloverBody(2026, [item], choices, null).items[0]).toEqual({ user_id: "u", action: "advance", guest: false, keep_channel_ids: [] });
+    expect(rolloverBody(2026, [item], choices, []).items[0]).toEqual({ user_id: "u", action: "advance", guest: false, keep_channel_ids: [] });
     choices.set("u", { action: "graduate", guest: true, keep: new Set(["a", "elsewhere"]) });
-    expect(rolloverBody(2026, [item], choices, "").items[0]).toEqual({ user_id: "u", action: "graduate", guest: true, keep_channel_ids: ["a"] });
-    expect(rolloverBody(2026, [item], choices, "a")).toMatchObject({ alumni_channel_id: "a", items: [{ keep_channel_ids: [] }] });
+    expect(rolloverBody(2026, [item], choices, []).items[0]).toEqual({ user_id: "u", action: "graduate", guest: true, keep_channel_ids: ["a"] });
+    expect(rolloverBody(2026, [item], choices, ["a"])).toMatchObject({ stay_channel_ids: ["a"], items: [{ keep_channel_ids: [] }] });
   });
 });
 

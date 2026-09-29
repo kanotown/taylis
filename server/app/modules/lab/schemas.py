@@ -155,6 +155,9 @@ class RolloverApply(BaseModel):
     items: list[RolloverItem] = Field(min_length=1, max_length=200)
     # Graduates join it (#alumni), and stay in it.
     alumni_channel_id: UUID | None = None
+    # More channels every graduate joins and stays in (the OB/OG channel, the all-hands one…); with
+    # the kept ones per person and their DMs, all a graduate still sees.
+    stay_channel_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
 class RolloverOut(BaseModel):
