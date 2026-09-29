@@ -499,6 +499,14 @@ final class SyncEngine {
             let isMember = store.me.map { payload.memberIds.contains($0.id) } ?? false
             if isMember || payload.channel.type == "public" {
                 store.upsertChannel(payload.channel, isMember: isMember)
+                // A channel I made on another device: the event carries no membership, but its maker owns it (else the
+                // owner actions only came with the next bootstrap).
+                if frame.event == "channel.created", isMember, !payload.channel.isDm, payload.channel.createdBy == store.me?.id,
+                   store.channel(payload.channel.id)?.channel.membership == nil {
+                    store.updateChannel(payload.channel.id) { state in
+                        state.channel.membership = MembershipOut(role: "owner", joinedAt: payload.channel.createdAt)
+                    }
+                }
             } else if store.channel(payload.channel.id) != nil {
                 store.removeChannel(payload.channel.id) // made private while I am not a member (M15b)
             }

@@ -5,6 +5,19 @@ enum Invite {
     private static let token = try! NSRegularExpression(pattern: "^[A-Za-z0-9_-]{20,128}$")
     private static let link = try! NSRegularExpression(pattern: "^\\s*(https?://[^\\s/?#]+)/invite/([^\\s/?#]+)", options: [.caseInsensitive])
 
+    /// L7: 「研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。」
+    static func labLine(_ lab: InviteLabPreview) -> String {
+        let affiliation = Roster.affiliations.first { $0.value == lab.affiliation }?.label ?? "研究室のメンバー"
+        var label = affiliation
+        if lab.affiliation == "faculty", let rank = Roster.ranks.first(where: { $0.value == lab.rank })?.label { label = rank }
+        if lab.affiliation == "student", let grade = lab.grade { label = "\(affiliation) (\(grade))" }
+        var line = "研究室の名簿に \(label)"
+        if let supervisor = lab.supervisorName { line += "・指導教員 \(supervisor)" }
+        line += " として載ります。"
+        if lab.times { line += "times を作ります。" }
+        return line
+    }
+
     static func url(base: URL, token: String) -> String {
         var text = base.absoluteString
         while text.hasSuffix("/") { text.removeLast() }

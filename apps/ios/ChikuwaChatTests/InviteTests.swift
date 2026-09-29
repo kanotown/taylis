@@ -25,4 +25,12 @@ final class InviteTests: XCTestCase {
         XCTAssertNil(Invite.errorText(ApiError.api(status: 500, code: "server_error", message: "boom")))
         XCTAssertNil(Invite.errorText(ApiError.network(URLError(.notConnectedToInternet))))
     }
+
+    /// L7: an invite's lab preset in words on the acceptance screen.
+    func testDescribesTheLabPreset() {
+        XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "student", grade: "B4", supervisorName: "加納", times: true)),
+                       "研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。")
+        XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "faculty", rank: "professor")), "研究室の名簿に 教授 として載ります。")
+        XCTAssertEqual(Invite.labLine(InviteLabPreview(affiliation: "other")), "研究室の名簿に その他 として載ります。")
+    }
 }

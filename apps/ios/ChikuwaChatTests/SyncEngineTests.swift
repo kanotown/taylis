@@ -724,6 +724,30 @@ final class SyncEngineTests: XCTestCase {
         engine.stop()
     }
 
+    /// A channel I made on another device arrives by channel.created without a membership: I own it (its owner actions
+    /// show at once); one someone else made that I was added to does not become mine.
+    func testChannelIMadeElsewhereIsMine() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        await engine.start()
+        await settle(engine)
+        let mine = server.createChannel("made-on-the-web", ownerId: alice.id)
+        server.emitMembership(mine.id, alice.id)
+        let theirs = server.createChannel("bobs", ownerId: bob.id)
+        server.join(theirs.id, alice.id)
+        server.emitMembership(theirs.id, alice.id)
+        await settle(engine)
+        XCTAssertEqual(store.channel(mine.id)?.channel.membership?.role, "owner")
+        XCTAssertNil(store.channel(theirs.id)?.channel.membership)
+        engine.stop()
+    }
+
     func testL4FieldsDecode() throws {
         let reminder = try JSON.snakeDecoder.decode(ReminderOut.self, from: Data(#"{"id":"r","message_id":"m","channel_id":"c","note":"Alice さんから確認のお願い","preview":"p","remind_at":"2026-09-29T00:00:00Z","status":"fired","fired_at":null,"created_at":"2026-09-29T00:00:00Z","kind":"ack"}"#.utf8))
         XCTAssertEqual(reminder.kind, "ack")

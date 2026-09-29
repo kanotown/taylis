@@ -355,6 +355,9 @@ else:
 
 `channel.*` イベントはデータを伴うのでそのまま反映する。取りこぼしは次回 bootstrap で回復する。
 `channel.member_removed` が自分宛てなら、そのチャンネルのローカルデータを削除する。
+`channel.created` は受け手ごとの membership を持たない。DM でなく、`member_ids` に自分が入り、`created_by` が自分で、
+手元に membership が無いときは、role owner (`joined_at` はチャンネルの `created_at`) として持つ (M32。別の端末で作った
+チャンネルで、次の bootstrap までオーナーの操作が出なかった)。
 
 ### 7.6.1 参加前のプレビュー (M27)
 
