@@ -911,7 +911,7 @@ export class AppController {
 
   /**
    * Open (or create) the DM with one user; returns its channel id. The existing one has exactly that user and me as its
-   * members, so my own id finds 「自分へのメモ」 (made on the first call), not one of my 1:1 DMs.
+   * members, so my own id finds my own DM (made on the first call), not one of my 1:1 DMs.
    */
   async openDmWith(userId: string): Promise<string | null> {
     if (!this.api) return null;

@@ -221,14 +221,14 @@ it("badges: DM counts unread DMs, activity the unread threads (+ channels with a
   w.engine.stop();
 });
 
-it("the DM tab: 「自分へのメモ」 first, then by the last message, times, unread bold with its count, a name filter, 「新しいメッセージ」; a row opens on the DM tab", async () => {
+it("the DM tab: my own DM (titled with my name) first, then by the last message, times, unread bold with its count, a name filter, 「新しいメッセージ」; a row opens on the DM tab", async () => {
   const { w, dmId } = await setup();
   await tap("dm");
   expect(selected()).toBe("dm");
   const list = within(root("dm")!);
   const rows = list.getAllByRole("listitem");
   const name = (row: HTMLElement) => row.querySelector<HTMLElement>("span.text-\\[15px\\]")!;
-  expect(rows.map((row) => name(row).textContent)).toEqual(["自分へのメモ", "Alice"]);
+  expect(rows.map((row) => name(row).textContent)).toEqual(["Bob", "Alice"]);
   const alice = rows[1]!;
   expect(alice.textContent).toMatch(/\d{1,2}:\d{2}/); // today: the time
   expect(name(alice).className).toContain("font-bold");
@@ -257,18 +257,19 @@ it("the DM tab: 「自分へのメモ」 first, then by the last message, times,
   w.engine.stop();
 });
 
-it("the DM tab without 「自分へのメモ」: a placeholder row first (my picture, 「自分だけが見られる DM」); one tap makes the DM once and opens it on the DM tab", async () => {
+it("the DM tab without my own DM: a placeholder row first (my picture and name, nothing else); one tap makes the DM once and opens it on the DM tab", async () => {
   const { w, controller, createDm } = await setup({ notes: false });
   await tap("dm");
   const list = within(root("dm")!);
   const placeholder = () => root("dm")!.querySelector<HTMLButtonElement>("[data-self-notes-placeholder]");
   const names = () => list.getAllByRole("listitem").map((row) => row.querySelector<HTMLElement>("span.text-\\[15px\\]")!.textContent);
-  expect(names()).toEqual(["自分へのメモ", "Alice"]);
-  expect(placeholder()!.textContent).toContain("自分だけが見られる DM");
+  expect(names()).toEqual(["Bob", "Alice"]);
+  expect(placeholder()!.textContent).toMatch(/Bob$/); // the avatar, then my name; no second line
+  expect(placeholder()!.querySelector(".text-\\[13px\\]")).toBeNull();
 
-  // The filter: the placeholder stays while 「自分へのメモ」 contains it, and then the list is not 「empty」.
-  fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: "メモ" } });
-  expect(names()).toEqual(["自分へのメモ"]);
+  // The filter: the placeholder stays while my name contains it (ignoring case), and then the list is not 「empty」.
+  fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: " bO " } });
+  expect(names()).toEqual(["Bob"]);
   expect(list.queryByText("一致する DM はありません")).toBeNull();
   fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: "ali" } });
   expect(placeholder()).toBeNull();
@@ -303,7 +304,47 @@ it("the DM tab without 「自分へのメモ」: a placeholder row first (my pic
   await back();
   expect(selected()).toBe("dm");
   expect(placeholder()).toBeNull();
-  expect(names()).toEqual(["自分へのメモ", "Alice"]);
+  expect(names()).toEqual(["Bob", "Alice"]);
+  w.engine.stop();
+});
+
+it("the home list's 「ダイレクトメッセージ」: my own DM first; until it exists a placeholder (my picture and name) that makes it once and opens it; none while folded or unread only", async () => {
+  const { w, createDm } = await setup({ notes: false });
+  const home = () => root("home")!;
+  const dmSection = () => within(home()).getByText("ダイレクトメッセージ").closest("section")!;
+  const placeholder = () => home().querySelector<HTMLButtonElement>("[data-self-notes-placeholder]");
+  const dmNames = () => [...dmSection().querySelectorAll("li:not(.folded) button span.truncate")].map((el) => el.textContent);
+  expect(placeholder()!.textContent).toMatch(/Bob$/);
+  expect(dmNames()).toEqual(["Bob", "Alice"]);
+
+  // Only unread conversations: no placeholder.
+  fireEvent.click(within(home()).getByRole("button", { name: "未読" }));
+  await flush();
+  expect(placeholder()).toBeNull();
+  fireEvent.click(within(home()).getByRole("button", { name: "未読" }));
+  await flush();
+  // Folded: no placeholder either.
+  fireEvent.click(within(home()).getByText("ダイレクトメッセージ"));
+  await flush();
+  expect(placeholder()).toBeNull();
+  fireEvent.click(within(home()).getByText("ダイレクトメッセージ"));
+  await flush();
+
+  let release!: () => void;
+  createDm.gate = new Promise<void>((resolve) => (release = resolve));
+  fireEvent.click(placeholder()!);
+  fireEvent.click(placeholder()!); // a double tap while the request runs
+  await flush();
+  expect(createDm.calls).toEqual([[w.bob.id]]);
+  release();
+  await flush();
+  await act(async () => { await w.engine.idle(); });
+  const created = [...w.store.channels.values()].find((c) => c.type === "dm" && c.dm_user_ids?.length === 1)!;
+  expect(w.engine.currentChannelId).toBe(created.id);
+  expect(document.querySelector(".timeline")!.textContent).toContain("ここはあなただけのスペースです。");
+  await back();
+  expect(placeholder()).toBeNull();
+  expect(dmNames()).toEqual(["Bob", "Alice"]); // the real row, still first
   w.engine.stop();
 });
 

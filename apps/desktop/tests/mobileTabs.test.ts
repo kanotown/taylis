@@ -76,7 +76,8 @@ describe("tab badges (§8, on the unread rules of channels.ts)", () => {
 });
 
 describe("the DM list (§6.3)", () => {
-  const title = (c: ChannelState) => ({ notes: "自分へのメモ", a: "Alice", b: "Bob, Carol", c: "Dave" })[c.id] ?? c.id;
+  // My own DM is titled with my name (conversationTitle).
+  const title = (c: ChannelState) => ({ notes: "山田 花子", a: "Alice", b: "Bob, Carol", c: "Dave" })[c.id] ?? c.id;
   const rows = [
     dm("a", [ME, "alice"], { last_message_at: "2026-09-29T01:00:00Z" }),
     dm("b", [ME, "bob", "carol"], { last_message_at: "2026-09-29T05:00:00Z" }),
@@ -86,31 +87,34 @@ describe("the DM list (§6.3)", () => {
     dm("gone", [ME, "eve"], { isMember: false, last_message_at: "2026-09-29T09:00:00Z" }),
   ];
 
-  it("「自分へのメモ」 first, then the newest last message; only my DMs and group DMs", () => {
+  it("my own DM first, then the newest last message; only my DMs and group DMs", () => {
     expect(dmList(rows, title, ME).map((c) => c.id)).toEqual(["notes", "b", "a", "c"]);
     expect(isSelfNotes(rows[2]!, ME)).toBe(true);
     expect(isSelfNotes(rows[0]!, ME)).toBe(false);
+    expect(isSelfNotes(dm("x", []), null)).toBe(false); // nobody signed in yet: nothing is mine
   });
 
   it("filters by name, ignoring case", () => {
     expect(dmList(rows, title, ME, "  bOb ").map((c) => c.id)).toEqual(["b"]);
-    expect(dmList(rows, title, ME, "メモ").map((c) => c.id)).toEqual(["notes"]);
+    expect(dmList(rows, title, ME, "花子").map((c) => c.id)).toEqual(["notes"]);
     expect(dmList(rows, title, ME, "zzz")).toEqual([]);
   });
 
-  it("the 「自分へのメモ」 placeholder: only while no DM with only me is mine, and when the filter is empty or matches it", () => {
+  it("my own DM's placeholder: only while no DM with only me is mine, and when the filter is empty or matches my name", () => {
     const withoutNotes = rows.filter((c) => c.id !== "notes");
-    expect(showsSelfNotesPlaceholder(rows, ME)).toBe(false);
-    expect(showsSelfNotesPlaceholder(withoutNotes, ME)).toBe(true);
-    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "  ")).toBe(true);
-    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "メモ")).toBe(true);
-    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "自分へのメモ")).toBe(true);
-    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "ali")).toBe(false);
-    expect(showsSelfNotesPlaceholder([...withoutNotes, dm("left", [ME], { isMember: false })], ME)).toBe(true); // not mine
-    expect(showsSelfNotesPlaceholder(withoutNotes, null)).toBe(false); // nobody signed in yet
+    const name = "Hanako Yamada";
+    expect(showsSelfNotesPlaceholder(rows, ME, name)).toBe(false);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name)).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name, "  ")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name, " hANAko ")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name, "hanako yamada")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name, "メモ")).toBe(false); // the old title matches nothing now
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, name, "ali")).toBe(false);
+    expect(showsSelfNotesPlaceholder([...withoutNotes, dm("left", [ME], { isMember: false })], ME, name)).toBe(true); // not mine
+    expect(showsSelfNotesPlaceholder(withoutNotes, null, name)).toBe(false); // nobody signed in yet
   });
 
-  it("the DM with a user: exactly them and me — with my own id 「自分へのメモ」, never one of my 1:1 DMs", () => {
+  it("the DM with a user: exactly them and me — with my own id my own DM, never one of my 1:1 DMs", () => {
     expect(findDmWith(rows, "alice", ME)?.id).toBe("a");
     expect(findDmWith(rows, "bob", ME)).toBeUndefined(); // only in a group DM
     expect(findDmWith(rows, ME, ME)?.id).toBe("notes");

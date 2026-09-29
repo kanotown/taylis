@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, isQuietChannel, sectionChannels, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
+import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, isQuietChannel, myName, sectionChannels, showsSelfNotesInDmSection, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -123,7 +123,55 @@ describe("conversation titles (sidebar and notifications)", () => {
     const users = new Map([["me", { display_name: "Me" }], ["a", { display_name: "Alice" }], ["b", { display_name: "Bob" }]]) as unknown as Parameters<typeof conversationTitle>[1];
     expect(conversationTitle(channel("c", { name: "general" }), users, "me")).toBe("#general");
     expect(conversationTitle(channel("g", { type: "group_dm", name: null, dm_user_ids: ["me", "a", "b"] }), users, "me")).toBe("Alice, Bob");
-    expect(conversationTitle(channel("s", { type: "dm", name: null, dm_user_ids: ["me"] }), users, "me")).toBe("自分へのメモ");
+    // My own DM (only me): my name (Slack / Mattermost).
+    expect(conversationTitle(channel("s", { type: "dm", name: null, dm_user_ids: ["me"] }), users, "me")).toBe("Me");
+  });
+
+  it("titles my own DM with my display name, else my username, else 「…」", () => {
+    const self = channel("s", { type: "dm", name: null, dm_user_ids: ["me"] });
+    const users = (entries: Array<[string, { display_name: string; username: string }]>) => new Map(entries) as unknown as Parameters<typeof conversationTitle>[1];
+    expect(conversationTitle(self, users([["me", { display_name: " 山田 花子 ", username: "hanako" }]]), "me")).toBe("山田 花子");
+    expect(conversationTitle(self, users([["me", { display_name: "  ", username: "hanako" }]]), "me")).toBe("hanako");
+    expect(conversationTitle(self, users([]), "me")).toBe("…");
+    // Not among the users yet: the signed-in user stands in.
+    expect(conversationTitle(self, users([]), "me", { display_name: "Hanako", username: "hanako" })).toBe("Hanako");
+    expect(myName(users([["me", { display_name: "Hanako", username: "hanako" }]]), "me")).toBe("Hanako");
+    expect(myName(users([]), null)).toBe("…");
+  });
+});
+
+describe("my own DM in the home list (a DM with only me)", () => {
+  const dm = (id: string, members: string[], patch: Partial<ChannelState> = {}) => channel(id, { type: "dm", name: null, dm_user_ids: members, ...patch });
+  const all = [
+    dm("alice", ["me", "alice"], { last_message_at: "2026-09-26T10:00:00Z" }),
+    dm("notes", ["me"], { last_message_at: "2026-09-20T00:00:00Z" }),
+    channel("group", { type: "group_dm", name: null, dm_user_ids: ["me", "a", "b"], last_message_at: "2026-09-26T11:00:00Z", unreadCount: 1 }),
+    dm("bob", ["me", "bob"], { last_message_at: null }),
+  ];
+
+  it("comes first in 「ダイレクトメッセージ」, then the others by recency", () => {
+    expect(sectionChannels(all, (c) => c.id, { meId: "me", now }).dms.map((c) => c.id)).toEqual(["notes", "group", "alice", "bob"]);
+    // Nobody signed in: no DM is mine, recency only.
+    expect(sectionChannels(all, (c) => c.id, { now }).dms.map((c) => c.id)).toEqual(["group", "alice", "notes", "bob"]);
+    // Unread only: it stays out unless unread (or open), like any row.
+    expect(sectionChannels(all, (c) => c.id, { meId: "me", now, unreadOnly: true }).dms.map((c) => c.id)).toEqual(["group"]);
+    expect(sectionChannels(all, (c) => c.id, { meId: "me", now, unreadOnly: true, currentId: "notes" }).dms.map((c) => c.id)).toEqual(["notes", "group"]);
+    // Starred: only among the favorites.
+    const starred = sectionChannels(all, (c) => c.id, { meId: "me", now, favorites: new Set(["notes"]) });
+    expect(starred.favorites.map((c) => c.id)).toEqual(["notes"]);
+    expect(starred.dms.map((c) => c.id)).toEqual(["group", "alice", "bob"]);
+  });
+
+  it("before it exists, a placeholder with my name — not while folded, unread only, or filtered away", () => {
+    const without = all.filter((c) => c.id !== "notes");
+    expect(showsSelfNotesInDmSection(without, "me", "Hanako")).toBe(true);
+    expect(showsSelfNotesInDmSection(all, "me", "Hanako")).toBe(false); // it exists
+    expect(showsSelfNotesInDmSection([...without, dm("notes", ["me"])], "me", "Hanako", {})).toBe(false); // starred or in a section: still exists
+    expect(showsSelfNotesInDmSection(without, "me", "Hanako", { collapsed: true })).toBe(false);
+    expect(showsSelfNotesInDmSection(without, "me", "Hanako", { unreadOnly: true })).toBe(false);
+    expect(showsSelfNotesInDmSection(without, "me", "Hanako", { query: " hana " })).toBe(true);
+    expect(showsSelfNotesInDmSection(without, "me", "Hanako", { query: "alice" })).toBe(false);
+    expect(showsSelfNotesInDmSection(without, null, "…")).toBe(false);
   });
 });
 
