@@ -43,7 +43,8 @@ struct ChannelListView: View {
     private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
 
     var body: some View {
-        List(selection: $selection) {
+        // M34: a tap sets the selection, which the home tab turns into a screen on its stack (MainView).
+        List {
             // The unread filter and the lists (threads, mentions, drafts, reminders, files, saved) in one row of chips
             // (testers, 2026-09-29: the home screen took a lot of room before the first channel).
             shortcutChips
@@ -287,7 +288,7 @@ struct ChannelListView: View {
                      badge: selection == ThreadsListView.selectionId ? 0 : threads.unreadCount, alert: threads.mentionCount > 0) {
                     selection = ThreadsListView.selectionId
                 }
-                chip("メンション", icon: "at") { selection = MentionsView.selectionId }
+                // M34: mentions moved to the activity tab.
                 if drafts > 0 { chip("下書き", icon: "doc.text", count: drafts) { selection = DraftsView.selectionId } }
                 if reminders > 0 {
                     chip("リマインダー", icon: "alarm", count: fired > 0 ? 0 : reminders, badge: fired, alert: true) { selection = RemindersView.selectionId }
@@ -334,7 +335,7 @@ struct ChannelListView: View {
         // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
         let quietUnread = !unread && channel.id != selection && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
         let store = controller.store
-        return NavigationLink(value: channel.id) {
+        return Button { selection = channel.id } label: {
             HStack(spacing: 10) {
                 if channel.channel.isDm {
                     let other = (channel.channel.dmUserIds ?? []).first { $0 != store.me?.id } ?? store.me?.id ?? channel.id
@@ -365,7 +366,10 @@ struct ChannelListView: View {
                 }
             }
             .opacity(muted && !unread ? 0.6 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
         .contextMenu { rowMenu(channel) }

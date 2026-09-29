@@ -9,6 +9,8 @@ struct MentionsView: View {
     let onOpen: (MessageOut) -> Void
     /// Rows to show before the first load (previews and snapshot tests).
     var initial: [MessageOut]? = nil
+    /// M34: inside the activity tab, whose title it keeps.
+    var embedded = false
     @State private var items: [MessageOut]?
     @State private var cursor: String?
     @State private var hasMore = false
@@ -31,7 +33,7 @@ struct MentionsView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("メンション")
+        .navigationTitle(embedded ? "アクティビティ" : "メンション")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: controller.engine?.status.rawValue ?? "") { if items == nil { items = initial }; await load(more: false) } // a reconnect re-reads
         .refreshable { await load(more: false) }
