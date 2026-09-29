@@ -275,6 +275,11 @@
                 "title": "Channel Id",
                 "type": "string"
               },
+              "follows_default": {
+                "default": true,
+                "title": "Follows Default",
+                "type": "boolean"
+              },
               "level": {
                 "enum": [
                   "all",
@@ -283,6 +288,11 @@
                 ],
                 "title": "Level",
                 "type": "string"
+              },
+              "muted": {
+                "default": false,
+                "title": "Muted",
+                "type": "boolean"
               },
               "muted_until": {
                 "anyOf": [
@@ -735,6 +745,11 @@
                 "title": "Channel Id",
                 "type": "string"
               },
+              "follows_default": {
+                "default": true,
+                "title": "Follows Default",
+                "type": "boolean"
+              },
               "level": {
                 "enum": [
                   "all",
@@ -743,6 +758,11 @@
                 ],
                 "title": "Level",
                 "type": "string"
+              },
+              "muted": {
+                "default": false,
+                "title": "Muted",
+                "type": "boolean"
               },
               "muted_until": {
                 "anyOf": [
@@ -2472,9 +2492,19 @@
             "title": "Channel Id",
             "type": "string"
           },
+          "follows_default": {
+            "default": true,
+            "title": "Follows Default",
+            "type": "boolean"
+          },
           "level": {
             "title": "Level",
             "type": "string"
+          },
+          "muted": {
+            "default": false,
+            "title": "Muted",
+            "type": "boolean"
           },
           "muted_until": {
             "anyOf": [

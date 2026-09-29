@@ -8,14 +8,21 @@ NotificationLevel = Literal["all", "mentions", "none"]
 
 
 class NotificationPreferenceIn(BaseModel):
-    level: NotificationLevel
+    # null = the person's overall setting (M35).
+    level: NotificationLevel | None
     muted_until: datetime | None = None
+    # M35: muted until unmuted; omitted = unchanged.
+    muted: bool | None = None
 
 
 class NotificationPreferenceOut(BaseModel):
     channel_id: UUID
+    # What the channel notifies of now (its own level, else the overall setting: §4).
     level: NotificationLevel
     muted_until: datetime | None
+    # M35: the level is the overall setting's (the channel has none of its own).
+    follows_default: bool = True
+    muted: bool = False
 
 
 class PushPayload(BaseModel):

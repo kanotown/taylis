@@ -3072,11 +3072,10 @@ export interface components {
         };
         /** NotificationPreferenceIn */
         NotificationPreferenceIn: {
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "all" | "mentions" | "none";
+            /** Level */
+            level: ("all" | "mentions" | "none") | null;
+            /** Muted */
+            muted?: boolean | null;
             /** Muted Until */
             muted_until?: string | null;
         };
@@ -3088,10 +3087,20 @@ export interface components {
              */
             channel_id: string;
             /**
+             * Follows Default
+             * @default true
+             */
+            follows_default: boolean;
+            /**
              * Level
              * @enum {string}
              */
             level: "all" | "mentions" | "none";
+            /**
+             * Muted
+             * @default false
+             */
+            muted: boolean;
             /** Muted Until */
             muted_until: string | null;
         };
@@ -3823,6 +3832,12 @@ export interface components {
             /** Must Change Password */
             must_change_password: boolean;
             /**
+             * Notification Default
+             * @default mentions
+             * @enum {string}
+             */
+            notification_default: "all" | "mentions" | "none";
+            /**
              * Notify Keywords
              * @default []
              */
@@ -3898,6 +3913,8 @@ export interface components {
             dnd_until?: string | null;
             /** Email */
             email?: string | null;
+            /** Notification Default */
+            notification_default?: ("all" | "mentions" | "none") | null;
             /** Notify Keywords */
             notify_keywords?: string[] | null;
             /** Presence Hidden */

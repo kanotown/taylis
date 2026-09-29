@@ -50,7 +50,11 @@ async def bootstrap(
         c.model_copy(
             update={
                 "notification": notifications.to_out(
-                    c.id, prefs.get(c.id), "all" if c.type in ("dm", "group_dm") else "mentions"
+                    c.id,
+                    prefs.get(c.id),
+                    is_dm=c.type in ("dm", "group_dm"),
+                    others_times=c.times_owner_id is not None and c.times_owner_id != actor.id,
+                    overall=actor.notification_default,
                 ),
                 "read_state": read_states.get(c.id),
             }
@@ -102,7 +106,7 @@ async def unread_summary(db: AsyncSession, actor: User) -> UnreadSummaryOut:
             is_dm=c.type in ("dm", "group_dm"),
             others_times=c.times_owner_id is not None and c.times_owner_id != actor.id,
             level=pref.level if pref is not None else None,
-            muted=pref is not None and pref.muted_until is not None and pref.muted_until > now,
+            muted=notifications.is_muted(pref, now),
             unread=state.unread_count,
             mentions=state.mention_count,
         )

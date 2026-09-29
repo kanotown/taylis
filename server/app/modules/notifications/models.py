@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Identity,
@@ -22,14 +23,16 @@ from app.core.time import utcnow
 
 
 class NotificationPreference(Base):
-    """Per user and channel. No row means the channel type's default (DATA_MODEL.md)."""
+    """Per user and channel. No row or no level: the overall setting (DATA_MODEL.md)."""
 
     __tablename__ = "notification_preferences"
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
     channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id"), primary_key=True)
-    level: Mapped[str] = mapped_column(String(16))  # all | mentions | none
+    level: Mapped[str | None] = mapped_column(String(16))  # all | mentions | none; NULL = overall
     muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M35: muted until unmuted (muted_until is the timed mute).
+    muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
     )

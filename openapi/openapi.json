@@ -2955,13 +2955,31 @@
       "NotificationPreferenceIn": {
         "properties": {
           "level": {
-            "enum": [
-              "all",
-              "mentions",
-              "none"
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "mentions",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Level",
-            "type": "string"
+            "title": "Level"
+          },
+          "muted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted"
           },
           "muted_until": {
             "anyOf": [
@@ -2989,6 +3007,11 @@
             "title": "Channel Id",
             "type": "string"
           },
+          "follows_default": {
+            "default": true,
+            "title": "Follows Default",
+            "type": "boolean"
+          },
           "level": {
             "enum": [
               "all",
@@ -2997,6 +3020,11 @@
             ],
             "title": "Level",
             "type": "string"
+          },
+          "muted": {
+            "default": false,
+            "title": "Muted",
+            "type": "boolean"
           },
           "muted_until": {
             "anyOf": [
@@ -4862,6 +4890,16 @@
             "title": "Must Change Password",
             "type": "boolean"
           },
+          "notification_default": {
+            "default": "mentions",
+            "enum": [
+              "all",
+              "mentions",
+              "none"
+            ],
+            "title": "Notification Default",
+            "type": "string"
+          },
           "notify_keywords": {
             "default": [],
             "items": {
@@ -5131,6 +5169,22 @@
               }
             ],
             "title": "Email"
+          },
+          "notification_default": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "mentions",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Default"
           },
           "notify_keywords": {
             "anyOf": [

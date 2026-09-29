@@ -11,6 +11,8 @@ class NotificationPreferenceUpdatedData(BaseModel):
     channel_id: str
     level: str
     muted_until: str | None
+    follows_default: bool = True
+    muted: bool = False
 
 
 __all__ = [

@@ -30,6 +30,8 @@ async def test_preference_api_and_bootstrap(
         "channel_id": channel["id"],
         "level": "mentions",
         "muted_until": None,
+        "follows_default": True,
+        "muted": False,
     }
     assert by_id[dm["id"]]["notification"]["level"] == "all"
 

@@ -20,7 +20,7 @@ from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.mentions import extract_group_mentions, notification_text
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
-from app.modules.notifications.service import default_level
+from app.modules.notifications.service import is_muted, push_level
 from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
@@ -180,7 +180,6 @@ class PushPlanner:
         ``parent_id`` the thread a reply is read in (its position, not the channel's)."""
         now = utcnow()
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
-        default = default_level(channel)
         mentioned = {uuid.UUID(str(uid)) for uid in (message or {}).get("mentioned_user_ids", [])}
         if message and message.get("id"):  # keyword hits are not in the event (they are private)
             mentioned |= await messages.keyword_user_ids(db, uuid.UUID(str(message["id"])))
@@ -194,12 +193,16 @@ class PushPlanner:
         targets: list[uuid.UUID] = []
         for user_id in recipients:
             pref = prefs.get(user_id)
-            level = pref.level if pref else default
-            if level == "none":
-                continue
-            if pref is not None and pref.muted_until is not None and pref.muted_until > now:
-                continue
             user = rows.get(user_id)
+            level = push_level(
+                pref.level if pref else None,
+                is_dm=channel.is_dm,
+                others_times=channel.times_owner_id is not None
+                and channel.times_owner_id != user_id,
+                overall=user.notification_default if user is not None else "mentions",
+            )
+            if level == "none" or is_muted(pref, now):
+                continue
             if user is not None and dnd_active(user, now):
                 continue  # paused / quiet hours (M12c); the badge catches up with the next push
             involved = mention_all or user_id in mentioned or user_id in (participants or set())
@@ -237,9 +240,7 @@ class PushPlanner:
                     is_dm=c.type in ("dm", "group_dm"),
                     others_times=c.times_owner_id is not None and c.times_owner_id != user_id,
                     level=pref.level if pref is not None else None,
-                    muted=pref is not None
-                    and pref.muted_until is not None
-                    and pref.muted_until > now,
+                    muted=is_muted(pref, now),
                     unread=state.unread_count,
                     mentions=state.mention_count,
                 )

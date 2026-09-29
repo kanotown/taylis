@@ -35,6 +35,10 @@ class User(Base):
     notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     # L4 (M31): others always see this person as offline (the hub announces nothing else).
     presence_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # M35: what a channel without a level of its own notifies of: all | mentions | none.
+    notification_default: Mapped[str] = mapped_column(
+        String(16), default="mentions", server_default="mentions"
+    )
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
