@@ -167,10 +167,11 @@ struct PollOut: Codable, Equatable {
 
     var total: Int { options.indices.reduce(0) { $0 + count($1) } }
 
-    /// Whether I voted for option `index`: what the server told me, else (a named poll) from the voters.
+    /// Whether I voted for option `index`. A named poll's voters come with every change, events too (a kept `mine` can be
+    /// a vote taken back on another device); an anonymous poll has only what the server told me.
     func votedByMe(_ index: Int, me: String?) -> Bool {
-        if let mine { return mine.contains(index) }
-        return me.map(voters(index).contains) ?? false
+        if !isAnonymous { return me.map(voters(index).contains) ?? false }
+        return mine?.contains(index) ?? false
     }
 }
 

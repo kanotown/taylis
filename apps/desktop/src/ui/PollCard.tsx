@@ -23,13 +23,13 @@ export function pollCounts(poll: PollOut): number[] {
 }
 
 /**
- * The options I voted for: the server's `mine` (in responses to me, M27; the store keeps it across events, which carry
- * null), else what the voters of a named poll say. An anonymous poll without `mine` says nothing about me.
+ * The options I voted for: in a named poll what its voters say, in an anonymous one the server's `mine` (in responses to
+ * me, M27; the store keeps it across events, which carry null). An anonymous poll without `mine` says nothing about me.
  */
 export function pollMine(poll: PollOut, meId: string | null | undefined): number[] {
-  if (poll.mine != null) return poll.mine;
-  if (poll.anonymous || !meId) return [];
-  return poll.votes.flatMap((voters, index) => (voters.includes(meId) ? [index] : []));
+  // A named poll's voters come with every change, events too; a kept `mine` can be a vote taken back on another device.
+  if (!poll.anonymous) return meId ? poll.votes.flatMap((voters, index) => (voters.includes(meId) ? [index] : [])) : [];
+  return poll.mine ?? [];
 }
 
 /**
