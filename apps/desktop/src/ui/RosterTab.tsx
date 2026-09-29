@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { Badge, Button, Field, Input, Modal } from "./primitives";
 import { AFFILIATIONS, compareByRoster, GRADES, RANKS, rosterLabel, supervisorLabel } from "./roster";
+import { RolloverView } from "./RolloverView";
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
@@ -19,6 +20,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
   const [editing, setEditing] = useState<UserPublic | null>(null);
   const [removing, setRemoving] = useState<UserPublic | null>(null);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"roster" | "rollover">("roster");
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -33,8 +35,27 @@ export function RosterTab({ controller }: { controller: AppController }) {
     }
   };
 
+  const switcher = (
+    <div className="flex gap-1" role="group" aria-label="名簿の表示">
+      {([["roster", "名簿"], ["rollover", "年度更新"]] as const).map(([value, label]) => (
+        <Button key={value} size="sm" variant={view === value ? "primary" : "secondary"} aria-pressed={view === value} onClick={() => setView(value)}>
+          {label}
+        </Button>
+      ))}
+    </div>
+  );
+  if (view === "rollover") {
+    return (
+      <div className="mt-4 space-y-3">
+        {switcher}
+        <RolloverView controller={controller} />
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 space-y-3">
+      {switcher}
       <p className="text-sm text-muted">
         名簿は表示の並び順とグループ分けにだけ使います (権限は変わりません)。名簿に合わせて @faculty @students @alumni @b4 @m1 @m2 @d が自動で保たれます。
       </p>

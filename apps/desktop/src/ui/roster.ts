@@ -2,7 +2,7 @@
  * The lab roster (M23, DATA_MODEL.md lab_profiles): labels and the roster order, the same as the server's
  * (`GET /lab/roster`) and the phone apps'. Names compare by code point, as on the server, so every client agrees.
  */
-import type { Affiliation, FacultyRank, Grade, LabProfileOut, UserPublic } from "../api/types";
+import type { Affiliation, FacultyRank, Grade, InviteLabPreview, LabPreset, LabProfileOut, UserPublic } from "../api/types";
 
 export const AFFILIATIONS: ReadonlyArray<[Affiliation, string]> = [
   ["faculty", "教員"],
@@ -81,4 +81,27 @@ export function supervisorLabel(profile: LabProfileOut, users: ReadonlyMap<strin
 /** 「M1 · 指導教員: 加納」: the label and the supervisor, for profile cards (lists show the label as a badge). */
 export function rosterSummary(profile: LabProfileOut, users: ReadonlyMap<string, UserPublic>): string {
   return [rosterLabel(profile), supervisorLabel(profile, users)].filter(Boolean).join(" · ");
+}
+
+type PresetLine = { affiliation: Affiliation; rank?: FacultyRank | null; grade?: Grade | null };
+
+/** 「学生 B4」 (or 「学生 (B4)」 with `parenthesized`), 「教員 教授」, 「卒業生」: an invite preset's line (L7 / M32). */
+export function presetRole(line: PresetLine, parenthesized = false): string {
+  const affiliation = AFFILIATIONS.find(([value]) => value === line.affiliation)?.[1] ?? "";
+  const detail =
+    line.affiliation === "faculty" ? RANKS.find(([value]) => value === line.rank)?.[1] : line.affiliation === "student" ? line.grade : undefined;
+  if (!detail) return affiliation;
+  return parenthesized ? `${affiliation} (${detail})` : `${affiliation} ${detail}`;
+}
+
+/** 「学生 B4 · 指導: 加納 · times」: an invite preset in the admin list. */
+export function invitePresetSummary(preset: LabPreset, users: ReadonlyMap<string, UserPublic>): string {
+  const supervisor = preset.supervisor_id ? users.get(preset.supervisor_id)?.display_name : undefined;
+  return [presetRole(preset), supervisor && `指導: ${supervisor}`, preset.times && "times"].filter(Boolean).join(" · ");
+}
+
+/** 「研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。」: the acceptance screen's line. */
+export function inviteLabLine(lab: InviteLabPreview): string {
+  const who = [presetRole(lab, true), lab.supervisor_name && `指導教員 ${lab.supervisor_name}`].filter(Boolean).join("・");
+  return `研究室の名簿に ${who} として載ります。${lab.times ? "times を作ります。" : ""}`;
 }

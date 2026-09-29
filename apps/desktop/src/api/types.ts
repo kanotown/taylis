@@ -117,6 +117,16 @@ export type MyLabProfileUpdate = components["schemas"]["MyLabProfileUpdate"];
 export type Affiliation = LabProfileOut["affiliation"];
 export type FacultyRank = NonNullable<LabProfileOut["rank"]>;
 export type Grade = NonNullable<LabProfileOut["grade"]>;
+/** L7 (M32): the roster line an invite link gives, and what the acceptance screen shows of it. */
+export type LabPreset = components["schemas"]["LabPreset"];
+export type InviteLabPreview = components["schemas"]["InviteLabPreview"];
+/** L7 (M32): the yearly rollover. */
+export type RolloverPreviewOut = components["schemas"]["RolloverPreviewOut"];
+export type RolloverPreviewItem = components["schemas"]["RolloverPreviewItem"];
+export type RolloverApply = components["schemas"]["RolloverApply"];
+export type RolloverItem = components["schemas"]["RolloverItem"];
+export type RolloverAction = RolloverItem["action"];
+export type RolloverOut = components["schemas"]["RolloverOut"];
 
 /** Incoming webhooks (M13a). */
 export type WebhookOut = components["schemas"]["WebhookOut"];
