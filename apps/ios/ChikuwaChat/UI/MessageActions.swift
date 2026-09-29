@@ -11,7 +11,7 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder }
+    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder, acks }
     let kind: Kind
     let message: MessageState
     /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
@@ -76,6 +76,8 @@ private struct MessageSheets: ViewModifier {
                     }
                 case .reactors:
                     ReactorsSheet(message: message, controller: controller)
+                case .acks:
+                    AckStatusView(message: message, controller: controller)
                 case .reminder:
                     ReminderFormView(controller: controller, message: message)
                 case .share:

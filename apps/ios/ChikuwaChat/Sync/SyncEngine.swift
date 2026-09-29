@@ -517,6 +517,12 @@ final class SyncEngine {
             } else if let id = frame.data["channel_id"]?.stringValue {
                 store.updateChannel(id) { state in if let count = state.channel.memberCount { state.channel.memberCount = max(0, count - 1) } }
             }
+        case "channel.member_updated":  // L4: an owner added or taken back
+            if let me = store.me, frame.data["user_id"]?.stringValue == me.id, let id = frame.data["channel_id"]?.stringValue,
+               let role = frame.data["role"]?.stringValue {
+                store.setMembershipRole(id, role: role)
+            }
+            if let id = frame.data["channel_id"]?.stringValue { store.memberListVersion[id, default: 0] += 1 }
         case "user.created", "user.updated", "user.deactivated":
             struct Payload: Decodable { let user: UserPublic }
             store.upsertUser(try frame.data.decode(Payload.self).user)

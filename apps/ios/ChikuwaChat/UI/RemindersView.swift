@@ -35,6 +35,9 @@ struct RemindersView: View {
         Button { onOpen(row) } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
+                    if row.kind == "ack" {  // L4: the author asked me to acknowledge
+                        Label("確認のお願い", systemImage: "checkmark.circle").font(.caption.bold()).foregroundStyle(Color.accentColor)
+                    }
                     Text(store.channel(row.channelId).map { channelTitle($0, store: store) } ?? "?").font(.footnote).fontWeight(.semibold)
                     Text("· " + Schedule.label(iso: row.remindAt) + (row.status == "fired" ? " にリマインド" : " にリマインド予定")).font(.footnote).foregroundStyle(.secondary)
                 }

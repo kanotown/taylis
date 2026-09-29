@@ -342,6 +342,25 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     }
     func listScheduled() async throws -> [ScheduledOut] { try await request("GET", "/api/v1/scheduled") }
     /// M28d (parity): an owner or an admin takes a member out of a channel (the web had it; DATA_MODEL.md).
+    /// L4: make a member an owner of the channel, or a member again.
+    func setMemberRole(channelId: String, userId: String, role: String) async throws -> MemberOut {
+        try await request("PATCH", "/api/v1/channels/\(channelId)/members/\(userId)", body: .object(["role": .string(role)]))
+    }
+
+    /// L4: who in the channel has not acknowledged the message (by display name).
+    func ackPending(messageId: String) async throws -> [String] {
+        struct Pending: Decodable { let userIds: [String] }
+        let pending: Pending = try await request("GET", "/api/v1/messages/\(messageId)/ack/pending")
+        return pending.userIds
+    }
+
+    /// L4: remind them (the author or an admin); how many got a reminder.
+    func remindUnacknowledged(messageId: String) async throws -> Int {
+        struct Reminded: Decodable { let reminded: Int }
+        let result: Reminded = try await request("POST", "/api/v1/messages/\(messageId)/ack/remind")
+        return result.reminded
+    }
+
     func removeMember(channelId: String, userId: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/channels/\(channelId)/members/\(userId)", body: nil, auth: true, retry401: true)
     }

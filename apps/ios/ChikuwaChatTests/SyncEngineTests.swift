@@ -697,6 +697,40 @@ final class SyncEngineTests: XCTestCase {
         engine.stop()
     }
 
+    /// L4: my role in a channel follows channel.member_updated (owner-only actions appear); someone else's only
+    /// asks open member lists to load again.
+    func testMemberRoleChangesFollowTheEvent() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let channel = server.createChannel("announce", ownerId: alice.id)
+        server.join(channel.id, bob.id)
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        await engine.start()
+        await settle(engine)
+        XCTAssertEqual(store.channel(channel.id)?.channel.membership?.role, "member")
+        server.emitMemberRole(channelId: channel.id, userId: bob.id, role: "owner")
+        await settle(engine)
+        XCTAssertEqual(store.channel(channel.id)?.channel.membership?.role, "owner")
+        XCTAssertEqual(store.memberListVersion[channel.id], 1)
+        server.emitMemberRole(channelId: channel.id, userId: alice.id, role: "member")
+        await settle(engine)
+        XCTAssertEqual(store.channel(channel.id)?.channel.membership?.role, "owner")
+        XCTAssertEqual(store.memberListVersion[channel.id], 2)
+        engine.stop()
+    }
+
+    func testL4FieldsDecode() throws {
+        let reminder = try JSON.snakeDecoder.decode(ReminderOut.self, from: Data(#"{"id":"r","message_id":"m","channel_id":"c","note":"Alice さんから確認のお願い","preview":"p","remind_at":"2026-09-29T00:00:00Z","status":"fired","fired_at":null,"created_at":"2026-09-29T00:00:00Z","kind":"ack"}"#.utf8))
+        XCTAssertEqual(reminder.kind, "ack")
+        let older = try JSON.snakeDecoder.decode(ReminderOut.self, from: Data(#"{"id":"r","message_id":"m","channel_id":"c","note":null,"preview":"p","remind_at":"2026-09-29T00:00:00Z","status":"pending","fired_at":null,"created_at":"2026-09-29T00:00:00Z"}"#.utf8))
+        XCTAssertNil(older.kind) // an older server
+    }
+
     func testRemindersLoadListFiredFirstAndNudgeOnce() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

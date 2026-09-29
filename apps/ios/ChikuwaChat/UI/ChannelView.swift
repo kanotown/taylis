@@ -954,7 +954,7 @@ struct MessageRow: View {
                     LinkPreviewCard(controller: controller, url: link)
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
-                if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly) }  // M15e
+                if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly, present: present) }  // M15e
                 if !message.reactions.isEmpty {
                     ChipsLayout(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in

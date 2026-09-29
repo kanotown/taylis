@@ -730,6 +730,18 @@ final class Store {
         }
     }
 
+    /// L4: bumped when a channel's members change their role, so an open member list loads again.
+    var memberListVersion: [String: Int] = [:]
+
+    /// L4: my role in a channel changed (owner-only actions appear or go).
+    func setMembershipRole(_ channelId: String, role: String) {
+        updateChannel(channelId) { state in
+            if let membership = state.channel.membership {
+                state.channel.membership = MembershipOut(role: role, joinedAt: membership.joinedAt)
+            }
+        }
+    }
+
     func updateChannel(_ id: String, _ mutate: (inout ChannelState) -> Void) {
         guard var state = channels[id] else { return }
         mutate(&state)
