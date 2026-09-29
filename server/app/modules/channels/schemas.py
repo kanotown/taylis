@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.notifications.schemas import NotificationPreferenceOut
 from app.modules.reads.schemas import ReadStateOut
@@ -73,6 +73,14 @@ class MemberOut(BaseModel):
 
 class MemberAdd(BaseModel):
     user_id: UUID
+
+
+class MemberRoleUpdate(BaseModel):
+    """L4: PATCH /channels/{id}/members/{user_id}."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["owner", "member"]
 
 
 class DmCreate(BaseModel):

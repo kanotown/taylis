@@ -62,6 +62,8 @@ class RealtimeHub:
         self._by_session: dict[uuid.UUID, set[Connection]] = {}
         # Last presence announced per user; users not listed are (announced as) offline.
         self._announced: dict[uuid.UUID, PresenceStatus] = {}
+        # L4 (M31): users who hide their presence; they are always offline to everyone.
+        self._hidden: set[uuid.UUID] = set()
 
     def new_connection(
         self,
@@ -69,6 +71,7 @@ class RealtimeHub:
         session_id: uuid.UUID,
         *,
         visible: frozenset[uuid.UUID] | None = None,
+        presence_hidden: bool = False,
     ) -> Connection:
         conn = Connection(
             user_id=user_id,
@@ -76,6 +79,10 @@ class RealtimeHub:
             queue=asyncio.Queue(self.queue_size),
             visible=visible,
         )
+        if presence_hidden:
+            self._hidden.add(user_id)
+        else:
+            self._hidden.discard(user_id)
         self._by_user.setdefault(user_id, set()).add(conn)
         self._by_session.setdefault(session_id, set()).add(conn)
         # Connecting counts as activity (last_active starts now): apps connect in the foreground.
@@ -116,13 +123,25 @@ class RealtimeHub:
     # --- presence (volatile, process-local) ----------------------------------------------
 
     def presence_status(self, user_id: uuid.UUID) -> PresenceStatus:
-        if user_id not in self._by_user:
+        if user_id not in self._by_user or user_id in self._hidden:
             return "offline"
         return "online" if self.is_active(user_id, self.away_seconds) else "away"
 
     def presence_snapshot(self) -> list[tuple[uuid.UUID, PresenceStatus]]:
-        """Everyone connected right now (for bootstrap); absent users are offline."""
-        return [(user_id, self.presence_status(user_id)) for user_id in self._by_user]
+        """Everyone connected right now (for bootstrap); absent and hidden users are offline."""
+        return [
+            (user_id, self.presence_status(user_id))
+            for user_id in self._by_user
+            if user_id not in self._hidden
+        ]
+
+    def set_presence_hidden(self, user_id: uuid.UUID, hidden: bool) -> None:
+        """L4: from now on this user is announced as offline (or as they are again)."""
+        if hidden:
+            self._hidden.add(user_id)
+        else:
+            self._hidden.discard(user_id)
+        self._announce(user_id)
 
     def sweep_presence(self) -> None:
         """Periodic: announce users whose activity window lapsed (online → away)."""

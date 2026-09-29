@@ -677,7 +677,11 @@ export interface paths {
         delete: operations["remove_member_api_v1_channels__channel_id__members__user_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Member
+         * @description L4: make a member an owner or a member again (owners and administrators).
+         */
+        patch: operations["update_member_api_v1_channels__channel_id__members__user_id__patch"];
         trace?: never;
     };
     "/api/v1/channels/{channel_id}/messages": {
@@ -1176,6 +1180,47 @@ export interface paths {
         post?: never;
         /** Unacknowledge */
         delete: operations["unacknowledge_api_v1_messages__message_id__ack_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/ack/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ack Pending
+         * @description L4: the channel's members (not the author, bots or deactivated people) yet to acknowledge.
+         */
+        get: operations["ack_pending_api_v1_messages__message_id__ack_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/ack/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remind Unacknowledged
+         * @description L4: the author (or an administrator) reminds the members who have not acknowledged;
+         *     each gets a reminder only they see. Once an hour per message (429 ack_remind_too_soon).
+         */
+        post: operations["remind_unacknowledged_api_v1_messages__message_id__ack_remind_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1906,6 +1951,22 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * AckPendingOut
+         * @description L4: the members who have not acknowledged yet (by display name).
+         */
+        AckPendingOut: {
+            /** User Ids */
+            user_ids: string[];
+        };
+        /**
+         * AckRemindOut
+         * @description L4: how many members were reminded (those already reminded and still open are skipped).
+         */
+        AckRemindOut: {
+            /** Reminded */
+            reminded: number;
         };
         /** AdminUserCreate */
         AdminUserCreate: {
@@ -2721,6 +2782,17 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * MemberRoleUpdate
+         * @description L4: PATCH /channels/{id}/members/{user_id}.
+         */
+        MemberRoleUpdate: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "member";
+        };
         /** MembershipOut */
         MembershipOut: {
             /**
@@ -3073,6 +3145,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Kind
+             * @default personal
+             * @enum {string}
+             */
+            kind: "personal" | "ack";
             /**
              * Message Id
              * Format: uuid
@@ -3542,6 +3620,11 @@ export interface components {
              * @default []
              */
             notify_keywords: string[];
+            /**
+             * Presence Hidden
+             * @default false
+             */
+            presence_hidden: boolean;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Role */
             role: string;
@@ -3610,6 +3693,8 @@ export interface components {
             email?: string | null;
             /** Notify Keywords */
             notify_keywords?: string[] | null;
+            /** Presence Hidden */
+            presence_hidden?: boolean | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Status Emoji */
             status_emoji?: string | null;
@@ -5169,6 +5254,42 @@ export interface operations {
             };
         };
     };
+    update_member_api_v1_channels__channel_id__members__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberRoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_history_api_v1_channels__channel_id__messages_get: {
         parameters: {
             query?: {
@@ -6180,6 +6301,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ack_pending_api_v1_messages__message_id__ack_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AckPendingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remind_unacknowledged_api_v1_messages__message_id__ack_remind_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AckRemindOut"];
                 };
             };
             /** @description Validation Error */

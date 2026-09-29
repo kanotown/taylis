@@ -597,7 +597,7 @@ export class FakeServer {
   readonly reminders = new Map<string, ReminderOut[]>();
 
   remind(userId: string, channelId: string, messageId: string, remindAt: string, note: string | null = null): ReminderOut {
-    const row: ReminderOut = { id: `rem-${++this.eventId}`, message_id: messageId, channel_id: channelId, note, preview: "preview", remind_at: remindAt, status: "pending", fired_at: null, created_at: now() };
+    const row: ReminderOut = { id: `rem-${++this.eventId}`, message_id: messageId, channel_id: channelId, note, preview: "preview", remind_at: remindAt, status: "pending", fired_at: null, created_at: now(), kind: "personal" };
     this.reminders.set(userId, [...(this.reminders.get(userId) ?? []), row]);
     return row;
   }
@@ -750,7 +750,7 @@ export class FakeServer {
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
         const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [] };
+        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({

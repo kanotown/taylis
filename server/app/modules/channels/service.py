@@ -370,9 +370,14 @@ async def update_channel(
         await _set_times_owner(db, actor, channel, data.times_owner_id)
     converted = data.type is not None and data.type != channel.type
     if converted:
-        # Making a private channel public exposes its whole history: administrators only.
+        # Making a private channel public exposes its whole history: administrators only, and (L4,
+        # LAB.md J) only one who is a member, so a staff admin cannot open a students' channel.
         if data.type == "public" and not actor.is_admin:
             raise forbidden("admin_required", "Only an administrator can make a channel public")
+        if data.type == "public" and membership is None:
+            raise forbidden(
+                "admin_not_member", "Only an administrator who is a member can make it public"
+            )
         await audit.record_in_tx(
             db,
             actor_id=actor.id,
@@ -713,6 +718,45 @@ async def remove_member(
     )
     await db.delete(membership)
     await db.commit()
+
+
+async def update_member_role(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, target_user_id: uuid.UUID, role: str
+) -> MemberOut:
+    """L4: an owner or an administrator makes a member an owner (e.g. a teacher of #お知らせ) or
+    takes it back. A channel with owners keeps at least one; guests are never owners."""
+    channel, _ = await _load_for_manage(db, actor, channel_id)
+    _require_not_dm(channel)
+    membership = await repo.get_membership(db, channel_id, target_user_id)
+    if membership is None:
+        raise not_found("member_not_found", "User is not a member of this channel")
+    if membership.role == role:
+        return to_member_out(membership)
+    if role == "owner":
+        target = await db.get(User, target_user_id)
+        if target is None or target.is_guest or target.role == "bot":
+            raise forbidden("owner_not_allowed", "Guests and bots cannot own a channel")
+    elif await repo.count_owners(db, channel_id) <= 1:
+        raise conflict("last_owner", "A channel keeps at least one owner")
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="channel.member_role",
+        target_type="channel",
+        target_id=channel.id,
+        details={"user_id": str(target_user_id), "from": membership.role, "to": role},
+    )
+    membership.role = role
+    data = events.ChannelMemberRoleData(channel_id=channel.id, user_id=target_user_id, role=role)
+    await write_outbox(
+        db,
+        event_type=events.CHANNEL_MEMBER_UPDATED,
+        audience_type="channel",
+        channel_id=channel.id,
+        payload=data.model_dump(mode="json"),
+    )
+    await db.commit()
+    return to_member_out(membership)
 
 
 async def get_or_create_dm(

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Response
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
 from app.modules.reminders import service
-from app.modules.reminders.schemas import ReminderCreate, ReminderOut
+from app.modules.reminders.schemas import AckRemindOut, ReminderCreate, ReminderOut
 
 router = APIRouter(tags=["reminders"])
 
@@ -16,6 +16,13 @@ async def create_reminder(
 ) -> ReminderOut:
     """M12e 「リマインド」: a nudge about this message at remind_at (at least a minute ahead)."""
     return await service.create(db, user, message_id, data)
+
+
+@router.post("/messages/{message_id}/ack/remind", response_model=AckRemindOut)
+async def remind_unacknowledged(message_id: UUID, user: CurrentUser, db: Db) -> AckRemindOut:
+    """L4: the author (or an administrator) reminds the members who have not acknowledged;
+    each gets a reminder only they see. Once an hour per message (429 ack_remind_too_soon)."""
+    return await service.remind_unacknowledged(db, user, message_id)
 
 
 @router.get("/reminders", response_model=list[ReminderOut])

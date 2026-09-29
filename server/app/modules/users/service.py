@@ -88,6 +88,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.quiet_hours_tz = hours.tz if hours else None
     if "notify_keywords" in data.model_fields_set:
         user.notify_keywords = data.notify_keywords or None
+    if data.presence_hidden is not None:
+        user.presence_hidden = data.presence_hidden
     user.updated_at = utcnow()
     try:
         await db.flush()

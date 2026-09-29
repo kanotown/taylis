@@ -11,6 +11,7 @@ CHANNEL_UPDATED = "channel.updated"
 CHANNEL_ARCHIVED = "channel.archived"
 CHANNEL_MEMBER_ADDED = "channel.member_added"
 CHANNEL_MEMBER_REMOVED = "channel.member_removed"
+CHANNEL_MEMBER_UPDATED = "channel.member_updated"
 
 
 class ChannelEventData(BaseModel):
@@ -28,3 +29,11 @@ class ChannelArchivedData(BaseModel):
 class ChannelMemberData(BaseModel):
     channel_id: UUID
     user_id: UUID
+
+
+class ChannelMemberRoleData(BaseModel):
+    """L4: a member's role in the channel changed (owner / member)."""
+
+    channel_id: UUID
+    user_id: UUID
+    role: str

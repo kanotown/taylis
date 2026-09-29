@@ -48,6 +48,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "channel + user",
         False,
     ),
+    channel_events.CHANNEL_MEMBER_UPDATED: (
+        channel_events.ChannelMemberRoleData,
+        "channel",
+        False,
+    ),
     user_events.USER_CREATED: (user_events.UserEventData, "all", False),
     user_events.USER_UPDATED: (user_events.UserEventData, "all", False),
     user_events.USER_DEACTIVATED: (user_events.UserEventData, "all", False),

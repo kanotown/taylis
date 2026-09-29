@@ -192,7 +192,7 @@
 | `pong` | `{ server_time }` |
 | `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
 | `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す |
-| `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
+| `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。在席を隠した人 (`users.presence_hidden`、L4) は常に offline として配り、bootstrap の `presence` にも載せない (本人にも offline に見える)。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
 | `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |
 
 ### 5.3 ハートビートと再接続
@@ -237,6 +237,7 @@
 | `channel.archived` | channel | — | `{ channel_id }` |
 | `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る。クライアントは保持している `member_count` を +1 (`member_removed` は −1) して、次の一覧取得までの表示に使う (M11h) |
 | `channel.member_removed` | channel + 本人 (outbox 行を 2 つ書く) | — | `{ channel_id, user_id }` |
+| `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` |
 | `session.revoked` | session | — | `{ reason }` |
 

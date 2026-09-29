@@ -53,3 +53,19 @@ async def due(db: AsyncSession, now: datetime, limit: int) -> list[Reminder]:
         .with_for_update(skip_locked=True)
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def last_created(db: AsyncSession, message_id: uuid.UUID, kind: str) -> datetime | None:
+    stmt = select(func.max(Reminder.created_at)).where(
+        Reminder.message_id == message_id, Reminder.kind == kind
+    )
+    return (await db.execute(stmt)).scalar_one()
+
+
+async def open_user_ids(db: AsyncSession, message_id: uuid.UUID, kind: str) -> set[uuid.UUID]:
+    stmt = select(Reminder.user_id).where(
+        Reminder.message_id == message_id,
+        Reminder.kind == kind,
+        Reminder.status.in_(("pending", "fired")),
+    )
+    return set((await db.execute(stmt)).scalars().all())

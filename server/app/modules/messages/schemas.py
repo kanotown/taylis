@@ -74,6 +74,12 @@ class AckOut(BaseModel):
     acked_at: datetime
 
 
+class AckPendingOut(BaseModel):
+    """L4: the members who have not acknowledged yet (by display name)."""
+
+    user_ids: list[UUID]
+
+
 class MessageCreate(BaseModel):
     client_msg_id: UUID
     body: str = Field(default="", max_length=MAX_BODY_LENGTH)

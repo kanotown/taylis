@@ -482,6 +482,36 @@
         "type": "object"
       }
     },
+    "channel.member_updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "description": "L4: a member's role in the channel changed (owner / member).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "user_id",
+          "role"
+        ],
+        "title": "ChannelMemberRoleData",
+        "type": "object"
+      }
+    },
     "channel.updated": {
       "audience": "channel",
       "consumes_seq": false,
@@ -2554,6 +2584,15 @@
               "id": {
                 "format": "uuid",
                 "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "default": "personal",
+                "enum": [
+                  "personal",
+                  "ack"
+                ],
+                "title": "Kind",
                 "type": "string"
               },
               "message_id": {

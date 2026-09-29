@@ -82,6 +82,8 @@ class UserMe(UserPublic):
     must_change_password: bool
     # M12g: words that make a message count as a mention of me (case-insensitive substring).
     notify_keywords: list[str] = []
+    # L4 (M31): others see me as offline.
+    presence_hidden: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -99,6 +101,8 @@ class UserUpdate(BaseModel):
     quiet_hours: QuietHours | None = None
     # M12g: at most 20 keywords of 1-40 characters; blanks and duplicates are dropped.
     notify_keywords: list[str] | None = Field(default=None, max_length=20)
+    # L4 (M31): hide my presence from everyone else.
+    presence_hidden: bool | None = None
 
     @field_validator("notify_keywords")
     @classmethod
@@ -164,4 +168,5 @@ def to_user_me(user: User) -> UserMe:
         email=user.email,
         must_change_password=user.must_change_password,
         notify_keywords=list(user.notify_keywords or []),
+        presence_hidden=user.presence_hidden,
     )

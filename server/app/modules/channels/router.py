@@ -14,6 +14,7 @@ from app.modules.channels.schemas import (
     DmCreate,
     MemberAdd,
     MemberOut,
+    MemberRoleUpdate,
 )
 from app.modules.reads.schemas import ReadMark, ReadStateOut
 
@@ -76,6 +77,14 @@ async def list_members(channel_id: UUID, user: CurrentUser, db: Db) -> list[Memb
 async def add_member(channel_id: UUID, user: CurrentUser, body: MemberAdd, db: Db) -> MemberOut:
     (target,) = await service.load_users(db, [body.user_id])
     return await service.add_member(db, user, channel_id, target)
+
+
+@router.patch("/channels/{channel_id}/members/{user_id}", response_model=MemberOut)
+async def update_member(
+    channel_id: UUID, user_id: UUID, body: MemberRoleUpdate, user: CurrentUser, db: Db
+) -> MemberOut:
+    """L4: make a member an owner or a member again (owners and administrators)."""
+    return await service.update_member_role(db, user, channel_id, user_id, body.role)
 
 
 @router.delete("/channels/{channel_id}/members/{user_id}", status_code=204)

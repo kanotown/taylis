@@ -517,6 +517,30 @@ async def set_ack(
     return await _bump_and_announce(db, message, "ack")
 
 
+async def ack_pending(db: AsyncSession, actor: User, message_id: uuid.UUID) -> list[uuid.UUID]:
+    """L4: who has not acknowledged yet (any member may look, as they see who has)."""
+    message = await _require_live_message(db, actor, message_id)
+    if not message.ack_requested:
+        raise conflict("ack_not_requested", "This message does not ask for acknowledgements")
+    return await repo.ack_pending_user_ids(db, message)
+
+
+async def has_acked(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return await repo.has_ack(db, message_id, user_id)
+
+
+async def ack_pending_ids_in_tx(db: AsyncSession, message: Message) -> list[uuid.UUID]:
+    return await repo.ack_pending_user_ids(db, message)
+
+
+async def require_ack_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
+    """A live message asking for acknowledgements that the actor can see (for the reminders)."""
+    message = await _require_live_message(db, actor, message_id)
+    if not message.ack_requested:
+        raise conflict("ack_not_requested", "This message does not ask for acknowledgements")
+    return message
+
+
 async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
     """Only the author ends the voting (not an administrator either: testers, 2026-09-29); results
     stay visible."""

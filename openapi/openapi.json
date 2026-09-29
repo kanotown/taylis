@@ -21,6 +21,38 @@
         "title": "AckOut",
         "type": "object"
       },
+      "AckPendingOut": {
+        "description": "L4: the members who have not acknowledged yet (by display name).",
+        "properties": {
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user_ids"
+        ],
+        "title": "AckPendingOut",
+        "type": "object"
+      },
+      "AckRemindOut": {
+        "description": "L4: how many members were reminded (those already reminded and still open are skipped).",
+        "properties": {
+          "reminded": {
+            "title": "Reminded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reminded"
+        ],
+        "title": "AckRemindOut",
+        "type": "object"
+      },
       "AdminUserCreate": {
         "properties": {
           "display_name": {
@@ -2313,6 +2345,25 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "MemberRoleUpdate": {
+        "additionalProperties": false,
+        "description": "L4: PATCH /channels/{id}/members/{user_id}.",
+        "properties": {
+          "role": {
+            "enum": [
+              "owner",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "MemberRoleUpdate",
+        "type": "object"
+      },
       "MembershipOut": {
         "properties": {
           "joined_at": {
@@ -3144,6 +3195,15 @@
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "personal",
+            "enum": [
+              "personal",
+              "ack"
+            ],
+            "title": "Kind",
             "type": "string"
           },
           "message_id": {
@@ -4321,6 +4381,11 @@
             "title": "Notify Keywords",
             "type": "array"
           },
+          "presence_hidden": {
+            "default": false,
+            "title": "Presence Hidden",
+            "type": "boolean"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -4592,6 +4657,17 @@
               }
             ],
             "title": "Notify Keywords"
+          },
+          "presence_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presence Hidden"
           },
           "quiet_hours": {
             "anyOf": [
@@ -7091,6 +7167,73 @@
         "tags": [
           "channels"
         ]
+      },
+      "patch": {
+        "description": "L4: make a member an owner or a member again (owners and administrators).",
+        "operationId": "update_member_api_v1_channels__channel_id__members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRoleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Member",
+        "tags": [
+          "channels"
+        ]
       }
     },
     "/api/v1/channels/{channel_id}/messages": {
@@ -8784,6 +8927,104 @@
         "summary": "Acknowledge",
         "tags": [
           "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/ack/pending": {
+      "get": {
+        "description": "L4: the channel's members (not the author, bots or deactivated people) yet to acknowledge.",
+        "operationId": "ack_pending_api_v1_messages__message_id__ack_pending_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckPendingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ack Pending",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/ack/remind": {
+      "post": {
+        "description": "L4: the author (or an administrator) reminds the members who have not acknowledged;\neach gets a reminder only they see. Once an hour per message (429 ack_remind_too_soon).",
+        "operationId": "remind_unacknowledged_api_v1_messages__message_id__ack_remind_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckRemindOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remind Unacknowledged",
+        "tags": [
+          "reminders"
         ]
       }
     },
