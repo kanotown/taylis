@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -418,6 +418,11 @@ export class ApiClient {
     return this.request("DELETE", `/api/v1/channels/${channelId}/members/${userId}`);
   }
 
+  /** L4 (M31): make a member an owner or take it back (owner / admin; 409 last_owner, 403 owner_not_allowed). */
+  setMemberRole(channelId: string, userId: string, role: MemberRole): Promise<MemberOut> {
+    return this.request("PATCH", `/api/v1/channels/${channelId}/members/${userId}`, { role });
+  }
+
   // --- administration (M11e): admin role only ---------------------------------------------
 
   adminListUsers(): Promise<AdminUserOut[]> {
@@ -554,6 +559,16 @@ export class ApiClient {
   /** M15e: 「確認しました」 on a message that asks for it, or take it back. */
   acknowledge(messageId: string, present: boolean): Promise<MessageOut> {
     return present ? this.request("PUT", `/api/v1/messages/${messageId}/ack`, {}) : this.request("DELETE", `/api/v1/messages/${messageId}/ack`);
+  }
+
+  /** L4 (M31): the members who have not acknowledged yet, by display name. */
+  ackPending(messageId: string): Promise<AckPendingOut> {
+    return this.request("GET", `/api/v1/messages/${messageId}/ack/pending`);
+  }
+
+  /** L4 (M31): the author or an admin reminds them (once an hour: 429 ack_remind_too_soon). */
+  ackRemind(messageId: string): Promise<AckRemindOut> {
+    return this.request("POST", `/api/v1/messages/${messageId}/ack/remind`, {});
   }
 
   closePoll(messageId: string): Promise<MessageOut> {

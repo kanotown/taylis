@@ -23,6 +23,10 @@ export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];
 export type MemberOut = components["schemas"]["MemberOut"];
+/** L4 (M31): owner / member, set by an owner or an admin. */
+export type MemberRole = MemberOut["role"];
+export type AckPendingOut = components["schemas"]["AckPendingOut"];
+export type AckRemindOut = components["schemas"]["AckRemindOut"];
 export type ChannelType = ChannelOut["type"];
 export type ChannelUpdate = components["schemas"]["ChannelUpdate"];
 /** M15a: "owners" = an announcement channel. */

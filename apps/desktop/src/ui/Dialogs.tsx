@@ -1,4 +1,4 @@
-import { Bell, Check, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
+import { Bell, Check, EyeOff, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
@@ -253,17 +253,26 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
   );
 }
 
-/** A conversation's members, fetched on open and again when `reload` changes; null while loading. */
+/**
+ * A conversation's members, fetched on open and again when `reload` changes or the members change (added, removed, an
+ * owner made or taken back: the store's revision, L4); null while loading.
+ */
 export function useMembers(controller: AppController, channelId: string, reload: unknown = null) {
   const [members, setMembers] = useState<MemberOut[] | null>(null);
+  const revision = controller.store.membersRevision(channelId);
   useEffect(() => {
     if (!controller.api) return;
-    void controller.api.members(channelId).then(setMembers, (error) => controller.setError(error));
-  }, [controller, channelId, reload]);
+    let current = true;
+    void controller.api.members(channelId).then((list) => { if (current) setMembers(list); }, (error) => controller.setError(error));
+    return () => { current = false; };
+  }, [controller, channelId, reload, revision]);
   return [members, setMembers] as const;
 }
 
-/** The member rows (roster order, badges, 「外す」 for owners and admins); in the dialog and the channel details (M29). */
+/**
+ * The member rows (roster order, badges, and for owners and admins 「オーナーにする」 / 「オーナーから外す」 (L4) and 「外す」);
+ * in the dialog and the channel details (M29).
+ */
 export function MemberList({ controller, channel, members, onChange, className }: {
   controller: AppController;
   channel: ChannelState;
@@ -300,6 +309,22 @@ export function MemberList({ controller, channel, members, onChange, className }
                   {roster.get(member.user_id) && <Badge>{rosterLabel(roster.get(member.user_id)!)}</Badge>}
                   {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
                   {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>ゲスト</Badge>}
+                  {/* L4: not for guests and bots (403 owner_not_allowed); the last owner is the server's to keep (409 last_owner). */}
+                  {canManage && !channel.archived && (member.role === "owner" || (user?.role !== "guest" && user?.role !== "bot")) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted hover:text-ink"
+                      onClick={() => {
+                        const role = member.role === "owner" ? "member" : "owner";
+                        void controller.setMemberRole(channel.id, member.user_id, role).then((updated) => {
+                          if (updated) setMembers((list) => list?.map((m) => (m.user_id === updated.user_id ? updated : m)) ?? null);
+                        });
+                      }}
+                    >
+                      {member.role === "owner" ? "オーナーから外す" : "オーナーにする"}
+                    </Button>
+                  )}
                   {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
                     <Button
                       size="sm"
@@ -567,6 +592,24 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
               </Button>
             )}
           </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">プライバシー</h3>
+          {/* L4 (M31): the server shows me as offline to everyone (me included) while this is on. */}
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2">
+            <EyeOff size={18} className="text-muted" />
+            <span className="min-w-0 flex-1 text-sm">
+              在席を隠す <span className="ml-1 text-xs text-muted">ほかの人からは常にオフラインに見えます</span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="h-4 w-4 accent-[var(--accent)]"
+              checked={me?.presence_hidden ?? false}
+              disabled={busy}
+              onChange={(e) => { const hidden = e.target.checked; setBusy(true); void controller.updateProfile({ presence_hidden: hidden }).finally(() => setBusy(false)); }}
+            />
+          </label>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">2 要素認証</h3>

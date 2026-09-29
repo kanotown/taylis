@@ -13,7 +13,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -817,6 +817,22 @@ export class AppController {
     }
   }
 
+  /**
+   * L4 (M31): make a member an owner or take it back (owner / admin). My own role changes here at once, so owner-only
+   * menus follow without waiting for channel.member_updated. Null when it failed (the toast says why).
+   */
+  async setMemberRole(channelId: string, userId: string, role: MemberRole): Promise<MemberOut | null> {
+    if (!this.api) return null;
+    try {
+      const member = await this.api.setMemberRole(channelId, userId, role);
+      if (userId === this.store.me?.id) this.store.setMyRole(channelId, member.role);
+      return member;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
   async updateTopic(channelId: string, topic: string): Promise<boolean> {
     if (!this.api) return false;
     try {
@@ -1346,6 +1362,31 @@ export class AppController {
       this.store.upsertMessage(await this.api.acknowledge(message.id, !mine));
     } catch (error) {
       this.setError(error);
+    }
+  }
+
+  /** L4 (M31): who has not acknowledged yet (members only); null when it could not be loaded (the toast says why). */
+  async ackPending(message: MessageState): Promise<string[] | null> {
+    if (!this.api) return null;
+    try {
+      return (await this.api.ackPending(message.id)).user_ids;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /**
+   * L4 (M31): 「未確認の人にリマインド」 (the author or an admin). The outcome comes back as a line for the list itself, not a
+   * toast: the app's toasts sit under an open dialog. `ok: false` with the error's text (429: once an hour).
+   */
+  async remindAck(message: MessageState): Promise<{ ok: boolean; text: string }> {
+    if (!this.api) return { ok: false, text: describe(new NetworkError("no session")) };
+    try {
+      const { reminded } = await this.api.ackRemind(message.id);
+      return { ok: true, text: reminded > 0 ? `${reminded} 人にリマインドしました` : "リマインド済みの人だけです" };
+    } catch (error) {
+      return { ok: false, text: describe(error) };
     }
   }
 

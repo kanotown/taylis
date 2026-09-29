@@ -4,6 +4,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
 import { canEditLinks } from "./ChannelLinks";
+import { canMakePublic } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
@@ -109,7 +110,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
               </Action>
             )}
             {canManage && channel.type === "public" && <Action icon={<Lock size={16} />} onClick={() => onDialog("convert")}>非公開チャンネルに変換…</Action>}
-            {controller.isAdmin && channel.type === "private" && <Action icon={<Hash size={16} />} onClick={() => onDialog("convert")}>公開チャンネルに変換…</Action>}
+            {canMakePublic(channel, controller.isAdmin) && <Action icon={<Hash size={16} />} onClick={() => onDialog("convert")}>公開チャンネルに変換…</Action>}
             {canManage && !channel.archived && <Action icon={<Pencil size={16} />} onClick={() => onDialog("rename")}>名前を変更…</Action>}
             {canManage && !channel.archived && <Action icon={<Archive size={16} />} danger onClick={() => onDialog("archive")}>アーカイブ…</Action>}
             {canManage && channel.archived && <Action icon={<ArchiveRestore size={16} />} onClick={() => void controller.unarchiveChannel(channel.id)}>アーカイブを解除</Action>}

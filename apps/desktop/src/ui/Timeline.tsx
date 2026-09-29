@@ -1084,10 +1084,13 @@ function AckBar({ controller, message, readOnly }: { controller: AppController; 
         <button type="button" className="min-w-0 truncate text-left text-muted hover:text-ink hover:underline" title={names.join("、")} aria-label={`確認した人 (${acks.length} 人)`} onClick={() => setListOpen(true)}>
           {ackLine(names)}
         </button>
-      ) : (
+      ) : readOnly ? (
         <span className="text-muted">まだ誰も確認していません</span>
+      ) : (
+        // L4: the list still has who has not confirmed (and the reminder for the author).
+        <button type="button" className="text-muted hover:text-ink hover:underline" onClick={() => setListOpen(true)}>まだ誰も確認していません</button>
       )}
-      {listOpen && <AcksDialog controller={controller} message={message} onClose={() => setListOpen(false)} />}
+      {listOpen && <AcksDialog controller={controller} message={message} readOnly={readOnly} onClose={() => setListOpen(false)} />}
     </div>
   );
 }
