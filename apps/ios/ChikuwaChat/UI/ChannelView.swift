@@ -423,6 +423,12 @@ struct ChannelView: View {
                                             Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
                                         })
                                         .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
+                                    } else if messages.isEmpty, channel.channel.isDm,
+                                              DMList.isNotesToSelf(channel, meId: controller.store.me?.id) {
+                                        // My DM with myself: what it is for (Slack, Mattermost), under my name.
+                                        ContentUnavailableView(channelTitle(channel, store: controller.store), systemImage: "note.text",
+                                                               description: Text(DMList.notesIntro))
+                                            .padding(.top, 40)
                                     } else if messages.isEmpty {
                                         ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
                                                                description: Text("最初のメッセージを送ってみましょう。"))

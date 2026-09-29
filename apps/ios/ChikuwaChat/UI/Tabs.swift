@@ -34,7 +34,7 @@ enum TabBadges {
 
 /// M34 (MOBILE_UI.md §6.3): the DM tab's list and its time labels.
 enum DMList {
-    /// My notes to self first, then the newest conversation first.
+    /// My DM with myself first, then the newest conversation first.
     static func ordered(_ channels: [ChannelState], meId: String?) -> [ChannelState] {
         channels.filter { $0.isMember && $0.channel.isDm }.sorted { a, b in
             let selfA = isNotesToSelf(a, meId: meId), selfB = isNotesToSelf(b, meId: meId)
@@ -47,6 +47,14 @@ enum DMList {
     static func isNotesToSelf(_ channel: ChannelState, meId: String?) -> Bool {
         (channel.channel.dmUserIds ?? []).allSatisfy { $0 == meId }
     }
+
+    /// No DM with only me is mine yet: the lists show a row for it first all the same, made on its first open.
+    static func notesMissing(_ channels: [ChannelState], meId: String?) -> Bool {
+        meId != nil && !channels.contains { $0.isMember && $0.channel.isDm && isNotesToSelf($0, meId: meId) }
+    }
+
+    /// What the notes to self are for, where the conversation starts (as Slack and Mattermost say it).
+    static let notesIntro = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。"
 
     /// 「14:32」 today, 「昨日」, 「火曜日」 within the week, 「9/3」 this year, 「2025/9/3」 before.
     static func timeLabel(_ iso: String?, now: Date = Date(), calendar: Calendar = .current) -> String? {
@@ -79,9 +87,10 @@ struct DMListView: View {
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
         let all = DMList.ordered(Array(store.channels.values), meId: meId)
         let rows = all.filter { query.isEmpty || channelTitle($0, store: store).lowercased().contains(query) }
-        // 「自分へのメモ」 is always first (as in Slack), made on its first open.
-        let notesMissing = meId != nil && !all.contains { DMList.isNotesToSelf($0, meId: meId) }
-            && (query.isEmpty || "自分へのメモ".contains(query))
+        // The DM with only me is always first, under my own name (as in Slack), made on its first open.
+        let myName = store.me?.displayName ?? ""
+        let notesMissing = DMList.notesMissing(Array(store.channels.values), meId: meId)
+            && (query.isEmpty || myName.lowercased().contains(query))
         List {
             if notesMissing, let meId {
                 Button { openNotes(meId) } label: { notesRow(meId) }
@@ -117,14 +126,11 @@ struct DMListView: View {
         }
     }
 
-    /// 「自分へのメモ」 before its DM exists.
+    /// My DM with myself before it exists: a row like the others.
     private func notesRow(_ meId: String) -> some View {
         HStack(spacing: 12) {
             AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: nil)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("自分へのメモ").lineLimit(1)
-                Text("自分だけが見られる DM").font(.caption).foregroundStyle(.secondary)
-            }
+            Text(store.me?.displayName ?? "…").lineLimit(1)
             Spacer(minLength: 4)
         }
         .padding(.vertical, 6)
