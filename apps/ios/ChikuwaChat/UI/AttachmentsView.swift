@@ -67,16 +67,20 @@ func formatSize(_ bytes: Int64) -> String {
     return "\(bytes) B"
 }
 
-/// Images show their thumbnail; documents download with authentication before a local system preview.
+/// Images show their thumbnail, videos a tile that plays them; documents download with authentication before a local
+/// system preview. `present` shows a downloaded file from the conversation (MessageSheet), not from the row.
 struct AttachmentsView: View {
     let attachments: [AttachmentOut]
     @Bindable var controller: AppController
+    var present: ((URL) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(attachments) { attachment in
                 if attachment.isImage {
                     ThumbnailView(attachment: attachment, controller: controller)
+                } else if attachment.isVideo {
+                    VideoTile(attachment: attachment, controller: controller, present: present)
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: attachment.isVideo ? "film" : "doc").foregroundStyle(.secondary)
@@ -85,7 +89,7 @@ struct AttachmentsView: View {
                             Text(formatSize(attachment.sizeBytes)).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        AttachmentFileButton(attachment: attachment) { await controller.downloadAttachment(attachment) }
+                        AttachmentFileButton(attachment: attachment, present: present) { await controller.downloadAttachment(attachment) }
                     }
                     .padding(8)
                     .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
@@ -133,47 +137,98 @@ final class AttachmentFileLoader {
     }
 }
 
-/// Shared by conversation attachments and the Files list; no duplicate downloads while one is running.
+/// Shared by conversation attachments and the Files list; no duplicate downloads while one is running. 「開く」 downloads
+/// and shows the file (its share button is in the preview). It was a task keyed on the taps, which ran again whenever
+/// the row came back into the list: with the keyboard coming up the video opened again and again (testers,
+/// 2026-09-29). `present` shows it from the conversation; without it (the Files list) it is shown from here.
 struct AttachmentFileButton: View {
     let attachment: AttachmentOut
+    var present: ((URL) -> Void)? = nil
     let download: () async -> URL?
     @State private var loader = AttachmentFileLoader()
-    @State private var attempt = 0
     @State private var previewURL: URL?
     @State private var shareURL: URL?
 
     var body: some View {
-        VStack(spacing: 4) {
+        Group {
             if loader.loading {
                 ProgressView().accessibilityLabel("\(attachment.filename) を読み込み中")
             } else {
-                Button {
-                    if let url = loader.url { open(url) } else { attempt += 1 }
-                } label: {
+                Button(action: tapped) {
                     Label(loader.failed ? "再試行" : "開く", systemImage: loader.failed ? "arrow.clockwise" : "doc.text.magnifyingglass")
                         .font(.footnote)
                 }
                 .accessibilityLabel("\(attachment.filename) を\(loader.failed ? "再試行" : "開く")")
-                if let url = loader.url {
-                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                        .accessibilityLabel("\(attachment.filename) を共有")
-                }
-                if loader.failed { Text("読み込み失敗").font(.caption2).foregroundStyle(.secondary) }
             }
         }
         .buttonStyle(.borderless)
-        .task(id: attempt) {
-            guard attempt > 0 else { return }
-            await loader.load(download: download)
-            guard !Task.isCancelled, let url = loader.url else { return }
-            open(url)
-        }
         .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
     }
 
-    private func open(_ url: URL) {
-        if AttachmentPreview.canPreview(url) { previewURL = url } else { shareURL = url }
+    private func tapped() {
+        if let url = loader.url { show(url); return }
+        Task {
+            await loader.load(download: download)
+            if let url = loader.url { show(url) }
+        }
+    }
+
+    private func show(_ url: URL) {
+        if let present { present(url) } else if AttachmentPreview.canPreview(url) { previewURL = url } else { shareURL = url }
+    }
+}
+
+/// A video in a message (testers, 2026-09-29): a dark tile with a play button, the name and the size; a tap downloads
+/// it and plays it with Quick Look, whose share button saves it to Photos.
+struct VideoTile: View {
+    let attachment: AttachmentOut
+    @Bindable var controller: AppController
+    var present: ((URL) -> Void)? = nil
+    @State private var loader = AttachmentFileLoader()
+    @State private var previewURL: URL?
+
+    var body: some View {
+        Button(action: tapped) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.85))
+                if loader.loading {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: loader.failed ? "arrow.clockwise.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44)).foregroundStyle(.white.opacity(0.9))
+                }
+                VStack {
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Image(systemName: "film")
+                        Text(attachment.filename).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(formatSize(attachment.sizeBytes))
+                    }
+                    .font(.caption2).foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                }
+            }
+            .frame(width: 240, height: 135)
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .disabled(loader.loading)
+        .accessibilityLabel("動画 \(attachment.filename) を\(loader.failed ? "再試行" : "再生")")
+        .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
+    }
+
+    private func tapped() {
+        if let url = loader.url { show(url); return }
+        Task {
+            await loader.load { await controller.downloadAttachment(attachment) }
+            if let url = loader.url { show(url) }
+        }
+    }
+
+    private func show(_ url: URL) {
+        if let present { present(url) } else { previewURL = url }
     }
 }
 

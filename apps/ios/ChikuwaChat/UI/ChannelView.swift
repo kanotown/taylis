@@ -838,7 +838,10 @@ struct MessageRow: View {
                             return .handled
                         })
                 }
-                if !message.attachments.isEmpty { AttachmentsView(attachments: message.attachments, controller: controller) }
+                if !message.attachments.isEmpty {
+                    AttachmentsView(attachments: message.attachments, controller: controller,
+                                    present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
+                }
                 if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil {
                     LinkPreviewCard(controller: controller, url: link)
                 }
@@ -1072,6 +1075,8 @@ struct ComposerView: View {
     @State private var priority: String?
     @State private var ackRequested = false
     @FocusState private var focused: Bool
+    /// The cursor and selection (iOS 18: `TextSelection`), where the formatting and the emoji go.
+    @State private var selection = ComposerSelection()
 
     /// `/st` at the very start offers the slash commands (M13b).
     private var commandHits: [SlashCommands.Command] {
@@ -1177,6 +1182,132 @@ struct ComposerView: View {
         onSend(body, ids, options)
     }
 
+    /// The height of a one-line input: 「＋」 is as tall, so the two sit on one line (it was 4 pt lower).
+    private static let fieldHeight: CGFloat = 40
+    /// The tools row shows while the input has the keyboard (Slack / Mattermost).
+    private var typing: Bool { focused }
+
+    @ViewBuilder
+    private var inputField: some View {
+        if #available(iOS 18.0, *) {
+            SelectingTextField(placeholder: placeholder, text: textBinding, box: selection)
+        } else {
+            TextField(placeholder, text: textBinding, axis: .vertical)
+        }
+    }
+
+    /// 「＋」: photos, the camera and files, and how the next post goes out.
+    private var attachMenu: some View {
+        Menu {
+            Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+            if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
+            Button("ファイル", systemImage: "folder") { showFileImporter = true }
+            if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
+            if parentId == nil {
+                Divider()
+                Picker("重要度", selection: $priority) {
+                    Text("通常").tag(String?.none)
+                    Label("重要", systemImage: "info.circle").tag(String?.some("important"))
+                    Label("緊急", systemImage: "exclamationmark.triangle").tag(String?.some("urgent"))
+                }
+                Toggle("確認を求める", systemImage: "checkmark.circle", isOn: $ackRequested)
+            }
+            if !typing {
+                Divider()
+                Button("後で送信…", systemImage: "clock") { showSchedule = true }.disabled(!canSend)
+            }
+        } label: {
+            if typing {
+                Image(systemName: "plus.circle").font(.system(size: 22)).frame(width: 36, height: 36)
+            } else {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(uploading > 0 ? Color.secondary : Color.accentColor)
+                    .frame(width: 36, height: Self.fieldHeight)
+            }
+        }
+        .disabled(uploading > 0)
+        .accessibilityLabel("添付")
+    }
+
+    /// Under the input while typing: attach, mention, emoji, formatting, send later; send on the right.
+    private var toolRow: some View {
+        HStack(spacing: 6) {
+            attachMenu
+            toolButton("at", label: "メンション") { insert("@") }
+            toolButton("face.smiling", label: "絵文字") { showEmojiPicker = true }
+            Menu {
+                ForEach(ComposerFormat.allCases) { format in
+                    Button(format.label, systemImage: format.icon) { apply(format) }
+                }
+            } label: {
+                Image(systemName: "textformat").font(.system(size: 20)).frame(width: 36, height: 36)
+            }
+            .accessibilityLabel("書式")
+            toolButton("clock", label: "後で送信") { showSchedule = true }.disabled(!canSend)
+            Spacer()
+            if uploading > 0 {
+                ProgressView().controlSize(.small).frame(width: 36, height: 36)
+            } else {
+                sendButton(size: 30).disabled(!canSend).opacity(canSend ? 1 : 0.35)
+            }
+        }
+        .foregroundStyle(Color.secondary)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func toolButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).font(.system(size: 20)).frame(width: 36, height: 36) }
+            .accessibilityLabel(label)
+    }
+
+    private func sendButton(size: CGFloat) -> some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up.circle.fill").font(.system(size: size)).foregroundStyle(Color.accentColor)
+        }
+        .accessibilityLabel("送信")
+    }
+
+    /// The cursor or selection as character offsets (iOS 18 reports it; before, the end of the text).
+    private func selectedRange() -> Range<Int> {
+        let end = text.count
+        if #available(iOS 18.0, *), let current = selection.raw as? TextSelection, case .selection(let range) = current.indices {
+            func offset(_ index: String.Index) -> Int {
+                let utf16 = min(max(0, index.utf16Offset(in: text)), text.utf16.count)
+                return text[..<String.Index(utf16Offset: utf16, in: text)].count
+            }
+            let lower = offset(range.lowerBound), upper = offset(range.upperBound)
+            return min(lower, upper)..<max(lower, upper)
+        }
+        return end..<end
+    }
+
+    private func setText(_ value: String, selecting range: Range<Int>) {
+        textBinding.wrappedValue = value
+        if #available(iOS 18.0, *) {
+            let lower = value.index(value.startIndex, offsetBy: min(range.lowerBound, value.count))
+            let upper = value.index(value.startIndex, offsetBy: min(range.upperBound, value.count))
+            selection.raw = lower == upper ? TextSelection(insertionPoint: lower) : TextSelection(range: lower..<upper)
+        }
+        focused = true
+    }
+
+    /// Text at the cursor, in place of the selection (the end of the text before iOS 18).
+    private func insert(_ inserted: String) {
+        var chars = Array(text)
+        let range = selectedRange().clamped(to: 0..<(chars.count + 1))
+        chars.replaceSubrange(range.lowerBound..<min(range.upperBound, chars.count), with: Array(inserted))
+        let cursor = range.lowerBound + inserted.count
+        setText(String(chars), selecting: cursor..<cursor)
+    }
+
+    private func apply(_ format: ComposerFormat) {
+        let result = format.apply(to: text, selection: selectedRange())
+        setText(result.text, selecting: result.selection)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Divider()
@@ -1253,67 +1384,41 @@ struct ComposerView: View {
                 .padding(.top, 6)
             }
             if priority != nil || ackRequested { priorityChips }
+            // Slack / Mattermost (testers, 2026-09-29): at rest, 「＋」 beside the input; while typing, the input takes the
+            // whole width and a row of tools goes under it (attach, mention, emoji, formatting, send later, send).
             HStack(alignment: .bottom, spacing: 8) {
-                if controller != nil {
-                    // "+" like Slack / Mattermost: photos, camera and files from one place.
-                    Menu {
-                        Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
-                        if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
-                        Button("ファイル", systemImage: "folder") { showFileImporter = true }
-                        Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true }
-                        Divider()
-                        Button("後で送信…", systemImage: "clock") { showSchedule = true }.disabled(!canSend)
-                        if parentId == nil {
-                            Divider()
-                            Picker("重要度", selection: $priority) {
-                                Text("通常").tag(String?.none)
-                                Label("重要", systemImage: "info.circle").tag(String?.some("important"))
-                                Label("緊急", systemImage: "exclamationmark.triangle").tag(String?.some("urgent"))
-                            }
-                            Toggle("確認を求める", systemImage: "checkmark.circle", isOn: $ackRequested)
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(uploading > 0 ? Color.secondary : Color.accentColor)
-                            .frame(width: 36, height: 36)
-                    }
-                    .disabled(uploading > 0)
-                    .accessibilityLabel("添付")
-                }
+                if !typing && controller != nil { attachMenu }
                 HStack(alignment: .bottom, spacing: 4) {
-                    TextField(placeholder, text: textBinding, axis: .vertical)
+                    inputField
                         .lineLimit(1...6)
                         .focused($focused)
                         .padding(.leading, 14)
                         .padding(.vertical, 9)
-                        .padding(.trailing, canSend || uploading > 0 ? 0 : 12)
-                    if uploading > 0 {
-                        ProgressView().controlSize(.small).padding(.trailing, 10).padding(.bottom, 10)
-                    } else if canSend {
-                        Button(action: send) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(Color.accentColor)
+                        .padding(.trailing, !typing && (canSend || uploading > 0) ? 0 : 12)
+                    if !typing {
+                        if uploading > 0 {
+                            ProgressView().controlSize(.small).padding(.trailing, 10).padding(.bottom, 10)
+                        } else if canSend {
+                            sendButton(size: 28).padding(.trailing, 5).padding(.bottom, 4).transition(.scale.combined(with: .opacity))
                         }
-                        .accessibilityLabel("送信")
-                        .padding(.trailing, 5)
-                        .padding(.bottom, 4)
-                        .transition(.scale.combined(with: .opacity))
                     }
                 }
+                .frame(minHeight: Self.fieldHeight)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(Color(.separator).opacity(0.6), lineWidth: 0.5))
-                .animation(.easeOut(duration: 0.15), value: canSend)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, typing ? 2 : 8)
+            if typing && controller != nil { toolRow }
         }
+        .animation(.easeOut(duration: 0.15), value: canSend)
+        .animation(.easeOut(duration: 0.2), value: typing)
         .background(Color(.systemBackground))
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
         .sheet(isPresented: $showEmojiPicker) {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
-                            onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in textBinding.wrappedValue = text + glyph }
+                            onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
         }
         // Videos too (testers, 2026-09-29: they were not in the list at all).
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))
@@ -1399,5 +1504,22 @@ extension MessageRow: Equatable {
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
         lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.highlighted == rhs.highlighted && lhs.controller === rhs.controller
             && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.present == nil) == (rhs.present == nil)
+    }
+}
+
+/// The composer's cursor and selection: a `TextSelection?` from iOS 18, kept untyped so the view builds for iOS 17.
+final class ComposerSelection {
+    var raw: Any?
+}
+
+/// The input with its selection reported (iOS 18), for the formatting menu and inserting at the cursor.
+@available(iOS 18.0, *)
+private struct SelectingTextField: View {
+    let placeholder: String
+    let text: Binding<String>
+    let box: ComposerSelection
+
+    var body: some View {
+        TextField(placeholder, text: text, selection: Binding(get: { box.raw as? TextSelection }, set: { box.raw = $0 }), axis: .vertical)
     }
 }

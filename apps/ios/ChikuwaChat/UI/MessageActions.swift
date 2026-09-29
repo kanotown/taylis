@@ -11,10 +11,12 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, share, revisions, profile, edit }
+    enum Kind: String { case actions, reactions, share, revisions, profile, edit, file }
     let kind: Kind
     let message: MessageState
-    var id: String { "\(kind.rawValue) \(message.id)" }
+    /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
+    var url: URL? = nil
+    var id: String { "\(kind.rawValue) \(message.id) \(url?.lastPathComponent ?? "")" }
 }
 
 extension View {
@@ -76,6 +78,10 @@ private struct MessageSheets: ViewModifier {
                 case .profile:
                     ProfileSheet(controller: controller, userId: message.senderId) { id in
                         NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
+                    }
+                case .file:
+                    if let url = shown.url {
+                        if AttachmentPreview.canPreview(url) { FilePreviewSheet(url: url, onDismiss: { sheet = nil }) } else { ShareSheet(items: [url]) }
                     }
                 case .edit:
                     EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups)) { body in
