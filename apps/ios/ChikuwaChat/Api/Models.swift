@@ -650,6 +650,17 @@ struct InvitePreviewOut: Codable, Equatable {
     let channels: [String]
     let expiresAt: String
     var passwordMinLength: Int = 8
+    /// L7: the roster line (and times) the new account gets; nil without a preset or from an older server.
+    var lab: InviteLabPreview? = nil
+}
+
+/// L7: what an invite's lab preset gives, for the acceptance screen.
+struct InviteLabPreview: Codable, Equatable {
+    let affiliation: String
+    var rank: String? = nil
+    var grade: String? = nil
+    var supervisorName: String? = nil
+    var times = false
 }
 
 /// Two-factor authentication (M12i).
