@@ -105,6 +105,7 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
         } else {
             Text("${shown.invitedBy} さんから招待されています", style = MaterialTheme.typography.titleMedium)
             if (shown.role == "admin") Text("管理者として参加します", style = MaterialTheme.typography.bodySmall)
+            shown.lab?.let { Text(Invite.labText(it), style = MaterialTheme.typography.bodySmall) }
             if (shown.channels.isNotEmpty()) Text("参加するチャンネル: " + shown.channels.joinToString(" ") { "#$it" }, style = MaterialTheme.typography.bodySmall)
             Text("サーバ ${chosen.server}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))

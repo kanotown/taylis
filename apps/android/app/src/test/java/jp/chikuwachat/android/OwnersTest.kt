@@ -131,6 +131,34 @@ class OwnersTest {
         engine.stop(); scope.cancel()
     }
 
+    @Test fun aChannelIMadeElsewhereArrivesWithMeAsItsOwner() = runBlocking { // M32: the channel.created membership gap
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val engine = SyncEngine(server.api(alice.id), server.connector(alice.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); repeat(20) { engine.idle(); yield() }
+        // Made on another device: channel.created carries no membership.
+        val mine = server.createChannel("lab", alice.id, type = "private")
+        server.emitMembership(mine.id, alice.id); repeat(20) { engine.idle(); yield() }
+        assertEquals(MembershipOut("owner", mine.createdAt), store.channel(mine.id)?.channel?.membership)
+        assertTrue(ChannelOwners.canManage(store.channel(mine.id)!!, "member"))
+        // Someone else's channel I was added to: no role is made up.
+        val theirs = server.createChannel("theirs", bob.id)
+        server.join(theirs.id, alice.id); server.emitMembership(theirs.id, alice.id); repeat(20) { engine.idle(); yield() }
+        assertTrue(store.channel(theirs.id)!!.isMember)
+        assertNull(store.channel(theirs.id)?.channel?.membership)
+        // Not for a group DM.
+        val group = server.createChannel("", alice.id, type = "group_dm")
+        server.join(group.id, bob.id); server.emitMembership(group.id, alice.id); repeat(20) { engine.idle(); yield() }
+        assertNull(store.channel(group.id)?.channel?.membership)
+        // A membership already known stays (made a plain member since): a later channel.created does not raise it.
+        store.applyMemberUpdated(mine.id, alice.id, "member")
+        server.emitMembership(mine.id, alice.id); repeat(20) { engine.idle(); yield() }
+        assertEquals("member", store.channel(mine.id)?.channel?.membership?.role)
+        engine.stop(); scope.cancel()
+    }
+
     @Test fun requestsGoWhereTheServerExpectsThem() = runBlocking {
         val seen = ArrayList<String>()
         val http = OkHttpClient.Builder().addInterceptor(Interceptor { chain ->

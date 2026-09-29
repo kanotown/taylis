@@ -75,6 +75,21 @@ data class InvitePreviewOut(
     val channels: List<String> = emptyList(),
     val expiresAt: String,
     val passwordMinLength: Int = 8,
+    /** M32 (L7): the roster line the invite gives on acceptance; null for an invite without a lab preset or an older server. */
+    val lab: InviteLabPreview? = null,
+)
+
+/**
+ * The lab preset as the acceptance screen shows it (M32, DATA_MODEL.md invites). Strings, as in [LabProfileOut], so a
+ * value a newer server adds does not fail the preview.
+ */
+@Serializable
+data class InviteLabPreview(
+    val affiliation: String,
+    val rank: String? = null,
+    val grade: String? = null,
+    val supervisorName: String? = null,
+    val times: Boolean = false,
 )
 
 /** Two-factor authentication (M12i). */
