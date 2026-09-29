@@ -876,7 +876,7 @@ struct MessageRow: View {
                 if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
                     MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
-                                    onNeedEmojiImage: { controller.loadEmojiImage($0) })
+                                    onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [])
                         .environment(\.openURL, OpenURLAction { url in
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
                             Task { await controller.openPermalink(id) }

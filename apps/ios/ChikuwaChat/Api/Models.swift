@@ -255,6 +255,32 @@ enum NotifyKeywords {
         let text = body.lowercased()
         return keywords.contains { !$0.isEmpty && text.contains($0.lowercased()) }
     }
+
+    /// A text run cut where the keywords occur (case-insensitively, the longest first), each piece with whether it is
+    /// one: the body highlights them, as on the web (M28d).
+    static func pieces(_ text: String, _ keywords: [String]?) -> [(text: String, hit: Bool)] {
+        let words = (keywords ?? []).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            .sorted { $0.count > $1.count }
+        guard !words.isEmpty, !text.isEmpty else { return [(text, false)] }
+        var pieces: [(String, Bool)] = []
+        var rest = text[...]
+        while !rest.isEmpty {
+            var first: (Range<Substring.Index>, String)?
+            for word in words {
+                if let range = rest.range(of: word, options: [.caseInsensitive]), first.map({ range.lowerBound < $0.0.lowerBound }) ?? true {
+                    first = (range, word)
+                }
+            }
+            guard let (range, _) = first else {
+                pieces.append((String(rest), false))
+                break
+            }
+            if range.lowerBound > rest.startIndex { pieces.append((String(rest[..<range.lowerBound]), false)) }
+            pieces.append((String(rest[range]), true))
+            rest = rest[range.upperBound...]
+        }
+        return pieces
+    }
 }
 
 /// The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6).
