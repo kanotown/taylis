@@ -271,7 +271,8 @@ describe("notification level (M35, PUSH_NOTIFICATIONS.md §4)", () => {
   it("reads the server's preference: the resolved level is the own one only when it does not follow the default", () => {
     expect(ownNotification({ level: "mentions", muted_until: null, follows_default: true, muted: false })).toEqual({ notificationLevel: null, mutedUntil: null, muted: false });
     expect(ownNotification({ level: "all", muted_until: "2026-09-27T00:00:00Z", follows_default: false, muted: true })).toEqual({ notificationLevel: "all", mutedUntil: "2026-09-27T00:00:00Z", muted: true });
-    expect(ownNotification({ level: "none" })).toEqual({ notificationLevel: null, mutedUntil: null, muted: false }); // an older server
+    // An older server: its level is the conversation's own (a "none" stays muted, as before M35).
+    expect(ownNotification({ level: "none" })).toEqual({ notificationLevel: "none", mutedUntil: null, muted: false });
   });
 
   it("names 「既定 (…)」 after the overall setting", () => {

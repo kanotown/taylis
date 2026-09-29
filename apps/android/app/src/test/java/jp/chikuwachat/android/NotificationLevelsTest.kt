@@ -105,7 +105,9 @@ class NotificationLevelsTest {
 
     @Test fun decodingOlderAndNewerPayloads() {
         val old = Codec.snake.decodeFromString(NotificationPreferenceOut.serializer(), """{"channel_id":"c","level":"all","muted_until":null}""")
-        assertTrue(old.followsDefault)
+        // A server before M35: its level is the channel's own (a "none" stays muted, as before).
+        assertNull(old.followsDefault)
+        assertEquals("all", old.ownLevel)
         assertFalse(old.muted)
         val new = Codec.snake.decodeFromString(
             NotificationPreferenceOut.serializer(), """{"channel_id":"c","level":"none","muted_until":null,"follows_default":false,"muted":true}""",

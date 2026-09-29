@@ -334,7 +334,7 @@ class ApiClientTest {
         })
         client.accessToken = "a"
         val pref = client.setNotificationPreference("c", null, null, muted = true)
-        assertTrue(pref.followsDefault)
+        assertEquals(true, pref.followsDefault)
         assertTrue(pref.muted)
         assertNull(pref.ownLevel)
         client.setNotificationPreference("c", "all", "2026-09-30T08:00:00Z")

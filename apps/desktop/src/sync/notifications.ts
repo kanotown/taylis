@@ -58,7 +58,8 @@ export function effectiveNotificationLevel(
 /**
  * A preference as the server sends it (bootstrap, the PUT's response, notification_preference.updated) turned into the
  * conversation's own values: `level` there is resolved, so the own level is null while it follows the default. Older
- * servers send neither flag: following the default, not muted.
+ * servers send neither flag: their `level` is then the conversation's own (as the rules took it before M35: a level
+ * "none" stays muted), not muted until unmuted.
  */
 export function ownNotification(pref: {
   level: NotifyLevel;
@@ -67,7 +68,7 @@ export function ownNotification(pref: {
   muted?: boolean | null;
 }): Pick<ChannelState, "notificationLevel" | "mutedUntil" | "muted"> {
   return {
-    notificationLevel: (pref.follows_default ?? true) ? null : pref.level,
+    notificationLevel: (pref.follows_default ?? false) ? null : pref.level,
     mutedUntil: pref.muted_until ?? null,
     muted: pref.muted ?? false,
   };
