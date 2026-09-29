@@ -1,6 +1,6 @@
 # LAB (研究室向け機能の設計)
 
-2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。**次は C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3**。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
+2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3 も実装済み (M30、仕様は DATA_MODEL.md message_templates)。**次は L4 (H 確認の拡張と教員の権限、J プライバシー)**。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
 
 ## 0. 前提と方針
 
@@ -125,6 +125,8 @@ ALTER TABLE channels ADD CONSTRAINT times_is_named_channel
 
 ### C. 投稿テンプレート (日報・週報・ゼミ議事録)
 
+**実装済み (M30)**。決まった仕様は DATA_MODEL.md の message_templates (置き換え・挿入・並び・名前の規則)。以下は設計時の文面。
+
 - **操作**: 入力欄の「テンプレート」ボタン、または `/日報` `/週報` で本文に挿入する (送信はしない)。
 - **置換**: 挿入時に `{date}` `{weekday}` `{week}` を置き換える (例: 2026/09/28 (月)、2026-W40)。
 - **既定の例**
@@ -220,6 +222,8 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 - 修論・学会の締切前は、教員に 10 人分の依頼が集中する。その整理に効く。
 
 ### G. ゼミの日程調整
+
+**実装済み (M30)**。文法とラベルの規則は DATA_MODEL.md の message_templates の「`/日程`」。以下は設計時の文面。
 
 - 既存の投票で足りる。クライアントにヘルパを足すだけで、サーバの変更は無い。
   - 例: `/日程 ゼミ 10/3 10/4 10/6` → 「10/3 (金)」などを選択肢にした複数選択の投票を作る。
@@ -374,7 +378,7 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 | L0 | 方針の決定と設計文書 | decisions_for_user の回答を反映する。docs/LAB.md (または ARCHITECTURE / DATA_MODEL / SECURITY / SYNC_PROTOCOL への追記) に書くもの: lab モジュールの境界、D23、静かな未読の規則、運用者に何が見えるかの説明。コードは書かない。 | S | 方針は ROADMAP.md §6 と利用者の回答で決定済み |
 | L1 | 研究室プロフィールと学年グループ | サーバ: 葉モジュール lab、マイグレーション (lab_profiles、user_groups.managed_key)、GET /lab/profiles、bootstrap の lab_profiles、lab_profile.updated (ゲストの絞り込みあり)、PUT /admin/lab/profiles/{id}、PATCH /users/me/lab、groups.sync_managed_in_tx と 409 group_managed。Desktop: 管理画面「研究室」タブ、カードのチップ、名簿の並びと絞り込み、@候補での人数表示。iOS / Android: カード、名簿、研究テーマの編集。 | M | 実装済み (M23) |
 | L2 | times (基本) | サーバ: channels.times_owner_id と一意インデックス、POST /users/me/times (冪等)、POST /admin/users/{id}/times、ChannelOut.times_owner_id、指導教員の自動フォロー、/sync/summary の静かな未読規則。3 端末: Times 節 (sectionChannels と同等の関数)、作成ボタン、Times 一覧 (フォロー / 全員フォロー)、hasUnread の静かな未読、共有テストベクタ。 | M | 実装済み (M24) |
-| L3 | 投稿テンプレートと /日程 | サーバ: message_templates、API、bootstrap の templates、template.updated。3 端末: 入力欄のテンプレートボタン、/日報 /週報、{date}/{weekday}/{week} の置換 (apps/shared のテストベクタ)、/日程 で日付の選択肢の投票を作るヘルパ (クライアントのみ)。 | S | 次に着手 |
+| L3 | 投稿テンプレートと /日程 | サーバ: message_templates、API、bootstrap の templates、template.updated。3 端末: 入力欄のテンプレートボタン、/日報 /週報、{date}/{weekday}/{week} の置換 (apps/shared のテストベクタ)、/日程 で日付の選択肢の投票を作るヘルパ (クライアントのみ)。 | S | 実装済み (M30) |
 | L4 | 確認の拡張・教員の権限・プライバシー | サーバ: reminders.create_system_in_tx、POST /messages/{id}/ack/remind (1 時間に 1 回)、PATCH /channels/{id}/members/{user_id} (ロール)、非公開→公開をメンバーの admin に限定、users.presence_hidden (Hub で絞る)。3 端末: 未確認の人の一覧とリマインドボタン、メンバーのロール変更、在席を隠す設定。 | M | 未着手 |
 | L5 | 締切 (学会・提出物) | サーバ: 葉モジュール deadlines (deadlines、deadline_notices)、CRUD API、deadline.updated、bootstrap に 90 日分、研究室 bot、scheduled ループでの事前通知 (冪等)。3 端末: 見出しのチップ、「締切」一覧、作成と編集。 | L | 未着手 |
 | L6 | 定期投稿と週報の回収 | サーバ: recurring_posts、messages.report、ワーカー (uuid5 の冪等キー、tz を使った次回計算)、GET /messages/{id}/report、MessageOut の report_summary、期限後の未提出者へ本人だけのリマインダー。Desktop: チャンネル ⋯ の「定期投稿」設定画面。3 端末: 提出状況のカード。 | L | 未着手 |
