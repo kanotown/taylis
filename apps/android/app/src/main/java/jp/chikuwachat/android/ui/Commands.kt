@@ -20,29 +20,39 @@ object SlashCommands {
         Command("me", "/me 文", "動作を斜体で投稿"),
         Command("shrug", "/shrug [文]", "¯\\_(ツ)_/¯ を添えて投稿"),
         Command("poll", "/poll 質問 | 選択肢 | 選択肢 …", "アンケートを作る (/poll だけでフォームを開く)"),
+        Command(SCHEDULE, "/日程 [質問] 日付 日付 …", "日付を選択肢にした複数選択の投票 (/日程 だけでフォームを開く)"),
         Command("help", "/help", "コマンド一覧"),
     )
+
+    /** M30: the date poll (ui/Templates.kt parseSchedule). */
+    const val SCHEDULE = "日程"
 
     /** In a code span, so the underscores do not read as italics (the light markdown has no escapes). */
     const val SHRUG = "`¯\\_(ツ)_/¯`"
 
-    private val PATTERN = Regex("""^/([a-z]+)(?:\s+([\s\S]*))?$""", RegexOption.IGNORE_CASE)
-    private val PREFIX = Regex("""^/([a-z]*)$""", RegexOption.IGNORE_CASE)
+    // M30: a name is letters of any script, digits, `_` or `-` (`/日程`, a template's `/日報`), like the server's template names.
+    private val PATTERN = Regex("""^/([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$""")
+    private val PREFIX = Regex("""^/([\p{L}\p{N}_-]*)$""")
     private val DURATION = Regex("""^(\d{1,3})\s*(m|min|h|hour|hours|d|day|days)$""")
     private val SHORTCODE = Regex("""^:[a-z0-9_+-]+:$""")
     private val EMOJI_TOKEN = Regex("""^(?:[\p{So}]|[\uD83C-\uDBFF][\uDC00-\uDFFF])(?:[️‍]|[\p{So}]|[\uD83C-\uDBFF][\uDC00-\uDFFF])*$""")
 
-    /** `/name args` at the start of the text; null when the text is not a command at all. */
+    /**
+     * `/name args` at the start of the text; null when the text is not a command at all. `known` is a built-in one; any
+     * other name may still be a template's (Templates.find).
+     */
     fun parse(text: String): Parsed? {
         val match = PATTERN.find(text.trim()) ?: return null
         val name = match.groupValues[1].lowercase()
         return Parsed(name, match.groupValues[2].trim(), all.any { it.name == name })
     }
 
+    /** The name typed so far after a leading `/` (`/` → ""); null once a space follows or the text is not a command. */
+    fun prefix(text: String): String? = PREFIX.find(text)?.groupValues?.get(1)?.lowercase()
+
     /** Commands whose name starts with what was typed (`/`, `/st` …); empty once a space follows. */
     fun candidates(text: String): List<Command> {
-        val match = PREFIX.find(text) ?: return emptyList()
-        val prefix = match.groupValues[1].lowercase()
+        val prefix = prefix(text) ?: return emptyList()
         return all.filter { it.name.startsWith(prefix) }
     }
 

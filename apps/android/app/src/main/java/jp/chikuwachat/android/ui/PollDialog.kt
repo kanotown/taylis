@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -62,12 +61,16 @@ fun PollDialog(
     onDismiss: () -> Unit,
     onCreate: suspend (question: String, options: List<String>, multiple: Boolean, anonymous: Boolean) -> Boolean,
     launch: (suspend () -> Unit) -> Unit,
+    initialQuestion: String = "",
+    initialOptions: List<String> = listOf("", ""),
+    initialMultiple: Boolean = false,
 ) {
     // Saveable (M28c): a rotation while filling the form emptied it. `busy` is not: the request runs in the controller's
     // scope and reports to the state that started it.
-    var question by rememberSaveable { mutableStateOf("") }
-    val options = rememberSaveable(saver = OptionsSaver) { mutableStateListOf("", "") }
-    var multiple by rememberSaveable { mutableStateOf(false) }
+    // M30: /日程 alone opens the form filled in (日程調整, the next weekdays, several answers).
+    var question by rememberSaveable { mutableStateOf(initialQuestion) }
+    val options = rememberSaveable(saver = OptionsSaver) { initialOptions.take(PollForm.MAX_OPTIONS).toMutableStateList() }
+    var multiple by rememberSaveable { mutableStateOf(initialMultiple) }
     var anonymous by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var tried by rememberSaveable { mutableStateOf(false) }

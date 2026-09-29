@@ -36,6 +36,8 @@ import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
 import jp.chikuwachat.android.ui.SlashCommands
+import jp.chikuwachat.android.ui.Templates
+import java.time.LocalDate
 import jp.chikuwachat.android.ui.Share
 import jp.chikuwachat.android.ui.Totp
 import jp.chikuwachat.android.api.TotpEnabledOut
@@ -1484,7 +1486,13 @@ class AppController(private val app: Application) {
         fun user(handle: String) = store.users.values.firstOrNull { it.username.equals(handle.removePrefix("@"), ignoreCase = true) }
         val level = state.channel.notification?.level ?: if (isDm) "all" else "mentions"
         return when (command.name) {
-            "help" -> { notice = SlashCommands.all.joinToString(" · ") { it.usage }; true }
+            "help" -> {
+                // M30: the templates' names too, in the order the template button shows them.
+                val templates = Templates.ordered(store.templates.values, inTimes = state.channel.isTimes)
+                notice = SlashCommands.all.joinToString(" · ") { it.usage } +
+                    if (templates.isEmpty()) "" else " · テンプレート: " + templates.map { it.name }.distinct().joinToString(" ") { "/$it" }
+                true
+            }
             "status" -> {
                 if (command.args.isEmpty() || command.args == "clear") {
                     updateProfileJson(buildJsonObject { put("status_text", JsonNull); put("status_emoji", JsonNull); put("status_expires_at", JsonNull) })
@@ -1555,6 +1563,12 @@ class AppController(private val app: Application) {
                 val parts = command.args.split("|").map { it.trim() }.filter { it.isNotEmpty() }
                 if (parts.size < 3) { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
                 createPoll(channelId, parentId, parts[0], parts.drop(1), multiple = false)
+            }
+            SlashCommands.SCHEDULE -> {
+                // M30: a multiple-choice poll of dates (the composer opens the form for /日程 alone).
+                val poll = Templates.parseSchedule(command.args, LocalDate.now())
+                if (poll == null) { error = Templates.SCHEDULE_USAGE; return false }
+                createPoll(channelId, parentId, poll.question, poll.options, multiple = true)
             }
             else -> false
         }

@@ -92,6 +92,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.TemplateOut
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.outlined.PostAdd
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import java.time.LocalDate
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
@@ -669,17 +675,24 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     // and the whole screen recomposed: every row parsed its body again, the timeline was built again). The field follows
     // the Store when the draft changes under it (sent, scheduled, a slash command, a draft from another device), and the
     // version is bumped once when the composer leaves, so the list's 「下書き」 count sees the quiet writes.
-    var text by remember(channelId, parentId) { mutableStateOf(state.text) }
-    LaunchedEffect(state.text) { if (state.text != text) text = state.text }
+    // M30: a TextFieldValue, so text put in from outside (a template, a completion) leaves the cursor at its end.
+    var field by remember(channelId, parentId) { mutableStateOf(TextFieldValue(state.text, TextRange(state.text.length))) }
+    LaunchedEffect(state.text) { if (state.text != field.text) field = TextFieldValue(state.text, TextRange(state.text.length)) }
     DisposableEffect(channelId, parentId) { onDispose { store.notifyChanged() } }
-    val draft = text
+    val draft = field.text
     val pendingUploads = state.attachments
     val uploading = store.uploading(channelId, parentId)
-    fun setText(value: String) {
-        text = value
-        store.setDraft(channelId, parentId, quiet = true) { it.copy(text = value) }
-        if (value.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
+    fun setField(value: TextFieldValue) {
+        val changed = value.text != field.text
+        field = value
+        if (!changed) return  // only the cursor or the IME's composition moved
+        store.setDraft(channelId, parentId, quiet = true) { it.copy(text = value.text) }
+        if (value.text.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
     }
+    fun setText(value: String) = setField(TextFieldValue(value, TextRange(value.length)))
+    val channelState = store.channel(channelId)
+    val templates = Templates.ordered(store.templates.values, inTimes = channelState?.channel?.isTimes == true)
+    fun insertTemplate(template: TemplateOut) = setText(Templates.insertButton(draft, template.body, LocalDate.now()))
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
     fun uploadPicked(uris: List<android.net.Uri>) {
         if (pendingUploads.size + uploading + uris.size > maxAttachments) controller.error = "添付は${maxAttachments}件までです"
@@ -717,11 +730,18 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         }
         // `/st` at the very start offers the slash commands (M13b).
         val commandHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.candidates(draft) else emptyList()
-        if (commandHits.isNotEmpty()) {
+        // M30: the templates after the built-in commands; picking one puts its body in at once (`/` alone: the input is empty).
+        val templateHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.prefix(draft)?.let { Templates.candidates(templates, it) } ?: emptyList() else emptyList()
+        if (commandHits.isNotEmpty() || templateHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(commandHits, key = { it.name }) { command ->
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText("/" + command.name + " ") }) {
                         Text(command.usage + "  " + command.description, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                }
+                items(templateHits, key = { "template:" + it.id }) { template ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.clickable { setText(Templates.expand(template.body, LocalDate.now())) }) {
+                        Text("/" + template.name + "  " + Templates.kindLabel(template), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                     }
                 }
             }
@@ -764,10 +784,15 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         }
         // 「アンケートを作成」 (testers): from the attachment menu, or /poll alone.
         var pollOpen by rememberSaveable { mutableStateOf(false) }
+        // M30: /日程 alone opens it as a date poll: 「日程調整」, several answers, the next five weekdays.
+        var pollForDates by rememberSaveable { mutableStateOf(false) }
         if (pollOpen) PollDialog(
-            onDismiss = { pollOpen = false },
+            onDismiss = { pollOpen = false; pollForDates = false },
             onCreate = { question, options, multiple, anonymous -> controller.createPoll(channelId, parentId, question, options, multiple, anonymous) },
             launch = { work -> controller.scope.launch { work() } },
+            initialQuestion = if (pollForDates) Templates.SCHEDULE_QUESTION else "",
+            initialOptions = if (pollForDates) Templates.nextWeekdays(LocalDate.now(), 5) else listOf("", ""),
+            initialMultiple = pollForDates,
         )
         // M28c: below ComposerLayout.COMPACT_BELOW_DP (a 360 dp phone) the schedule and priority controls move into the
         // attachment menu: five buttons left the field about 100 dp, and the placeholder wrapped at a larger font.
@@ -830,6 +855,12 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
             IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
+            Box {
+                // M30 「テンプレート」: insert one (not sent); an input with text in it gets the body after a blank line.
+                var templatesOpen by remember { mutableStateOf(false) }
+                IconButton(onClick = { templatesOpen = true }) { Icon(Icons.Outlined.PostAdd, contentDescription = "テンプレート") }
+                TemplateMenu(templatesOpen, templates, onDismiss = { templatesOpen = false }, onPick = { templatesOpen = false; insertTemplate(it) })
+            }
             if (!compact) {
                 Box {
                     IconButton(enabled = canSchedule, onClick = { scheduleOpen = true }) { Icon(Icons.Outlined.Schedule, contentDescription = "後で送信") }
@@ -838,7 +869,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
             if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }
             OutlinedTextField(
-                draft, { setText(it) }, modifier = Modifier.weight(1f), maxLines = 6,
+                field, { setField(it) }, modifier = Modifier.weight(1f), maxLines = 6,
                 placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 trailingIcon = if (parentId != null || compact) null else { {
                     Box {
@@ -852,9 +883,21 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             IconButton(
                 onClick = {
                     SlashCommands.parse(draft)?.let { command ->  // M13b
-                        if (!command.known) { controller.error = "/${command.name} というコマンドはありません (/help で一覧)"; return@IconButton }
+                        if (!command.known) {
+                            // M30: `/name [文]` of a template is not sent: its body (then 文 on the next line) goes into the input.
+                            val template = Templates.find(store.templates.values, command.name)
+                            if (template != null) { setText(Templates.insertCommand(template.body, command.args, LocalDate.now())); return@IconButton }
+                            controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                            return@IconButton
+                        }
+                        // M30: /日程 that cannot be read keeps what was typed, to be corrected; nothing is posted.
+                        if (command.name == SlashCommands.SCHEDULE && command.args.isNotBlank() && Templates.parseSchedule(command.args, LocalDate.now()) == null) {
+                            controller.error = Templates.SCHEDULE_USAGE
+                            return@IconButton
+                        }
                         store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
                         if (command.name == "poll" && command.args.isBlank()) { pollOpen = true; return@IconButton }
+                        if (command.name == SlashCommands.SCHEDULE && command.args.isBlank()) { pollForDates = true; pollOpen = true; return@IconButton }
                         controller.scope.launch { controller.runCommand(command, channelId, parentId) }
                         return@IconButton
                     }
@@ -883,7 +926,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
 /** The composer's layout at narrow widths (M28c). */
 object ComposerLayout {
     /** Below this window width the schedule and priority controls move into the attachment menu (a 360 dp phone). */
-    const val COMPACT_BELOW_DP = 400f
+    // M30: 460 (was 400) now that the template button joined the row: at 400-459 dp six buttons left the text about 100 dp.
+    const val COMPACT_BELOW_DP = 460f
 
     fun compact(windowWidthDp: Float): Boolean = windowWidthDp < COMPACT_BELOW_DP
 }
@@ -901,6 +945,30 @@ private fun PriorityMenu(expanded: Boolean, onDismiss: () -> Unit, priority: Str
         }
         HorizontalDivider()
         DropdownMenuItem(text = { Text("確認を求める") }, onClick = onToggleAck, leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) })
+    }
+}
+
+/** M30: the templates in the conversation's order (Templates.ordered), each with the start of its body. */
+@Composable
+private fun TemplateMenu(expanded: Boolean, templates: List<TemplateOut>, onDismiss: () -> Unit, onPick: (TemplateOut) -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.widthIn(max = 320.dp)) {
+        if (templates.isEmpty()) {
+            DropdownMenuItem(text = { Text("テンプレートはありません (デスクトップの設定で作れます)") }, onClick = onDismiss, enabled = false)
+        }
+        templates.forEach { template ->
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text("/" + template.name + "  " + Templates.kindLabel(template), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            template.body.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty(), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+                onClick = { onPick(template) },
+            )
+        }
     }
 }
 

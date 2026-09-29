@@ -3,6 +3,7 @@ package jp.chikuwachat.android.sync
 import android.util.Log
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.TemplateOut
 import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.hitsKeyword
 import jp.chikuwachat.android.api.SidebarSectionOut
@@ -513,6 +514,7 @@ class SyncEngine(
         store.replaceCustomEmoji(bootstrap.customEmoji)
         store.replaceRoster(bootstrap.roster)
         store.replaceGroups(bootstrap.groups)
+        store.replaceTemplates(bootstrap.templates)
         store.replaceSidebar(bootstrap.sidebarSections)
         drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
@@ -617,6 +619,10 @@ class SyncEngine(
             "group.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(GroupOut.serializer(), frame.data["group"] ?: return)
                 store.applyGroup(row, frame.data.bool("deleted") ?: false)
+            }
+            "template.updated" -> {  // M30: replaced by id, or removed
+                val row = Codec.snake.decodeFromJsonElement(TemplateOut.serializer(), frame.data["template"] ?: return)
+                store.applyTemplate(row, frame.data.bool("deleted") ?: false)
             }
             "roster.updated" -> {
                 // M23: the whole line replaces the old one; a null profile means the person left the roster. The managed

@@ -309,6 +309,18 @@ data class BootstrapOut(
     val sidebarSections: List<SidebarSectionOut> = emptyList(),
     /** My drafts shared by my devices (M15d); changes arrive as draft.updated. */
     val drafts: List<DraftOut> = emptyList(),
+    /** Post templates (M30): the workspace's, then mine; changes arrive as template.updated. Absent before M30. */
+    val templates: List<TemplateOut> = emptyList(),
+)
+
+/**
+ * A post template (M30, DATA_MODEL.md message_templates): `scope` "workspace" (admins edit it) or "user" (mine, then
+ * `ownerId` is me); `suggestIn` "times" puts it first in a times channel. Mobile only inserts them (ui/Templates.kt).
+ */
+@Serializable
+data class TemplateOut(
+    val id: String, val scope: String, val ownerId: String? = null, val name: String, val body: String,
+    val suggestIn: String = "any", val position: Int = 0, val createdAt: String, val updatedAt: String,
 )
 
 /** A draft saved on the server (M15d): text only, one per composer. */
