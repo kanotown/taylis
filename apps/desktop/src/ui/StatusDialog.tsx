@@ -54,7 +54,7 @@ export function StatusDialog({ controller, onClose }: { controller: AppControlle
     <Modal onClose={onClose} title="ステータスを設定" className="w-[440px]">
       <form className="mt-4 space-y-4" onSubmit={save}>
         <div className="flex gap-2">
-          <Input value={emoji} maxLength={8} placeholder="絵文字" aria-label="絵文字" className="w-16 text-center text-lg" onChange={(e) => setEmoji(e.target.value)} />
+          <Input value={emoji} maxLength={8} placeholder="絵文字" aria-label="絵文字" className="w-20 text-center text-lg" onChange={(e) => setEmoji(e.target.value)} />
           <Input value={text} maxLength={100} placeholder="今なにしてる？" aria-label="ステータス" className="flex-1" onChange={(e) => setText(e.target.value)} autoFocus />
         </div>
         <div className="flex flex-wrap gap-1.5">

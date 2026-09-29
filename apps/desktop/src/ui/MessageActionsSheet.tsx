@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { cn } from "./primitives";
-import { reminderPresets, scheduleLabel } from "./schedule";
+import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 
 /** The default quick reactions of the phone sheet, the same six as iOS and Android (M25). */
 export const SHEET_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
@@ -58,6 +58,10 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     onClose();
     work();
   };
+  // 「リマインド…」: its note and a time of my own (M12e), besides the presets.
+  const [remindNote, setRemindNote] = useState("");
+  const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
+  const remind = (at: Date) => void controller.setReminder(message.id, at, remindNote.trim() || null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/35" onClick={() => { if (settled()) onClose(); }} role="presentation">
@@ -84,15 +88,43 @@ export function MessageActionsSheet({ controller, message, initialView = "action
             />
           </div>
         ) : view === "remind" ? (
-          <ul className="px-2 pb-2">
-            {reminderPresets().map((preset) => (
-              <li key={preset.key}>
-                <SheetButton icon={<AlarmClock size={18} />} onClick={then(() => void controller.setReminder(message.id, preset.at))}>
-                  {preset.label} <span className="ml-auto text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
-                </SheetButton>
-              </li>
-            ))}
-          </ul>
+          // A note (the API's `note`, as on Android) goes with the preset or the chosen time; the fields are finger-sized.
+          <div className="px-2 pb-2">
+            <input
+              value={remindNote}
+              maxLength={200}
+              placeholder="メモ (任意)"
+              aria-label="リマインドのメモ"
+              className="mb-1 h-11 w-full rounded-xl border border-line bg-canvas px-3 text-[15px]"
+              onChange={(event) => setRemindNote(event.target.value)}
+            />
+            <ul>
+              {reminderPresets().map((preset) => (
+                <li key={preset.key}>
+                  <SheetButton icon={<AlarmClock size={18} />} onClick={then(() => remind(preset.at))}>
+                    {preset.label} <span className="ml-auto text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                  </SheetButton>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1 flex items-center gap-2 border-t border-line px-1 pt-2">
+              <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 text-[15px]" onChange={(event) => setRemindAt(event.target.value)} />
+              <button
+                type="button"
+                className="h-11 shrink-0 rounded-xl border border-line px-4 text-[15px] active:bg-panel"
+                onClick={() => {
+                  const at = new Date(remindAt);
+                  if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) {
+                    controller.setError("1 分以上先の時刻を選んでください");
+                    return;
+                  }
+                  then(() => remind(at))();
+                }}
+              >
+                設定
+              </button>
+            </div>
+          </div>
         ) : view === "delete" ? (
           <div className="space-y-3 px-4 pb-3 pt-1">
             <div className="text-sm font-medium">このメッセージを削除しますか？</div>

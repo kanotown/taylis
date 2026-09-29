@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Copy, KeyRound, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, KeyRound, NotebookPen, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import type { AdminUserOut, Role } from "../api/types";
@@ -19,8 +19,9 @@ type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" |
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("users");
   return (
-    <Modal onClose={onClose} title="管理" className="w-[760px]">
-      <div className="mt-3 flex gap-1 overflow-x-auto border-b border-line">
+    // One height for every tab (the body scrolls): sized to its content, the dialog jumped and re-centred on each switch.
+    <Modal onClose={onClose} title="管理" className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
+      <div className="mt-3 flex shrink-0 gap-1 overflow-x-auto border-b border-line">
         {(
           [
             ["users", "ユーザー"],
@@ -44,7 +45,9 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
           </button>
         ))}
       </div>
-      {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+      </div>
     </Modal>
   );
 }
@@ -267,8 +270,8 @@ function ChannelsTab({ controller }: { controller: AppController }) {
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setRenaming(channel); setName(channel.name ?? ""); }}>
                   <Pencil size={14} /> 名前を変更
                 </Button>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setMarking(channel); setTimesOwner(channel.times_owner_id ?? ""); }}>
-                  times
+                <Button size="sm" variant="ghost" disabled={busy} title="誰かの times (作業ログ) として扱う" onClick={() => { setMarking(channel); setTimesOwner(channel.times_owner_id ?? ""); }}>
+                  <NotebookPen size={14} /> {channel.times_owner_id ? "times を変更" : "times にする"}
                 </Button>
                 <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setArchiving(channel)}>
                   <Archive size={14} /> アーカイブ

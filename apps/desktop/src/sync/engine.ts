@@ -350,8 +350,9 @@ export class SyncEngine {
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
       if (this.currentChannelId) void this.openChannel(this.currentChannelId);
-      // A preview opened while offline (or whose first page failed) loads now.
-      else if (this.preview && !this.preview.loaded && !this.preview.loading) void this.loadPreview(this.preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
+      // A preview gets no events (§7.6.1): its latest page is read again, and one opened while offline (or whose first
+      // page failed) loads now. Rows read before stay when the page reaches them (loadPreview).
+      else if (this.preview && !this.preview.loading) void this.loadPreview(this.preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
     }
   }
 
@@ -757,6 +758,11 @@ export class SyncEngine {
    */
   removeChannel(channelId: string): void {
     this.forgetThreads(channelId);
+    // Nothing of it stays open: a conversation of mine (I was removed, bootstrap dropped it) or its preview (made
+    // private while I read it). The screen drops the channel too, and a dead current id would keep suppressing its
+    // notifications should I be added again.
+    if (this.currentChannelId === channelId) this.currentChannelId = null;
+    if (this.preview?.channelId === channelId) this.closePreview();
     this.deps.store.removeChannel(channelId);
   }
 
@@ -805,12 +811,16 @@ export class SyncEngine {
     // Advances merge with max (an event for an older PUT may arrive after a newer local mark);
     // a mark-as-unread (reason "set") moves the position down as well.
     const reached = channel.pendingReadSeq !== null && state.last_read_seq >= channel.pendingReadSeq;
+    // §10: a set below an advance this device has not sent yet drops that advance and its waiting PUT: sent, it would
+    // move the position the other device just lowered back up (iOS and Android drop it the same way).
+    const undone = allowDecrease && channel.pendingReadSeq !== null && state.last_read_seq < channel.pendingReadSeq;
+    if (undone) this.readCancels.get(channelId)?.();
     this.deps.store.updateChannel(channelId, {
       lastReadSeq: allowDecrease ? state.last_read_seq : Math.max(channel.lastReadSeq, state.last_read_seq),
       unreadCount: state.unread_count,
       mentionCount: state.mention_count,
       firstUnreadAt: state.first_unread_at ?? null,
-      ...(reached ? { pendingReadSeq: null } : {}),
+      ...(reached || undone ? { pendingReadSeq: null } : {}),
     });
     if (state.unread_count === 0) this.deps.onRead?.(channelId);
   }
@@ -904,13 +914,18 @@ export class SyncEngine {
     this.setPreview({ ...current, replies: threads, parents });
   }
 
-  /** A page of the preview: the latest one (`beforeSeq` null) replaces the rows, an older one goes before them. */
+  /**
+   * A page of the preview: an older one (`beforeSeq`) goes before the rows. The latest one replaces them, except after a
+   * reconnect when it reaches a row already read: the rows before it stay (nothing between was missed, the page is
+   * contiguous), only what is newer is added. Missing more than a page (no overlap) starts over from the page.
+   */
   private async loadPreview(channelId: string, beforeSeq: number | null): Promise<void> {
     this.patchPreview(channelId, { loading: true });
     let page: HistoryOut;
     try {
       page = await this.deps.api.history(channelId, beforeSeq, this.opts.pageSize);
     } catch (error) {
+      if (this.preview?.channelId !== channelId) return; // closed meanwhile: nobody is looking, no toast
       const refused = error instanceof ApiError && error.status === 403;
       this.patchPreview(channelId, { loading: false, refused });
       if (refused) return;
@@ -919,7 +934,10 @@ export class SyncEngine {
     const current = this.preview;
     if (current?.channelId !== channelId) return;
     const rows = page.messages.filter((m) => !m.deleted).sort((a, b) => a.seq - b.seq);
-    this.setPreview({ ...current, messages: beforeSeq === null ? rows : [...rows, ...current.messages], hasOlder: page.has_more, loaded: true, loading: false, refused: false });
+    const newest = current.messages[current.messages.length - 1];
+    const joins = beforeSeq === null && current.loaded && rows.length > 0 && newest !== undefined && rows[0]!.seq <= newest.seq;
+    const messages = joins ? [...current.messages.filter((m) => m.seq < rows[0]!.seq), ...rows] : beforeSeq === null ? rows : [...rows, ...current.messages];
+    this.setPreview({ ...current, messages, hasOlder: joins ? current.hasOlder && page.has_more : page.has_more, loaded: true, loading: false, refused: false });
   }
 
   private setPreview(preview: ChannelPreview | null): void {
@@ -1354,6 +1372,25 @@ export class SyncEngine {
   /** §10.2: every reply of the thread is held (GET replies succeeded and nothing cleared them since). */
   threadComplete(parentId: string): boolean {
     return this.completeThreads.has(parentId);
+  }
+
+  /**
+   * A thread whose parent this device does not hold: one opened from the preview and kept open after joining (§7.6.1),
+   * when the parent is older than the page the conversation loaded. Fetched into the store, so the pane shows it and its
+   * events apply (§7.4). False offline, when the server has no such message, or when it is not this channel's.
+   */
+  async loadParent(channelId: string, parentId: string): Promise<boolean> {
+    if (this.status !== "online" || !this.deps.api.getMessage) return false;
+    let message: MessageOut;
+    try {
+      message = await this.deps.api.getMessage(parentId);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return false; // deleted meanwhile: the pane says so
+      throw error;
+    }
+    if (message.channel_id !== channelId || message.deleted) return false;
+    this.deps.store.upsertMessage(message);
+    return true;
   }
 
   /** 「再送」 on one failed message: that message only (others stay failed until their own 再送). */

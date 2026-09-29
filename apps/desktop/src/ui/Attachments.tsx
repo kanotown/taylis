@@ -12,27 +12,39 @@ export function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
-/** Images show their thumbnail (fetched with the bearer token); other files show a download row. */
+/**
+ * Images show their thumbnail (fetched with the bearer token); other files show a download row. Two or more photos
+ * sit in a two-column grid of squares, as on the phones (M16o); a single one keeps its own shape.
+ */
 export function AttachmentList({ attachments, controller }: { attachments: AttachmentOut[]; controller: AppController }) {
   if (attachments.length === 0) return null;
+  const photos = attachments.filter((a) => a.has_thumbnail);
+  const files = attachments.filter((a) => !a.has_thumbnail);
   return (
-    <div className="mt-1.5 flex flex-wrap gap-2">
-      {attachments.map((attachment) =>
-        attachment.has_thumbnail ? (
-          <Thumbnail key={attachment.id} attachment={attachment} controller={controller} />
-        ) : (
-          <button
-            key={attachment.id}
-            type="button"
-            className="group flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-left text-sm text-ink hover:border-accent/50 hover:bg-accent-soft/40"
-            onClick={() => void controller.downloadAttachment(attachment)}
-          >
-            {attachment.content_type.startsWith("video/") ? <Film size={18} className="shrink-0 text-muted" /> : <FileText size={18} className="shrink-0 text-muted" />}
-            <span className="max-w-64 truncate">{attachment.filename}</span>
-            <span className="text-xs text-muted">{formatSize(attachment.size_bytes)}</span>
-            <Download size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-        ),
+    <div className="mt-1.5 flex flex-col gap-2">
+      {photos.length > 1 ? (
+        <div data-photo-grid="" className="grid max-w-96 grid-cols-2 gap-1.5">
+          {photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} square />)}
+        </div>
+      ) : (
+        photos.map((attachment) => <Thumbnail key={attachment.id} attachment={attachment} controller={controller} />)
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((attachment) => (
+            <button
+              key={attachment.id}
+              type="button"
+              className="group flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-left text-sm text-ink hover:border-accent/50 hover:bg-accent-soft/40"
+              onClick={() => void controller.downloadAttachment(attachment)}
+            >
+              {attachment.content_type.startsWith("video/") ? <Film size={18} className="shrink-0 text-muted" /> : <FileText size={18} className="shrink-0 text-muted" />}
+              <span className="max-w-64 truncate">{attachment.filename}</span>
+              <span className="text-xs text-muted">{formatSize(attachment.size_bytes)}</span>
+              <Download size={14} className="text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -79,13 +91,14 @@ export function useAttachmentImage(controller: AppController, attachment: Attach
   };
 }
 
-function Thumbnail({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
+/** `square`: a cell of the photo grid (filled, cropped to a square); otherwise the image's own shape up to a cap. */
+function Thumbnail({ attachment, controller, square = false }: { attachment: AttachmentOut; controller: AppController; square?: boolean }) {
   const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "thumbnail");
   const [open, setOpen] = useState(false);
   return (
     <>
       {failed ? (
-        <div className="flex w-64 flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
+        <div className={cn("flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm", square ? "w-full" : "w-64")}>
           <span className="truncate" title={attachment.filename}>{attachment.filename}</span>
           <span role="status" className="text-muted">画像を読み込めませんでした</span>
           <div className="flex gap-2">
@@ -95,14 +108,14 @@ function Thumbnail({ attachment, controller }: { attachment: AttachmentOut; cont
         </div>
       ) : <button
         type="button"
-        className="overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md"
+        className={cn("overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md", square && "aspect-square w-full")}
         title={`${attachment.filename} (${formatSize(attachment.size_bytes)}) — クリックで拡大`}
         onClick={() => setOpen(true)}
       >
         {url ? (
-          <img src={url} alt={attachment.filename} onError={onError} className="block max-h-60 max-w-72 object-cover" />
+          <img src={url} alt={attachment.filename} onError={onError} className={cn("block object-cover", square ? "h-full w-full" : "max-h-60 max-w-72")} />
         ) : (
-          <span role="status" aria-label="画像を読み込み中" className="flex h-24 w-40 items-center justify-center text-muted">
+          <span role="status" aria-label="画像を読み込み中" className={cn("flex items-center justify-center text-muted", square ? "h-full w-full" : "h-24 w-40")}>
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}

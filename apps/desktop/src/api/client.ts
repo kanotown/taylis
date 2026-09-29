@@ -1,4 +1,4 @@
-import { ApiError, NetworkError } from "./errors";
+import { ApiError, isRetryable, NetworkError } from "./errors";
 import type { AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SidebarSectionOut, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
@@ -19,10 +19,23 @@ export interface ApiClientOptions {
   onSignedOut?: () => void;
   /** Called after login / refresh so the app can persist the new refresh token. */
   onTokens?: (tokens: TokenResponse) => void;
+  /** The wait between refresh attempts (tests). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<string, string> };
+type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<string, string>; timeoutMs?: number };
+
+/** A JSON request that has not answered by then fails like a network error (the phones' limit too). */
+export const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * §7.2: a refresh rotates the token, and the old one used more than this long after fails for good (reuse detection,
+ * SECURITY.md §2.3). A refresh that fails on the network is therefore tried again soon, each attempt short, all of
+ * them starting within the grace: the reconnect backoff alone would space them past it and end in a logout.
+ */
+export const REFRESH_GRACE_MS = 30_000;
+export const REFRESH_TIMEOUT_MS = 10_000;
+export const REFRESH_RETRY_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000];
 
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 export class ApiClient {
@@ -64,12 +77,7 @@ export class ApiClient {
     const version = this.sessionVersion;
     const token = this.refreshToken;
     if (!token) throw new ApiError(401, "missing_token", "No refresh token");
-    this.refreshing = this.request<TokenResponse>(
-      "POST",
-      "/api/v1/auth/refresh",
-      token === COOKIE_SESSION ? {} : { refresh_token: token },
-      { auth: false, headers: { "X-Requested-With": REQUESTED_WITH } },
-    )
+    this.refreshing = this.refreshRequest(token === COOKIE_SESSION ? {} : { refresh_token: token }, version)
       .then((tokens) => {
         if (version !== this.sessionVersion) throw new ApiError(401, "session_changed", "Session changed");
         this.applyTokens(tokens);
@@ -83,6 +91,24 @@ export class ApiClient {
         this.refreshing = null;
       });
     return this.refreshing;
+  }
+
+  /**
+   * The refresh request, tried again at 1, 2, 4 and 8 s while it fails on the network (or a 5xx / 429) and the next
+   * attempt still starts within REFRESH_GRACE_MS of the first; a refusal (401, any 4xx) is final at once. Each attempt
+   * has its own short timeout, so a hanging one does not eat the grace.
+   */
+  private async refreshRequest(body: unknown, version: number): Promise<TokenResponse> {
+    const started = Date.now();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.request<TokenResponse>("POST", "/api/v1/auth/refresh", body, { auth: false, headers: { "X-Requested-With": REQUESTED_WITH }, timeoutMs: REFRESH_TIMEOUT_MS });
+      } catch (err) {
+        const delay = REFRESH_RETRY_MS[attempt];
+        if (delay === undefined || !isRetryable(err) || version !== this.sessionVersion || Date.now() - started + delay > REFRESH_GRACE_MS) throw err;
+        await (this.options.sleep ?? defaultSleep)(delay);
+      }
+    }
   }
 
   /**
@@ -788,35 +814,54 @@ export class ApiClient {
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth && this.accessToken) headers["Authorization"] = `Bearer ${this.accessToken}`;
 
-    const response = await this.rawFetch(this.baseUrl + path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-
-    if (response.status === 204) return { data: undefined as T, status: 204 };
-    let text: string;
+    // A request that hangs (a half-open connection) fails after the timeout like a network error, and is retried
+    // where that is right, instead of waiting for ever; the body counts too.
+    const abort = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = abort ? setTimeout(() => abort.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS) : null;
     try {
-      text = await response.text();
-    } catch (err) {
-      throw new NetworkError(err); // the connection dropped while the body was arriving
-    }
-    const payload = parseJson(text);
-    if (response.ok) {
-      // A 2xx that is not JSON (a captive portal, a misrouted proxy): not the API; retry later.
-      if (payload === NOT_JSON) throw new NetworkError(new Error(`${method} ${path}: the response was not JSON`));
-      return { data: payload as T, status: response.status };
-    }
+      const response = await this.rawFetch(this.baseUrl + path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        ...(abort ? { signal: abort.signal } : {}),
+      });
 
-    // A non-JSON error body (a proxy's HTML 502 page) is classified by its status alone (ARCHITECTURE.md §9).
-    const error = toApiError(response.status, payload === NOT_JSON ? null : payload);
-    if (auth && error.status === 401 && error.code === "token_expired" && options.retry401 !== false) {
-      await this.refresh();
-      return this.requestWithStatus<T>(method, path, body, { ...options, retry401: false });
+      if (response.status === 204) return { data: undefined as T, status: 204 };
+      let text: string;
+      try {
+        text = await response.text();
+      } catch (err) {
+        throw new NetworkError(err); // the connection dropped while the body was arriving
+      }
+      const payload = parseJson(text);
+      if (response.ok) {
+        // A 2xx that is not JSON (a captive portal's page, a misrouted proxy, a server this client does not
+        // understand): retrying cannot fix it, so it is refused for good and shown, as on iOS and Android.
+        if (payload === NOT_JSON) throw decodeError(response.status, `${method} ${path}: the response was not JSON`);
+        return { data: payload as T, status: response.status };
+      }
+
+      // A non-JSON error body (a proxy's HTML 502 page) is classified by its status alone (ARCHITECTURE.md §9).
+      const error = toApiError(response.status, payload === NOT_JSON ? null : payload);
+      if (auth && error.status === 401 && error.code === "token_expired" && options.retry401 !== false) {
+        await this.refresh();
+        return this.requestWithStatus<T>(method, path, body, { ...options, retry401: false });
+      }
+      if (auth && error.status === 401 && error.code !== "token_expired") this.signOut();
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    if (auth && error.status === 401 && error.code !== "token_expired") this.signOut();
-    throw error;
   }
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A 2xx whose body is not what the API says: final (not retryable), named as the phones name it. */
+function decodeError(status: number, message: string): ApiError {
+  return new ApiError(status, "decode_error", message);
 }
 
 const NOT_JSON = Symbol("not JSON");
@@ -838,7 +883,7 @@ async function readJson<T>(response: Response): Promise<T> {
     throw new NetworkError(err);
   }
   const payload = parseJson(text);
-  if (payload === NOT_JSON) throw new NetworkError(new Error("the response was not JSON"));
+  if (payload === NOT_JSON) throw decodeError(response.status, "the response was not JSON");
   return payload as T;
 }
 

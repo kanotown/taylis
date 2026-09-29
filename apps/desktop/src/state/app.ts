@@ -977,7 +977,9 @@ export class AppController {
     if (!session) return { badge: 0, unread: false };
     const channels = [...session.store.channels.values()];
     const meId = session.store.me?.id ?? null;
-    return { badge: unreadBadgeTotal(channels), unread: channels.some((c) => c.isMember && !c.archived && hasUnread(c, meId)) };
+    // WORKSPACES.md §3.2: the dot also for unread replies in threads I follow (the threads badge, THREADS.md §5).
+    const unreadThreads = session.store.threadSummary.unread_count > 0;
+    return { badge: unreadBadgeTotal(channels), unread: unreadThreads || channels.some((c) => c.isMember && !c.archived && hasUnread(c, meId)) };
   }
 
   /** ⌘1 … ⌘9: the n-th workspace of the rail. */
@@ -1361,6 +1363,9 @@ export class AppController {
       this.postedHere = message.id;
       if (this.engine) this.engine.postedFromHere(message);
       else this.store.upsertMessage(message);
+      // The row may have landed already (its event before this answer): the timeline follows it now (§10.1 11.), and
+      // nothing else re-renders it when the store already held the row.
+      this.emit();
       return true;
     } catch (error) {
       this.setError(error);
@@ -1524,6 +1529,9 @@ export class AppController {
     const session = this.sessions.get(serverUrl) ?? (this.active?.serverUrl === serverUrl ? this.active : null);
     if (session) {
       session.leaving = true;
+      // A draft typed in the last second (before its save after the typing pause, M15d) reaches my other devices
+      // before the connection goes; the local copy is erased below.
+      await session.engine?.flushDrafts();
       session.engine?.stop();
       await session.api.logout(); // → onSignedOut → handleSignedOut
       await this.handleSignedOut(session);

@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
 import { UNKNOWN_ERROR_MESSAGE } from "../src/api/errorMessages";
 import type { ScheduledOut } from "../src/api/types";
 import { AppController, profileKey } from "../src/state/app";
+import { SyncEngine } from "../src/sync/engine";
+import { Store } from "../src/sync/store";
 import { FakeServer } from "./fakeServer";
+
+/** A signed-in workspace as the controller keeps it (M16c), put in place without a login. */
+function addSession(controller: AppController, serverUrl: string, session: Record<string, unknown>): void {
+  (controller as unknown as { sessions: Map<string, unknown> }).sessions.set(serverUrl, { serverUrl, username: "bob", me: null, leaving: false, engine: null, ...session });
+}
 
 afterEach(() => localStorage.clear());
 
@@ -40,6 +47,35 @@ describe("app controller", () => {
     controller.store.setDraft("c1", null, { text: "書きかけ" });
     await controller.cancelScheduled({ ...row, id: "s2" });
     expect(controller.store.draft("c1").text).toBe("書きかけ\n@bob 明日の件 @here");
+  });
+
+  it("saves a draft typed just before ログアウト for my other devices, then signs out (M28b)", async () => {
+    const server = new FakeServer();
+    const bob = server.addUser("bob");
+    const channel = server.createChannel("general", bob.id);
+    const store = new Store();
+    const engine = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store, getAccessToken: () => "t", sleep: async () => {} }, { draftSaveMs: 60_000 });
+    await engine.start();
+    await engine.idle();
+    store.setDraft(channel.id, null, { text: "書きかけ" }); // within draftSaveMs: not saved yet
+    const controller = new AppController();
+    (controller as unknown as { secrets: unknown }).secrets = { get: async () => null, set: async () => {}, delete: async () => {} };
+    const logout = vi.fn(async () => {});
+    addSession(controller, "http://one", { api: { baseUrl: "http://one", logout }, store, engine });
+    await controller.signOutWorkspace("http://one");
+    expect(server.draftsOf(bob.id).map((d) => d.body)).toEqual(["書きかけ"]);
+    expect(logout).toHaveBeenCalledOnce();
+    expect(engine.status).toBe("idle");
+    expect(controller.isSignedIn("http://one")).toBe(false);
+  });
+
+  it("lights the workspace dot for unread replies in followed threads too (WORKSPACES.md §3.2)", () => {
+    const controller = new AppController();
+    const store = new Store();
+    addSession(controller, "http://one", { api: { baseUrl: "http://one" }, store });
+    expect(controller.workspaceUnread("http://one")).toEqual({ badge: 0, unread: false });
+    store.setThreadSummary({ unread_count: 1, mention_count: 0 });
+    expect(controller.workspaceUnread("http://one")).toEqual({ badge: 0, unread: true });
   });
 
   it("makes a plain section with its name only, which a server before M26 accepts; icon and conversations when given", async () => {

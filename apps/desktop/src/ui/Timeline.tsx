@@ -20,10 +20,10 @@ import { PriorityLabel } from "./PriorityLabel";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
-import { Button, cn, IconButton, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { Button, cn, IconButton, Input, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle } from "./MainScreen";
-import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
@@ -233,7 +233,8 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
   // New messages while at the bottom, and a top-level post sent from this device, show the newest message. A layout
   // effect, so the ResizeObserver never pins the bottom first. Only that post reads the channel (§10.1 11.), so only it
   // may carry the view past rows from others; my replies (also sent to the channel), my posts from other devices and
-  // scheduled sends follow like anyone's.
+  // scheduled sends follow like anyone's. A poll (postedHere) is followed whichever comes first, its row or the answer
+  // that names it: the effect runs again when the name arrives after the row.
   useLayoutEffect(() => {
     const since = followedSeq.current;
     followedSeq.current = maxSeq;
@@ -266,7 +267,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
     }
     atBottom.current = true;
     markSeen();
-  }, [lastId]);
+  }, [lastId, controller.postedHere]);
 
   const reloads = engine?.reloadCount(channel.id) ?? 0;
   const status = engine?.status;
@@ -565,6 +566,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   const store = controller.store;
   // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
   const conversation = store.getChannel(message.channel_id);
+  // The quick reactions are the emoji I used last (M25): a pick in any row changes them in every row, so they come in
+  // as a prop (the memoized row would otherwise keep reading the old three until something else re-rendered it).
+  const recentEmoji = useRecentEmoji();
   return (
     <MessageRowView
       controller={controller}
@@ -576,6 +580,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       engine={controller.engine}
       api={controller.api}
       rowsVersion={store.rowsVersion}
+      recentEmoji={recentEmoji}
       editing={controller.editing === message.id}
       highlighted={controller.messageFocus?.messageId === message.id}
       saved={store.isBookmarked(message.id)}
@@ -599,6 +604,8 @@ interface MessageRowViewProps {
   api: ApiClient | null;
   /** Only compared (the row re-renders when it moves): the row reads the maps it stands for from `store`. */
   rowsVersion: number;
+  /** The emoji I used last, newest first (EmojiPicker): the quick reactions of the hover bar and the pickers' 「最近」. */
+  recentEmoji: string[];
   editing: boolean;
   highlighted: boolean;
   saved: boolean;
@@ -608,11 +615,18 @@ interface MessageRowViewProps {
   readOnly: boolean;
 }
 
-const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
+const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
   const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
+  // M12e: a note on the reminder (the API's `note`, as on Android); sent with a preset or the chosen time.
+  const [remindNote, setRemindNote] = useState("");
+  const remind = (at: Date) => {
+    setRemindOpen(false);
+    void controller.setReminder(message.id, at, remindNote.trim() || null);
+    setRemindNote("");
+  };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
@@ -666,7 +680,12 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
         // On a phone a tap on a message opens its thread, to read or to reply (Slack; testers, 2026-09-29), unless it was
         // on a link, a button or an image of the message, or the keyboard was up (the tap closes it).
-        else if (touchScreen() && onOpenThread && !message.pending && !typing.current && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) onOpenThread(threadId);
+        else if (touchScreen() && onOpenThread && !message.pending && !typing.current && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) {
+          // The tap focused the row, and a focused row shows its actions: on a phone they float over the screen
+          // (styles.css) and would cover the thread's reply box. Unfocused first, so they go as the thread opens.
+          event.currentTarget.blur();
+          onOpenThread(threadId);
+        }
       }}
       onTouchStart={(event) => {
         if (!event.currentTarget.contains(event.target as Node)) return; // in a dialog of this row (above)
@@ -702,7 +721,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         {compact ? (
           // Grouped under the previous message: its time, faint, where the avatar would be, so where one message ends
           // and the next begins shows (testers, 2026-09-28; the same on iOS and Android).
-          <span className="pt-1 text-[10px] leading-4 text-muted/70 tabular-nums">{timeLabel(message.created_at)}</span>
+          <span className="pt-1 text-[11px] leading-4 text-muted tabular-nums">{timeLabel(message.created_at)}</span>
         ) : (
           <UserPopover controller={controller} userId={message.sender_id} className="rounded-lg">
             <Avatar id={message.sender_id} name={senderName} size={size} />
@@ -812,7 +831,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3">
                 <EmojiPicker
-                  recent={readRecentEmoji()}
+                  recent={recentEmoji}
                   custom={[...store.customEmoji.values()]}
                   controller={controller}
                   onPick={(entry) => {
@@ -829,7 +848,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       {!message.pending && !readOnly && (
         <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
           {/* The three I used last (then the defaults), as the phone sheet's six (M25); the rest is in the picker. */}
-          {quickReactions(readRecentEmoji(), 3).map((emoji) => (
+          {quickReactions(recentEmoji, 3).map((emoji) => (
             <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
             </button>
@@ -842,7 +861,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             </PopoverTrigger>
             <PopoverContent align="end" className="w-auto p-3">
               <EmojiPicker
-                recent={readRecentEmoji()}
+                recent={recentEmoji}
                 custom={[...store.customEmoji.values()]}
                 controller={controller}
                 onPick={(entry) => {
@@ -875,21 +894,23 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                 <AlarmClock size={15} />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-3">
+            <PopoverContent align="end" className="w-72 p-3">
               <div className="mb-2 text-xs font-semibold text-muted">リマインド</div>
+              <Input value={remindNote} maxLength={200} placeholder="メモ (任意)" aria-label="リマインドのメモ" className="mb-2 h-9 text-sm" onChange={(e) => setRemindNote(e.target.value)} />
               <ul className="space-y-0.5">
                 {reminderPresets().map((preset) => (
                   <li key={preset.key}>
-                    <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => { setRemindOpen(false); void controller.setReminder(message.id, preset.at); }}>
+                    <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => remind(preset.at)}>
                       <span>{preset.label}</span>
                       <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
                     </button>
                   </li>
                 ))}
               </ul>
+              {/* Finger-sized on a touch screen (the hover bar floats there too, styles.css). */}
               <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
-                <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setRemindAt(e.target.value)} />
-                <Button size="sm" variant="secondary" onClick={() => { const at = new Date(remindAt); if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; } setRemindOpen(false); void controller.setReminder(message.id, at); }}>設定</Button>
+                <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2 text-sm" onChange={(e) => setRemindAt(e.target.value)} />
+                <Button size="sm" variant="secondary" onClick={() => { const at = new Date(remindAt); if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; } remind(at); }}>設定</Button>
               </div>
             </PopoverContent>
           </PopoverRoot>

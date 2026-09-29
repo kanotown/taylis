@@ -354,7 +354,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           }
         >
           <ul className="space-y-px">{shown(sections.times, folded.has("times"))}</ul>
-          {sections.times.length === 0 && <Hint>+ から自分の times (作業ログ) を作れます</Hint>}
+          {sections.times.length === 0 && <Hint>+ で自分の times を作成</Hint>}
         </Section>
       )}
       <Section

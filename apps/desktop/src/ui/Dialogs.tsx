@@ -1,4 +1,4 @@
-import { Check, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
+import { Bell, Check, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
@@ -11,6 +11,8 @@ import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 import { type SendKey } from "./prefs";
 import { compareByRoster, rosterLabel } from "./roster";
+import { isTauri } from "../platform/env";
+import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
 interface DialogProps {
@@ -379,6 +381,14 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
   useEffect(() => {
     void controller.totpStatus().then(setTotp);
   }, [controller]);
+  // Whether the OS may show our notifications. A browser grants that only on the reader's own click (「通知を許可」
+  // below), never for a request made when a message arrived (platform/notify.ts).
+  const [permission, setPermission] = useState<NotificationPermissionState | null>(null);
+  useEffect(() => {
+    let current = true;
+    void notificationPermission().then((state) => { if (current) setPermission(state); });
+    return () => { current = false; };
+  }, []);
 
   const saveName = async (event: FormEvent) => {
     event.preventDefault();
@@ -505,6 +515,36 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
                 <span className="block text-xs text-muted">{text}</span>
               </button>
             ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">通知</h3>
+          <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
+            <Bell size={18} className={permission === "granted" ? "text-success" : "text-muted"} />
+            <div className="min-w-0 flex-1 text-sm">
+              {permission === null ? (
+                <span className="text-muted">確認中…</span>
+              ) : permission === "granted" ? (
+                <span>
+                  許可済み <span className="ml-1 text-xs text-muted">新しいメッセージを OS の通知で知らせます</span>
+                </span>
+              ) : permission === "denied" ? (
+                <span>
+                  ブロック中 <span className="ml-1 text-xs text-muted">{isTauri() ? "OS の設定" : "ブラウザのサイト設定"}で許可してください</span>
+                </span>
+              ) : permission === "unsupported" ? (
+                <span className="text-muted">このブラウザでは使えません</span>
+              ) : (
+                <span>
+                  未設定 <span className="ml-1 text-xs text-muted">許可すると新しいメッセージを OS の通知で知らせます</span>
+                </span>
+              )}
+            </div>
+            {permission === "default" && (
+              <Button size="sm" variant="secondary" onClick={() => void requestNotificationPermission().then(setPermission)}>
+                通知を許可
+              </Button>
+            )}
           </div>
         </div>
         <div className="space-y-2">

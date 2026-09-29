@@ -12,12 +12,36 @@ export async function notify(title: string, body: string): Promise<void> {
     if (granted) plugin.sendNotification({ title, body });
     return;
   }
-  if (typeof Notification === "undefined") return;
-  if (Notification.permission === "default") await Notification.requestPermission();
-  if (Notification.permission !== "granted") return;
+  // Not asked for here: a browser takes the request only from the reader's own click (the settings' 「通知を許可」),
+  // and one made when a message arrived was ignored.
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   const notification = new Notification(title, { body });
   shown.add(notification);
   notification.onclose = () => shown.delete(notification);
+}
+
+/** Whether notifications may be shown here: "default" while never asked, "unsupported" without the API. */
+export type NotificationPermissionState = "granted" | "denied" | "default" | "unsupported";
+
+export async function notificationPermission(): Promise<NotificationPermissionState> {
+  if (isTauri()) {
+    const plugin = await import("@tauri-apps/plugin-notification");
+    return (await plugin.isPermissionGranted()) ? "granted" : "default";
+  }
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
+}
+
+/** 「通知を許可」 in the settings: ask now, from the click, and say what was decided. */
+export async function requestNotificationPermission(): Promise<NotificationPermissionState> {
+  if (isTauri()) {
+    const plugin = await import("@tauri-apps/plugin-notification");
+    if (await plugin.isPermissionGranted()) return "granted";
+    return (await plugin.requestPermission()) === "granted" ? "granted" : "denied";
+  }
+  if (typeof Notification === "undefined") return "unsupported";
+  await Notification.requestPermission();
+  return Notification.permission;
 }
 
 /**

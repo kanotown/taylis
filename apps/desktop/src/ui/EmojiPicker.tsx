@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 import type { CustomEmojiOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -90,13 +90,27 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
 
 const RECENT_KEY = "chikuwa.emoji.recent";
 
+/** The last read, kept as one array while the stored value is the same: rows memoized on it (M21) compare it by identity. */
+let lastRead: { raw: string | null; value: string[] } = { raw: null, value: [] };
+const recentListeners = new Set<() => void>();
+
 export function readRecentEmoji(): string[] {
+  let raw: string | null = null;
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 16) : [];
+    raw = localStorage.getItem(RECENT_KEY);
   } catch {
-    return [];
+    /* no storage: nothing recent */
   }
+  if (raw === lastRead.raw) return lastRead.value;
+  let value: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(raw ?? "[]");
+    value = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 16) : [];
+  } catch {
+    /* a corrupt value counts as none */
+  }
+  lastRead = { raw, value };
+  return value;
 }
 
 export function rememberEmoji(glyph: string): void {
@@ -106,4 +120,17 @@ export function rememberEmoji(glyph: string): void {
   } catch {
     /* per-viewer convenience only */
   }
+  for (const listener of recentListeners) listener();
+}
+
+/** Re-renders with the recent emoji: a pick in one message row moves the quick reactions of every row (M28b). */
+export function useRecentEmoji(): string[] {
+  return useSyncExternalStore(subscribeRecentEmoji, readRecentEmoji);
+}
+
+function subscribeRecentEmoji(listener: () => void): () => void {
+  recentListeners.add(listener);
+  return () => {
+    recentListeners.delete(listener);
+  };
 }

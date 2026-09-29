@@ -199,6 +199,19 @@ export function MainScreen({ controller }: { controller: AppController }) {
     }
   }, [currentId, channels.length]);
 
+  // The open channel left the store (I was removed, it was made private while I previewed it, bootstrap dropped it):
+  // 「チャンネルを選択してください」 would otherwise keep its dead id, its thread and its preview. The effect above
+  // then opens the first channel of mine.
+  const currentGone = !!currentId && !current;
+  useEffect(() => {
+    if (!currentGone) return;
+    if (engine?.preview?.channelId === currentId) engine.closePreview();
+    setCurrentId(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setPinsOpen(false);
+  }, [currentGone, currentId, engine]);
+
   // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation.
   useEffect(() => {
     const focus = controller.messageFocus;
@@ -363,34 +376,37 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       const s = state.current;
-      if (event.key === "F6" && !mod && !event.altKey && !s.dialog && !s.switcher && !s.searchOpen) {
+      // A dialog or the switcher on top has the keyboard: the shortcuts that open or move things would act under it
+      // (the search box under a modal, a channel switched behind the settings). Esc and ⌘/ still work there.
+      const covered = !!s.dialog || s.switcher;
+      if (event.key === "F6" && !mod && !event.altKey && !covered && !s.searchOpen) {
         if (focusChatRegion(event.shiftKey)) event.preventDefault();
       } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
         // M16c: ⌘1 … ⌘9 open the n-th workspace of the rail (Slack).
         event.preventDefault();
         controller.switchToIndex(Number(event.key) - 1);
-      } else if (mod && !event.shiftKey && key === "k") {
+      } else if (mod && !event.shiftKey && key === "k" && !covered) {
         event.preventDefault();
         setSwitcher(true);
-      } else if (mod && event.shiftKey && key === "k") {
+      } else if (mod && event.shiftKey && key === "k" && !covered) {
         event.preventDefault();
         setDialog("dm");
-      } else if (mod && !event.shiftKey && key === "f") {
+      } else if (mod && !event.shiftKey && key === "f" && !covered) {
         event.preventDefault();
         setSearchOpen(true);
-      } else if (mod && event.shiftKey && key === "t") {
+      } else if (mod && event.shiftKey && key === "t" && !covered) {
         event.preventDefault();
         openThreads();
-      } else if (mod && event.shiftKey && key === "e") {
+      } else if (mod && event.shiftKey && key === "e" && !covered) {
         event.preventDefault();
         setDialog("browse");
-      } else if (mod && event.shiftKey && key === "l") {
+      } else if (mod && event.shiftKey && key === "l" && !covered) {
         event.preventDefault();
         document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
       } else if (mod && key === "/") {
         event.preventDefault();
         setDialog((d) => (d === "shortcuts" ? null : "shortcuts"));
-      } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && !covered) {
         event.preventDefault();
         const next = stepChannel(navigationOrder(), s.currentId, event.key === "ArrowDown" ? 1 : -1, { unreadOnly: event.shiftKey, meId: controller.store.me?.id ?? null });
         if (next) open(next.id);

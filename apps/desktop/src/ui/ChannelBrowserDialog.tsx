@@ -84,7 +84,7 @@ export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: 
                   {mine && !channel.archived && <Badge tone="accent">参加中</Badge>}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <span className="inline-flex items-center gap-1"><Users size={12} /> {channel.member_count ?? 0} 人</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><Users size={12} /> {channel.member_count ?? 0} 人</span>
                   {(channel.purpose || channel.topic) && <span className="truncate">· {channel.purpose || channel.topic}</span>}
                 </div>
               </button>
