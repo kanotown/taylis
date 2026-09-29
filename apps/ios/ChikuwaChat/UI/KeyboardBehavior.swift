@@ -40,6 +40,53 @@ enum KeyboardBehavior {
     /// The lists end with a few points of padding: this close to the end, the reader is at the end.
     static let nearEnd: CGFloat = 40
 
+    /// Moves the offset to `target` over the keyboard's 0.25 s, easing out, one set per frame (a display link), each
+    /// set outright: an animated set is put back by SwiftUI on iOS 26 at its next layout, and a set outright holds.
+    static func slide(_ scrollView: UIScrollView, to target: CGFloat, duration: TimeInterval = 0.25) {
+        Slide.current?.stop()
+        Slide.current = Slide(scrollView: scrollView, from: scrollView.contentOffset.y, to: target, duration: duration)
+    }
+
+    /// Where the offset is going: a slide's destination while one runs, else the offset itself. A change measured
+    /// from the middle of a slide (the tool row's, a frame after the keyboard's) lost the rest of it.
+    static func settledOffset(_ scrollView: UIScrollView) -> CGFloat {
+        if let slide = Slide.current, slide.scrollView === scrollView { return slide.to }
+        return scrollView.contentOffset.y
+    }
+
+    private final class Slide {
+        static var current: Slide?
+        private(set) weak var scrollView: UIScrollView?
+        private let from: CGFloat
+        let to: CGFloat
+        private let duration: TimeInterval
+        private let started = CACurrentMediaTime()
+        private var link: CADisplayLink?
+
+        init(scrollView: UIScrollView, from: CGFloat, to: CGFloat, duration: TimeInterval) {
+            self.scrollView = scrollView
+            self.from = from
+            self.to = to
+            self.duration = duration
+            link = CADisplayLink(target: self, selector: #selector(tick))
+            link?.add(to: .main, forMode: .common)
+        }
+
+        @objc private func tick() {
+            guard let scrollView else { return stop() }
+            let t = min(1, (CACurrentMediaTime() - started) / duration)
+            let eased = 1 - pow(1 - t, 2) // ease out
+            scrollView.contentOffset.y = from + (to - from) * eased
+            if t >= 1 { stop() }
+        }
+
+        func stop() {
+            link?.invalidate()
+            link = nil
+            if Slide.current === self { Slide.current = nil }
+        }
+    }
+
     /// Away from the end: the row to put back at the bottom edge, the last one shown in full above it (row frames in
     /// the list's visible coordinates, 0 at its top; `height` is the list's height before the change).
     static func rowAtBottomEdge(_ frames: [String: CGRect], height: CGFloat) -> String? {
@@ -61,14 +108,80 @@ enum KeyboardBehavior {
     }
 }
 
+/// Where the row above the input belongs after KeepsBottom moved the list by the keyboard's height, and putting it back
+/// there from its measured frame while the lazy list settles: an offset set once was undone by a content re-estimate
+/// on iOS 26.2, and a scroll by the row's id went through the estimate. Measured frames are the truth.
+@MainActor
+final class KeyboardKept {
+    private struct Row {
+        let id: String
+        let minY: CGFloat
+        let from: Date
+        let generation: Int
+    }
+
+    private var row: Row?
+    private var tries = 0
+    private var generation = 0
+    private var frames: [String: CGRect] = [:]
+    /// The list's UIScrollView and whether the reader is moving it, asked when a check runs.
+    var scrollView: () -> UIScrollView? = { nil }
+    var moving: () -> Bool = { false }
+
+    /// The row's frames' `minY` should be `minY` from now on; `growing` (the keyboard going) is animated, so the checks
+    /// wait for the animation. Checks run with each layout and at a few moments after: a re-estimate that undid the
+    /// offset lays nothing out afterwards.
+    func expect(_ id: String, minY: CGFloat, growing: Bool) {
+        generation += 1
+        let from = Date().addingTimeInterval(growing ? 0.3 : 0.03)
+        row = Row(id: id, minY: minY, from: from, generation: generation)
+        tries = 0
+        let mine = generation
+        for delay in [0.05, 0.12, 0.2, 0.35, 0.55, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (growing ? 0.3 : 0.03) + delay) { [weak self] in
+                guard let self, self.row?.generation == mine else { return }
+                self.check()
+            }
+        }
+    }
+
+    /// The last expectation's row and place, for the next change in the same turn (the tool row, then the keyboard),
+    /// when the frames measured before the first change are the ones at hand.
+    var expected: (id: String, minY: CGFloat)? { row.map { ($0.id, $0.minY) } }
+
+    func clear() { row = nil }
+
+    /// Each layout's row frames.
+    func note(_ frames: [String: CGRect]) {
+        self.frames = frames
+        check()
+    }
+
+    /// Moves the list by the row's error, a few times at most, within a second of the expectation.
+    private func check() {
+        guard let row, let scrollView = scrollView(), !moving() else { return }
+        let now = Date()
+        guard now >= row.from else { return }
+        guard now < row.from.addingTimeInterval(1), tries < 6, let frame = frames[row.id] else {
+            self.row = nil
+            return
+        }
+        let error = frame.minY - row.minY
+        guard abs(error) > 1 else { return }
+        tries += 1
+        scrollView.contentOffset.y += error
+    }
+}
+
 extension View {
     /// Closes the keyboard on a tap, without taking the tap from the buttons, links and menus inside.
     func dismissesKeyboardOnTap() -> some View {
         simultaneousGesture(TapGesture().onEnded { KeyboardBehavior.dismiss() })
     }
 
-    /// Calls `restore(oldHeight, wasAtEnd)` when the list's height changes, for the view to scroll back by a row's id:
-    /// to the end when the reader was at the end, else to the row that was at the bottom edge (`rowAtBottomEdge`).
+    /// Calls `restore(oldHeight, newHeight, wasAtEnd)` when the list's height changes, for the view to scroll back by a
+    /// row's id: to the end when the reader was at the end, else the row last shown in full above the bottom edge
+    /// (`rowAtBottomEdge`) to where it stays as far above the new bottom edge (KeyboardKept).
     /// Scrolling by id holds while a lazy list is still settling its rows' heights; moving the offset by the height
     /// difference did not on iOS 26. The scroll geometry from before the change says where the reader was. `atEnd` is
     /// only for iOS 17, which has no scroll geometry (there, the keyboard coming up keeps the end in view).
@@ -76,7 +189,7 @@ extension View {
     /// finds follows it in the same frame, and `resizing` reports the while, for the list to suspend its own bottom anchor
     /// meanwhile (TimelineScrollAnchor).
     func keepsBottomOnResize(enabled: Bool, atEnd: Bool, scroller: ScrollViewProbe? = nil, resizing: ((Bool) -> Void)? = nil,
-                             restore: @escaping (_ oldHeight: CGFloat, _ wasAtEnd: Bool) -> Void) -> some View {
+                             restore: @escaping (_ oldHeight: CGFloat, _ newHeight: CGFloat, _ wasAtEnd: Bool) -> Void) -> some View {
         modifier(KeepsBottom(enabled: enabled, atEnd: atEnd, scroller: scroller, resizing: resizing, restore: restore))
     }
 }
@@ -124,7 +237,7 @@ private struct KeepsBottom: ViewModifier {
     let atEnd: Bool
     let scroller: ScrollViewProbe?
     let resizing: ((Bool) -> Void)?
-    let restore: (CGFloat, Bool) -> Void
+    let restore: (CGFloat, CGFloat, Bool) -> Void
     /// The reader's finger is on the list, or it is still gliding: nothing scrolls it then (testers felt it catch).
     @State private var moving = false
     /// The list as it stood at the end of the last main-queue turn: a change is measured from it. Within a turn
@@ -156,7 +269,7 @@ private struct KeepsBottom: ViewModifier {
         guard enabled, !moving, let before, Date().timeIntervalSince(layouts.resizedAt) > 0.3,
               abs(before.containerHeight - now.containerHeight) <= 0.5 else { return }
         if now.contentHeight > before.contentHeight + 0.5, before.below <= KeyboardBehavior.nearEnd, now.below > before.below + 0.5 {
-            restore(now.containerHeight, true)
+            restore(now.containerHeight, now.containerHeight, true)
         }
     }
 
@@ -168,7 +281,7 @@ private struct KeepsBottom: ViewModifier {
         let toEnd = layouts.endAfterResize
         layouts.endAfterResize = false
         guard toEnd, enabled, !moving, let height = layouts.latest?.containerHeight else { return }
-        restore(height, true)
+        restore(height, height, true)
     }
 
     func body(content: Content) -> some View {
@@ -229,19 +342,57 @@ private struct KeepsBottom: ViewModifier {
                     // A list that fits has no end to keep: the bottom anchor sets it (the larger content: a layout in
                     // passing reports it shorter).
                     guard max(old.contentHeight, new.contentHeight) + new.insets.top + new.insets.bottom > new.containerHeight else { return }
-                    // Growing (the keyboard going away) with the reader up in the conversation: the rows stay where they
-                    // are and more of them show below. Keeping the row at the bottom edge moved every row down by the
-                    // keyboard's height in one frame while the input slid down with the keyboard (testers,
-                    // 2026-09-29: 「縦方向にガクッとずれる」).
-                    if new.containerHeight > old.containerHeight && !wasAtEnd { return }
-                    restore(old.containerHeight, wasAtEnd)
+                    let content = KeyboardBehavior.inPassing(new.below) ? old.contentHeight : new.contentHeight
+                    if wasAtEnd {
+                        restore(old.containerHeight, new.containerHeight, true)
+                        // At the end from here on (the next change in this turn measures from the end, not from the
+                        // offset the turn started with: taken for "up in the conversation" after the keyboard came,
+                        // the keyboard going moved a list at its end past its end).
+                        layouts.turn?.offset = max(-new.insets.top, content + new.insets.bottom - new.insets.top - new.containerHeight)
+                        return
+                    }
+                    // Up in the conversation: the list moves by the height difference, both ways, so the row above the
+                    // input stays above it and the keyboard going away puts everything back. Scrolling the last whole
+                    // row to the edge moved the list by the cut row's height as the keyboard came, and nothing moved
+                    // it back as the keyboard went: three show / hide cycles walked the reader 670 pt up the
+                    // conversation (measured on iOS 27, 2026-09-29: 「キーボードを出すとガクッとずれる」). SwiftUI's own
+                    // bottom anchor (TimelineScrollAnchor) only holds a list that is at its end, and a scroll by a
+                    // row's id goes through LazyVStack's estimated offsets (on iOS 26.2 it landed at the end of the
+                    // conversation). The offset, then: from the offset of now, not the turn's (the height changes
+                    // twice in a turn, the composer's tool row and then the keyboard). The view puts the row back
+                    // from its measured frame while the lazy list settles (KeyboardKept; an offset set once was
+                    // undone by a re-estimate on iOS 26.2).
+                    guard let scrollView = scroller?.scrollView else { return }
+                    let base = KeyboardBehavior.settledOffset(scrollView)
+                    let target = KeyboardBehavior.offsetKeepingBottom(oldOffset: base, oldHeight: old.containerHeight,
+                                                                      newHeight: new.containerHeight, contentHeight: content, insets: new.insets)
+                    if abs(target - base) > 0.5 {
+                        if new.containerHeight > old.containerHeight {
+                            // Growing (the keyboard going): with the keyboard's own motion, not in one frame before
+                            // it (the rows dropped, then the keyboard slid away: 「ガクッ」).
+                            if #available(iOS 27.0, *) {
+                                UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+                                    scrollView.contentOffset.y = target
+                                }
+                            } else {
+                                // iOS 26: SwiftUI puts an animated offset back at its next layout (the tool row's, a
+                                // frame later), while an offset set outright holds. Set outright, then, frame by
+                                // frame along the keyboard's curve.
+                                KeyboardBehavior.slide(scrollView, to: target)
+                            }
+                        } else {
+                            scrollView.contentOffset.y = target
+                        }
+                    }
+                    layouts.turn?.offset = target
+                    restore(old.containerHeight, new.containerHeight, false)
                 }
             }
         } else {
             // iOS 17: the keyboard coming up at least keeps the newest message in view.
             content.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 guard enabled, atEnd else { return }
-                DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.25)) { restore(0, true) } }
+                DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.25)) { restore(0, 0, true) } }
             }
         }
     }

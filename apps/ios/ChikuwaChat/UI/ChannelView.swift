@@ -41,6 +41,8 @@ struct ChannelView: View {
     @State private var resizing = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
+    /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
+    @State private var keyboardKept = KeyboardKept()
     /// The list's side margin, inside each row: a message's highlight reaches the screen's edges.
     private static let margin: CGFloat = 12
 
@@ -338,30 +340,39 @@ struct ChannelView: View {
                         if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
                         olderStalled = false // M25: the reader scrolled: the top row may try again
                         frames.kept = nil // and the list is theirs
+                        keyboardKept.clear()
                     }
                     .onScrollMotion { moving in
                         frames.moving = moving
                         if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
                     }
                     .background(CoverProbe.Marker(probe: cover))
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing))
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
                     .scrollDismissesKeyboard(.interactively)
                     .dismissesKeyboardOnTap()
                     // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
                     // Not while the list is being placed or lands on the first unread row (§10.1 4.).
                     .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil, atEnd: atBottom, scroller: scroller,
-                                         resizing: { resizing = $0 }) { height, atEnd in
+                                         resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
                         if atEnd {
                             proxy.scrollTo("bottom", anchor: .bottom)
-                        } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
-                                  let row = messages.first(where: { $0.id == id }) {
-                            proxy.scrollTo(row.rowKey, anchor: .bottom)
+                        } else {
+                            // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
+                            keyboardKept.scrollView = { scroller.scrollView }
+                            keyboardKept.moving = { frames.moving }
+                            if let expected = keyboardKept.expected {
+                                // The second change of the turn (the tool row, then the keyboard): from the first's place.
+                                keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
+                                keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                            }
                         }
                     }
                     .onPreferenceChange(VisibleMessageFrames.self) { frames in
                         self.frames.byId = frames
                         self.frames.viewportHeight = viewport.size.height
                         keepOlderPlace(proxy)
+                        keyboardKept.note(frames)
                         markRead()
                     }
                     .onPreferenceChange(OlderRowFrame.self) { frame in
@@ -686,13 +697,17 @@ private struct UserScrollDetector: ViewModifier {
 struct TimelineScrollAnchor: ViewModifier {
     let landing: Bool
     var resizing = false
+    /// The reader is at the end: only then does a size change keep the bottom edge by itself. Up in the conversation
+    /// the anchor pulled the list to its end as the keyboard came (iOS 26.2, 2026-09-29); KeepsBottom moves the rows
+    /// there instead.
+    var atEnd = true
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.bottom, for: .alignment)
-                .defaultScrollAnchor(landing || resizing ? nil : .bottom, for: .sizeChanges)
+                .defaultScrollAnchor(atEnd ? .bottom : nil, for: .alignment)
+                .defaultScrollAnchor(landing || resizing || !atEnd ? nil : .bottom, for: .sizeChanges)
         } else {
             content.defaultScrollAnchor(landing ? nil : .bottom)
         }

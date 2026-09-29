@@ -31,6 +31,8 @@ struct ThreadView: View {
     @State private var resizing = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
+    /// The row above the input while the keyboard's height comes or goes (KeyboardBehavior.swift).
+    @State private var keyboardKept = KeyboardKept()
     private var entry: ThreadEntry? { controller.store.threads[parentId] }
     /// Every reply fetched and my read position loaded: only then is 「最初の未読返信」 known.
     private var threadReady: Bool { (controller.engine?.threadComplete(parentId) ?? false) && entry != nil }
@@ -63,26 +65,33 @@ struct ThreadView: View {
                         .dismissesKeyboardOnTap()
                         // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
                         .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom, scroller: scroller,
-                                             resizing: { resizing = $0 }) { height, atEnd in
+                                             resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
                             if atEnd {
                                 proxy.scrollTo("bottom", anchor: .bottom)
-                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: height),
-                                      let reply = replies.first(where: { $0.id == id }) {
-                                proxy.scrollTo(reply.rowKey, anchor: .bottom)
+                            } else {
+                                // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
+                                keyboardKept.scrollView = { scroller.scrollView }
+                                if let expected = keyboardKept.expected {
+                                    keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                                } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
+                                    keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                                }
                             }
                         }
                         .onUserScroll {
                             if provisional && !positioned { userScrolled = true }
                             if anchor.landing != nil { landingInterrupted = true }
+                            keyboardKept.clear()
                         }
                         .background(CoverProbe.Marker(probe: cover))
                         .onPreferenceChange(VisibleReplyFrames.self) { frames in
                             visibleFrames = frames
                             viewportHeight = viewport.size.height
+                            keyboardKept.note(frames)
                             markRead()
                         }
                     }
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing))
+                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: replies.last?.rowKey) { _, _ in
                         let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false

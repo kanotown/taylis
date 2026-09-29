@@ -57,4 +57,36 @@ final class KeyboardBehaviorTests: XCTestCase {
         XCTAssertEqual(KeyboardBehavior.rowAtBottomEdge(frames, height: 800), "c")
         XCTAssertNil(KeyboardBehavior.rowAtBottomEdge(["tall": CGRect(x: 0, y: -10, width: 300, height: 900)], height: 666.67))
     }
+
+    /// KeyboardKept (M28d): the list moved by the keyboard's height, and the lazy list's re-estimate put the row 302 pt
+    /// from where it belongs: the next layout's frames move the offset by the error, once it matches nothing more.
+    @MainActor
+    func testKeyboardKeptPutsTheRowBackFromItsMeasuredFrame() {
+        let scrollView = UIScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: 600))
+        scrollView.contentSize = CGSize(width: 400, height: 5000)
+        scrollView.contentOffset.y = 2000
+        let kept = KeyboardKept()
+        kept.scrollView = { scrollView }
+        kept.expect("m1", minY: 439, growing: false)
+        Thread.sleep(forTimeInterval: 0.05) // past the moment the checks start
+        kept.note(["m1": CGRect(x: 0, y: 137, width: 400, height: 60)]) // 302 too high
+        XCTAssertEqual(scrollView.contentOffset.y, 2000 - 302, accuracy: 0.01)
+        kept.note(["m1": CGRect(x: 0, y: 439, width: 400, height: 60)]) // in place: nothing
+        XCTAssertEqual(scrollView.contentOffset.y, 2000 - 302, accuracy: 0.01)
+        kept.clear()
+        kept.note(["m1": CGRect(x: 0, y: 137, width: 400, height: 60)]) // no expectation: nothing
+        XCTAssertEqual(scrollView.contentOffset.y, 2000 - 302, accuracy: 0.01)
+    }
+
+    /// A second height change in the turn (the tool row after the keyboard) measures from where the slide is going, not
+    /// from the middle of it.
+    @MainActor
+    func testASlideInProgressCountsAsAtItsDestination() {
+        let scrollView = UIScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: 600))
+        scrollView.contentSize = CGSize(width: 400, height: 5000)
+        scrollView.contentOffset.y = 2000
+        XCTAssertEqual(KeyboardBehavior.settledOffset(scrollView), 2000)
+        KeyboardBehavior.slide(scrollView, to: 1700)
+        XCTAssertEqual(KeyboardBehavior.settledOffset(scrollView), 1700)
+    }
 }
