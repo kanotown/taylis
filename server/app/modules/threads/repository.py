@@ -73,7 +73,7 @@ async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
             ThreadFollow.following.is_(True),
             _member_of_thread_channel(),
         )
-        .order_by(ThreadFollow.created_at)
+        .order_by(ThreadFollow.created_at, ThreadFollow.user_id)
     )
     return list((await db.execute(stmt)).scalars().all())
 
@@ -107,7 +107,7 @@ async def follower_states(
             _member_of_thread_channel(),
         )
         .group_by(ThreadFollow.parent_id, ThreadFollow.user_id)
-        .order_by(ThreadFollow.created_at)
+        .order_by(ThreadFollow.created_at, ThreadFollow.user_id)
     )
     return [(row[0], int(row[1]), int(row[2])) for row in (await db.execute(stmt)).all()]
 
@@ -124,7 +124,7 @@ async def followers_of(
             ThreadFollow.following.is_(True),
             _member_of_thread_channel(),
         )
-        .order_by(ThreadFollow.created_at)
+        .order_by(ThreadFollow.created_at, ThreadFollow.user_id)
     )
     out: dict[uuid.UUID, list[uuid.UUID]] = {}
     for parent_id, user_id in (await db.execute(stmt)).all():
