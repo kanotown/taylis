@@ -66,54 +66,8 @@ struct MainView: View {
                     }
                 }
         } detail: {
-            if selection == ThreadsListView.selectionId {
-                ThreadsListView(controller: controller)
-            } else if selection == SavedView.selectionId {
-                SavedView(controller: controller) { message in
-                    Task {
-                        if await controller.revealMessage(message) {
-                            selection = message.channelId
-                            pendingThreadId = message.parentId
-                        }
-                    }
-                }
-            } else if selection == MentionsView.selectionId {
-                MentionsView(controller: controller) { message in
-                    Task {
-                        if await controller.revealMessage(message) {
-                            selection = message.channelId
-                            pendingThreadId = message.parentId
-                        }
-                    }
-                }
-            } else if selection == RemindersView.selectionId {
-                RemindersView(controller: controller) { row in Task { await controller.openPermalink(row.messageId) } }
-            } else if selection == FilesView.selectionId {
-                FilesView(controller: controller) { messageId, channelId, parentId in
-                    Task {
-                        if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
-                            selection = channelId
-                            pendingThreadId = parentId
-                        }
-                    }
-                }
-            } else if selection == DraftsView.selectionId {
-                DraftsView(controller: controller) { channelId, parentId in
-                    selection = channelId
-                    pendingThreadId = parentId
-                }
-            } else if let id = selection, let channel = controller.store.channel(id) {
-                if !channel.isMember && channel.channel.type == "public" && !controller.isGuest {
-                    // M27: a public channel I have not joined is read before joining (Slack); joining shows the channel.
-                    ChannelPreviewView(controller: controller, channelId: channel.id, focusMessageId: previewMessageId).id("preview " + channel.id)
-                } else {
-                    // View state resets; conversation drafts live in the persistent Store.
-                    ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
-                }
-            } else {
-                ContentUnavailableView("チャンネルを選択してください", systemImage: "bubble.left.and.bubble.right",
-                                       description: Text("左のリストからチャンネルや相手を選びます。"))
-            }
+            // M29: the conversation pushes its thread and details onto this stack (navigationDestination needs one).
+            NavigationStack { detail }
         }
         .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner(status: status) }
         .overlay(alignment: .bottom) {
@@ -160,6 +114,60 @@ struct MainView: View {
             }
         }
     }
+
+    /// What the selection shows: a list, a channel (or its preview), or the hint.
+    @ViewBuilder
+    private var detail: some View {
+        if selection == ThreadsListView.selectionId {
+            ThreadsListView(controller: controller)
+        } else if selection == SavedView.selectionId {
+            SavedView(controller: controller) { message in
+                Task {
+                    if await controller.revealMessage(message) {
+                        selection = message.channelId
+                        pendingThreadId = message.parentId
+                    }
+                }
+            }
+        } else if selection == MentionsView.selectionId {
+            MentionsView(controller: controller) { message in
+                Task {
+                    if await controller.revealMessage(message) {
+                        selection = message.channelId
+                        pendingThreadId = message.parentId
+                    }
+                }
+            }
+        } else if selection == RemindersView.selectionId {
+            RemindersView(controller: controller) { row in Task { await controller.openPermalink(row.messageId) } }
+        } else if selection == FilesView.selectionId {
+            FilesView(controller: controller) { messageId, channelId, parentId in
+                Task {
+                    if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
+                        selection = channelId
+                        pendingThreadId = parentId
+                    }
+                }
+            }
+        } else if selection == DraftsView.selectionId {
+            DraftsView(controller: controller) { channelId, parentId in
+                selection = channelId
+                pendingThreadId = parentId
+            }
+        } else if let id = selection, let channel = controller.store.channel(id) {
+            if !channel.isMember && channel.channel.type == "public" && !controller.isGuest {
+                // M27: a public channel I have not joined is read before joining (Slack); joining shows the channel.
+                ChannelPreviewView(controller: controller, channelId: channel.id, focusMessageId: previewMessageId).id("preview " + channel.id)
+            } else {
+                // View state resets; conversation drafts live in the persistent Store.
+                ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
+            }
+        } else {
+            ContentUnavailableView("チャンネルを選択してください", systemImage: "bubble.left.and.bubble.right",
+                                   description: Text("左のリストからチャンネルや相手を選びます。"))
+        }
+    }
+
 }
 
 struct StatusBadge: View {

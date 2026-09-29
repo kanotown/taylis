@@ -8,7 +8,7 @@ struct ThreadsListView: View {
     @Bindable var controller: AppController
     @State private var target: Target?
 
-    private struct Target: Identifiable {
+    private struct Target: Identifiable, Hashable {
         let id: String
         let channelId: String
     }
@@ -51,7 +51,8 @@ struct ThreadsListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: controller.engine?.status) { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         .refreshable { await controller.engine?.loadThreads(filter: store.threadsFilter) }
-        .sheet(item: $target) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.id) }
+        // M29: pushed, like a thread opened from its channel.
+        .navigationDestination(item: $target) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.id) }
     }
 }
 

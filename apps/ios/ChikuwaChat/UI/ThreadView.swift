@@ -6,7 +6,6 @@ struct ThreadView: View {
     @Bindable var controller: AppController
     let channelId: String
     let parentId: String
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
     /// Placed once the whole thread and my read position are known (§10.2); `provisional` until then.
@@ -53,115 +52,114 @@ struct ThreadView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                ScrollViewReader { proxy in
-                    GeometryReader { viewport in
-                        ScrollView {
-                            rowStack(viewportHeight: viewport.size.height)
-                            .padding(.vertical) // the side margin is each row's (margin)
-                            .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
-                            .background(ScrollViewProbe.Marker(probe: scroller))
-                            .background(StatusBarTapStays())
-                        }
-                        .coordinateSpace(name: "threadViewport")
-                        .dismissesKeyboardOnTap()
-                        // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
-                        .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom, scroller: scroller,
-                                             resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
-                            if atEnd {
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            } else {
-                                // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
-                                keyboardKept.scrollView = { scroller.scrollView }
-                                if let expected = keyboardKept.expected {
-                                    keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                                } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
-                                    keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                                }
+        // M29: pushed onto the conversation's navigation (Slack), not a sheet: back and the swipe return to it.
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                GeometryReader { viewport in
+                    ScrollView {
+                        rowStack(viewportHeight: viewport.size.height)
+                        .padding(.vertical) // the side margin is each row's (margin)
+                        .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
+                        .background(ScrollViewProbe.Marker(probe: scroller))
+                        .background(StatusBarTapStays())
+                    }
+                    .coordinateSpace(name: "threadViewport")
+                    .dismissesKeyboardOnTap()
+                    // KeyboardBehavior.swift: the newest reply (or the reply read last) stays above the input.
+                    .keepsBottomOnResize(enabled: (positioned || provisional) && anchor.landing == nil, atEnd: atBottom, scroller: scroller,
+                                         resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
+                        if atEnd {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        } else {
+                            // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
+                            keyboardKept.scrollView = { scroller.scrollView }
+                            if let expected = keyboardKept.expected {
+                                keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
+                                keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
                             }
                         }
-                        .onUserScroll {
-                            if provisional && !positioned { userScrolled = true }
-                            if anchor.landing != nil { landingInterrupted = true }
-                            keyboardKept.clear()
-                        }
-                        .background(CoverProbe.Marker(probe: cover))
-                        .onPreferenceChange(VisibleReplyFrames.self) { frames in
-                            visibleFrames = frames
-                            viewportHeight = viewport.size.height
-                            keyboardKept.note(frames)
-                            markRead()
-                        }
                     }
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: replies.last?.rowKey) { _, _ in
-                        let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
-                        if (positioned || provisional) && (mine || atBottom && anchor.landing == nil) && controller.messageFocus?.parentId != parentId {
-                            if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
-                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                        }
+                    .onUserScroll {
+                        if provisional && !positioned { userScrolled = true }
+                        if anchor.landing != nil { landingInterrupted = true }
+                        keyboardKept.clear()
                     }
-                    .onChange(of: scenePhase) { _, _ in markRead() }
-                    .onChange(of: controller.engine?.status) { _, _ in markRead() }
-                    .onChange(of: threadReady) { _, _ in markRead() }
-                    .task(id: "\(replies.count):\(threadReady)") {
-                        await Task.yield()
-                        position(proxy)
-                    }
-                    .task(id: anchor.landing) {
-                        if let landing = anchor.landing { await land(landing, proxy) }
+                    .background(CoverProbe.Marker(probe: cover))
+                    .onPreferenceChange(VisibleReplyFrames.self) { frames in
+                        visibleFrames = frames
+                        viewportHeight = viewport.size.height
+                        keyboardKept.note(frames)
+                        markRead()
                     }
                 }
-                if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
-                    TypingLine(controller: controller, channelId: channelId, parentId: parentId)
-                    let canShare = channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin")
-                    if canShare {
-                        Toggle(channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信", isOn: $alsoInChannel)
-                            .font(.footnote).padding(.horizontal, 16)
-                    }
-                    ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds, _ in
-                        let shared = canShare && alsoInChannel
-                        alsoInChannel = false
-                        Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds,
-                                                             options: SendOptions(alsoInChannel: shared)) }
+                .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: replies.last?.rowKey) { _, _ in
+                    let mine = replies.last.map { $0.senderId == controller.store.me?.id && $0.pending } ?? false
+                    if (positioned || provisional) && (mine || atBottom && anchor.landing == nil) && controller.messageFocus?.parentId != parentId {
+                        if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                 }
-            }
-            .navigationTitle("スレッド")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
-                if let state = entry?.state, controller.store.channel(channelId)?.isMember == true {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            Task { await controller.setThreadFollow(parentId, following: !state.following) }
-                        } label: {
-                            followLabel(state.following)
-                        }
-                        .modifier(ToolbarPill())
-                        .tint(state.following ? Color.accentColor : .secondary)
-                        .accessibilityLabel(state.following ? "スレッドのフォローを外す" : "スレッドをフォロー")
-                    }
+                .onChange(of: scenePhase) { _, _ in markRead() }
+                .onChange(of: controller.engine?.status) { _, _ in markRead() }
+                .onChange(of: threadReady) { _, _ in markRead() }
+                .task(id: "\(replies.count):\(threadReady)") {
+                    await Task.yield()
+                    position(proxy)
+                }
+                .task(id: anchor.landing) {
+                    if let landing = anchor.landing { await land(landing, proxy) }
                 }
             }
-            .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false):\(loadAttempt)") {
-                guard let engine = controller.engine else { return }
-                guard engine.status == .online else { fetchedOnline = false; return }
-                if engine.threadComplete(parentId) && fetchedOnline { return }
-                fetchedOnline = await engine.loadReplies(channelId, parentId: parentId)
-                // A failed fetch (a 5xx, a timeout) left the thread half shown for good, with no word and no read marks
-                // (audit 2026-09-29): 「再読み込み」 tries again.
-                if !fetchedOnline && engine.status == .online { loadFailed = true }
+            if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
+                TypingLine(controller: controller, channelId: channelId, parentId: parentId)
+                let canShare = channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin")
+                if canShare {
+                    Toggle(channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信", isOn: $alsoInChannel)
+                        .font(.footnote).padding(.horizontal, 16)
+                }
+                ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds, _ in
+                    let shared = canShare && alsoInChannel
+                    alsoInChannel = false
+                    Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds,
+                                                         options: SendOptions(alsoInChannel: shared)) }
+                }
             }
-            // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
-            .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? ""):\(loadAttempt)") {
-                guard entry == nil, let parent, let out = MessageOut(parent), let engine = controller.engine else { return }
-                if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online { loadFailed = true }
-            }
-            .messageSheets(controller, sheet: $messageSheet)
         }
+        .navigationTitle("スレッド")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let state = entry?.state, controller.store.channel(channelId)?.isMember == true {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await controller.setThreadFollow(parentId, following: !state.following) }
+                    } label: {
+                        followLabel(state.following)
+                    }
+                    .modifier(ToolbarPill())
+                    .tint(state.following ? Color.accentColor : .secondary)
+                    .accessibilityLabel(state.following ? "スレッドのフォローを外す" : "スレッドをフォロー")
+                }
+            }
+        }
+        .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false):\(loadAttempt)") {
+            guard let engine = controller.engine else { return }
+            guard engine.status == .online else { fetchedOnline = false; return }
+            if engine.threadComplete(parentId) && fetchedOnline { return }
+            fetchedOnline = await engine.loadReplies(channelId, parentId: parentId)
+            // A failed fetch (a 5xx, a timeout) left the thread half shown for good, with no word and no read marks
+            // (audit 2026-09-29): 「再読み込み」 tries again.
+            if !fetchedOnline && engine.status == .online { loadFailed = true }
+        }
+        // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
+        .task(id: "\(parentId):\(controller.engine?.status.rawValue ?? ""):\(loadAttempt)") {
+            guard entry == nil, let parent, let out = MessageOut(parent), let engine = controller.engine else { return }
+            if !(await engine.loadThreadState(parentId, parent: out)) && engine.status == .online { loadFailed = true }
+        }
+        .messageSheets(controller, sheet: $messageSheet)
+        .keepsKeyboardRoomWhileSwipingBack()
         // §7.7: the channel's rows (these replies among them) are not trimmed while the thread is open, also when the
         // channel is not the open conversation (a thread opened from 「スレッド」).
         .keepsChannelRows(controller.engine, channelId)

@@ -7,7 +7,11 @@ struct ChannelView: View {
     let channelId: String
     @Binding var pendingThreadId: String?
     @State private var sheet: ChannelSheet?
+    /// M29: the thread and the channel's details are pages pushed over the conversation (Slack), not sheets.
     @State private var thread: ThreadTarget?
+    @State private var showInfo = false
+    /// M29: 「メッセージ」, or the pins or files covering the conversation (which stays as it was underneath).
+    @State private var tab: ChannelTab = .messages
     @Environment(\.scenePhase) private var scenePhase
     @State private var atBottom = false
     @State private var positioned = false
@@ -48,9 +52,9 @@ struct ChannelView: View {
     private static let margin: CGFloat = 12
 
     enum ChannelSheet: Identifiable {
-        case info, addMember, pins
+        case addMember
         case link(ChannelLinkOut?)  // M15f: add (nil) or edit
-        var id: Int { switch self { case .info: 0; case .addMember: 1; case .pins: 2; case .link: 3 } }
+        var id: Int { switch self { case .addMember: 1; case .link: 3 } }
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
@@ -106,9 +110,9 @@ struct ChannelView: View {
     private func markRead(send: Bool = true) {
         guard positioned, focus == nil, let channel else { return }
         let rows = messages
-        // Under any sheet (the thread, channel info, a message's menu sheets, MainView's search or settings) the list
-        // still follows the bottom; rows arriving there are not seen.
-        let looking = thread == nil && sheet == nil && scenePhase == .active && !cover.covered
+        // Under any page or sheet (the thread, channel info, a message's menu sheets, MainView's search or settings) or
+        // the pins / files tab (M29) the list still follows the bottom; rows arriving there are not seen.
+        let looking = thread == nil && !showInfo && tab == .messages && sheet == nil && scenePhase == .active && !cover.covered
         let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
         let onScreen = looking ? Set(visibleFrames.compactMap { partlyShown($0.value) ? $0.key : nil }) : []
         var next = anchor
@@ -119,13 +123,19 @@ struct ChannelView: View {
         if send, let seq { controller.engine?.markRead(channelId, seq: seq) }
     }
 
-    /// Back from one of this view's sheets: the rows that arrived under it are judged from the screen once UIKit has
+    /// Back from one of this view's sheets or pages, or to the 「メッセージ」 tab: the rows that arrived under it are judged from the screen once UIKit has
     /// finished taking the sheet away (onDismiss comes while it still counts as covering the list, §10.1 2.-4).
     private func sheetClosed() {
         Task {
             for _ in 0..<20 where cover.covered { try? await Task.sleep(nanoseconds: 100_000_000) }
             markRead()
         }
+    }
+
+    /// M29: a pin or file was revealed (the list now shows its message): back to 「メッセージ」, into its thread if a reply.
+    private func showMessage(parentId: String?) {
+        tab = .messages
+        pendingThreadId = parentId
     }
 
     /// Shown in full, or taller than the viewport and filling it.
@@ -150,7 +160,18 @@ struct ChannelView: View {
         }
         let mark = dividerMark
         switch ReadGate.openTarget(messages, focusId: focus.map { $0.parentId ?? $0.messageId }, mark: mark, meId: controller.store.me?.id) {
-        case .center(let key): proxy.scrollTo(key, anchor: .center)
+        case .center(let key):
+            proxy.scrollTo(key, anchor: .center)
+            // LazyVStack places by estimated heights, so one scroll can stop short of a row far up (a pin or search
+            // result revealed in a long context): again while it is not on screen, as the landing does.
+            let id = messages.first { $0.rowKey == key }?.id
+            Task {
+                for _ in 0..<3 {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    guard focus != nil, let id, visibleFrames[id].map(partlyShown) != true else { return }
+                    proxy.scrollTo(key, anchor: .center)
+                }
+            }
         case .top(let key):
             // Placed by the landing task; the banner stays hidden meanwhile, so it does not flash.
             if let row = messages.first(where: { $0.rowKey == key }) { anchor.land(on: row) }
@@ -262,251 +283,293 @@ struct ChannelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let channel { ChannelLinksRow(controller: controller, channel: channel, onAdd: { sheet = .link(nil) }, onEdit: { sheet = .link($0) }) }  // M15f
-            if focus != nil {
-                HStack {
-                    Text("検索位置の前後の会話").font(.caption)
-                    Spacer()
-                    Button("最新の会話へ") { controller.messageFocus = nil }
-                }.padding(10)
-            }
-            if let banner = unreadBanner, let channel {
-                HStack(spacing: 12) {
-                    Text(banner.text).font(.caption).lineLimit(2)
-                    Spacer(minLength: 0)
-                    if banner.loading {
-                        Text("読み込み中…").font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        if banner.jump { Button("最初の未読へ", action: jumpToFirstUnread).fixedSize() }
-                        Button("既読にする") { controller.engine?.markRead(channelId, seq: channel.lastSeq, force: true) }.fixedSize()
-                    }
+            if let channel {
+                if channel.isMember {
+                    // M29: the tabs, then the links (the link bar of M15f moved into this row).
+                    ChannelTabsRow(controller: controller, channel: channel, tab: $tab,
+                                   onAddLink: { sheet = .link(nil) }, onEditLink: { sheet = .link($0) })
+                } else {
+                    ChannelLinksRow(controller: controller, channel: channel, onAdd: { sheet = .link(nil) }, onEdit: { sheet = .link($0) })  // M15f
                 }
-                .font(.footnote.weight(.semibold))
-                .disabled(!banner.enabled)
-                .padding(10)
             }
-            ScrollViewReader { proxy in
-                GeometryReader { viewport in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            if let channel {
-                                if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
-                                    // M25: on screen, it loads the page before (loadOlderIfShown). The button stays for
-                                    // when that cannot happen by itself: offline, or after a load that brought nothing.
-                                    Group {
-                                        if loadingOlder || controller.engine?.status == .online && !olderStalled {
-                                            ProgressView().controlSize(.small).accessibilityLabel("以前のメッセージを読み込み中")
-                                        } else {
-                                            Button("以前のメッセージを読み込む", action: loadOlder)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .font(.footnote)
-                                    .padding(.vertical, 8)
-                                    .background(GeometryReader { geometry in
-                                        Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
-                                    })
-                                    .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
-                                } else if messages.isEmpty {
-                                    ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
-                                                           description: Text("最初のメッセージを送ってみましょう。"))
-                                        .padding(.top, 40)
-                                } else if focus == nil {
-                                    ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
-                                }
-                            }
-                            ForEach(items) { item in
-                                switch item {
-                                case .date(let label, _):
-                                    DaySeparator(label: label).padding(.horizontal, Self.margin)
-                                case .unread:
-                                    UnreadSeparator().padding(.horizontal, Self.margin).id(item.id)
-                                case .message(let message, let compact):
-                                    MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
-                                               highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
-                                               onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
-                                               present: { messageSheet = $0 })
-                                        .equatable() // unchanged messages skip their body (M20)
-                                        .id(message.rowKey)
-                                        .background(GeometryReader { geometry in
-                                            Color.clear.preference(key: VisibleMessageFrames.self,
-                                                value: [message.id: geometry.frame(in: .named("conversation"))])
-                                        })
-                                }
-                            }
-                            Color.clear.frame(height: 1).id("bottom")
-                                .onAppear { atBottom = true }
-                                .onDisappear { atBottom = false }
-                        }
-                        .padding(.vertical, 8) // the side margin is each row's (margin)
-                        // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
-                        // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
-                        .containerRelativeFrame(.horizontal)
-                        .background(ScrollViewProbe.Marker(probe: scroller))
-                        .background(StatusBarTapStays())
-                    }
-                    .coordinateSpace(name: "conversation")
-                    .onUserScroll {
-                        if !positioned && !messages.isEmpty { userScrolled = true }
-                        if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
-                        olderStalled = false // M25: the reader scrolled: the top row may try again
-                        frames.kept = nil // and the list is theirs
-                        keyboardKept.clear()
-                    }
-                    .onScrollMotion { moving in
-                        frames.moving = moving
-                        if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
-                    }
-                    .background(CoverProbe.Marker(probe: cover))
-                    .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
-                    .scrollDismissesKeyboard(.interactively)
-                    .dismissesKeyboardOnTap()
-                    // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
-                    // Not while the list is being placed or lands on the first unread row (§10.1 4.).
-                    .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil, atEnd: atBottom, scroller: scroller,
-                                         resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
-                        if atEnd {
-                            proxy.scrollTo("bottom", anchor: .bottom)
+            VStack(spacing: 0) {
+                if focus != nil {
+                    HStack {
+                        Text("検索位置の前後の会話").font(.caption)
+                        Spacer()
+                        Button("最新の会話へ") { controller.messageFocus = nil }
+                    }.padding(10)
+                }
+                if let banner = unreadBanner, let channel {
+                    HStack(spacing: 12) {
+                        Text(banner.text).font(.caption).lineLimit(2)
+                        Spacer(minLength: 0)
+                        if banner.loading {
+                            Text("読み込み中…").font(.footnote).foregroundStyle(.secondary)
                         } else {
-                            // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
-                            keyboardKept.scrollView = { scroller.scrollView }
-                            keyboardKept.moving = { frames.moving }
-                            if let expected = keyboardKept.expected {
-                                // The second change of the turn (the tool row, then the keyboard): from the first's place.
-                                keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                            } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
-                                keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
-                            }
+                            if banner.jump { Button("最初の未読へ", action: jumpToFirstUnread).fixedSize() }
+                            Button("既読にする") { controller.engine?.markRead(channelId, seq: channel.lastSeq, force: true) }.fixedSize()
                         }
                     }
-                    .onPreferenceChange(VisibleMessageFrames.self) { frames in
-                        self.frames.byId = frames
-                        self.frames.viewportHeight = viewport.size.height
-                        keepOlderPlace(proxy)
-                        keyboardKept.note(frames)
-                        markRead()
-                    }
-                    .onPreferenceChange(OlderRowFrame.self) { frame in
-                        frames.topRow = frame
-                        loadOlderIfShown()
-                    }
-                    .onChange(of: channel?.oldestLoadedSeq) { old, _ in
-                        // M25: a page of older rows went in above, in this very update. The list does not keep its place
-                        // by itself (LazyVStack's rows moved down by about the page's height), so the row at the top is
-                        // scrolled back to where it was, from the frames of the layout before the page, in the same update
-                        // (a scroll after it showed the page-sized jump), and again while it settles (keepOlderPlace).
-                        // Not during a landing (§10.1 4./6.).
-                        guard loadingOlder, anchor.landing == nil else { return }
-                        let formerFirst = old.flatMap { seq in messages.first { ($0.seq ?? -1) >= seq } }
-                        guard let kept = OlderPaging.keptRow(visibleFrames, rows: messages, viewportHeight: viewportHeight,
-                                                             regrouped: formerFirst?.id) else { return }
-                        frames.kept = kept
-                        frames.keptTries = 0
-                        proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
-                    }
-                    .onChange(of: positioned && anchor.landing == nil && !jumping) { _, ready in
-                        if ready { loadOlderIfShown() } // M25: placed, or a landing over, with the top row already on screen
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if !atBottom && focus == nil {
-                            Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
-                                if unseenBelow > 0 {
-                                    Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
-                                        .font(.footnote.bold())
-                                        .padding(.horizontal, 12).padding(.vertical, 8)
-                                        .background(Color.accentColor, in: Capsule())
-                                        .foregroundStyle(.white)
-                                } else {
-                                    Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                    .font(.footnote.weight(.semibold))
+                    .disabled(!banner.enabled)
+                    .padding(10)
+                }
+                ScrollViewReader { proxy in
+                    GeometryReader { viewport in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                if let channel {
+                                    if focus == nil, channel.hasOlder, channel.syncedSeq != nil {
+                                        // M25: on screen, it loads the page before (loadOlderIfShown). The button stays for
+                                        // when that cannot happen by itself: offline, or after a load that brought nothing.
+                                        Group {
+                                            if loadingOlder || controller.engine?.status == .online && !olderStalled {
+                                                ProgressView().controlSize(.small).accessibilityLabel("以前のメッセージを読み込み中")
+                                            } else {
+                                                Button("以前のメッセージを読み込む", action: loadOlder)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .font(.footnote)
+                                        .padding(.vertical, 8)
+                                        .background(GeometryReader { geometry in
+                                            Color.clear.preference(key: OlderRowFrame.self, value: geometry.frame(in: .named("conversation")))
+                                        })
+                                        .onDisappear { frames.topRow = nil } // LazyVStack let go of it: off screen
+                                    } else if messages.isEmpty {
+                                        ContentUnavailableView("まだメッセージはありません", systemImage: "bubble.left",
+                                                               description: Text("最初のメッセージを送ってみましょう。"))
+                                            .padding(.top, 40)
+                                    } else if focus == nil {
+                                        ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
+                                    }
+                                }
+                                ForEach(items) { item in
+                                    switch item {
+                                    case .date(let label, _):
+                                        DaySeparator(label: label).padding(.horizontal, Self.margin)
+                                    case .unread:
+                                        UnreadSeparator().padding(.horizontal, Self.margin).id(item.id)
+                                    case .message(let message, let compact):
+                                        MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
+                                                   highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
+                                                   onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) },
+                                                   present: { messageSheet = $0 })
+                                            .equatable() // unchanged messages skip their body (M20)
+                                            .id(message.rowKey)
+                                            .background(GeometryReader { geometry in
+                                                Color.clear.preference(key: VisibleMessageFrames.self,
+                                                    value: [message.id: geometry.frame(in: .named("conversation"))])
+                                            })
+                                    }
+                                }
+                                Color.clear.frame(height: 1).id("bottom")
+                                    .onAppear { atBottom = true }
+                                    .onDisappear { atBottom = false }
+                            }
+                            .padding(.vertical, 8) // the side margin is each row's (margin)
+                            // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
+                            // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
+                            .containerRelativeFrame(.horizontal)
+                            .background(ScrollViewProbe.Marker(probe: scroller))
+                            .background(StatusBarTapStays())
+                        }
+                        .coordinateSpace(name: "conversation")
+                        .onUserScroll {
+                            if !positioned && !messages.isEmpty { userScrolled = true }
+                            if anchor.landing != nil { landingInterrupted = true } // never pull the list from under a finger
+                            olderStalled = false // M25: the reader scrolled: the top row may try again
+                            frames.kept = nil // and the list is theirs
+                            keyboardKept.clear()
+                        }
+                        .onScrollMotion { moving in
+                            frames.moving = moving
+                            if !moving { loadOlderIfShown() } // M25: came to rest, perhaps at the top
+                        }
+                        .background(CoverProbe.Marker(probe: cover))
+                        .modifier(TimelineScrollAnchor(landing: anchor.landing != nil, resizing: resizing, atEnd: atBottom))
+                        .scrollDismissesKeyboard(.interactively)
+                        .dismissesKeyboardOnTap()
+                        // The keyboard, the input growing, the typing line: the bottom edge stays (KeyboardBehavior.swift).
+                        // Not while the list is being placed or lands on the first unread row (§10.1 4.).
+                        // Not under a pushed page (M29): a swipe back from the thread with the keyboard up lays this list out
+                        // again at the keyboard's height, and following that height mid-transition never finished laying
+                        // out the LazyVStack on iOS 26.2 (the app hung).
+                        .keepsBottomOnResize(enabled: positioned && anchor.landing == nil && focus == nil && thread == nil && !showInfo,
+                                             atEnd: atBottom, scroller: scroller,
+                                             resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
+                            if atEnd {
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            } else {
+                                // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
+                                keyboardKept.scrollView = { scroller.scrollView }
+                                keyboardKept.moving = { frames.moving }
+                                if let expected = keyboardKept.expected {
+                                    // The second change of the turn (the tool row, then the keyboard): from the first's place.
+                                    keyboardKept.expect(expected.id, minY: expected.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
+                                } else if let id = KeyboardBehavior.rowAtBottomEdge(visibleFrames, height: oldHeight), let frame = visibleFrames[id] {
+                                    keyboardKept.expect(id, minY: frame.minY - (oldHeight - newHeight), growing: newHeight > oldHeight)
                                 }
                             }
-                            .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
-                            .padding(12)
                         }
-                    }
-                    .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
-                    .onChange(of: controller.engine?.postedHere) { _, id in
-                        // A post of mine made through its own endpoint (a poll): shown like one from the outbox, whichever
-                        // came first, its response or its event (§10.1 11.).
-                        guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
-                        if anchor.landing != nil { anchor.landed() }
-                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                        markSeen()
-                    }
-                    .onChange(of: messages.last?.rowKey) { _, _ in
-                        // Arrivals while at the bottom, and my own top-level send from this device, show the newest
-                        // message. A landing on the first unread row is not overridden by someone else's arrival.
-                        let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
-                        if positioned && focus == nil && (mine || atBottom && anchor.landing == nil) {
-                            if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+                        .onPreferenceChange(VisibleMessageFrames.self) { frames in
+                            self.frames.byId = frames
+                            self.frames.viewportHeight = viewport.size.height
+                            keepOlderPlace(proxy)
+                            keyboardKept.note(frames)
+                            markRead()
+                        }
+                        .onPreferenceChange(OlderRowFrame.self) { frame in
+                            frames.topRow = frame
+                            loadOlderIfShown()
+                        }
+                        .onChange(of: channel?.oldestLoadedSeq) { old, _ in
+                            // M25: a page of older rows went in above, in this very update. The list does not keep its place
+                            // by itself (LazyVStack's rows moved down by about the page's height), so the row at the top is
+                            // scrolled back to where it was, from the frames of the layout before the page, in the same update
+                            // (a scroll after it showed the page-sized jump), and again while it settles (keepOlderPlace).
+                            // Not during a landing (§10.1 4./6.).
+                            guard loadingOlder, anchor.landing == nil else { return }
+                            let formerFirst = old.flatMap { seq in messages.first { ($0.seq ?? -1) >= seq } }
+                            guard let kept = OlderPaging.keptRow(visibleFrames, rows: messages, viewportHeight: viewportHeight,
+                                                                 regrouped: formerFirst?.id) else { return }
+                            frames.kept = kept
+                            frames.keptTries = 0
+                            proxy.scrollTo(kept.rowKey, anchor: UnitPoint(x: 0, y: kept.anchorY))
+                        }
+                        .onChange(of: positioned && anchor.landing == nil && !jumping) { _, ready in
+                            if ready { loadOlderIfShown() } // M25: placed, or a landing over, with the top row already on screen
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            if !atBottom && focus == nil {
+                                Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+                                    if unseenBelow > 0 {
+                                        Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
+                                            .font(.footnote.bold())
+                                            .padding(.horizontal, 12).padding(.vertical, 8)
+                                            .background(Color.accentColor, in: Capsule())
+                                            .foregroundStyle(.white)
+                                    } else {
+                                        Image(systemName: "arrow.down").padding(10).background(.thinMaterial, in: Circle())
+                                    }
+                                }
+                                .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
+                                .padding(12)
+                            }
+                        }
+                        .onChange(of: atBottom) { _, bottom in if bottom { markSeen() } }
+                        .onChange(of: controller.engine?.postedHere) { _, id in
+                            // A post of mine made through its own endpoint (a poll): shown like one from the outbox, whichever
+                            // came first, its response or its event (§10.1 11.).
+                            guard let id, positioned, focus == nil, messages.contains(where: { $0.id == id }) else { return }
+                            if anchor.landing != nil { anchor.landed() }
                             withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
                             markSeen()
                         }
-                    }
-                    .task(id: "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)") { await Task.yield(); position(proxy) }
-                    // Opened, or back from the search context: the placement waits for a catch-up at most this long.
-                    // Not a `.task`: the navigation lets the view go and come back once as it opens, which cancelled
-                    // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
-                    .onAppear { startSyncWait(proxy) }
-                    .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
-                    .task(id: anchor.landing) {
-                        if let landing = anchor.landing { await land(landing, proxy) }
-                    }
-                    .onChange(of: focus?.messageId) { _, id in
-                        if id == nil, let channel {
-                            // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).
-                            unreadMark = ReadGate.openMark(channel)
-                            seenSeq = channel.lastReadSeq
-                            syncWaitOver = false
+                        .onChange(of: messages.last?.rowKey) { _, _ in
+                            // Arrivals while at the bottom, and my own top-level send from this device, show the newest
+                            // message. A landing on the first unread row is not overridden by someone else's arrival.
+                            let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
+                            if positioned && focus == nil && (mine || atBottom && anchor.landing == nil) {
+                                if mine && anchor.landing != nil { anchor.landed() } // my post wins; it reads the conversation anyway
+                                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                                markSeen()
+                            }
                         }
-                        positioned = false
-                        userScrolled = false
-                        anchor.reset()
-                        position(proxy)
+                        .task(id: "\(messages.count):\(channel.map(ReadGate.reachesNewest) ?? false)") { await Task.yield(); position(proxy) }
+                        // Opened, or back from the search context: the placement waits for a catch-up at most this long.
+                        // Not a `.task`: the navigation lets the view go and come back once as it opens, which cancelled
+                        // the task for good, and a channel whose catch-up failed stayed unplaced (no banner, no reads).
+                        .onAppear { startSyncWait(proxy) }
+                        .onChange(of: focus == nil) { _, _ in startSyncWait(proxy) }
+                        .task(id: anchor.landing) {
+                            if let landing = anchor.landing { await land(landing, proxy) }
+                        }
+                        .onChange(of: focus?.messageId) { _, id in
+                            if id == nil, let channel {
+                                // Back from the search context: like a fresh open, from the read position as it is now (§10.1 4.).
+                                unreadMark = ReadGate.openMark(channel)
+                                seenSeq = channel.lastReadSeq
+                                syncWaitOver = false
+                            }
+                            positioned = false
+                            userScrolled = false
+                            anchor.reset()
+                            position(proxy)
+                        }
+                        .onChange(of: readWatch) { old, new in
+                            // Lower than before (a mark-as-unread here or elsewhere), or a hold gone without a read: the new
+                            // first unread row has to be seen first, and rows already on screen do not undo it.
+                            let lowered = new.lastRead < old.lastRead || old.held != nil && new.held == nil
+                            if lowered { anchor.positionLowered() }
+                            markRead(send: !lowered)
+                        }
+                        .onChange(of: controller.engine?.status) { _, _ in
+                            position(proxy) // offline now: nothing more to wait for (ReadGate.placementWaits)
+                            markRead()
+                            olderStalled = false // M25: back online (or a new connection): the top row may try again
+                            loadOlderIfShown()
+                        }
+                        .onChange(of: scenePhase) { _, _ in markRead() }
+                        .onAppear {
+                            if unreadMark == nil, let channel { unreadMark = ReadGate.openMark(channel) }
+                            if seenSeq == nil { seenSeq = channel?.lastReadSeq ?? 0 }
+                        }
                     }
-                    .onChange(of: readWatch) { old, new in
-                        // Lower than before (a mark-as-unread here or elsewhere), or a hold gone without a read: the new
-                        // first unread row has to be seen first, and rows already on screen do not undo it.
-                        let lowered = new.lastRead < old.lastRead || old.held != nil && new.held == nil
-                        if lowered { anchor.positionLowered() }
-                        markRead(send: !lowered)
-                    }
-                    .onChange(of: controller.engine?.status) { _, _ in
-                        position(proxy) // offline now: nothing more to wait for (ReadGate.placementWaits)
-                        markRead()
-                        olderStalled = false // M25: back online (or a new connection): the top row may try again
-                        loadOlderIfShown()
-                    }
-                    .onChange(of: scenePhase) { _, _ in markRead() }
-                    .onAppear {
-                        if unreadMark == nil, let channel { unreadMark = ReadGate.openMark(channel) }
-                        if seenSeq == nil { seenSeq = channel?.lastReadSeq ?? 0 }
+                }
+                if let channel {
+                    if !channel.isMember {
+                        Button("参加する") {
+                            Task {
+                                guard let api = controller.api else { return }
+                                do {
+                                    let joined = try await api.joinChannel(id: channelId)
+                                    controller.store.upsertChannel(joined, isMember: true)
+                                    await controller.engine?.openChannel(channelId)
+                                } catch { controller.error = controller.describe(error) }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent).padding()
+                    } else if channel.channel.archived {
+                        Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
+                    } else if !channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin") {
+                        Label("このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。", systemImage: "megaphone")
+                            .font(.footnote).foregroundStyle(.secondary).padding()
+                    } else {
+                        TypingLine(controller: controller, channelId: channelId)
+                        ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds, options in
+                            Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds, options: options) }
+                        }
+                        // Under the pins / files (M29): SwiftUI's text field stays an accessibility element through a
+                        // hidden container, so it is disabled there as well.
+                        .accessibilityHidden(tab != .messages)
+                        .disabled(tab != .messages)
                     }
                 }
             }
-            if let channel {
-                if !channel.isMember {
-                    Button("参加する") {
-                        Task {
-                            guard let api = controller.api else { return }
-                            do {
-                                let joined = try await api.joinChannel(id: channelId)
-                                controller.store.upsertChannel(joined, isMember: true)
-                                await controller.engine?.openChannel(channelId)
-                            } catch { controller.error = controller.describe(error) }
+            .accessibilityHidden(tab != .messages)
+            .overlay {
+                // M29: 「ピン留め」「ファイル」 cover the conversation and its input; the list stays as it was underneath
+                // (its place, the read anchor, the draft), not seen while covered (§10.1 2.).
+                if tab != .messages {
+                    Group {
+                        if tab == .pins {
+                            PinsView(controller: controller, channelId: channelId) { message in
+                                Task { if await controller.revealMessage(message) { showMessage(parentId: message.parentId) } }
+                            }
+                        } else {
+                            FilesView(controller: controller, channelId: channelId, onOpen: { messageId, channelId, parentId in
+                                Task {
+                                    if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
+                                        showMessage(parentId: parentId)
+                                    }
+                                }
+                            }, embedded: true)
                         }
                     }
-                    .buttonStyle(.borderedProminent).padding()
-                } else if channel.channel.archived {
-                    Text("アーカイブ済みのチャンネルです").font(.footnote).foregroundStyle(.secondary).padding()
-                } else if !channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin") {
-                    Label("このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。", systemImage: "megaphone")
-                        .font(.footnote).foregroundStyle(.secondary).padding()
-                } else {
-                    TypingLine(controller: controller, channelId: channelId)
-                    ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds, options in
-                        Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds, options: options) }
-                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
                 }
             }
         }
@@ -515,7 +578,7 @@ struct ChannelView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if let channel {
-                    Button { sheet = .info } label: {
+                    Button { showInfo = true } label: {
                         VStack(spacing: 0) {
                             HStack(spacing: 4) {
                                 if isMuted(channel) { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
@@ -538,10 +601,9 @@ struct ChannelView: View {
                         Button(starred ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred ? "star.fill" : "star") {
                             Task { await controller.toggleFavorite(channelId) }
                         }
-                        Button("ピン留め", systemImage: "pin") { sheet = .pins }
                         NotificationMenu(controller: controller, channel: channel)
                     }
-                    Button("チャンネル情報", systemImage: "info.circle") { sheet = .info }
+                    Button("チャンネル情報", systemImage: "info.circle") { showInfo = true }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -550,20 +612,16 @@ struct ChannelView: View {
         }
         .sheet(item: $sheet, onDismiss: sheetClosed) { which in
             switch which {
-            case .info: ChannelInfoView(controller: controller, channelId: channelId)
-            case .pins: PinsView(controller: controller, channelId: channelId) { message in
-                Task {
-                    if await controller.revealMessage(message) {
-                        pendingThreadId = message.parentId
-                        sheet = nil
-                    }
-                }
-            }
             case .addMember: AddMemberView(controller: controller, channelId: channelId)
             case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
             }
         }
-        .sheet(item: $thread, onDismiss: sheetClosed) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .navigationDestination(isPresented: $showInfo) { ChannelInfoView(controller: controller, channelId: channelId) }
+        .onChange(of: thread == nil && !showInfo) { _, back in if back { sheetClosed() } }
+        .onChange(of: tab) { _, tab in
+            if tab == .messages { sheetClosed() } else { KeyboardBehavior.dismiss() } // the input is under the pins / files
+        }
         .messageSheets(controller, sheet: $messageSheet, openThread: { thread = ThreadTarget(id: $0.parentId ?? $0.id) },
                        markUnread: markUnreadAction, onClosed: sheetClosed)
         .onChange(of: pendingThreadId, initial: true) { _, id in

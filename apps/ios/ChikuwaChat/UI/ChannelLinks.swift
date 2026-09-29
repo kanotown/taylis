@@ -17,8 +17,28 @@ extension ChannelState {
     }
 }
 
-/// M15f: the conversation's pinned links at the top (Slack's bookmarks bar); hidden while empty.
+/// M15f: the conversation's pinned links at the top (Slack's bookmarks bar); hidden while empty. A conversation I belong
+/// to shows them in its tab row instead (ChannelTabsRow, M29).
 struct ChannelLinksRow: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+    let onAdd: () -> Void
+    let onEdit: (ChannelLinkOut) -> Void
+
+    var body: some View {
+        if !controller.store.linksOf(channel.id).isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) { ChannelLinkChips(controller: controller, channel: channel, onAdd: onAdd, onEdit: onEdit) }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+            Divider()
+        }
+    }
+}
+
+/// The links as chips (a tap opens one; a long press edits, moves or deletes it) and 「＋ リンク」 for those who may.
+struct ChannelLinkChips: View {
     @Bindable var controller: AppController
     let channel: ChannelState
     let onAdd: () -> Void
@@ -31,37 +51,82 @@ struct ChannelLinksRow: View {
 
     var body: some View {
         let links = controller.store.linksOf(channel.id)
-        if !links.isEmpty {
+        ForEach(Array(links.enumerated()), id: \.element.id) { index, link in
+            Button { if let url = URL(string: link.url) { openURL(url) } } label: {
+                Label(link.title, systemImage: "link").font(.caption).lineLimit(1)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .contextMenu {
+                if editable {
+                    Button("編集", systemImage: "pencil") { onEdit(link) }
+                    Button("左へ移動", systemImage: "arrow.left") {
+                        Task { _ = await controller.updateChannelLink(channel.id, linkId: link.id, position: index - 1) }
+                    }.disabled(index == 0)
+                    Button("右へ移動", systemImage: "arrow.right") {
+                        Task { _ = await controller.updateChannelLink(channel.id, linkId: link.id, position: index + 1) }
+                    }.disabled(index == links.count - 1)
+                    Button("削除", systemImage: "trash", role: .destructive) {
+                        Task { _ = await controller.deleteChannelLink(channel.id, linkId: link.id) }
+                    }
+                }
+            }
+        }
+        if editable {
+            Button(action: onAdd) { Label("リンク", systemImage: "plus").font(.caption) }
+                .buttonStyle(.borderless)
+        }
+    }
+}
+
+/// M29: what a conversation's body shows (Slack's tabs under the header).
+enum ChannelTab: Hashable, CaseIterable {
+    case messages, pins, files
+
+    var title: String {
+        switch self {
+        case .messages: "メッセージ"
+        case .pins: "ピン留め"
+        case .files: "ファイル"
+        }
+    }
+}
+
+/// M29: one row under the header: the tabs, then the conversation's links (the link bar moved in here).
+struct ChannelTabsRow: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+    @Binding var tab: ChannelTab
+    let onAddLink: () -> Void
+    let onEditLink: (ChannelLinkOut) -> Void
+
+    var body: some View {
+        let hasLinks = !controller.store.linksOf(channel.id).isEmpty
+            || channel.canEditLinks(isAdmin: controller.store.me?.role == "admin", isGuest: controller.store.me?.role == "guest")
+        VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(Array(links.enumerated()), id: \.element.id) { index, link in
-                        Button { if let url = URL(string: link.url) { openURL(url) } } label: {
-                            Label(link.title, systemImage: "link").font(.caption).lineLimit(1)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .contextMenu {
-                            if editable {
-                                Button("編集", systemImage: "pencil") { onEdit(link) }
-                                Button("左へ移動", systemImage: "arrow.left") {
-                                    Task { _ = await controller.updateChannelLink(channel.id, linkId: link.id, position: index - 1) }
-                                }.disabled(index == 0)
-                                Button("右へ移動", systemImage: "arrow.right") {
-                                    Task { _ = await controller.updateChannelLink(channel.id, linkId: link.id, position: index + 1) }
-                                }.disabled(index == links.count - 1)
-                                Button("削除", systemImage: "trash", role: .destructive) {
-                                    Task { _ = await controller.deleteChannelLink(channel.id, linkId: link.id) }
+                    ForEach(ChannelTab.allCases, id: \.self) { item in
+                        Button { tab = item } label: {
+                            Text(item.title)
+                                .font(.subheadline.weight(tab == item ? .semibold : .regular))
+                                .foregroundStyle(tab == item ? Color.primary : Color.secondary)
+                                .padding(.horizontal, 6)
+                                .frame(minHeight: 44)
+                                .overlay(alignment: .bottom) {
+                                    if tab == item { Capsule().fill(Color.accentColor).frame(height: 2) }
                                 }
-                            }
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(tab == item ? [.isSelected] : [])
                     }
-                    if editable {
-                        Button(action: onAdd) { Label("リンク", systemImage: "plus").font(.caption) }
-                            .buttonStyle(.borderless)
+                    if hasLinks {
+                        Divider().frame(height: 20).padding(.horizontal, 4)
+                        ChannelLinkChips(controller: controller, channel: channel, onAdd: onAddLink, onEdit: onEditLink)
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
             }
             Divider()
         }

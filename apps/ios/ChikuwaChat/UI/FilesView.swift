@@ -11,6 +11,9 @@ struct FilesView: View {
     let onOpen: (_ messageId: String, _ channelId: String, _ parentId: String?) -> Void
     /// Rows to show before the first load (previews and snapshot tests).
     var initial: [FileItem]? = nil
+    /// M29: a conversation's 「ファイル」 tab: that channel only, and the filter in the list rather than in the
+    /// navigation bar (the conversation's own).
+    var embedded = false
     @State private var scope: String?
     @State private var query = ""
     @State private var items: [FileItem]?
@@ -21,11 +24,34 @@ struct FilesView: View {
     }
 
     var body: some View {
+        if embedded {
+            list
+        } else {
+            list
+                .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "ファイル名で絞り込む")
+                .navigationTitle("ファイル")
+                .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var list: some View {
         List {
             Section {
-                Picker("チャンネル", selection: $scope) {
-                    Text("すべてのチャンネル").tag(String?.none)
-                    ForEach(channels) { channel in Text(channelTitle(channel, store: controller.store)).tag(String?.some(channel.id)) }
+                if embedded {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("ファイル名で絞り込む", text: $query).submitLabel(.search)
+                        if !query.isEmpty {
+                            Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("絞り込みを消す")
+                        }
+                    }
+                } else {
+                    Picker("チャンネル", selection: $scope) {
+                        Text("すべてのチャンネル").tag(String?.none)
+                        ForEach(channels) { channel in Text(channelTitle(channel, store: controller.store)).tag(String?.some(channel.id)) }
+                    }
                 }
             }
             if let items {
@@ -44,11 +70,8 @@ struct FilesView: View {
             }
         }
         .listStyle(.plain)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "ファイル名で絞り込む")
-        .navigationTitle("ファイル")
-        .navigationBarTitleDisplayMode(.inline)
         .onAppear { if items == nil { scope = channelId; items = initial } }
-        .task(id: "\(scope ?? "")|\(query)|\(controller.engine?.status.rawValue ?? "")") {
+        .task(id: "\((embedded ? channelId : scope) ?? "")|\(query)|\(controller.engine?.status.rawValue ?? "")") {
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
             await load(more: false)
         }
@@ -58,10 +81,13 @@ struct FilesView: View {
     private func load(more: Bool) async {
         guard let api = controller.api else { return }
         do {
-            let page = try await api.listFiles(channelId: scope, query: query.trimmingCharacters(in: .whitespaces), cursor: more ? cursor : nil)
+            let page = try await api.listFiles(channelId: embedded ? channelId : scope, query: query.trimmingCharacters(in: .whitespaces), cursor: more ? cursor : nil)
             items = more ? (items ?? []) + page.items : page.items
             cursor = page.nextCursor
-        } catch { controller.error = controller.describe(error) }
+        } catch {
+            // A load replaced by the next one (a new filter, the scope set as the view appears) is no error.
+            if !Task.isCancelled { controller.error = controller.describe(error) }
+        }
     }
 }
 

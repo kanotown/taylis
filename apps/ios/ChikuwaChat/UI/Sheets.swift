@@ -309,24 +309,6 @@ struct ChannelInfoView: View {
         }
     }
 
-    /// M11i: this channel's files; a row reveals its message and closes the sheet.
-    private var filesSection: some View {
-        Section {
-            NavigationLink {
-                FilesView(controller: controller, channelId: channelId) { messageId, channelId, parentId in
-                    Task {
-                        if await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) {
-                            NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channelId, "parentId": parentId as Any])
-                            dismiss()
-                        }
-                    }
-                }
-            } label: {
-                Label("ファイル", systemImage: "doc.on.doc")
-            }
-        }
-    }
-
     /// M11h: leave for every member; rename / archive for owners and admins.
     private func manageSection(_ channel: ChannelState) -> some View {
         Section {
@@ -361,107 +343,104 @@ struct ChannelInfoView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if let channel {
-                    let store = controller.store
-                    let isChannel = !channel.channel.isDm
-                    let canEdit = channel.isMember && !channel.channel.archived
-                    if isChannel {
-                        Section("トピック") {
-                            if editingTopic {
-                                TextField("例: 週次の進捗共有", text: $topic)
-                                HStack {
-                                    Button("保存") { Task { if await controller.updateTopic(channelId, topic: topic) { editingTopic = false } } }
-                                    Spacer()
-                                    Button("キャンセル", role: .cancel) { editingTopic = false }
-                                }
-                            } else {
-                                if let current = channel.channel.topic, !current.isEmpty {
-                                    Text(current)
-                                } else {
-                                    Text("未設定").foregroundStyle(.secondary)
-                                }
-                                if canEdit { Button("編集") { topic = channel.channel.topic ?? ""; editingTopic = true } }
+        // M29: pushed from the conversation's header (a page, Slack), not a sheet.
+        Form {
+            if let channel {
+                let store = controller.store
+                let isChannel = !channel.channel.isDm
+                let canEdit = channel.isMember && !channel.channel.archived
+                if isChannel {
+                    Section("トピック") {
+                        if editingTopic {
+                            TextField("例: 週次の進捗共有", text: $topic)
+                            HStack {
+                                Button("保存") { Task { if await controller.updateTopic(channelId, topic: topic) { editingTopic = false } } }
+                                Spacer()
+                                Button("キャンセル", role: .cancel) { editingTopic = false }
                             }
-                        }
-                        purposeSection(channel, canEdit: canEdit)
-                    }
-                    if channel.isMember {
-                        let level = channel.channel.notification?.level ?? (isChannel ? "mentions" : "all")
-                        Section("通知") {
-                            Picker("通知", selection: Binding(get: { level }, set: { value in
-                                Task { await controller.setNotification(channelId, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
-                            })) {
-                                Text("すべてのメッセージ").tag("all")
-                                Text("メンションのみ").tag("mentions")
-                                Text("通知しない").tag("none")
-                            }
-                            .pickerStyle(.inline)
-                            .labelsHidden()
-                            if let mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil) {
-                                Button("ミュート解除 (\(mute))") { Task { await controller.setNotification(channelId, level: level, mutedUntil: nil) } }
-                            } else {
-                                Button("8 時間ミュート") {
-                                    let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
-                                    Task { await controller.setNotification(channelId, level: level, mutedUntil: until) }
-                                }
-                            }
-                        }
-                    }
-                    Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
-                        if let members {
-                            ForEach(sortedMembers(members), id: \.userId) { member in memberRow(member) }
                         } else {
-                            ProgressView()
-                        }
-                        if isChannel && canEdit {
-                            Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
+                            if let current = channel.channel.topic, !current.isEmpty {
+                                Text(current)
+                            } else {
+                                Text("未設定").foregroundStyle(.secondary)
+                            }
+                            if canEdit { Button("編集") { topic = channel.channel.topic ?? ""; editingTopic = true } }
                         }
                     }
-                    if channel.isMember { filesSection }
-                    if isChannel && channel.isMember { manageSection(channel) }
-                } else {
-                    Text("チャンネルが見つかりません").foregroundStyle(.secondary)
+                    purposeSection(channel, canEdit: canEdit)
                 }
-            }
-            .sheet(item: Binding(get: { profileUserId.map { ProfileTarget(id: $0) } }, set: { profileUserId = $0?.id })) { target in
-                ProfileSheet(controller: controller, userId: target.id) { id in
-                    NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
-                    dismiss()
+                if channel.isMember {
+                    let level = channel.channel.notification?.level ?? (isChannel ? "mentions" : "all")
+                    Section("通知") {
+                        Picker("通知", selection: Binding(get: { level }, set: { value in
+                            Task { await controller.setNotification(channelId, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
+                        })) {
+                            Text("すべてのメッセージ").tag("all")
+                            Text("メンションのみ").tag("mentions")
+                            Text("通知しない").tag("none")
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                        if let mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil) {
+                            Button("ミュート解除 (\(mute))") { Task { await controller.setNotification(channelId, level: level, mutedUntil: nil) } }
+                        } else {
+                            Button("8 時間ミュート") {
+                                let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
+                                Task { await controller.setNotification(channelId, level: level, mutedUntil: until) }
+                            }
+                        }
+                    }
                 }
-            }
-            .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
-            .alert("名前を変更", isPresented: $renaming) {
-                TextField("新しい名前", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("変更") { Task { _ = await controller.renameChannel(channelId, name: newName) } }
-                Button("キャンセル", role: .cancel) {}
-            }
-            .confirmationDialog("メンバーから外しますか？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-                                titleVisibility: .visible, presenting: removing) { member in
-                Button("\(controller.store.users[member.userId]?.displayName ?? "?") を外す", role: .destructive) {
-                    Task { await remove(member) }
+                Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
+                    if let members {
+                        ForEach(sortedMembers(members), id: \.userId) { member in memberRow(member) }
+                    } else {
+                        ProgressView()
+                    }
+                    if isChannel && canEdit {
+                        Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
+                    }
                 }
+                if isChannel && channel.isMember { manageSection(channel) }
+            } else {
+                Text("チャンネルが見つかりません").foregroundStyle(.secondary)
             }
-            .confirmationDialog("このチャンネルを退出しますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
-                Button("退出", role: .destructive) { Task { if await controller.leaveChannel(channelId) { dismiss() } } }
-            } message: { Text("公開チャンネルなら、あとから「チャンネルを探す」で再び参加できます。") }
-            .confirmationDialog("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive, titleVisibility: .visible) {
-                Button("アーカイブ", role: .destructive) { Task { if await controller.archiveChannel(channelId) { dismiss() } } }
-            } message: { Text("アーカイブしたチャンネルは読み取り専用になります。") }
-            .confirmationDialog(convertTitle, isPresented: $confirmConvert, titleVisibility: .visible) {
-                let toPrivate = channel?.channel.type == "public"
-                Button(toPrivate ? "非公開にする" : "公開にする", role: .destructive) {
-                    Task { _ = await controller.convertChannel(channelId, to: toPrivate ? "private" : "public") }
-                }
-            } message: { Text(convertMessage) }
-            .task { await loadMembers() }
-            .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
-            .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
-                AddMemberView(controller: controller, channelId: channelId)
+        }
+        .sheet(item: Binding(get: { profileUserId.map { ProfileTarget(id: $0) } }, set: { profileUserId = $0?.id })) { target in
+            ProfileSheet(controller: controller, userId: target.id) { id in
+                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
+                dismiss()
             }
+        }
+        .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("名前を変更", isPresented: $renaming) {
+            TextField("新しい名前", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Button("変更") { Task { _ = await controller.renameChannel(channelId, name: newName) } }
+            Button("キャンセル", role: .cancel) {}
+        }
+        .confirmationDialog("メンバーから外しますか？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { member in
+            Button("\(controller.store.users[member.userId]?.displayName ?? "?") を外す", role: .destructive) {
+                Task { await remove(member) }
+            }
+        }
+        .confirmationDialog("このチャンネルを退出しますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("退出", role: .destructive) { Task { if await controller.leaveChannel(channelId) { dismiss() } } }
+        } message: { Text("公開チャンネルなら、あとから「チャンネルを探す」で再び参加できます。") }
+        .confirmationDialog("このチャンネルをアーカイブしますか？", isPresented: $confirmArchive, titleVisibility: .visible) {
+            Button("アーカイブ", role: .destructive) { Task { if await controller.archiveChannel(channelId) { dismiss() } } }
+        } message: { Text("アーカイブしたチャンネルは読み取り専用になります。") }
+        .confirmationDialog(convertTitle, isPresented: $confirmConvert, titleVisibility: .visible) {
+            let toPrivate = channel?.channel.type == "public"
+            Button(toPrivate ? "非公開にする" : "公開にする", role: .destructive) {
+                Task { _ = await controller.convertChannel(channelId, to: toPrivate ? "private" : "public") }
+            }
+        } message: { Text(convertMessage) }
+        .task { await loadMembers() }
+        .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
+        .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
+            AddMemberView(controller: controller, channelId: channelId)
         }
     }
 }
