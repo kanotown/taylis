@@ -47,6 +47,8 @@ Preferred structure:
 │   ├── SYNC_PROTOCOL.md
 │   ├── PUSH_NOTIFICATIONS.md
 │   ├── SECURITY.md
+│   ├── THREADS.md
+│   ├── WORKSPACES.md
 │   └── IMPLEMENTATION_PLAN.md
 │
 ├── server/
@@ -54,7 +56,8 @@ Preferred structure:
 ├── apps/
 │   ├── desktop/
 │   ├── ios/
-│   └── android/
+│   ├── android/
+│   └── shared/        # data the clients and the server share (emoji, error texts, unread-rule vectors) + generators
 │
 ├── infra/
 │
