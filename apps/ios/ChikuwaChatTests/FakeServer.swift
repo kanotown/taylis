@@ -344,6 +344,14 @@ final class FakeServer {
                                        "data": .object(["emoji": try! JSONValue.from(row), "deleted": .bool(deleted)])]))
     }
 
+    /// L4: a member's role changed (channel.member_updated; here to everyone, the channel's members in the server).
+    func emitMemberRole(channelId: String, userId: String, role: String) {
+        eventId += 1
+        emit(Set(users.keys), .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.member_updated"),
+                                       "ts": .string(now()), "channel_id": .string(channelId), "seq": .null,
+                                       "data": .object(["channel_id": .string(channelId), "user_id": .string(userId), "role": .string(role)])]))
+    }
+
     /// M23: the lab roster by user id (bootstrap `roster`, roster.updated to everyone).
     var roster: [String: LabProfileOut] = [:]
 

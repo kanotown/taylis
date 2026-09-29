@@ -919,7 +919,8 @@ final class AppController {
 
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
-                       dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil) async -> Bool {
+                       dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
+                       presenceHidden: Bool? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
         if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
@@ -928,6 +929,7 @@ final class AppController {
         if let statusExpiresAt { fields["status_expires_at"] = statusExpiresAt.map(JSONValue.string) ?? .null }
         // M12g
         if let notifyKeywords { fields["notify_keywords"] = .array(notifyKeywords.map(JSONValue.string)) }
+        if let presenceHidden { fields["presence_hidden"] = .bool(presenceHidden) }  // L4
         // M12c
         if let dndUntil { fields["dnd_until"] = dndUntil.map(JSONValue.string) ?? .null }
         if let quietHours {
@@ -943,6 +945,32 @@ final class AppController {
             store.upsertUser(updated.asPublic)
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// L4: the members who have not acknowledged a message; nil when it could not be loaded (the reason is shown).
+    func ackPending(_ message: MessageState) async -> [String]? {
+        guard let api else { return nil }
+        do { return try await api.ackPending(messageId: message.id) } catch { self.error = describe(error); return nil }
+    }
+
+    /// L4: the author (or an admin) reminds them; each gets a reminder only they see. What happened, in words for the
+    /// sheet that asked (the app's toasts are behind it), and whether it went through.
+    func remindUnacknowledged(_ message: MessageState) async -> (ok: Bool, text: String) {
+        guard let api else { return (false, "サーバーに接続できません") }
+        do {
+            let count = try await api.remindUnacknowledged(messageId: message.id)
+            return (true, count > 0 ? "\(count) 人にリマインドしました" : "リマインド済みの人だけです")
+        } catch { return (false, describe(error)) }
+    }
+
+    /// L4: make a member an owner, or a member again (owners and admins; the store follows channel.member_updated too).
+    func setMemberRole(channelId: String, userId: String, role: String) async -> MemberOut? {
+        guard let api else { return nil }
+        do {
+            let member = try await api.setMemberRole(channelId: channelId, userId: userId, role: role)
+            if userId == store.me?.id { store.setMembershipRole(channelId, role: member.role) }
+            return member
+        } catch { self.error = describe(error); return nil }
     }
 
     /// M23: my research topic and reading on the lab roster; the store takes the saved line at once (roster.updated

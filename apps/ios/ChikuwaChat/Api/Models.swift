@@ -49,6 +49,8 @@ struct UserMe: Codable, Equatable {
     /// M12g: words that make a message count as a mention of me.
     var notifyKeywords: [String]? = nil
     var avatarUpdatedAt: String? = nil
+    /// L4 (M31): others always see me as offline.
+    var presenceHidden: Bool? = nil
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
@@ -574,6 +576,8 @@ struct ReminderOut: Codable, Identifiable, Equatable {
     let status: String
     let firedAt: String?
     let createdAt: String
+    /// L4 (M31): "ack" when a message's author asked me to acknowledge it; "personal" (or missing) otherwise.
+    var kind: String? = nil
 }
 
 /// A message the server posts later (M12d); `status` is pending | sent | failed | cancelled.

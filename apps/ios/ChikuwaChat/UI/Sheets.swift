@@ -252,6 +252,22 @@ struct ChannelInfoView: View {
         .swipeActions(edge: .trailing) {
             if removable { Button("外す", role: .destructive) { removing = member } }
         }
+        .contextMenu {
+            // L4: owners and admins make a member an owner (a teacher of #お知らせ) or take it back.
+            if canManage && !(channel?.channel.isDm ?? true) {
+                if member.role == "owner" {
+                    Button("オーナーから外す", systemImage: "person.badge.minus") { Task { await setRole(member, "member") } }
+                } else if let user, user.role != "guest" && user.role != "bot" {
+                    Button("オーナーにする", systemImage: "person.badge.key") { Task { await setRole(member, "owner") } }
+                }
+            }
+        }
+    }
+
+    private func setRole(_ member: MemberOut, _ role: String) async {
+        if let updated = await controller.setMemberRole(channelId: channelId, userId: member.userId, role: role) {
+            members = members?.map { $0.userId == updated.userId ? updated : $0 }
+        }
     }
 
     private func remove(_ member: MemberOut) async {
@@ -335,7 +351,8 @@ struct ChannelInfoView: View {
             if canManage && channel.channel.type == "public" {
                 Button("非公開チャンネルに変換", systemImage: "lock") { confirmConvert = true }
             }
-            if isAdmin && channel.channel.type == "private" {
+            // L4: only an admin who is a member makes a private channel public (the server says the same).
+            if isAdmin && channel.isMember && channel.channel.type == "private" {
                 Button("公開チャンネルに変換", systemImage: "number") { confirmConvert = true }
             }
             Button("チャンネルを退出", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { confirmLeave = true }
@@ -437,7 +454,7 @@ struct ChannelInfoView: View {
                 Task { _ = await controller.convertChannel(channelId, to: toPrivate ? "private" : "public") }
             }
         } message: { Text(convertMessage) }
-        .task { await loadMembers() }
+        .task(id: controller.store.memberListVersion[channelId, default: 0]) { await loadMembers() }  // L4: roles change
         .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
         .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
             AddMemberView(controller: controller, channelId: channelId)
@@ -587,6 +604,14 @@ struct SettingsView: View {
                             if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
                         }
                     }
+                }
+                // L4 (M31): nobody else sees whether I am here.
+                Section {
+                    Toggle("在席を隠す", isOn: Binding(get: { controller.store.me?.presenceHidden ?? false }, set: { on in
+                        Task { _ = await controller.updateProfile(presenceHidden: on) }
+                    }))
+                } footer: {
+                    Text("ほかの人からは常にオフラインに見えます。")
                 }
                 totpSection
                 Section("パスワードの変更") {
