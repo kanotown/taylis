@@ -200,6 +200,62 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    /// M35: the overall setting decides what a channel without a level of its own notifies me of; the channel's own
+    /// level and 「ミュート」 arrive with notification_preference.updated (the old payload shape still works).
+    func testTheOverallSettingAndTheChannelsOwnLevelDecideLocalNotifications() async throws {
+        let w = makeWorld()
+        w.server.notificationDefault[w.bob.id] = "all"
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.me?.overallNotification, "all")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "plain 1")
+        await settle(w.engine)
+        XCTAssertEqual(notifications, ["plain 1"])  // follows the overall "all"
+
+        let id = w.channel.id
+        w.server.emitNotificationPreference(w.bob.id, ["channel_id": .string(id), "level": .string("mentions"), "muted_until": .null,
+                                                       "follows_default": .bool(false), "muted": .bool(false)])
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(id)?.ownNotificationLevel, "mentions")
+        try w.server.post(channelId: id, senderId: w.alice.id, body: "plain 2")
+        try w.server.post(channelId: id, senderId: w.alice.id, body: "hey <@\(w.bob.id)>")
+        await settle(w.engine)
+        XCTAssertEqual(notifications, ["plain 1", "hey <@\(w.bob.id)>"])
+
+        // Muted until unmuted: nothing notifies, and only mentions count as unread.
+        w.server.emitNotificationPreference(w.bob.id, ["channel_id": .string(id), "level": .string("all"), "muted_until": .null,
+                                                       "follows_default": .bool(true), "muted": .bool(true)])
+        await settle(w.engine)
+        let muted = try XCTUnwrap(w.store.channel(id))
+        XCTAssertNil(muted.ownNotificationLevel)
+        XCTAssertTrue(muted.isMuted)
+        try w.server.post(channelId: id, senderId: w.alice.id, body: "again <@\(w.bob.id)>")
+        await settle(w.engine)
+        XCTAssertEqual(notifications.count, 2)
+
+        // A server before M35: no follows_default / muted, the level counts as the channel's own.
+        w.server.emitNotificationPreference(w.bob.id, ["channel_id": .string(id), "level": .string("none"), "muted_until": .null])
+        await settle(w.engine)
+        XCTAssertEqual(w.store.channel(id)?.ownNotificationLevel, "none")
+        XCTAssertEqual(w.store.channel(id)?.channel.notification?.muted, false)
+        XCTAssertEqual(w.store.channel(id)?.isMuted, true)
+        w.engine.stop()
+    }
+
+    func testTheOverallSettingNoneSilencesEvenMentions() async throws {  // M35
+        let w = makeWorld()
+        w.server.notificationDefault[w.bob.id] = "none"
+        await w.engine.start()
+        await settle(w.engine)
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "hey <@\(w.bob.id)>")
+        await settle(w.engine)
+        XCTAssertEqual(notifications, [])
+        // Pushes only: the mention is still unread and not muted.
+        XCTAssertEqual(w.store.channel(w.channel.id)?.isMuted, false)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.hasUnread(meId: w.bob.id), true)
+        w.engine.stop()
+    }
+
     func testMyNotificationKeywordsCountAsMentionsHere() async throws {  // M16a: keyword hits stay on the server
         let w = makeWorld()
         w.server.notifyKeywords[w.bob.id] = ["Deploy", "リリース"]

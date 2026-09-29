@@ -150,6 +150,7 @@ struct DMListView: View {
                 HStack(spacing: 6) {
                     Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
                     if others.count == 1 { StatusEmojiView(user: store.users[avatarId]) }
+                    if channel.isMuted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                     Spacer(minLength: 4)
                     if let time = DMList.timeLabel(channel.channel.lastMessageAt) {
                         Text(time).font(.caption).foregroundStyle(.secondary)

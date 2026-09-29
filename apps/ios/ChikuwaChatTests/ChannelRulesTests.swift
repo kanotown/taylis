@@ -28,6 +28,93 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertEqual(channel("d", type: "dm", unread: 3).badgeContribution, 3)
     }
 
+    // MARK: M35 the overall setting and 「ミュート」
+
+    /// PUSH_NOTIFICATIONS.md §4's table, and a level of its own beating it.
+    func testPushLevelFollowsTheResolutionTable() {
+        let table: [(overall: String, dm: String, othersTimes: String, other: String)] = [
+            ("all", "all", "mentions", "all"),
+            ("mentions", "all", "mentions", "mentions"),
+            ("none", "none", "none", "none"),
+        ]
+        for row in table {
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: true, othersTimes: false, overall: row.overall), row.dm, row.overall)
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: true, overall: row.overall), row.othersTimes, row.overall)
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: false, overall: row.overall), row.other, row.overall)
+            for own in ["all", "mentions", "none"] {
+                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: true, othersTimes: false, overall: row.overall), own)
+                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: false, othersTimes: true, overall: row.overall), own)
+            }
+        }
+        // Through a channel: a group DM is a DM, my own times is an ordinary channel, a missing preference follows.
+        XCTAssertEqual(channel("g", type: "group_dm").pushLevel(overall: "mentions", meId: "me"), "all")
+        var times = channel("t")
+        times.channel.timesOwnerId = "me"
+        XCTAssertEqual(times.pushLevel(overall: "all", meId: "me"), "all")
+        times.channel.timesOwnerId = "someone"
+        XCTAssertEqual(times.pushLevel(overall: "all", meId: "me"), "mentions")
+        times.channel.notification = NotificationPreferenceOut(channelId: "t", level: "all", mutedUntil: nil, followsDefault: false)
+        XCTAssertEqual(times.pushLevel(overall: "none", meId: "me"), "all")
+        // Following the default: the level the server resolved then is not used, the overall setting held now is.
+        times.channel.notification = NotificationPreferenceOut(channelId: "t", level: "mentions", mutedUntil: nil, followsDefault: true)
+        XCTAssertEqual(times.pushLevel(overall: "none", meId: "me"), "none")
+    }
+
+    func testOwnLevelAndMuteComeFromThePreference() {
+        var row = channel("a", unread: 4, mentions: 1)
+        XCTAssertNil(row.ownNotificationLevel)  // no preference yet
+        row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "none", mutedUntil: nil, followsDefault: true)
+        XCTAssertNil(row.ownNotificationLevel)
+        XCTAssertFalse(row.isMuted, "overall none resolves to none, but the overall setting never mutes")
+        XCTAssertEqual(row.badgeContribution, 1)
+        row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "none", mutedUntil: nil, followsDefault: false)
+        XCTAssertEqual(row.ownNotificationLevel, "none")
+        XCTAssertTrue(row.isMuted)
+        row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "all", mutedUntil: nil, followsDefault: false, muted: true)
+        XCTAssertTrue(row.isMuted)
+        XCTAssertTrue(row.hasUnread(meId: "me"))  // the mention
+        row.mentionCount = 0
+        XCTAssertFalse(row.hasUnread(meId: "me"))
+        // Muted someone else's times is muted, not quiet.
+        row.channel.timesOwnerId = "someone"
+        XCTAssertFalse(row.isQuiet(meId: "me"))
+        // Old servers and rows stored before M35: the reported level is the channel's own.
+        row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "mentions", mutedUntil: nil)
+        XCTAssertEqual(row.ownNotificationLevel, "mentions")
+        XCTAssertFalse(row.channel.notification!.followsDefault)
+    }
+
+    func testPreferencesDecodeWithAndWithoutTheM35Fields() throws {
+        let old = try JSON.snakeDecoder.decode(NotificationPreferenceOut.self, from: Data(#"{"channel_id":"c","level":"none","muted_until":null}"#.utf8))
+        XCTAssertEqual(old.level, "none")
+        XCTAssertNil(old.reportedFollowsDefault)
+        XCTAssertFalse(old.muted)
+        XCTAssertEqual(old.ownLevel, "none")
+        let noUntil = try JSON.snakeDecoder.decode(NotificationPreferenceOut.self, from: Data(#"{"channel_id":"c","level":"all"}"#.utf8))
+        XCTAssertNil(noUntil.mutedUntil)
+        let new = try JSON.snakeDecoder.decode(NotificationPreferenceOut.self, from: Data(
+            #"{"channel_id":"c","level":"mentions","muted_until":"2026-10-01T00:00:00Z","follows_default":true,"muted":true}"#.utf8))
+        XCTAssertEqual(new.reportedFollowsDefault, true)
+        XCTAssertNil(new.ownLevel)
+        XCTAssertTrue(new.muted)
+        XCTAssertEqual(new.mutedUntil, "2026-10-01T00:00:00Z")
+        // Stored with the plain coders (the local database): both shapes survive the round trip.
+        for pref in [old, new] {
+            XCTAssertEqual(try JSON.plainDecoder.decode(NotificationPreferenceOut.self, from: JSON.plainEncoder.encode(pref)), pref)
+        }
+        // UserMe: the overall setting, "mentions" when a server before M35 leaves it out.
+        let me = #"{"id":"u","username":"bob","display_name":"Bob","role":"member","deactivated_at":null,"created_at":"","updated_at":"","email":null,"must_change_password":false"#
+        XCTAssertEqual(try JSON.snakeDecoder.decode(UserMe.self, from: Data((me + "}").utf8)).overallNotification, "mentions")
+        XCTAssertEqual(try JSON.snakeDecoder.decode(UserMe.self, from: Data((me + #","notification_default":"none"}"#).utf8)).overallNotification, "none")
+    }
+
+    func testTheNotificationMenuLabel() {
+        XCTAssertEqual(NotificationRules.menuLabel(level: "all", muted: false, timedMute: nil), "通知: すべて")
+        XCTAssertEqual(NotificationRules.menuLabel(level: "mentions", muted: false, timedMute: "15:30 までミュート"), "通知 (15:30 までミュート)")
+        XCTAssertEqual(NotificationRules.menuLabel(level: "none", muted: true, timedMute: "15:30 までミュート"), "通知: ミュート中")
+        XCTAssertEqual(NotificationRules.overallLabel("mentions"), "メンションと DM のみ")
+    }
+
     func testAnnouncementChannelsLetOwnersAndAdminsPost() {  // M15a
         var announce = channel("a")
         XCTAssertTrue(announce.canPostTopLevel(isAdmin: false))
@@ -65,7 +152,22 @@ final class ChannelRulesTests: XCTestCase {
         for c in cases {
             var row = channel("c", type: c.type, unread: c.unread, mentions: c.mentions)
             row.channel.timesOwnerId = c.times == "mine" ? "me" : c.times == "others" ? "someone" : nil
-            // Bootstrap reports the default level (mentions for channels, all for DMs) when none is set.
+            // M35: without a level of its own the server reports the one resolved from the overall setting (any of them:
+            // the rules must not look at it) with follows_default; muted is either mute (until unmuted, or timed).
+            for overall in ["all", "mentions", "none"] {
+                let resolved = row.pushLevel(overall: overall, meId: "me")
+                for timed in [false, true] {
+                    row.channel.notification = NotificationPreferenceOut(
+                        channelId: "c", level: c.level ?? resolved, mutedUntil: c.muted && timed ? "2026-09-27T00:00:00Z" : nil,
+                        followsDefault: c.level == nil, muted: c.muted && !timed)
+                    let label = "\(c.name) (overall \(overall), \(timed ? "timed" : "until unmuted"))"
+                    XCTAssertEqual(row.hasUnread(meId: "me", now: now), c.expect.hasUnread, label)
+                    XCTAssertEqual(row.badgeContribution(now: now), c.expect.badge, label)
+                    XCTAssertEqual(row.isQuiet(meId: "me", now: now), c.expect.quiet, label)
+                }
+            }
+            // A server before M35 (no follows_default): the level it reported, the type's default when none was set,
+            // counted as the channel's own gives the same answers.
             row.channel.notification = NotificationPreferenceOut(channelId: "c", level: c.level ?? (row.channel.isDm ? "all" : "mentions"),
                                                                 mutedUntil: c.muted ? "2026-09-27T00:00:00Z" : nil)
             XCTAssertEqual(row.hasUnread(meId: "me", now: now), c.expect.hasUnread, c.name)

@@ -849,12 +849,21 @@ final class FakeServer {
 
     /// M12g: a user's notification keywords (bootstrap `me` only; the server never tells others about hits).
     var notifyKeywords: [String: [String]] = [:]
+    /// M35: a user's overall notification setting (bootstrap `me`; nil = omitted, as servers before M35 do).
+    var notificationDefault: [String: String] = [:]
+
+    /// notification_preference.updated to the user's devices, with the payload as given (M35 fields or the old shape).
+    func emitNotificationPreference(_ userId: String, _ data: [String: JSONValue]) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("notification_preference.updated"),
+                                "ts": .string(now()), "channel_id": data["channel_id"] ?? .null, "seq": .null, "data": .object(data)]))
+    }
 
     func bootstrap(for userId: String) -> BootstrapOut {
         let user = users[userId]!
         let me = UserMe(id: user.id, username: user.username, displayName: user.displayName, role: user.role, deactivatedAt: nil,
                         createdAt: user.createdAt, updatedAt: user.updatedAt, email: nil, mustChangePassword: false,
-                        notifyKeywords: notifyKeywords[userId])
+                        notifyKeywords: notifyKeywords[userId], notificationDefault: notificationDefault[userId])
         let mine = channels.values.filter { $0.members.contains(userId) }.map { record in
             ChannelOut(id: record.channel.id, type: record.channel.type, name: record.channel.name, topic: nil, purpose: nil, archived: false,
                        createdBy: record.channel.createdBy, lastSeq: record.channel.lastSeq, lastMessageAt: record.channel.lastMessageAt,

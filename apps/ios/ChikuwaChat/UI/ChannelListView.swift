@@ -247,6 +247,12 @@ struct ChannelListView: View {
         if current != nil {
             Button("セクションから外す", systemImage: "folder.badge.minus") { Task { _ = await controller.moveToSection(channel.id, sectionId: nil) } }
         }
+        // M35: muted until unmuted; the level and a timed mute stay.
+        if channel.channel.notification?.muted ?? false {
+            Button("ミュート解除", systemImage: "bell") { Task { _ = await controller.setMuted(channel, false) } }
+        } else {
+            Button("ミュート", systemImage: "bell.slash") { Task { _ = await controller.setMuted(channel, true) } }
+        }
     }
 
     /// 「チャンネルを探す」 (M11h): the browser with member counts, join / leave and create.

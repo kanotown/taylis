@@ -51,6 +51,10 @@ struct UserMe: Codable, Equatable {
     var avatarUpdatedAt: String? = nil
     /// L4 (M31): others always see me as offline.
     var presenceHidden: Bool? = nil
+    /// M35: what conversations without a level of their own notify me of ("all" / "mentions" / "none"); nil from
+    /// servers before M35 (their per-type defaults are the same as "mentions").
+    var notificationDefault: String? = nil
+    var overallNotification: String { notificationDefault ?? "mentions" }
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
@@ -130,8 +134,90 @@ struct ChannelOut: Codable, Identifiable, Equatable {
 
 struct NotificationPreferenceOut: Codable, Equatable {
     let channelId: String
+    /// The level pushes use: the channel's own, or the one the server resolved from my overall setting (M35). Screens
+    /// resolve again with the overall setting they hold (`ChannelState.pushLevel`), which may have changed since.
     let level: String
     let mutedUntil: String?
+    /// M35: whether the channel has no level of its own. nil from servers before M35 (and rows stored before), whose
+    /// `level` was the channel's own or its type's default and counted as its own in the unread rules.
+    let reportedFollowsDefault: Bool?
+    /// M35: muted until unmuted (false from older servers).
+    let muted: Bool
+
+    init(channelId: String, level: String, mutedUntil: String?, followsDefault: Bool? = nil, muted: Bool = false) {
+        self.channelId = channelId
+        self.level = level
+        self.mutedUntil = mutedUntil
+        self.reportedFollowsDefault = followsDefault
+        self.muted = muted
+    }
+
+    /// The channel's own level (nil = it follows my overall setting): what the unread rules and the pickers use.
+    var ownLevel: String? { reportedFollowsDefault == true ? nil : level }
+    var followsDefault: Bool { ownLevel == nil }
+
+    enum CodingKeys: String, CodingKey {
+        case channelId, level, mutedUntil, muted
+        case reportedFollowsDefault = "followsDefault"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        channelId = try container.decode(String.self, forKey: .channelId)
+        level = try container.decode(String.self, forKey: .level)
+        mutedUntil = try container.decodeIfPresent(String.self, forKey: .mutedUntil)
+        reportedFollowsDefault = try container.decodeIfPresent(Bool.self, forKey: .reportedFollowsDefault)
+        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(channelId, forKey: .channelId)
+        try container.encode(level, forKey: .level)
+        try container.encode(mutedUntil, forKey: .mutedUntil)
+        try container.encodeIfPresent(reportedFollowsDefault, forKey: .reportedFollowsDefault)
+        try container.encode(muted, forKey: .muted)
+    }
+}
+
+/// M35: which messages of a conversation notify me (PUSH_NOTIFICATIONS.md §4). Pushes only: the unread rules take the
+/// channel's own level and mute (SYNC_PROTOCOL.md §10.5), never the overall setting.
+enum NotificationRules {
+    /// The server's `push_level`: the channel's own level if it has one; else nothing when my overall setting is
+    /// "none", every message of a DM, mentions in someone else's times (M24), and my overall setting elsewhere.
+    static func pushLevel(own: String?, isDm: Bool, othersTimes: Bool, overall: String) -> String {
+        if let own { return own }
+        if overall == "none" { return "none" }
+        if isDm { return "all" }
+        if othersTimes { return "mentions" }
+        return overall
+    }
+
+    /// The overall setting's name in the settings picker and in a channel's 「既定 (…)」.
+    static func overallLabel(_ overall: String) -> String {
+        switch overall {
+        case "all": "すべての新着メッセージ"
+        case "none": "なし"
+        default: "メンションと DM のみ"
+        }
+    }
+
+    /// A channel's (resolved) level in its menu label.
+    static func levelLabel(_ level: String) -> String {
+        switch level {
+        case "all": "すべて"
+        case "none": "通知しない"
+        default: "メンションのみ"
+        }
+    }
+
+    /// The label of a conversation's notification menu: muted (until unmuted), a timed mute ("15:30 までミュート",
+    /// `Timeline.muteLabel`), or the level it notifies me of.
+    static func menuLabel(level: String, muted: Bool, timedMute: String?) -> String {
+        if muted { return "通知: ミュート中" }
+        if let timedMute { return "通知 (\(timedMute))" }
+        return "通知: \(levelLabel(level))"
+    }
 }
 
 struct ReadStateOut: Codable, Equatable {

@@ -919,21 +919,41 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    func setNotification(_ channelId: String, level: String, mutedUntil: String? = nil) async -> Bool {
+    /// PUT replaces the level (nil = follow my overall setting, M35) and the timed mute; `muted` (until unmuted) is
+    /// left as it is when nil. Callers changing one part pass the others' current values (`ownNotificationLevel`).
+    func setNotification(_ channelId: String, level: String?, mutedUntil: String?, muted: Bool? = nil) async -> Bool {
         guard let api else { return false }
         do {
-            let pref = try await api.setNotificationPreference(channelId: channelId, level: level, mutedUntil: mutedUntil)
-            store.setNotification(channelId, level: pref.level, mutedUntil: pref.mutedUntil)
+            let pref = try await api.setNotificationPreference(channelId: channelId, level: level, mutedUntil: mutedUntil, muted: muted)
+            store.setNotification(channelId, pref)
+            engine?.onBadge?(store.badgeCount)
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// The level picker (nil = 既定): the mutes stay.
+    func setNotificationLevel(_ channel: ChannelState, own: String?) async -> Bool {
+        await setNotification(channel.id, level: own, mutedUntil: channel.channel.notification?.mutedUntil)
+    }
+
+    /// M35: 「ミュート」 on / off (until unmuted); the level and a timed mute stay.
+    func setMuted(_ channel: ChannelState, _ muted: Bool) async -> Bool {
+        await setNotification(channel.id, level: channel.ownNotificationLevel, mutedUntil: channel.channel.notification?.mutedUntil, muted: muted)
+    }
+
+    /// 「8 時間ミュート」 / its 解除 (nil): the level stays (also when it follows the default).
+    func setTimedMute(_ channel: ChannelState, until: Date?) async -> Bool {
+        await setNotification(channel.id, level: channel.ownNotificationLevel, mutedUntil: until.map { ISO8601DateFormatter().string(from: $0) })
     }
 
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
-                       presenceHidden: Bool? = nil) async -> Bool {
+                       presenceHidden: Bool? = nil, notificationDefault: String? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        // M35: channels that follow the default show the new level at once (they resolve with store.me).
+        if let notificationDefault { fields["notification_default"] = .string(notificationDefault) }
         if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
         if let statusText { fields["status_text"] = statusText.map(JSONValue.string) ?? .null }
         if let statusEmoji { fields["status_emoji"] = statusEmoji.map(JSONValue.string) ?? .null }
@@ -1159,7 +1179,6 @@ final class AppController {
             return store.users.values.first { $0.username.lowercased() == name }
         }
         let iso = ISO8601DateFormatter()
-        let level = state.channel.notification?.level ?? (isDm ? "all" : "mentions")
         switch command.name {
         case "help":
             // M30: the templates too, which `/name` puts into the input.
@@ -1219,11 +1238,13 @@ final class AppController {
         case "mute":
             let until = command.args.isEmpty ? Date().addingTimeInterval(8 * 3600) : SlashCommands.duration(command.args)
             guard let until else { error = "/mute 1h | 8h | tomorrow"; return false }
-            _ = await setNotification(channelId, level: level, mutedUntil: iso.string(from: until))
+            // The channel's own level goes back as it is (nil keeps it following the overall setting, M35).
+            _ = await setTimedMute(state, until: until)
             notice = "\(Schedule.label(until)) まで通知を止めます"
             return true
         case "unmute":
-            _ = await setNotification(channelId, level: level, mutedUntil: nil)
+            // Both mutes end (the timed one and M35's until unmuted); the level stays.
+            _ = await setNotification(channelId, level: state.ownNotificationLevel, mutedUntil: nil, muted: false)
             notice = "通知を再開しました"
             return true
         case "me":

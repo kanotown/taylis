@@ -733,45 +733,73 @@ struct ChannelView: View {
     }
 }
 
-/// The channel's notification level plus a timed mute (PUSH_NOTIFICATIONS.md §4), a submenu of the header's ⋯.
+/// The channel's notification level, 「ミュート」 (until unmuted, M35) and a timed mute (PUSH_NOTIFICATIONS.md §4), a
+/// submenu of the header's ⋯. The label shows what the conversation notifies me of, or that it is muted.
 struct NotificationMenu: View {
     @Bindable var controller: AppController
     let channel: ChannelState
 
-    private var level: String { channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions") }
-    private var muteLabel: String? { Timeline.muteLabel(channel.channel.notification?.mutedUntil) }
-    private var levelName: String {
-        switch level {
-        case "all": "すべて"
-        case "none": "通知しない"
-        default: "メンションのみ"
-        }
-    }
+    private var level: String { channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id) }
 
     var body: some View {
         Menu {
-            Picker("通知", selection: Binding(get: { level }, set: { value in
-                Task { await controller.setNotification(channel.id, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
-            })) {
-                Text("すべてのメッセージ").tag("all")
-                Text("メンションのみ").tag("mentions")
-                Text("通知しない").tag("none")
-            }
+            NotificationLevelPicker(controller: controller, channel: channel)
             Divider()
-            if let muteLabel {
-                Button("ミュート解除 (\(muteLabel))", systemImage: "bell") {
-                    Task { await controller.setNotification(channel.id, level: level, mutedUntil: nil) }
-                }
-            } else {
-                Button("8 時間ミュート", systemImage: "moon.zzz") {
-                    let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
-                    Task { await controller.setNotification(channel.id, level: level, mutedUntil: until) }
-                }
-            }
+            NotificationMuteControls(controller: controller, channel: channel, withIcons: true)
         } label: {
-            Label(muteLabel.map { "通知 (\($0)までミュート)" } ?? "通知: \(levelName)", systemImage: isMuted(channel) ? "bell.slash" : "bell")
+            let pref = channel.channel.notification
+            Label(NotificationRules.menuLabel(level: level, muted: pref?.muted ?? false, timedMute: Timeline.muteLabel(pref?.mutedUntil)),
+                  systemImage: isMuted(channel) ? "bell.slash" : "bell")
         }
         .accessibilityLabel("通知設定")
+    }
+}
+
+/// M35: a conversation's level: 既定 (it follows my overall setting; sends level null) or a level of its own. The
+/// mutes stay as they are.
+struct NotificationLevelPicker: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+    static let followDefaultTag = "default"
+
+    var body: some View {
+        let overall = controller.store.me?.overallNotification ?? "mentions"
+        Picker("通知", selection: Binding(get: { channel.ownNotificationLevel ?? Self.followDefaultTag }, set: { value in
+            Task { _ = await controller.setNotificationLevel(channel, own: value == Self.followDefaultTag ? nil : value) }
+        })) {
+            Text("既定 (\(NotificationRules.overallLabel(overall)))").tag(Self.followDefaultTag)
+            Text("すべてのメッセージ").tag("all")
+            Text("メンションのみ").tag("mentions")
+            Text("通知しない").tag("none")
+        }
+    }
+}
+
+/// M35: 「ミュート」 (until unmuted) and the timed 「8 時間ミュート」 / its 解除. Neither pins the level.
+struct NotificationMuteControls: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+    var withIcons = false
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { channel.channel.notification?.muted ?? false }, set: { on in
+            Task { _ = await controller.setMuted(channel, on) }
+        })) {
+            if withIcons { Label("ミュート", systemImage: "bell.slash") } else { Text("ミュート") }
+        }
+        if let timed = Timeline.muteLabel(channel.channel.notification?.mutedUntil) {
+            Button {
+                Task { _ = await controller.setTimedMute(channel, until: nil) }
+            } label: {
+                if withIcons { Label("ミュート解除 (\(timed))", systemImage: "bell") } else { Text("ミュート解除 (\(timed))") }
+            }
+        } else {
+            Button {
+                Task { _ = await controller.setTimedMute(channel, until: Date().addingTimeInterval(8 * 3600)) }
+            } label: {
+                if withIcons { Label("8 時間ミュート", systemImage: "moon.zzz") } else { Text("8 時間ミュート") }
+            }
+        }
     }
 }
 
