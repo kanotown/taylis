@@ -44,6 +44,33 @@ export function isSelfNotes(channel: ChannelState, meId: string | null): boolean
   return channel.type === "dm" && (channel.dm_user_ids ?? []).every((id) => id === meId);
 }
 
+export const SELF_NOTES_TITLE = "自分へのメモ";
+
+/**
+ * Whether the DM list shows the 「自分へのメモ」 placeholder row first: there is no DM with only me among my channels yet
+ * (a tap on the row makes it), and the filter is empty or matches its title.
+ */
+export function showsSelfNotesPlaceholder(channels: Iterable<ChannelState>, meId: string | null, query = ""): boolean {
+  if (!meId) return false;
+  for (const channel of channels) if (channel.isMember && isSelfNotes(channel, meId)) return false;
+  const needle = query.trim().toLowerCase();
+  return !needle || SELF_NOTES_TITLE.toLowerCase().includes(needle);
+}
+
+/**
+ * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, 「自分へのメモ」, never one of my
+ * 1:1 DMs.
+ */
+export function findDmWith(channels: Iterable<ChannelState>, userId: string, meId: string | null): ChannelState | undefined {
+  const wanted = new Set([userId, ...(meId ? [meId] : [])]);
+  for (const channel of channels) {
+    if (channel.type !== "dm") continue;
+    const members = new Set(channel.dm_user_ids ?? []);
+    if (members.size === wanted.size && [...wanted].every((id) => members.has(id))) return channel;
+  }
+  return undefined;
+}
+
 /** My DMs and group DMs: 「自分へのメモ」 first, then the newest last message first; `query` filters by name. */
 export function dmList(channels: Iterable<ChannelState>, title: (channel: ChannelState) => string, meId: string | null, query = ""): ChannelState[] {
   const needle = query.trim().toLowerCase();

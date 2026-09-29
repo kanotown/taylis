@@ -73,10 +73,11 @@ function layRowsOut() {
 }
 
 /**
- * Channel C (alice's posts m1..m`posts`, read by bob), a DM with alice holding one unread 「DM です」, bob's own notes,
- * and a thread under m1 that bob follows with one unread reply. Bob is on this device, at the home tab's root.
+ * Channel C (alice's posts m1..m`posts`, read by bob), a DM with alice holding one unread 「DM です」, bob's own notes
+ * (unless `notes` is false: then `createDm` makes them, after `createDm.gate` when one is set), and a thread under m1
+ * that bob follows with one unread reply. Bob is on this device, at the home tab's root.
  */
-async function setup(options: { posts?: number } = {}) {
+async function setup(options: { posts?: number; notes?: boolean } = {}) {
   const w = world({ posts: options.posts ?? 5, lastRead: options.posts ?? 5 });
   const first = w.server.channels.get(w.channelId)!.messages[0]!;
   w.server.post(w.channelId, w.bob.id, "my reply", undefined, first.id); // bob follows the thread
@@ -85,13 +86,26 @@ async function setup(options: { posts?: number } = {}) {
   w.server.channels.get(dmId)!.channel.dm_user_ids = [w.alice.id, w.bob.id];
   w.server.join(dmId, w.bob.id);
   const dmMessage = w.server.post(dmId, w.alice.id, "DM です").message;
-  const notesId = w.server.createChannel("", w.bob.id, "dm").id;
-  w.server.channels.get(notesId)!.channel.dm_user_ids = [w.bob.id];
+  if (options.notes !== false) {
+    const notesId = w.server.createChannel("", w.bob.id, "dm").id;
+    w.server.channels.get(notesId)!.channel.dm_user_ids = [w.bob.id];
+  }
+  const createDm = Object.assign(
+    async (userIds: string[]) => {
+      createDm.calls.push(userIds);
+      await createDm.gate;
+      const channel = w.server.createChannel("", w.bob.id, "dm");
+      channel.dm_user_ids = [...new Set([w.bob.id, ...userIds])];
+      return { ...channel };
+    },
+    { calls: [] as string[][], gate: Promise.resolve() as Promise<unknown> },
+  );
   const inner = w.api as unknown as Record<string, unknown>;
   const mention = { ...first, body: "@bob メンションの本文" } as unknown as MessageOut;
   const extra: Record<string, unknown> = {
     listMentions: async () => ({ items: [mention], next_cursor: null }),
     search: async () => ({ hits: [{ message: dmMessage }], keywords: [], total: 1, total_capped: false, has_more: false, filters: { unresolved: [] } }),
+    createDm,
     messageContext: async (id: string) => [w.server.channels.get(w.channelId)!.messages.find((m) => m.id === id) ?? w.server.channels.get(dmId)!.messages[0]!],
   };
   // Whatever else the screen asks for on the side (custom emoji, sections, drafts …) finds nothing.
@@ -102,7 +116,7 @@ async function setup(options: { posts?: number } = {}) {
   (controller as unknown as { active: unknown }).active = { serverUrl: "http://server", username: "bob", api, store: w.store, engine: w.engine, me: w.store.me, leaving: false };
   render(<Screen w={w} controller={controller} />);
   await flush();
-  return { w, controller, dmId, dmMessage, first };
+  return { w, controller, dmId, dmMessage, first, createDm };
 }
 
 function Screen({ w, controller }: { w: World; controller: AppController }) {
@@ -240,6 +254,56 @@ it("the DM tab: 「自分へのメモ」 first, then by the last message, times,
   await back();
   expect(selected()).toBe("dm");
   expect(w.engine.currentChannelId).toBeNull();
+  w.engine.stop();
+});
+
+it("the DM tab without 「自分へのメモ」: a placeholder row first (my picture, 「自分だけが見られる DM」); one tap makes the DM once and opens it on the DM tab", async () => {
+  const { w, controller, createDm } = await setup({ notes: false });
+  await tap("dm");
+  const list = within(root("dm")!);
+  const placeholder = () => root("dm")!.querySelector<HTMLButtonElement>("[data-self-notes-placeholder]");
+  const names = () => list.getAllByRole("listitem").map((row) => row.querySelector<HTMLElement>("span.text-\\[15px\\]")!.textContent);
+  expect(names()).toEqual(["自分へのメモ", "Alice"]);
+  expect(placeholder()!.textContent).toContain("自分だけが見られる DM");
+
+  // The filter: the placeholder stays while 「自分へのメモ」 contains it, and then the list is not 「empty」.
+  fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: "メモ" } });
+  expect(names()).toEqual(["自分へのメモ"]);
+  expect(list.queryByText("一致する DM はありません")).toBeNull();
+  fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: "ali" } });
+  expect(placeholder()).toBeNull();
+  expect(names()).toEqual(["Alice"]);
+  fireEvent.change(list.getByPlaceholderText("DM を検索"), { target: { value: "" } });
+
+  // A failure shows as the app's error; the row stays to try again.
+  const failing = createDm.gate;
+  createDm.gate = Promise.reject(new Error("offline"));
+  createDm.gate.catch(() => {});
+  fireEvent.click(placeholder()!);
+  await flush();
+  expect(controller.error).toBeTruthy();
+  expect(placeholder()!.disabled).toBe(false);
+  createDm.gate = failing;
+  controller.setError(null);
+
+  let release!: () => void;
+  createDm.gate = new Promise<void>((resolve) => (release = resolve));
+  fireEvent.click(placeholder()!);
+  fireEvent.click(placeholder()!); // a double tap while the request runs
+  await flush();
+  expect(createDm.calls).toEqual([[w.bob.id], [w.bob.id]]); // the failed one, then this one once
+  expect(placeholder()!.disabled).toBe(true);
+  release();
+  await flush();
+  await act(async () => { await w.engine.idle(); });
+  const created = [...w.store.channels.values()].find((c) => c.type === "dm" && c.dm_user_ids?.length === 1)!;
+  expect(created.isMember).toBe(true);
+  expect(bar()).toBeNull();
+  expect(w.engine.currentChannelId).toBe(created.id);
+  await back();
+  expect(selected()).toBe("dm");
+  expect(placeholder()).toBeNull();
+  expect(names()).toEqual(["自分へのメモ", "Alice"]);
   w.engine.stop();
 });
 

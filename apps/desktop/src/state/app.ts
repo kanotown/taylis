@@ -7,6 +7,7 @@ import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
 import { configureAvatars, noteVersions } from "../ui/avatars";
+import { findDmWith } from "../ui/mobileTabs";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
@@ -895,7 +896,6 @@ export class AppController {
     }
   }
 
-  /** Open (or create) the DM with one user; returns its channel id. */
   /** M24: my times (made on the first call; the supervisors on the roster join it); returns its id. */
   async ensureTimes(): Promise<string | null> {
     if (!this.api) return null;
@@ -909,9 +909,13 @@ export class AppController {
     }
   }
 
+  /**
+   * Open (or create) the DM with one user; returns its channel id. The existing one has exactly that user and me as its
+   * members, so my own id finds 「自分へのメモ」 (made on the first call), not one of my 1:1 DMs.
+   */
   async openDmWith(userId: string): Promise<string | null> {
     if (!this.api) return null;
-    const existing = [...this.store.channels.values()].find((c) => c.type === "dm" && (c.dm_user_ids ?? []).includes(userId) && (c.dm_user_ids ?? []).length <= 2);
+    const existing = findDmWith(this.store.channels.values(), userId, this.store.me?.id ?? this.me?.id ?? null);
     if (existing) return existing.id;
     try {
       const channel = await this.api.createDm([userId]);

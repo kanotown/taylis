@@ -1,5 +1,5 @@
 import { BellOff, Search, SquarePen, Users } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -7,20 +7,36 @@ import { Avatar, presenceLabel } from "./Avatar";
 import { badgeCount, hasUnread, isMutedChannel } from "./channels";
 import { fullTimestamp } from "./format";
 import { channelTitle } from "./MainScreen";
-import { dmList, dmTimeLabel, isSelfNotes } from "./mobileTabs";
+import { dmList, dmTimeLabel, isSelfNotes, SELF_NOTES_TITLE, showsSelfNotesPlaceholder } from "./mobileTabs";
 import { Badge, cn, IconButton } from "./primitives";
 import { activeStatus } from "./users";
 
 /**
  * M34, the phone's DM tab (MOBILE_UI.md §6.3): my DMs and group DMs, 「自分へのメモ」 first, then the newest. A row shows
  * the name and the time, the presence and status (the last message's preview comes with M37), unread in bold with its
- * count.
+ * count. Until 「自分へのメモ」 exists, a placeholder row stands first; a tap makes it and opens it.
  */
 export function DmListView({ controller, onOpen, onNew }: { controller: AppController; onOpen: (id: string) => void; onNew: () => void }) {
   const store = controller.store;
   const meId = store.me?.id ?? controller.me?.id ?? null;
   const [query, setQuery] = useState("");
   const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query);
+  const placeholder = showsSelfNotesPlaceholder(store.channels.values(), meId, query);
+  const [creating, setCreating] = useState(false);
+  const inFlight = useRef(false);
+  const openSelfNotes = async () => {
+    if (!meId || inFlight.current) return; // one request at a time: a second tap while it runs does nothing
+    inFlight.current = true;
+    setCreating(true);
+    try {
+      // Makes the DM with only me, puts it in the store as mine and opens it; a failure shows as the app's error.
+      const id = await controller.openDmWith(meId);
+      if (id) onOpen(id);
+    } finally {
+      inFlight.current = false;
+      setCreating(false);
+    }
+  };
   const now = new Date();
   return (
     <section aria-label="ダイレクトメッセージ" className="flex min-h-0 flex-1 flex-col bg-canvas">
@@ -44,10 +60,11 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {rows.length === 0 ? (
+        {rows.length === 0 && !placeholder ? (
           <p className="px-6 py-12 text-center text-sm text-muted">{query.trim() ? "一致する DM はありません" : "まだ DM はありません"}</p>
         ) : (
           <ul>
+            {placeholder && meId && <SelfNotesPlaceholderRow controller={controller} meId={meId} busy={creating} onOpen={() => void openSelfNotes()} />}
             {rows.map((channel) => (
               <DmRow key={channel.id} controller={controller} channel={channel} meId={meId} now={now} onOpen={() => onOpen(channel.id)} />
             ))}
@@ -55,6 +72,29 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
         )}
       </div>
     </section>
+  );
+}
+
+/** 「自分へのメモ」 before it exists: my picture, the title and what it is; a tap makes it (once) and opens it. */
+function SelfNotesPlaceholderRow({ controller, meId, busy, onOpen }: { controller: AppController; meId: string; busy: boolean; onOpen: () => void }) {
+  const me = controller.store.users.get(meId) ?? controller.store.me ?? controller.me;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={busy}
+        aria-busy={busy}
+        data-self-notes-placeholder=""
+        className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-panel active:bg-panel disabled:opacity-60"
+      >
+        <Avatar id={meId} name={me?.display_name ?? "?"} size={40} className="rounded-xl" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-medium text-ink/90">{SELF_NOTES_TITLE}</span>
+          <span className="mt-0.5 block truncate text-[13px] text-muted">自分だけが見られる DM</span>
+        </span>
+      </button>
+    </li>
   );
 }
 

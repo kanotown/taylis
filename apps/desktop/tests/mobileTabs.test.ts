@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { activityBadge, dmBadge, dmList, dmTimeLabel, homeDot, isSelfNotes, landingTab, landOn, tapTab, type TabStacks } from "../src/ui/mobileTabs";
+import { activityBadge, dmBadge, dmList, dmTimeLabel, findDmWith, homeDot, isSelfNotes, landingTab, landOn, showsSelfNotesPlaceholder, tapTab, type TabStacks } from "../src/ui/mobileTabs";
 
 const ME = "me";
 const now = new Date(2026, 8, 29, 15, 0); // Tuesday 2026-09-29 15:00, local time
@@ -96,6 +96,26 @@ describe("the DM list (§6.3)", () => {
     expect(dmList(rows, title, ME, "  bOb ").map((c) => c.id)).toEqual(["b"]);
     expect(dmList(rows, title, ME, "メモ").map((c) => c.id)).toEqual(["notes"]);
     expect(dmList(rows, title, ME, "zzz")).toEqual([]);
+  });
+
+  it("the 「自分へのメモ」 placeholder: only while no DM with only me is mine, and when the filter is empty or matches it", () => {
+    const withoutNotes = rows.filter((c) => c.id !== "notes");
+    expect(showsSelfNotesPlaceholder(rows, ME)).toBe(false);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME)).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "  ")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "メモ")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "自分へのメモ")).toBe(true);
+    expect(showsSelfNotesPlaceholder(withoutNotes, ME, "ali")).toBe(false);
+    expect(showsSelfNotesPlaceholder([...withoutNotes, dm("left", [ME], { isMember: false })], ME)).toBe(true); // not mine
+    expect(showsSelfNotesPlaceholder(withoutNotes, null)).toBe(false); // nobody signed in yet
+  });
+
+  it("the DM with a user: exactly them and me — with my own id 「自分へのメモ」, never one of my 1:1 DMs", () => {
+    expect(findDmWith(rows, "alice", ME)?.id).toBe("a");
+    expect(findDmWith(rows, "bob", ME)).toBeUndefined(); // only in a group DM
+    expect(findDmWith(rows, ME, ME)?.id).toBe("notes");
+    expect(findDmWith(rows.filter((c) => c.id !== "notes"), ME, ME)).toBeUndefined();
+    expect(findDmWith([dm("dup", [ME, ME])], ME, ME)?.id).toBe("dup");
   });
 
   it("time labels: today H:mm, 昨日, the weekday within 7 days, M/d, yyyy/M/d another year, nothing without a message", () => {
