@@ -214,7 +214,8 @@ struct ChannelView: View {
     /// 「新着 N 件」 / ↓ at the bottom right while the list is not at the end.
     @ViewBuilder
     private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
-        if !atBottom && focus == nil {
+        // Not while a new row slides in (it flashed for a frame as the end went out of view and came back).
+        if !atBottom && focus == nil && !newRowComing {
             Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
                 if unseenBelow > 0 {
                     Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
@@ -255,28 +256,27 @@ struct ChannelView: View {
         scrollToEnd(proxy)
         markSeen()
         Task {
-            try? await Task.sleep(nanoseconds: 350_000_000) // the scroll's length, then the anchor again
+            try? await Task.sleep(nanoseconds: 500_000_000) // the slide and its check, then the anchor again
             if messages.last?.rowKey == key { settledLastKey = key }
         }
     }
 
-    /// To the end, sliding. `withAnimation { proxy.scrollTo }` got there in one frame when the row had just come in
-    /// (2026-09-29, iOS 27), and so did KeepsBottom's end of turn (the content grew at the end): the offset slides frame
-    /// by frame instead (KeyboardBehavior.slide), once the row is laid out, and KeepsBottom leaves it alone meanwhile
-    /// (newRowComing). The proxy puts right a slide that stopped short of LazyVStack's settled heights.
+    /// To the end, sliding: the new row rises into view with the list. `withAnimation { proxy.scrollTo }` got there in
+    /// one frame when the row had just come in (2026-09-29, iOS 27), and so did KeepsBottom's end of turn (the content
+    /// grew at the end): the offset slides frame by frame instead, towards the end as it is on each frame (the row is
+    /// laid out a frame or two later), and KeepsBottom leaves it alone meanwhile (newRowComing).
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
         guard let scrollView = scroller.scrollView else {
             withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo("bottom", anchor: .bottom) }
             return
         }
-        DispatchQueue.main.async {
-            scrollView.layoutIfNeeded()
-            let end = scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
-            if end > scrollView.contentOffset.y + 0.5 { KeyboardBehavior.slide(scrollView, to: end, duration: 0.3) }
-        }
+        KeyboardBehavior.slideToEnd(scrollView, duration: 0.3)
         Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            if !atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+            // LazyVStack may settle the row's height after the slide: the end, outright, if it moved on.
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            if !frames.moving, KeyboardBehavior.end(of: scrollView) - scrollView.contentOffset.y > 1 {
+                scrollView.contentOffset.y = KeyboardBehavior.end(of: scrollView)
+            }
         }
     }
 
@@ -464,8 +464,6 @@ struct ChannelView: View {
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                             .containerRelativeFrame(.horizontal)
-                            // A new newest row fades in as the list scrolls to it (newestRowChanged).
-                            .animation(.easeOut(duration: 0.25), value: messages.last?.rowKey)
                             .background(ScrollViewProbe.Marker(probe: scroller))
                             .background(StatusBarTapStays())
                         }

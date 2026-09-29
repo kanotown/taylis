@@ -47,6 +47,21 @@ enum KeyboardBehavior {
         Slide.current = Slide(scrollView: scrollView, from: scrollView.contentOffset.y, to: target, duration: duration)
     }
 
+    /// Slides to the end of the content, the end measured again on every frame: a row that has just come in is laid
+    /// out a frame or two after the slide starts (measured once, the end fell short of it and the row stayed under the
+    /// input with the keyboard up; 2026-09-29).
+    static func slideToEnd(_ scrollView: UIScrollView, duration: TimeInterval = 0.3) {
+        Slide.current?.stop()
+        Slide.current = Slide(scrollView: scrollView, from: scrollView.contentOffset.y, to: end(of: scrollView), duration: duration,
+                              target: { end(of: $0) })
+    }
+
+    /// The offset that shows the end of the content.
+    static func end(of scrollView: UIScrollView) -> CGFloat {
+        max(-scrollView.adjustedContentInset.top,
+            scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+    }
+
     /// Where the offset is going: a slide's destination while one runs, else the offset itself. A change measured
     /// from the middle of a slide (the tool row's, a frame after the keyboard's) lost the rest of it.
     static func settledOffset(_ scrollView: UIScrollView) -> CGFloat {
@@ -58,22 +73,27 @@ enum KeyboardBehavior {
         static var current: Slide?
         private(set) weak var scrollView: UIScrollView?
         private let from: CGFloat
-        let to: CGFloat
+        private(set) var to: CGFloat
         private let duration: TimeInterval
+        /// Where the slide goes, asked again on each frame (slideToEnd); nil keeps `to`.
+        private let target: ((UIScrollView) -> CGFloat)?
         private let started = CACurrentMediaTime()
         private var link: CADisplayLink?
 
-        init(scrollView: UIScrollView, from: CGFloat, to: CGFloat, duration: TimeInterval) {
+        init(scrollView: UIScrollView, from: CGFloat, to: CGFloat, duration: TimeInterval,
+             target: ((UIScrollView) -> CGFloat)? = nil) {
             self.scrollView = scrollView
             self.from = from
             self.to = to
             self.duration = duration
+            self.target = target
             link = CADisplayLink(target: self, selector: #selector(tick))
             link?.add(to: .main, forMode: .common)
         }
 
         @objc private func tick() {
             guard let scrollView else { return stop() }
+            if let target { to = target(scrollView) }
             let t = min(1, (CACurrentMediaTime() - started) / duration)
             let eased = 1 - pow(1 - t, 2) // ease out
             scrollView.contentOffset.y = from + (to - from) * eased
