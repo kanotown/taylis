@@ -237,7 +237,11 @@ struct ChannelView: View {
 
     private func settleNewestRow() { if settledLastKey == nil { settledLastKey = messages.last?.rowKey } }
 
-    private var newRowComing: Bool { settledLastKey != nil && messages.last?.rowKey != settledLastKey }
+    /// A row after the settled newest one — not the newest one gone (a deletion: the list keeps its end then).
+    private var newRowComing: Bool {
+        guard let settledLastKey, messages.last?.rowKey != settledLastKey else { return false }
+        return messages.contains { $0.rowKey == settledLastKey }
+    }
 
     /// Built here, out of the body's long chain.
     private var scrollAnchor: TimelineScrollAnchor {
@@ -247,6 +251,12 @@ struct ChannelView: View {
     /// Arrivals while at the bottom, and my own top-level send from this device, show the newest message, scrolled to
     /// with an animation (settledLastKey). A landing on the first unread row is not overridden by someone else's arrival.
     private func newestRowChanged(_ key: String?, _ proxy: ScrollViewProxy) {
+        // The newest row went away (a deletion): the bottom anchor keeps the end as the rows close up, animated; a slide
+        // of our own fought that animation (the list jumped up and back, 2026-09-29).
+        if let settledLastKey, !messages.contains(where: { $0.rowKey == settledLastKey }) {
+            self.settledLastKey = key
+            return
+        }
         let mine = ReadGate.ownPendingPost(messages.last, meId: controller.store.me?.id)
         guard positioned && focus == nil && (mine || atBottom && anchor.landing == nil) else {
             settledLastKey = key

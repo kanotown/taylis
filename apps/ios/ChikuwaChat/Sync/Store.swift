@@ -811,8 +811,10 @@ final class Store {
     @discardableResult
     func upsertMessage(_ message: MessageOut) -> Bool { upsertMessage(MessageState(message)) }
 
+    /// `replacingSameVersion`: a change of this device's own at the version it has (a deletion shown before the server
+    /// answers, or the row put back when it refuses).
     @discardableResult
-    func upsertMessage(_ message: MessageState) -> Bool {
+    func upsertMessage(_ message: MessageState, replacingSameVersion: Bool = false) -> Bool {
         let rows = bucket(message.channelId)
         // In place (M20): copying the channel's rows out and back on every message grew with the channel.
         if let clientMsgId = message.clientMsgId {
@@ -825,7 +827,7 @@ final class Store {
         var message = message
         if let local = rows.byId[message.id] {
             if message.updatedSeq < local.updatedSeq { return false }
-            if message.updatedSeq == local.updatedSeq {
+            if message.updatedSeq == local.updatedSeq && !replacingSameVersion {
                 // §8 (M27): my own poll votes come only in a response to me; one that comes after the event of the same
                 // change still brings them.
                 guard let mine = message.poll?.mine, local.poll != nil, local.poll?.mine != mine else { return false }
