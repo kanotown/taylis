@@ -242,6 +242,10 @@ class ApiClient(
     suspend fun addMember(channelId: String, userId: String): MemberOut =
         request("POST", "/api/v1/channels/$channelId/members", buildJsonObject { put("user_id", userId) })
 
+    /** L4 (M31): make a member an owner ("owner") or a member again ("member"); owners and admins. */
+    suspend fun updateMemberRole(channelId: String, userId: String, role: String): MemberOut =
+        request("PATCH", "/api/v1/channels/$channelId/members/$userId", buildJsonObject { put("role", role) })
+
     suspend fun createDm(userIds: List<String>): ChannelOut =
         request("POST", "/api/v1/dms", buildJsonObject { put("user_ids", buildJsonArray { userIds.forEach { add(JsonPrimitive(it)) } }) })
 
@@ -537,6 +541,12 @@ class ApiClient(
     suspend fun acknowledge(messageId: String, present: Boolean): MessageOut =
         if (present) request("PUT", "/api/v1/messages/$messageId/ack", buildJsonObject {})
         else request("DELETE", "/api/v1/messages/$messageId/ack")
+
+    /** L4 (M31): who has not acknowledged yet (any member may look). */
+    suspend fun ackPending(messageId: String): AckPendingOut = request("GET", "/api/v1/messages/$messageId/ack/pending")
+
+    /** L4 (M31): the author or an admin reminds them (once an hour per message). */
+    suspend fun remindAck(messageId: String): AckRemindOut = request("POST", "/api/v1/messages/$messageId/ack/remind", buildJsonObject {})
 
     // --- polls (M14b) ------------------------------------------------------------------------
 

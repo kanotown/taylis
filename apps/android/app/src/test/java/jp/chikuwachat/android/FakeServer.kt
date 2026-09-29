@@ -739,6 +739,12 @@ class FakeServer {
         }))
     }
 
+    /** PATCH /channels/{id}/members/{user_id} as the real server announces it (M31): channel.member_updated to the members. */
+    fun emitMemberUpdated(channelId: String, userId: String, role: String) {
+        val record = channels[channelId] ?: return
+        emit(record.members, event("channel.member_updated", channelId, null, buildJsonObject { put("channel_id", channelId); put("user_id", userId); put("role", role) }))
+    }
+
     fun revokeSession(userId: String) {
         sockets.toList().filter { it.userId == userId }.forEach { socket ->
             socket.deliver(event("session.revoked", null, null, buildJsonObject { put("reason", "logout") }))

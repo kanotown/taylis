@@ -613,7 +613,7 @@ fun MainScreen(controller: AppController) {
         MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
-        MainDialog.SETTINGS -> SettingsDialog(controller, onDismiss = { dialog = null })
+        MainDialog.SETTINGS -> SettingsDialog(controller, version, onDismiss = { dialog = null })
         MainDialog.BROWSE -> ChannelBrowserDialog(
             controller, version, onDismiss = { dialog = null },
             onOpen = { controller.messageFocus = null; openConversation(it) },

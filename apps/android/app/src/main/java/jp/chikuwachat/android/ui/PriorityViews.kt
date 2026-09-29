@@ -2,20 +2,29 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,9 +77,81 @@ fun AckBar(message: MessageState, store: Store, controller: AppController, versi
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false).padding(start = if (!own && !readOnly) 8.dp else 0.dp).touchTarget { source ->
-                Modifier.clickable(interactionSource = source, indication = null, enabled = people.isNotEmpty(), onClickLabel = "確認した人") { showNames = true }
+                // M31: members open it with nobody listed too, for 「未確認」 and the reminder.
+                Modifier.clickable(interactionSource = source, indication = null, enabled = people.isNotEmpty() || !readOnly, onClickLabel = "確認した人") { showNames = true }
             },
         )
     }
-    if (showNames) PeopleDialog("確認した人", people, onDismiss = { showNames = false })
+    if (showNames) {
+        if (readOnly) PeopleDialog("確認した人", people, onDismiss = { showNames = false })
+        else AckPeopleDialog(message, people, store, controller, version, onDismiss = { showNames = false })
+    }
+}
+
+/**
+ * 「確認した人」 with 「未確認 N 人」 (L4, M31): the pending names come from GET …/ack/pending when the dialog opens, again
+ * after each acknowledgement that arrives and after a reminder. The author or an admin may remind them (once an hour).
+ */
+@Composable
+private fun AckPeopleDialog(message: MessageState, people: List<Person>, store: Store, controller: AppController, version: Int, onDismiss: () -> Unit) {
+    var pendingIds by remember { mutableStateOf<List<String>?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    // The outcome of the reminder under its button: the app's snackbar sits behind this dialog.
+    var outcome by remember { mutableStateOf<AckReminders.Outcome?>(null) }
+    // A failed load in words, shown in place of the list (the snackbar sits behind this dialog); a later load clears it.
+    var loadError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(message.id, message.acks.size, reload) {
+        controller.ackPending(message.id)
+            .onSuccess { pendingIds = it; loadError = null }
+            .onFailure { if (pendingIds == null) loadError = controller.describe(it) }
+    }
+    val pending = remember(version, pendingIds) { pendingIds?.let { PeopleText.people(store, it) } }
+    val me = remember(version) { store.me }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("確認した人") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (people.isEmpty()) Text("まだ誰も確認していません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                people.forEach { PersonRow(it) }
+                Text(
+                    "未確認" + (pending?.let { " ${it.size} 人" } ?: ""),
+                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+                )
+                val failure = loadError
+                when {
+                    pending == null && failure != null -> Text(failure, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    pending == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    pending.isEmpty() -> Text("全員が確認しました", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> pending.forEach { PersonRow(it) }
+                }
+                if (AckReminders.canRemind(message, me, pending?.size ?: 0)) {
+                    TextButton(
+                        enabled = !busy,
+                        onClick = {
+                            // The app's scope: a reminder being sent is not cancelled when the dialog closes.
+                            controller.scope.launch {
+                                busy = true
+                                outcome = null
+                                val result = controller.remindAck(message.id)
+                                outcome = result
+                                if (!result.failed) reload += 1
+                                busy = false
+                            }
+                        },
+                        modifier = Modifier.heightIn(min = TouchTarget.MIN),
+                    ) { Text("未確認の人にリマインド") }
+                }
+                // Stays after the pending list empties (the button goes then, the result should not).
+                outcome?.let {
+                    Text(
+                        it.text, style = MaterialTheme.typography.bodySmall,
+                        color = if (it.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+    )
 }

@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -55,6 +57,13 @@ fun RemindersPane(controller: AppController, version: Int, onOpen: (ReminderOut)
 private fun ReminderRow(row: ReminderOut, controller: AppController, action: String, onOpen: (ReminderOut) -> Unit) {
     val store = controller.store
     Column(Modifier.fillMaxWidth().clickable { onOpen(row) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        // L4 (M31): the author asked me to acknowledge the message (not a reminder I set).
+        if (row.kind == "ack") {
+            Text(
+                "確認のお願い", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(store.channel(row.channelId)?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             Text(" · " + Schedule.label(row.remindAt) + if (row.status == "fired") " にリマインド" else " にリマインド予定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

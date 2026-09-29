@@ -12,6 +12,7 @@ import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AckOut
+import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
@@ -517,6 +518,25 @@ class Store(private val persistence: Persistence? = null) {
         persist { it.saveChannel(updated) }
         emit()
         return updated
+    }
+
+    /** L4 (M31): bumped by channel.member_updated, so an open member list loads again (not persisted). */
+    private val memberEpochs = HashMap<String, Int>()
+    fun memberEpoch(channelId: String): Int = memberEpochs[channelId] ?: 0
+
+    /**
+     * channel.member_updated (SYNC_PROTOCOL.md, M31): someone became an owner or a member again. When it is me, my
+     * membership role changes (owner-only actions appear or go); either way an open member list is loaded again.
+     */
+    fun applyMemberUpdated(channelId: String, userId: String, role: String) {
+        memberEpochs[channelId] = memberEpoch(channelId) + 1
+        val existing = channels[channelId]
+        if (existing != null && userId == me?.id && existing.isMember) {
+            val membership = existing.channel.membership?.copy(role = role) ?: MembershipOut(role, "")
+            updateChannel(channelId) { it.copy(channel = it.channel.copy(membership = membership)) }
+        } else {
+            emit()
+        }
     }
 
     fun removeChannel(id: String) {
