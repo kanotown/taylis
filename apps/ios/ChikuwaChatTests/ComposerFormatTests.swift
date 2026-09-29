@@ -38,4 +38,11 @@ final class ComposerFormatTests: XCTestCase {
         XCTAssertNil(box.raw(for: ""))
         XCTAssertNil(box.raw(for: "別の文"))
     }
+
+    /// 見出し (the web's tool, parity audit 2026-09-29): 「## 」 at the start of the line, the cursor keeping its place.
+    func testHeadingMarksTheLine() {
+        let result = ComposerFormat.heading.apply(to: "今日の予定", selection: 2..<2)
+        XCTAssertEqual(result.text, "## 今日の予定")
+        XCTAssertEqual(result.selection, 5..<5)
+    }
 }
