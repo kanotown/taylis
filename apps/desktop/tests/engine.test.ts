@@ -66,6 +66,20 @@ describe("SyncEngine", () => {
     void server;
   });
 
+  it("says at once after connecting that the window is not in use, and nothing when it is", async () => {
+    // The server counts a new connection as in use: a window in the background reconnecting after sleep held back the
+    // phone's pushes until its first heartbeat (PUSH_NOTIFICATIONS.md §4.1).
+    for (const active of [false, true]) {
+      const { engine } = await setup({ active });
+      await engine.start();
+      await engine.idle();
+      const ws = (engine as unknown as { ws: { sent: string[] } }).ws;
+      const pings = ws.sent.map((s) => JSON.parse(s)).filter((f) => f.type === "ping");
+      expect(pings).toEqual(active ? [] : [{ type: "ping", active: false }]);
+      engine.stop();
+    }
+  });
+
   it("catches up a conversation opened while the connection was still starting", async () => {
     // Start-up: the connection catches up the conversation open at that moment; the reader taps another one before
     // the engine is online. That one used to stay empty ("まだメッセージはありません") until something else synced it.

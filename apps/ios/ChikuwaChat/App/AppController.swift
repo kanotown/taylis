@@ -1019,16 +1019,18 @@ final class AppController {
     }
 
     /// M26: folds or unfolds one of my sections on all my devices. The list changes at once; if the server refuses,
-    /// it goes back.
-    func setSectionCollapsed(_ id: String, collapsed: Bool) async -> Bool {
+    /// it goes back. `apply` makes each change (the view animates them).
+    func setSectionCollapsed(_ id: String, collapsed: Bool, apply: (() -> Void) -> Void = { $0() }) async -> Bool {
         let before = store.sidebarSections
-        store.replaceSidebar(before.map { section in
-            var section = section
-            if section.id == id { section.collapsed = collapsed }
-            return section
-        })
+        apply {
+            store.replaceSidebar(before.map { section in
+                var section = section
+                if section.id == id { section.collapsed = collapsed }
+                return section
+            })
+        }
         let done = await sidebarChange { try await $0.updateSidebarSection(id, collapsed: collapsed) }
-        if !done { store.replaceSidebar(before) }
+        if !done { apply { store.replaceSidebar(before) } }
         return done
     }
     func moveSection(_ id: String, position: Int) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, position: position) } }

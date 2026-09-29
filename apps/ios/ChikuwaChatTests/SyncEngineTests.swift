@@ -75,6 +75,19 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(restored.draft("c1", parentId: "p1").text, "thread")
     }
 
+    /// PUSH_NOTIFICATIONS.md §4.1: the server counts a new connection as in use; one from the background says it is not
+    /// at once, not a heartbeat later (the reader's pushes were held back meanwhile).
+    func testAConnectionNotInUseSaysSoAtOnce() async throws {
+        for active in [false, true] {
+            let w = makeWorld()
+            w.engine.isActive = { active }
+            await w.engine.start()
+            await settle(w.engine)
+            XCTAssertEqual(w.server.sockets.first?.pings, active ? [] : [false])
+            w.engine.stop()
+        }
+    }
+
     func testOpeningDoesNotReadAndBackgroundReadIsIgnored() async throws {
         let w = makeWorld()
         try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "unseen")

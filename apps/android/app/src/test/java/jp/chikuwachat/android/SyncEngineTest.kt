@@ -87,6 +87,21 @@ class SyncEngineTest {
         assertEquals("thread", restored.draft("c1", "p1").text)
     }
 
+    /**
+     * PUSH_NOTIFICATIONS.md §4.1: the server counts a new connection as in use; one from the background says it is not
+     * at once, not a heartbeat later (the reader's pushes were held back meanwhile).
+     */
+    @Test fun aConnectionNotInUseSaysSoAtOnce() = runBlocking {
+        for (active in listOf(false, true)) {
+            val w = world()
+            w.engine.isActive = { active }
+            w.engine.start()
+            settle(w.engine)
+            assertEquals(if (active) emptyList() else listOf(false), w.server.sockets.first().pingActive)
+            w.engine.stop()
+        }
+    }
+
     @Test fun openingDoesNotReadAndBackgroundReadIsIgnored() = runBlocking {
         val w = world()
         w.server.post(w.channelId, w.alice, "unseen")
@@ -675,6 +690,7 @@ class SyncEngineTest {
 
     @Test fun halfOpenSocketIsDroppedTwoIntervalsAfterTheLastFrame() = runBlocking { // §5.3
         val w = world()
+        w.engine.isActive = { true } // heartbeat pings only (one not in use also says so on connecting)
         w.engine.start(); settle(w.engine)
         val first = w.server.socketsOf(w.bob).single()
         w.time.advance(30_000) // ping → pong

@@ -430,7 +430,12 @@ class SyncEngine(
 
     private suspend fun onFrame(frame: ServerFrame, connection: Connection) {
         when (frame) {
-            is ServerFrame.Hello -> if (ws === connection.socket) startHeartbeat(connection, frame.heartbeatIntervalSec * 1000L)
+            is ServerFrame.Hello -> if (ws === connection.socket) {
+                startHeartbeat(connection, frame.heartbeatIntervalSec * 1000L)
+                // The server counts a new connection as in use (PUSH_NOTIFICATIONS.md §4.1): one that is not says so at
+                // once, not a heartbeat later (the reader's pushes were held back meanwhile).
+                if (!isActive()) runCatching { connection.socket.send(ClientFrame.ping(false)) }
+            }
             ServerFrame.Pong -> Unit // its arrival time is all the heartbeat needs (§5.3)
             // An auth refusal is followed by close 4001 (renew the token) or 4003 (signed out): the close code decides.
             is ServerFrame.Error -> Unit

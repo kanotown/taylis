@@ -17,6 +17,7 @@ import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { isTauri, isWeb } from "../platform/env";
+import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
@@ -1198,7 +1199,8 @@ export class AppController {
         else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);
       },
       // A workspace in the background is not being looked at: its server may push to the phone (§6).
-      isActive: () => this.active === session && document.hasFocus(),
+      // In use: the open workspace, its window focused, and touched within the last minutes (platform/idle.ts).
+      isActive: () => this.active === session && document.hasFocus() && !readerIdle(),
     });
     engine.subscribe(() => {
       if (this.active === session) this.emit();

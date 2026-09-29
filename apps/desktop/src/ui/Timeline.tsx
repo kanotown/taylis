@@ -30,6 +30,7 @@ import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
+import { READER_BACK } from "../platform/idle";
 
 
 export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
@@ -294,7 +295,11 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
       markVisible();
     };
     window.addEventListener("focus", backInFront);
-    return () => window.removeEventListener("focus", backInFront);
+    window.addEventListener(READER_BACK, backInFront);
+    return () => {
+      window.removeEventListener("focus", backInFront);
+      window.removeEventListener(READER_BACK, backInFront);
+    };
   }, [channel.id, channel.lastSeq, channel.syncedSeq, channel.lastReadSeq, channel.unreadCount, channel.oldestLoadedSeq, status, focus?.messageId, messages.length, heldUnread, reloads]);
 
   // 「最初の未読へ」 (§10.1): page back until the range reaches the read position, then start there like opening.
@@ -397,7 +402,7 @@ export function Timeline({ controller, channel, onOpenThread }: { controller: Ap
           )}
         </div>
       )}
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-3 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">

@@ -76,6 +76,13 @@
   input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 16px; }
 }
 
+/* A sidebar row that folding a section hides or brings back (M26): its height and opacity move instead of jumping.
+   The inner box has no padding, so it can shrink to nothing and clip the row. */
+.fold-row { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 200ms ease, opacity 160ms ease; }
+.fold-row.folded { grid-template-rows: 0fr; opacity: 0; margin-block: 0 !important; }
+.fold-inner { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .fold-row { transition: none; } }
+
 /* Radix open/close motion. Tailwind's translate utilities use the `translate` property, so these
    keyframes must not translate through `transform` (the two would add up and the dialog would start
    at the top-left corner); they only fade and scale. */

@@ -61,6 +61,8 @@ class FakeServer {
         /** A dead network path (§5.3): nothing the client sends arrives, nothing reaches the client. */
         var halfOpen = false
         var pings = 0
+        /** The `active` of every ping this client sent. */
+        val pingActive = ArrayList<Boolean>()
 
         var authed = false
 
@@ -79,6 +81,7 @@ class FakeServer {
                 }
                 "ping" -> {
                     pings += 1
+                    pingActive.add(frame["active"]?.jsonPrimitive?.contentOrNull == "true")
                     if (frame["active"]?.jsonPrimitive?.contentOrNull == "true") markActive(userId)
                     deliver(buildJsonObject { put("type", "pong"); put("server_time", now()) })
                 }

@@ -365,6 +365,9 @@ final class SyncEngine {
             helloReceived = true
             resumeHello(true)
             startHeartbeat(interval: options.heartbeatInterval ?? TimeInterval(max(interval, 1)))
+            // The server counts a new connection as in use (PUSH_NOTIFICATIONS.md §4.1): one that is not (connected from
+            // the background, for a push) says so at once, not a heartbeat later.
+            if !isActive(), let ws { Task { try? await ws.send(ClientFrame.ping(active: false)) } }
         case .pong:
             break // counted above
         case .error(let code, _):

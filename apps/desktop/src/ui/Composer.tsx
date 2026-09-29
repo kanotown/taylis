@@ -338,7 +338,7 @@ export function Composer({
 
   return (
     <div
-      className="composer relative px-4 pb-3 pt-1"
+      className="composer relative px-4 pb-1 pt-1"
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();

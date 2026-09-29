@@ -394,6 +394,9 @@ export class SyncEngine {
       this.helloResolve?.();
       this.helloResolve = null;
       this.startHeartbeat(ws, (frame.heartbeat_interval_sec || 30) * 1000);
+      // The server counts a new connection as in use (PUSH_NOTIFICATIONS.md §4.1): one that is not (a window in the
+      // background reconnecting after sleep) says so at once, not a heartbeat later (the phone's pushes waited).
+      if (this.deps.isActive && !this.deps.isActive()) ws.send(JSON.stringify({ type: "ping", active: false }));
       return;
     }
     if (frame.type === "pong") return; // its arrival already moved the deadline

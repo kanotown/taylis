@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, ChevronDown, ChevronRight, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -64,15 +64,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).
   const [folded, toggleFolded] = useFoldedDefaults();
   const [newSection, setNewSection] = useState(false);
-  // A folded section still shows what is unread and the open conversation (Slack).
-  const shown = (rows: ChannelState[], collapsed: boolean) => (collapsed ? rows.filter((c) => c.id === currentId || hasUnread(c, me?.id ?? null)) : rows);
+  // A folded section still shows what is unread and the open conversation (Slack). The others stay in the list, folded
+  // away (.fold-row), so they slide shut and open rather than jump (testers, 2026-09-29).
+  const shown = (rows: ChannelState[], collapsed: boolean) => rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null)));
   // Dropped on a default section: out of my own section (the conversation goes back where it belongs by kind).
   const backToDefault = (channelId: string) => {
     if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
   };
   const status = controller.engine?.status ?? "idle";
 
-  const item = (channel: ChannelState) => {
+  const item = (channel: ChannelState, folded = false) => {
     const muted = isMutedChannel(channel);
     const unread = hasUnread(channel, me?.id ?? null) && channel.id !== currentId;
     // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
@@ -82,7 +83,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
     const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== me?.id) ?? me?.id) : undefined;
     return (
-      <li key={channel.id}>
+      <li key={channel.id} className={cn("fold-row", folded && "folded")} aria-hidden={folded || undefined} inert={folded}>
+        <div className="fold-inner">
         <ChannelContextMenu controller={controller} channel={channel}>
         <button
           type="button"
@@ -118,6 +120,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-white" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/40" title="新しい投稿があります (静かな未読)" /> : null}
         </button>
         </ChannelContextMenu>
+        </div>
       </li>
     );
   };
@@ -288,7 +291,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
 
       {sections.favorites.length > 0 && (
         <Section title="お気に入り" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}>
-          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites")).map(item)}</ul>
+          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"))}</ul>
         </Section>
       )}
       {sections.custom.map(({ section, channels: members }, index) => (
@@ -301,7 +304,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
           action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
         >
-          <ul className="space-y-px">{shown(members, section.collapsed).map(item)}</ul>
+          <ul className="space-y-px">{shown(members, section.collapsed)}</ul>
           {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>会話をここへドラッグ、または右クリック →「セクションに移動」</Hint>}
         </Section>
       ))}
@@ -333,7 +336,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </span>
         }
       >
-        <ul className="space-y-px">{shown(sections.channels, folded.has("channels")).map(item)}</ul>
+        <ul className="space-y-px">{shown(sections.channels, folded.has("channels"))}</ul>
         {sections.channels.length === 0 && <Hint>{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</Hint>}
       </Section>
       {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
@@ -350,7 +353,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
             ) : undefined
           }
         >
-          <ul className="space-y-px">{shown(sections.times, folded.has("times")).map(item)}</ul>
+          <ul className="space-y-px">{shown(sections.times, folded.has("times"))}</ul>
           {sections.times.length === 0 && <Hint>+ から自分の times (作業ログ) を作れます</Hint>}
         </Section>
       )}
@@ -372,7 +375,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </span>
         }
       >
-        <ul className="space-y-px">{shown(sections.dms, folded.has("dms")).map(item)}</ul>
+        <ul className="space-y-px">{shown(sections.dms, folded.has("dms"))}</ul>
         {sections.dms.length === 0 && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
       </Section>
       {sections.browse.length > 0 && (
@@ -465,7 +468,7 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
       <h2 className="mb-1 flex h-6 items-center justify-between gap-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-fg/70">
         {onToggle ? (
           <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="-ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left uppercase hover:text-sidebar-fg">
-            {collapsed ? <ChevronRight size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+            <ChevronDown size={12} className={cn("shrink-0 transition-transform duration-200", collapsed && "-rotate-90")} />
             {icon}
             <span className="truncate">{title}</span>
           </button>
