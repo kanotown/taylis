@@ -49,18 +49,7 @@ enum class ConversationTab(val label: String) {
  * and draft survive a switch).
  */
 object ConversationNav {
-    /** What back (the system's, and the app bar's ←) closes first; an open search has its own handler before these. */
-    enum class Back { DETAILS, TAB, THREAD, CHANNEL, LISTS, NONE }
-
-    fun back(detailsOpen: Boolean, tab: ConversationTab, threadOpen: Boolean, channelOpen: Boolean, listReplaced: Boolean): Back = when {
-        channelOpen && detailsOpen -> Back.DETAILS
-        // The pins and files tabs go back to 「メッセージ」 before the conversation closes.
-        channelOpen && tab != ConversationTab.MESSAGES -> Back.TAB
-        channelOpen && threadOpen -> Back.THREAD
-        channelOpen -> Back.CHANNEL
-        listReplaced -> Back.LISTS
-        else -> Back.NONE
-    }
+    // What back closes first (details → tab → thread → conversation → list) is MainNav.back (M33).
 
     /** The tab row: a joined conversation's timeline, not a thread, a preview before joining, the search or the details. */
     fun tabRowShown(channelOpen: Boolean, member: Boolean, threadOpen: Boolean, searching: Boolean, detailsOpen: Boolean): Boolean =
