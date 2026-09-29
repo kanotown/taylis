@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
-import { badgeCount, canPostTopLevel, conversationTitle, hasUnread, isMutedChannel, isQuietChannel, myName, sectionChannels, showsSelfNotesInDmSection, stepChannel, unreadBadgeTotal } from "../src/ui/channels";
+import {
+  badgeCount, canPostTopLevel, conversationTitle, effectiveNotificationLevel, hasUnread, isMutedChannel, isQuietChannel, isTimedMuted, myName, notificationChoices, overallLevel,
+  ownNotification, resolveNotificationLevel, sectionChannels, showsSelfNotesInDmSection, stepChannel, unreadBadgeTotal,
+} from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
 const channel = (id: string, patch: Partial<ChannelState> = {}): ChannelState => ({
@@ -189,12 +192,14 @@ interface UnreadCase {
 const vectors = JSON.parse(readFileSync(new URL("../../shared/unread-rules.json", import.meta.url), "utf8")) as { cases: UnreadCase[] };
 
 describe("unread rules (§10.5, M24 quiet unread)", () => {
-  it.each(vectors.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+  // "muted" is either mute: a timed one still running, or (M35) muted until unmuted. Both must give the same answers.
+  it.each(vectors.cases.flatMap((c) => (c.muted ? (["timed", "until unmuted"] as const) : (["-"] as const)).map((form) => [c.name, form, c] as const)))("%s (%s)", (_name, form, c) => {
     const row = channel("c", {
       type: c.type,
       times_owner_id: c.times === "mine" ? "me" : c.times === "others" ? "someone" : null,
       notificationLevel: c.level,
-      mutedUntil: c.muted ? "2026-09-27T00:00:00Z" : null,
+      mutedUntil: form === "timed" ? "2026-09-27T00:00:00Z" : null,
+      muted: form === "until unmuted",
       unreadCount: c.unread,
       mentionCount: c.mentions,
     });
@@ -215,5 +220,68 @@ describe("unread rules (§10.5, M24 quiet unread)", () => {
     expect(sections.times.map((c) => c.id)).toEqual(["times-me", "times-amy", "times-zed"]);
     // Quiet unread stays out of the unread filter.
     expect(sectionChannels(all, (c) => c.name ?? "", { meId: "me", now, unreadOnly: true }).times).toEqual([]);
+  });
+});
+
+describe("notification level (M35, PUSH_NOTIFICATIONS.md §4)", () => {
+  const kinds = { channel: { dm: false, othersTimes: false }, dm: { dm: true, othersTimes: false }, othersTimes: { dm: false, othersTimes: true } };
+
+  it.each([
+    // overall, channel, DM / group DM, someone else's times — the table in §4
+    ["all", "all", "all", "mentions"],
+    ["mentions", "mentions", "all", "mentions"],
+    ["none", "none", "none", "none"],
+  ] as const)("without a level of its own, overall %s → channel %s, DM %s, others' times %s", (overall, forChannel, forDm, forTimes) => {
+    expect(resolveNotificationLevel(null, overall, kinds.channel)).toBe(forChannel);
+    expect(resolveNotificationLevel(null, overall, kinds.dm)).toBe(forDm);
+    expect(resolveNotificationLevel(null, overall, kinds.othersTimes)).toBe(forTimes);
+  });
+
+  it("a level of its own wins over the overall setting, whatever the conversation", () => {
+    for (const own of ["all", "mentions", "none"] as const) {
+      for (const overall of ["all", "mentions", "none"] as const) {
+        for (const kind of Object.values(kinds)) expect(resolveNotificationLevel(own, overall, kind)).toBe(own);
+      }
+    }
+  });
+
+  it("resolves a conversation: group DMs as DMs, my own times as a channel; channels following the default change with it", () => {
+    expect(effectiveNotificationLevel(channel("g", { type: "group_dm" }), "me", "mentions")).toBe("all");
+    expect(effectiveNotificationLevel(channel("t", { times_owner_id: "me" }), "me", "all")).toBe("all");
+    expect(effectiveNotificationLevel(channel("t", { times_owner_id: "amy" }), "me", "all")).toBe("mentions");
+    const follows = channel("c");
+    const own = channel("o", { notificationLevel: "mentions" });
+    expect([effectiveNotificationLevel(follows, "me", "mentions"), effectiveNotificationLevel(own, "me", "mentions")]).toEqual(["mentions", "mentions"]);
+    expect([effectiveNotificationLevel(follows, "me", "all"), effectiveNotificationLevel(own, "me", "all")]).toEqual(["all", "mentions"]);
+    expect(overallLevel(null)).toBe("mentions");
+    expect(overallLevel({ notification_default: "none" })).toBe("none");
+  });
+
+  it("the overall setting never makes a conversation muted or quiet (the unread rules take the own level only)", () => {
+    // isMutedChannel / hasUnread take no overall setting at all: a channel following "none" still counts every unread.
+    const follows = channel("c", { unreadCount: 4 });
+    expect(isMutedChannel(follows, now)).toBe(false);
+    expect(hasUnread(follows, "me", now)).toBe(true);
+    const muted = channel("m", { muted: true, unreadCount: 4 });
+    expect(isMutedChannel(muted, now)).toBe(true);
+    expect(isTimedMuted(muted, now)).toBe(false);
+    expect(hasUnread(muted, "me", now)).toBe(false);
+  });
+
+  it("reads the server's preference: the resolved level is the own one only when it does not follow the default", () => {
+    expect(ownNotification({ level: "mentions", muted_until: null, follows_default: true, muted: false })).toEqual({ notificationLevel: null, mutedUntil: null, muted: false });
+    expect(ownNotification({ level: "all", muted_until: "2026-09-27T00:00:00Z", follows_default: false, muted: true })).toEqual({ notificationLevel: "all", mutedUntil: "2026-09-27T00:00:00Z", muted: true });
+    expect(ownNotification({ level: "none" })).toEqual({ notificationLevel: null, mutedUntil: null, muted: false }); // an older server
+  });
+
+  it("names 「既定 (…)」 after the overall setting", () => {
+    expect(notificationChoices("mentions").map((c) => [c.level, c.label])).toEqual([
+      [null, "既定 (メンションと DM のみ)"],
+      ["all", "すべてのメッセージ"],
+      ["mentions", "メンションのみ"],
+      ["none", "通知しない"],
+    ]);
+    expect(notificationChoices("all")[0]!.label).toBe("既定 (すべての新着メッセージ)");
+    expect(notificationChoices("none")[0]!.label).toBe("既定 (なし)");
   });
 });

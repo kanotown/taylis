@@ -459,6 +459,76 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
     await engine.idle();
     expect(notifications).toEqual(["every message", `expired mute <@${bob.id}>`]);
   });
+
+  it("M35: takes the own level from bootstrap (follows_default) and keeps the mute until unmuted", async () => {
+    const { server, bob, channel, store, engine } = await setup();
+    const other = server.createChannel("other", bob.id);
+    server.setNotificationPreference(bob.id, channel.id, { level: "all", muted_until: null });
+    server.setNotificationPreference(bob.id, other.id, { level: null, muted_until: null, muted: true });
+    server.setNotificationDefault(bob.id, "none");
+    await engine.start();
+    await engine.idle();
+    expect(store.me?.notification_default).toBe("none");
+    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: "all", muted: false });
+    // The server says "none" (resolved from the overall setting), but the channel has no level of its own.
+    expect(store.getChannel(other.id)).toMatchObject({ notificationLevel: null, muted: true });
+    // notification_preference.updated from another device: back to the default, unmuted.
+    server.setNotificationPreference(bob.id, other.id, { level: null, muted_until: null, muted: false });
+    server.setNotificationPreference(bob.id, channel.id, { level: null, muted_until: null });
+    await engine.idle();
+    expect(store.getChannel(other.id)).toMatchObject({ notificationLevel: null, muted: false });
+    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: null, muted: false });
+  });
+
+  it("M35: an event from an older server (no follows_default / muted) follows the default, unmuted", async () => {
+    const { channel, store } = await setup();
+    store.upsertChannel({ ...channel, notification: { channel_id: channel.id, level: "none", muted_until: null } as never }, { isMember: true });
+    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: null, muted: false });
+    store.applyNotificationPreference({ channel_id: channel.id, level: "all", follows_default: false, muted: true });
+    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: "all", muted: true, mutedUntil: null });
+  });
+
+  it("M35: desktop notifications follow the overall setting where the conversation has no level of its own", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    const dm = server.createChannel("", alice.id, "dm");
+    server.join(dm.id, bob.id);
+    const times = server.createChannel("times-alice", alice.id);
+    server.channels.get(times.id)!.channel.times_owner_id = alice.id;
+    server.join(times.id, bob.id);
+    await engine.start();
+    await engine.idle();
+    const post = async (channelId: string, body: string) => {
+      server.post(channelId, alice.id, body);
+      await engine.idle();
+    };
+    const overall = (level: "all" | "mentions" | "none") => store.setMe({ ...store.me!, notification_default: level });
+
+    overall("all");
+    await post(channel.id, "channel, all");
+    await post(dm.id, "dm, all");
+    await post(times.id, "times without a mention"); // someone else's times: mentions only
+    await post(times.id, `times <@${bob.id}>`);
+    expect(notifications).toEqual(["channel, all", "dm, all", `times <@${bob.id}>`]);
+
+    notifications.length = 0;
+    overall("mentions");
+    await post(channel.id, "channel, mentions");
+    await post(channel.id, `channel <@${bob.id}>`);
+    await post(dm.id, "dm, mentions"); // DMs: every message unless the overall setting is "none"
+    expect(notifications).toEqual([`channel <@${bob.id}>`, "dm, mentions"]);
+
+    notifications.length = 0;
+    overall("none");
+    await post(dm.id, "dm, none");
+    await post(channel.id, `channel none <@${bob.id}>`);
+    expect(notifications).toEqual([]);
+    // A level of its own wins over the overall setting; a mute until unmuted silences it again.
+    store.setNotification(dm.id, "all", null);
+    await post(dm.id, "dm, own level all");
+    store.setNotification(dm.id, "all", null, true);
+    await post(dm.id, "dm, muted");
+    expect(notifications).toEqual(["dm, own level all"]);
+  });
 });
 
 describe("read state (M8b)", () => {

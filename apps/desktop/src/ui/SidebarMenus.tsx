@@ -5,19 +5,21 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import type { SidebarSectionOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { isTimedMuted } from "./channels";
 import { SectionDialog } from "./SectionDialog";
 import { Button, cn, Input, Modal } from "./primitives";
 
 const CONTENT = "rx-popover z-50 min-w-52 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
 
-/** Right-click on a sidebar row (M14f): star it, or move it into one of my sections. */
+/** Right-click on a sidebar row (M14f): star it, move it into one of my sections, mute or unmute it (M35). */
 export function ChannelContextMenu({ controller, channel, children }: { controller: AppController; channel: ChannelState; children: ReactNode }) {
   const store = controller.store;
   const sections = store.sidebarSections;
   const current = store.sectionOf(channel.id);
   const [naming, setNaming] = useState(false);
   const starred = store.isFavorite(channel.id);
+  const muted = !!channel.muted || isTimedMuted(channel);
   return (
     <>
       <ContextMenu.Root>
@@ -49,6 +51,17 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
             {current && (
               <ContextMenu.Item className={ITEM} onSelect={() => void controller.moveToSection(channel.id, null)}>
                 セクションから外す
+              </ContextMenu.Item>
+            )}
+            <ContextMenu.Separator className="my-1 h-px bg-line" />
+            {/* M35: 「ミュート」 mutes until unmuted; 「ミュート解除」 ends it and a timed mute. The own level stays. */}
+            {muted ? (
+              <ContextMenu.Item className={ITEM} onSelect={() => void controller.setNotification(channel.id, channel.notificationLevel, null, false)}>
+                ミュート解除
+              </ContextMenu.Item>
+            ) : (
+              <ContextMenu.Item className={ITEM} onSelect={() => void controller.setNotification(channel.id, channel.notificationLevel, channel.mutedUntil, true)}>
+                ミュート
               </ContextMenu.Item>
             )}
           </ContextMenu.Content>

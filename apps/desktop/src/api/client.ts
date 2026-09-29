@@ -195,8 +195,12 @@ export class ApiClient {
     return this.request("PATCH", `/api/v1/channels/${channelId}`, patch);
   }
 
-  setNotificationPreference(channelId: string, level: NotificationLevel, mutedUntil: string | null): Promise<NotificationPreferenceOut> {
-    return this.request("PUT", `/api/v1/channels/${channelId}/notification-preference`, { level, muted_until: mutedUntil });
+  /**
+   * The conversation's own level (null: follow my overall setting, M35) and timed mute; `muted` (until unmuted) is left
+   * as it is when omitted.
+   */
+  setNotificationPreference(channelId: string, level: NotificationLevel | null, mutedUntil: string | null, muted?: boolean): Promise<NotificationPreferenceOut> {
+    return this.request("PUT", `/api/v1/channels/${channelId}/notification-preference`, { level, muted_until: mutedUntil, ...(muted === undefined ? {} : { muted }) });
   }
 
   updateMe(patch: UserUpdate): Promise<UserMe> {

@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -115,6 +115,38 @@ export class FakeServer {
   private byClientKey = new Map<string, MessageOut>();
   /** M12g notification keywords per user; like the server, hits never appear in mentioned_user_ids. */
   readonly keywords = new Map<string, string[]>();
+  /** M35: users.notification_default (missing = the server's initial "mentions"). */
+  readonly notificationDefaults = new Map<string, NotificationLevel>();
+  /** notification_preferences rows by "channel:user" (level null = follows the overall setting). */
+  readonly notificationPrefs = new Map<string, { level: NotificationLevel | null; muted_until: string | null; muted: boolean }>();
+
+  /** PATCH /users/me {notification_default}: only what bootstrap and later preferences say (no event, like the server). */
+  setNotificationDefault(userId: string, level: NotificationLevel): void {
+    this.notificationDefaults.set(userId, level);
+  }
+
+  /** The preference as the server sends it: `level` resolved (PUSH_NOTIFICATIONS.md §4), plus follows_default / muted. */
+  notificationPreference(userId: string, channelId: string): NotificationPreferenceOut {
+    const channel = this.record(channelId).channel;
+    const pref = this.notificationPrefs.get(`${channelId}:${userId}`);
+    const own = pref?.level ?? null;
+    const overall = this.notificationDefaults.get(userId) ?? "mentions";
+    const dm = channel.type === "dm" || channel.type === "group_dm";
+    const othersTimes = !!channel.times_owner_id && channel.times_owner_id !== userId;
+    const level = own ?? (overall === "none" ? "none" : dm ? "all" : othersTimes ? "mentions" : overall);
+    return { channel_id: channelId, level, muted_until: pref?.muted_until ?? null, follows_default: own === null, muted: pref?.muted ?? false };
+  }
+
+  /** PUT /channels/{id}/notification-preference: `muted` omitted keeps it; notification_preference.updated to the user. */
+  setNotificationPreference(userId: string, channelId: string, body: { level: NotificationLevel | null; muted_until?: string | null; muted?: boolean | null }): NotificationPreferenceOut {
+    this.requireMember(channelId, userId);
+    const key = `${channelId}:${userId}`;
+    const existing = this.notificationPrefs.get(key);
+    this.notificationPrefs.set(key, { level: body.level, muted_until: body.muted_until ?? null, muted: body.muted ?? existing?.muted ?? false });
+    const out = this.notificationPreference(userId, channelId);
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "notification_preference.updated", ts: now(), channel_id: null, seq: null, data: out });
+    return out;
+  }
 
   addUser(username: string, role: "admin" | "member" = "member"): UserPublic {
     const user: UserPublic = {
@@ -770,7 +802,7 @@ export class FakeServer {
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
         const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: "mentions" };
+        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions" };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({
@@ -778,6 +810,7 @@ export class FakeServer {
             member_count: r.members.size,
             membership: { role: this.roleOf(r.channel.id, userId), joined_at: now() },
             read_state: this.readState(userId, r.channel.id),
+            notification: this.notificationPreference(userId, r.channel.id),
           }));
         return {
           server_time: now(),

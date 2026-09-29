@@ -6,6 +6,7 @@
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import type { BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -647,8 +648,9 @@ export class SyncEngine {
         return;
       }
       case "notification_preference.updated": {
-        const data = frame.data as { channel_id: string; level: NotificationLevel; muted_until: string | null };
-        store.setNotification(data.channel_id, data.level, data.muted_until ?? null);
+        // M35: `level` is resolved; follows_default / muted say what is the conversation's own (older servers: neither).
+        const data = frame.data as { channel_id: string; level: NotificationLevel; muted_until?: string | null; follows_default?: boolean; muted?: boolean };
+        store.applyNotificationPreference(data);
         return;
       }
       case "read.updated": {
@@ -851,15 +853,16 @@ export class SyncEngine {
     if (state.unread_count === 0) this.deps.onRead?.(channelId);
   }
 
-  /** DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4). */
+  /**
+   * Same rule as the server's PushPlanner (PUSH_NOTIFICATIONS.md §4): the conversation's own level, else my overall
+   * setting (M35: DMs every message unless it is "none", someone else's times mentions); "none", a mute until unmuted or
+   * a timed mute silence everything; "mentions" when I am mentioned or take part in the thread.
+   */
   private maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread | null = null): void {
     const me = this.deps.store.me;
     if (!me || message.sender_id === me.id) return;
-    const isDm = channel.type === "dm" || channel.type === "group_dm";
-    // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
-    const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
-    const mutedUntil = channel.mutedUntil ? new Date(channel.mutedUntil).getTime() : 0;
-    if (level === "none" || mutedUntil > Date.now()) return;
+    const level = effectiveNotificationLevel(channel, me.id, overallLevel(me));
+    if (level === "none" || isMutedChannel(channel)) return;
     const involved = mentionsMe(message, me) || (thread?.participant_ids ?? []).includes(me.id);
     if (level === "mentions" && !involved) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;

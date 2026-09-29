@@ -172,9 +172,18 @@ export function MenuItem({ className, ...props }: ComponentProps<typeof Dropdown
 export function MenuRadioItem({ className, children, ...props }: ComponentProps<typeof DropdownMenu.RadioItem>) {
   return (
     <DropdownMenu.RadioItem className={cn(ITEM, "pl-7 relative", className)} {...props}>
-      <DropdownMenu.ItemIndicator className="absolute left-2 text-accent">✓</DropdownMenu.ItemIndicator>
+      <DropdownMenu.ItemIndicator aria-hidden className="absolute left-2 text-accent">✓</DropdownMenu.ItemIndicator>
       {children}
     </DropdownMenu.RadioItem>
+  );
+}
+
+export function MenuCheckboxItem({ className, children, ...props }: ComponentProps<typeof DropdownMenu.CheckboxItem>) {
+  return (
+    <DropdownMenu.CheckboxItem className={cn(ITEM, "pl-7 relative", className)} {...props}>
+      <DropdownMenu.ItemIndicator aria-hidden className="absolute left-2 text-accent">✓</DropdownMenu.ItemIndicator>
+      {children}
+    </DropdownMenu.CheckboxItem>
   );
 }
 
