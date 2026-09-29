@@ -673,7 +673,11 @@ export class Store {
       .sort((a, b) => (b.state.last_reply_at ?? "").localeCompare(a.state.last_reply_at ?? "") || b.parent.seq - a.parent.seq);
   }
 
-  /** The merge rule (SYNC_PROTOCOL.md §8): newer updated_seq wins; tombstones delete. */
+  /**
+   * The merge rule (SYNC_PROTOCOL.md §8): newer updated_seq wins; tombstones delete. The exception is a poll's `mine`
+   * (M27): only responses to me carry it, events carry null. A row without it keeps the one known here, and a response
+   * with the same updated_seq as the row held (my vote's answer after its own event) still brings it in.
+   */
   upsertMessage(message: MessageState): boolean {
     const bucket = this.bucket(message.channel_id);
     if (message.client_msg_id) {
@@ -684,14 +688,21 @@ export class Store {
       }
     }
     const local = bucket.get(message.id);
-    if (local && message.updated_seq <= local.updated_seq) return false;
-    this.timelines.delete(message.channel_id);
-    if (message.deleted) {
-      bucket.delete(message.id);
-      this.persist((p) => p.deleteMessage(message.id));
+    if (local && message.updated_seq <= local.updated_seq) {
+      const mine = message.poll?.mine;
+      if (message.updated_seq !== local.updated_seq || mine == null || !local.poll || sameOptions(local.poll.mine, mine)) return false;
+      message = { ...local, poll: { ...local.poll, mine } };
+    } else if (message.poll && message.poll.mine == null && local?.poll?.mine != null) {
+      message = { ...message, poll: { ...message.poll, mine: local.poll.mine } };
+    }
+    const stored = message;
+    this.timelines.delete(stored.channel_id);
+    if (stored.deleted) {
+      bucket.delete(stored.id);
+      this.persist((p) => p.deleteMessage(stored.id));
     } else {
-      bucket.set(message.id, message);
-      this.persist((p) => p.saveMessage(message));
+      bucket.set(stored.id, stored);
+      this.persist((p) => p.saveMessage(stored));
     }
     this.emit();
     return true;
@@ -786,6 +797,13 @@ function restoredChannel(row: ChannelState): ChannelState {
     if (channel.oldestLoadedSeq === null) channel.syncedSeq = null;
   }
   return channel;
+}
+
+/** The same poll options (my votes), in any order; null / missing counts as unknown, which is never the same. */
+function sameOptions(a: readonly number[] | null | undefined, b: readonly number[]): boolean {
+  if (a == null || a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((option) => set.has(option));
 }
 
 function keptScheduled(row: ScheduledOut): boolean {

@@ -5,6 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut } from "../src/api/types";
+import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
 import type { ChannelState, EventFrame, MessageState, OutboxItem, SendOptions } from "../src/sync/types";
@@ -22,6 +23,19 @@ interface ChannelRecord {
   channel: ChannelOut;
   members: Set<string>;
   messages: MessageOut[];
+}
+
+/** A poll as the server responds with it (all M27 fields present). */
+type ServerPoll = components["schemas"]["PollOut"];
+
+/** A poll's definition and its votes in voting order (DATA_MODEL.md poll_votes). */
+interface PollRecord {
+  question: string;
+  options: string[];
+  multiple: boolean;
+  anonymous: boolean;
+  closedAt: string | null;
+  votes: { userId: string; option: number }[];
 }
 
 class FakeSocket implements WsLike {
@@ -293,6 +307,14 @@ export class FakeServer {
     return record;
   }
 
+  /** SECURITY.md §3.2 (M27): members read a channel, and so does anyone but a guest in a public one (its preview). */
+  private requireReadable(channelId: string, userId: string): ChannelRecord {
+    const record = this.record(channelId);
+    if (record.members.has(userId)) return record;
+    if (record.channel.type === "public" && (this.users.get(userId)?.role as string | undefined) !== "guest") return record;
+    throw new ApiError(403, "not_a_member", "Not a member");
+  }
+
   private requireMember(channelId: string, userId: string): ChannelRecord {
     const record = this.record(channelId);
     if (!record.members.has(userId)) throw new ApiError(403, "not_a_member", "Not a member");
@@ -303,7 +325,7 @@ export class FakeServer {
    * Server-side post (used by fixtures for "other users" and by the api for the client). `scheduled`: a scheduled
    * send going out (M12d), which does not read the channel; `type`: a system row.
    */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions & { scheduled?: boolean; type?: string } = {}): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions & { scheduled?: boolean; type?: string; poll?: { question: string; options: string[]; multiple?: boolean; anonymous?: boolean } } = {}): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -343,6 +365,11 @@ export class FakeServer {
       pinned_at: null,
       pinned_by: null,
     };
+    if (options.poll) {
+      const { question, options: choices, multiple = false, anonymous = false } = options.poll;
+      this.polls.set(message.id, { question, options: choices, multiple, anonymous, closedAt: null, votes: [] });
+      message.poll = this.pollOut(message.id, null);
+    }
     record.messages.push(message);
     record.channel.last_message_at = message.created_at;
     this.byClientKey.set(senderId + ":" + clientMsgId, message);
@@ -369,6 +396,62 @@ export class FakeServer {
     if (!parentId && !options.scheduled) this.markRead(senderId, channelId, seq); // a top-level post reads the channel; a reply does not (§10)
     if (parentThread) this.emitThread(parentThread.id, this.followers(parentThread.id), "reply");
     return { message, created: true };
+  }
+
+  // --- polls (M14b, M27) --------------------------------------------------------------------
+
+  private readonly polls = new Map<string, PollRecord>();
+
+  /**
+   * The poll as the server shows it: voters per option (none in an anonymous poll), counts, and the options `viewer`
+   * voted for; `viewer` null is an event's form (every member gets the same one, so `mine` is null).
+   */
+  private pollOut(messageId: string, viewer: string | null): ServerPoll {
+    const poll = this.polls.get(messageId)!;
+    const voters = poll.options.map((_, index) => poll.votes.filter((v) => v.option === index).map((v) => v.userId));
+    return {
+      question: poll.question,
+      options: poll.options,
+      multiple: poll.multiple,
+      anonymous: poll.anonymous,
+      closed_at: poll.closedAt,
+      votes: poll.anonymous ? poll.options.map(() => []) : voters,
+      counts: voters.map((ids) => ids.length),
+      mine: viewer === null ? null : voters.flatMap((ids, index) => (ids.includes(viewer) ? [index] : [])),
+    };
+  }
+
+  /** A row as a response to `userId` carries it (their own votes filled in); events and stored rows have `mine` null. */
+  viewAs(message: MessageOut, userId: string): MessageOut {
+    return message.poll && this.polls.has(message.id) ? { ...message, poll: this.pollOut(message.id, userId) } : message;
+  }
+
+  /** POST /channels/{id}/messages with `poll` (the body becomes 「📊 質問」); the response is the author's view. */
+  postPoll(channelId: string, userId: string, poll: { question: string; options: string[]; multiple?: boolean; anonymous?: boolean }, parentId: string | null = null): MessageOut {
+    return this.viewAs(this.post(channelId, userId, `📊 ${poll.question}`, nextId(), parentId, [], { poll }).message, userId);
+  }
+
+  /**
+   * PUT / DELETE /messages/{id}/poll/votes/{index}: a change consumes a seq and goes out as message.updated
+   * (change = poll, `mine` null); the response to the voter has their votes.
+   */
+  vote(channelId: string, userId: string, messageId: string, option: number, present: boolean): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const poll = this.polls.get(messageId);
+    if (!poll) throw new ApiError(404, "poll_not_found", "no poll");
+    if (poll.closedAt) throw new ApiError(409, "poll_closed", "closed");
+    const had = poll.votes.some((v) => v.userId === userId && v.option === option);
+    if (present === had) return this.viewAs(message, userId);
+    if (present) {
+      if (!poll.multiple) poll.votes = poll.votes.filter((v) => v.userId !== userId); // a single-answer poll moves the vote
+      poll.votes.push({ userId, option });
+    } else {
+      poll.votes = poll.votes.filter((v) => !(v.userId === userId && v.option === option));
+    }
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, updated_seq: seq, poll: this.pollOut(messageId, null) };
+    this.replace(record, updated, "message.updated", "poll");
+    return this.viewAs(updated, userId);
   }
 
   messageByBody(channelId: string, body: string): MessageOut {
@@ -698,21 +781,28 @@ export class FakeServer {
       },
       history: async (channelId, beforeSeq, limit): Promise<HistoryOut> => {
         maybeFail();
-        const record = this.requireMember(channelId, userId);
+        const record = this.requireReadable(channelId, userId);
         const channelLastSeq = record.channel.last_seq; // read BEFORE the rows (§4.3)
         let rows = record.messages.filter((m) => !m.deleted && (!m.parent_id || m.also_in_channel));
         if (beforeSeq !== null) rows = rows.filter((m) => m.seq < beforeSeq);
         rows = rows.sort((a, b) => b.seq - a.seq);
-        return { channel_last_seq: channelLastSeq, messages: rows.slice(0, limit), has_more: rows.length > limit };
+        return { channel_last_seq: channelLastSeq, messages: rows.slice(0, limit).map((m) => this.viewAs(m, userId)), has_more: rows.length > limit };
       },
       delta: async (channelId, sinceSeq, limit): Promise<DeltaOut> => {
         maybeFail();
-        const record = this.requireMember(channelId, userId);
+        const record = this.requireReadable(channelId, userId);
         const channelLastSeq = record.channel.last_seq;
         const rows = record.messages.filter((m) => m.updated_seq > sinceSeq).sort((a, b) => a.updated_seq - b.updated_seq);
-        const page = rows.slice(0, limit);
+        const page = rows.slice(0, limit).map((m) => this.viewAs(m, userId));
         const hasMore = rows.length > limit;
         return { messages: page, next_since_seq: hasMore ? page[page.length - 1]!.updated_seq : Math.max(channelLastSeq, sinceSeq), has_more: hasMore };
+      },
+      getMessage: async (messageId): Promise<MessageOut> => {
+        maybeFail();
+        const record = [...this.channels.values()].find((r) => r.messages.some((m) => m.id === messageId && !m.deleted));
+        if (!record) throw new ApiError(404, "message_not_found", "not found");
+        this.requireReadable(record.channel.id, userId);
+        return this.viewAs(record.messages.find((m) => m.id === messageId)!, userId);
       },
       postMessage: async (channelId, clientMsgId, body, parentId = null, attachmentIds = [], options = {}) => {
         maybeFail();
@@ -722,8 +812,8 @@ export class FakeServer {
         maybeFail();
         const record = [...this.channels.values()].find((r) => r.messages.some((m) => m.id === messageId));
         if (!record) return [];
-        this.requireMember(record.channel.id, userId);
-        return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq);
+        this.requireReadable(record.channel.id, userId);
+        return record.messages.filter((m) => m.parent_id === messageId && !m.deleted).sort((a, b) => a.seq - b.seq).map((m) => this.viewAs(m, userId));
       },
       listReminders: async (): Promise<ReminderOut[]> => {
         maybeFail();

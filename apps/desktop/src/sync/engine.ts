@@ -34,6 +34,8 @@ export interface SyncApi {
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
   postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[], options?: SendOptions): Promise<{ message: MessageOut; created: boolean }>;
   replies(messageId: string): Promise<MessageOut[]>;
+  /** One message (a thread parent a preview does not hold, §7.6.1). Optional (older fakes). */
+  getMessage?(messageId: string): Promise<MessageOut>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
@@ -65,6 +67,28 @@ export interface WsLike {
 export type WsConnector = (token: string) => Promise<WsLike>;
 
 export type EngineStatus = "idle" | "connecting" | "online" | "offline" | "signed_out";
+
+/**
+ * §7.6.1: a public channel read before joining. It lives here, in memory only: the store (and its SQLite) never sees
+ * these rows, and there is no cursor, read position, unread count or typing. Events go to members only, so it is what
+ * GET history said when it opened, plus older pages as the reader scrolls up. Replaced whenever the rows change (the
+ * rows themselves never are), dropped when another conversation opens or the channel is joined.
+ */
+export interface ChannelPreview {
+  channelId: string;
+  /** Top-level rows (and replies also sent to the channel), oldest first. */
+  messages: MessageOut[];
+  hasOlder: boolean;
+  /** The first page arrived. */
+  loaded: boolean;
+  loading: boolean;
+  /** The server would not show it (one before M27 has no previews): joining is the way in. */
+  refused: boolean;
+  /** Threads opened from the preview: parent id → replies, oldest first. */
+  replies: ReadonlyMap<string, MessageOut[]>;
+  /** Parents of those threads that are not among `messages` (the thread of a reply also sent to the channel). */
+  parents: ReadonlyMap<string, MessageOut>;
+}
 
 export interface EngineDeps {
   api: SyncApi;
@@ -113,7 +137,10 @@ export interface EngineOptions {
 
 export class SyncEngine {
   status: EngineStatus = "idle";
+  /** The open conversation of mine; null while a preview (§7.6.1) or nothing is open. */
   currentChannelId: string | null = null;
+  /** §7.6.1: the channel read before joining, if one is open. */
+  preview: ChannelPreview | null = null;
   /** Channels marked unread by hand: visible-range marking pauses until the reader leaves them (§10). */
   readonly unreadHold = new Map<string, number>();
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
@@ -323,6 +350,8 @@ export class SyncEngine {
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
       if (this.currentChannelId) void this.openChannel(this.currentChannelId);
+      // A preview opened while offline (or whose first page failed) loads now.
+      else if (this.preview && !this.preview.loaded && !this.preview.loading) void this.loadPreview(this.preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
     }
   }
 
@@ -808,14 +837,98 @@ export class SyncEngine {
     this.currentChannelId = channelId;
     if (previous !== null && previous !== channelId) this.trimLater(previous);
     for (const held of [...this.unreadHold.keys()]) if (held !== channelId) this.unreadHold.delete(held);
+    this.closePreview(); // another conversation, or the previewed one just joined (§7.6.1)
     if (this.status !== "online") return Promise.resolve();
     void this.loadLinks(channelId);
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);
-      if (!channel) return;
+      // Only a channel of mine: one I have not joined is read through openPreview, never into the store.
+      if (!channel || !channel.isMember) return;
       if (channel.syncedSeq === null || channel.syncedSeq < channel.lastSeq) await this.catchUp(channelId);
       // Read position is owned by the visible timeline, not navigation or sync.
     });
+  }
+
+  // --- §7.6.1 preview before joining -----------------------------------------------------
+
+  /**
+   * Open a public channel I have not joined, read-only: its latest page in memory (ChannelPreview), nothing in the
+   * store. No conversation of mine is open meanwhile (no catch-up, read marks or links for it). Offline, the page loads
+   * once the connection is back.
+   */
+  openPreview(channelId: string): Promise<void> {
+    const previous = this.currentChannelId;
+    this.currentChannelId = null;
+    if (previous !== null) this.trimLater(previous);
+    this.unreadHold.clear();
+    if (this.preview?.channelId === channelId) return Promise.resolve(); // already open (a re-render, a reconnect)
+    this.setPreview({ channelId, messages: [], hasOlder: false, loaded: false, loading: false, refused: false, replies: new Map(), parents: new Map() });
+    if (this.status !== "online") return Promise.resolve();
+    return this.loadPreview(channelId, null);
+  }
+
+  /** Scroll-up paging of the preview: the page before its oldest row. */
+  loadPreviewOlder(): Promise<void> {
+    const preview = this.preview;
+    const oldest = preview?.messages[0]?.seq;
+    if (!preview || !preview.loaded || !preview.hasOlder || preview.loading || oldest === undefined) return Promise.resolve();
+    return this.loadPreview(preview.channelId, oldest);
+  }
+
+  /** 「再読み込み」 after the first page failed. */
+  retryPreview(): Promise<void> {
+    const preview = this.preview;
+    if (!preview || preview.loading || this.status !== "online") return Promise.resolve();
+    return this.loadPreview(preview.channelId, null);
+  }
+
+  /** The preview goes (another conversation opened, it was joined, or it closed). */
+  closePreview(): void {
+    if (this.preview) this.setPreview(null);
+  }
+
+  /** A thread opened from the preview: its replies, and its parent when the preview does not hold it. */
+  async loadPreviewThread(parentId: string): Promise<void> {
+    const preview = this.preview;
+    if (!preview) return;
+    const held = preview.messages.some((m) => m.id === parentId) || preview.parents.has(parentId);
+    const [replies, parent] = await Promise.all([
+      this.deps.api.replies(parentId),
+      held || !this.deps.api.getMessage ? Promise.resolve(null) : this.deps.api.getMessage(parentId),
+    ]);
+    const current = this.preview;
+    if (current?.channelId !== preview.channelId) return; // another conversation opened meanwhile
+    const threads = new Map(current.replies);
+    threads.set(parentId, replies.filter((m) => !m.deleted).sort((a, b) => a.seq - b.seq));
+    const parents = parent && !parent.deleted ? new Map(current.parents).set(parentId, parent) : current.parents;
+    this.setPreview({ ...current, replies: threads, parents });
+  }
+
+  /** A page of the preview: the latest one (`beforeSeq` null) replaces the rows, an older one goes before them. */
+  private async loadPreview(channelId: string, beforeSeq: number | null): Promise<void> {
+    this.patchPreview(channelId, { loading: true });
+    let page: HistoryOut;
+    try {
+      page = await this.deps.api.history(channelId, beforeSeq, this.opts.pageSize);
+    } catch (error) {
+      const refused = error instanceof ApiError && error.status === 403;
+      this.patchPreview(channelId, { loading: false, refused });
+      if (refused) return;
+      throw error;
+    }
+    const current = this.preview;
+    if (current?.channelId !== channelId) return;
+    const rows = page.messages.filter((m) => !m.deleted).sort((a, b) => a.seq - b.seq);
+    this.setPreview({ ...current, messages: beforeSeq === null ? rows : [...rows, ...current.messages], hasOlder: page.has_more, loaded: true, loading: false, refused: false });
+  }
+
+  private setPreview(preview: ChannelPreview | null): void {
+    this.preview = preview;
+    this.notify();
+  }
+
+  private patchPreview(channelId: string, patch: Partial<ChannelPreview>): void {
+    if (this.preview?.channelId === channelId) this.setPreview({ ...this.preview, ...patch });
   }
 
   /**
@@ -1064,7 +1177,8 @@ export class SyncEngine {
     const store = this.deps.store;
     this.stats.catchUps += 1;
     let channel = store.getChannel(channelId);
-    if (!channel) return;
+    // The member path only: a channel I have not joined is never loaded into the store (§7.6.1, its preview is apart).
+    if (!channel || !channel.isMember) return;
     if (channel.syncedSeq !== null && channel.lastSeq - channel.syncedSeq > this.opts.gapLimit) {
       this.reloads.set(channelId, this.reloadCount(channelId) + 1);
       this.forgetThreads(channelId);

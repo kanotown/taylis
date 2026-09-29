@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2 } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
@@ -11,7 +11,7 @@ import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
-import { bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
+import { ackLine, bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
@@ -31,6 +31,7 @@ import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { READER_BACK } from "../platform/idle";
+import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 
 
 export function Timeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
@@ -551,8 +552,15 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
  * and the custom emoji (mutable maps). Anything else a row shows must come in as a prop here, or be subscribed to by the
  * part that shows it (LinkPreviewCard, useAvatarUrl, UserPopover while open, ShareDialog).
  */
-export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false }: {
+export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false, readOnly = false, threadParent }: {
   controller: AppController; message: MessageState; compact?: boolean; onOpenThread?: (id: string) => void; thread?: boolean;
+  /**
+   * A channel read before joining (SYNC_PROTOCOL.md §7.6.1): the message is only read. No hover bar, no long-press
+   * sheet, no reacting, voting or acknowledging (the server refuses them from non-members too).
+   */
+  readOnly?: boolean;
+  /** The parent of a reply also sent to the channel, when it is not in the store (a preview holds its own rows). */
+  threadParent?: MessageState;
 }) {
   const store = controller.store;
   // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
@@ -573,8 +581,9 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       saved={store.isBookmarked(message.id)}
       isAdmin={controller.isAdmin}
       // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
-      threadParent={!thread && message.parent_id ? store.getMessage(message.channel_id, message.parent_id) : undefined}
-      unreadOffered={!thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation)}
+      threadParent={!thread && message.parent_id ? (store.getMessage(message.channel_id, message.parent_id) ?? threadParent) : undefined}
+      unreadOffered={!readOnly && !thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation)}
+      readOnly={readOnly}
     />
   );
 }
@@ -596,9 +605,10 @@ interface MessageRowViewProps {
   isAdmin: boolean;
   threadParent: MessageState | undefined;
   unreadOffered: boolean;
+  readOnly: boolean;
 }
 
-const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, editing, highlighted, saved, isAdmin, threadParent, unreadOffered }: MessageRowViewProps) {
+const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
@@ -607,6 +617,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const [shareOpen, setShareOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [chipPicker, setChipPicker] = useState(false);
+  // M27 「リアクションした人」: from the long-press sheet on a phone, from the hover bar with a mouse.
+  const [reactionsOpen, setReactionsOpen] = useState(false);
   // M25: the long-press sheet on touch screens (a mouse has the hover bar), and where it opens.
   const [sheet, setSheet] = useState<"actions" | "emoji" | null>(null);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -647,6 +659,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       )}
       title={compact ? fullTimestamp(message.created_at) : undefined}
       onClick={(event) => {
+        // A dialog this row opened (who reacted, who confirmed …) sits in a portal: React still bubbles its clicks and
+        // touches here, but they are not on the message.
+        if (!event.currentTarget.contains(event.target as Node)) return;
         // Alt+click marks the conversation unread from this message (Mattermost).
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
         // On a phone a tap on a message opens its thread, to read or to reply (Slack; testers, 2026-09-29), unless it was
@@ -654,8 +669,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         else if (touchScreen() && onOpenThread && !message.pending && !typing.current && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) onOpenThread(threadId);
       }}
       onTouchStart={(event) => {
+        if (!event.currentTarget.contains(event.target as Node)) return; // in a dialog of this row (above)
         typing.current = isTextInput(document.activeElement);
-        if (message.pending || !touchScreen() || event.touches.length !== 1) return;
+        if (message.pending || readOnly || !touchScreen() || event.touches.length !== 1) return;
         const touch = event.touches[0]!;
         cancelPress();
         press.current = {
@@ -728,7 +744,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <StatusEmoji controller={controller} userId={message.sender_id} />
             <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
             {message.edited_at &&
-              (mine ? (
+              (mine && !readOnly ? (
                 <button type="button" className="hover:text-ink hover:underline" title="編集履歴を見る" onClick={() => setRevisionsOpen(true)}>
                   (編集済み)
                 </button>
@@ -755,8 +771,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <Button variant="link" size="sm" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>破棄</Button>
           </div>
         )}
-        {message.poll && <PollCard poll={message.poll} message={message} controller={controller} />}
-        {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} />}
+        {message.poll && <PollCard poll={message.poll} message={message} controller={controller} readOnly={readOnly} />}
+        {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} readOnly={readOnly} />}
         {(message.reply_count ?? 0) > 0 && onOpenThread && (
           <button type="button" className="mt-1 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:underline" onClick={() => onOpenThread(message.id)}>
             <MessageSquare size={13} /> {message.reply_count} 件の返信
@@ -767,24 +783,28 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             {reactions.map((reaction) => {
               const reacted = !!me && reaction.user_ids.includes(me.id);
               const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ");
-              return (
-                <button
-                  key={reaction.emoji}
-                  type="button"
-                  title={names}
-                  onClick={() => void controller.toggleReaction(message, reaction.emoji)}
-                  className={cn(
-                    "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs transition-colors",
-                    reacted ? "border-accent bg-accent-soft text-ink" : "border-line bg-panel text-ink hover:border-accent/50",
-                  )}
-                >
+              const chip = cn(
+                "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs transition-colors",
+                reacted ? "border-accent bg-accent-soft text-ink" : "border-line bg-panel text-ink",
+                !readOnly && !reacted && "hover:border-accent/50",
+              );
+              const content = (
+                <>
                   <span>{(() => { const name = customEmojiName(reaction.emoji); const custom = name ? store.customEmoji.get(name) : undefined; return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={16} /> : reaction.emoji; })()}</span>
                   <span className="font-medium">{reaction.count}</span>
+                </>
+              );
+              // Read before joining: the names still show on hover, but nothing toggles.
+              return readOnly ? (
+                <span key={reaction.emoji} title={names} className={chip}>{content}</span>
+              ) : (
+                <button key={reaction.emoji} type="button" title={names} onClick={() => void controller.toggleReaction(message, reaction.emoji)} className={chip}>
+                  {content}
                 </button>
               );
             })}
             {/* M25: add another reaction right there (the picker on a mouse, the sheet's picker on a phone). */}
-            <PopoverRoot open={chipPicker} onOpenChange={(open) => { if (open && touchScreen()) setSheet("emoji"); else setChipPicker(open); }}>
+            {!readOnly && <PopoverRoot open={chipPicker} onOpenChange={(open) => { if (open && touchScreen()) setSheet("emoji"); else setChipPicker(open); }}>
               <PopoverTrigger asChild>
                 <button type="button" aria-label="リアクションを追加" title="リアクションを追加" className="inline-flex h-6 items-center rounded-full border border-line bg-panel px-1.5 text-muted hover:border-accent/50 hover:text-ink">
                   <SmilePlus size={14} />
@@ -802,11 +822,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                   }}
                 />
               </PopoverContent>
-            </PopoverRoot>
+            </PopoverRoot>}
           </div>
         )}
       </div>
-      {!message.pending && (
+      {!message.pending && !readOnly && (
         <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
           {/* The three I used last (then the defaults), as the phone sheet's six (M25); the rest is in the picker. */}
           {quickReactions(readRecentEmoji(), 3).map((emoji) => (
@@ -833,6 +853,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               />
             </PopoverContent>
           </PopoverRoot>
+          {reactions.length > 0 && (
+            <IconButton label="リアクションした人" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setReactionsOpen(true)}>
+              <Users size={15} />
+            </IconButton>
+          )}
           {onOpenThread && (
             <IconButton label="スレッドで返信" className="h-7 w-7 text-muted hover:text-ink" onClick={() => onOpenThread(threadId)}>
               <MessageSquare size={15} />
@@ -909,6 +934,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
+      {reactionsOpen && <ReactionsDialog controller={controller} message={message} onClose={() => setReactionsOpen(false)} />}
       {sheet && (
         <MessageActionsSheet
           controller={controller}
@@ -917,6 +943,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onClose={() => setSheet(null)}
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}
+          onShowReactions={() => setReactionsOpen(true)}
           unreadOffered={unreadOffered}
           saved={saved}
           isAdmin={isAdmin}
@@ -985,17 +1012,21 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
   );
 }
 
-/** M15e: 「確認しました」 for readers, and who has acknowledged so far. */
-function AckBar({ controller, message }: { controller: AppController; message: MessageState }) {
+/**
+ * M15e: 「確認しました」 for readers, and who has acknowledged so far: a few names in the line (M27, 「山田、佐藤 が確認」),
+ * all of them, oldest first, a click or a tap away. `readOnly` (a channel read before joining): the names only.
+ */
+function AckBar({ controller, message, readOnly }: { controller: AppController; message: MessageState; readOnly: boolean }) {
   const store = controller.store;
   const me = store.me;
   const acks = message.acks ?? [];
   const mine = !!me && acks.some((a) => a.user_id === me.id);
   const own = me?.id === message.sender_id;
-  const names = acks.map((a) => store.users.get(a.user_id)?.display_name ?? "?").join(", ");
+  const names = acks.map((a) => store.users.get(a.user_id)?.display_name ?? "?");
+  const [listOpen, setListOpen] = useState(false);
   return (
-    <div className="mt-1.5 flex items-center gap-2 text-xs">
-      {!own && (
+    <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
+      {!own && !readOnly && (
         <button
           type="button"
           className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium", mine ? "border-accent/40 bg-accent-soft text-accent" : "border-line text-ink hover:bg-panel")}
@@ -1004,9 +1035,14 @@ function AckBar({ controller, message }: { controller: AppController; message: M
           <CheckCheck size={13} /> {mine ? "確認済み" : "確認しました"}
         </button>
       )}
-      <span className="text-muted" title={names || undefined}>
-        {acks.length > 0 ? `${acks.length} 人が確認` : "まだ誰も確認していません"}
-      </span>
+      {acks.length > 0 ? (
+        <button type="button" className="min-w-0 truncate text-left text-muted hover:text-ink hover:underline" title={names.join("、")} aria-label={`確認した人 (${acks.length} 人)`} onClick={() => setListOpen(true)}>
+          {ackLine(names)}
+        </button>
+      ) : (
+        <span className="text-muted">まだ誰も確認していません</span>
+      )}
+      {listOpen && <AcksDialog controller={controller} message={message} onClose={() => setListOpen(false)} />}
     </div>
   );
 }
