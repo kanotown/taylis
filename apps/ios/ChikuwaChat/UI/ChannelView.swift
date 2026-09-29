@@ -492,8 +492,15 @@ struct ChannelView: View {
                                              atEnd: atBottom, scroller: scroller,
                                              resizing: { resizing = $0 }) { oldHeight, newHeight, atEnd in
                             if atEnd {
-                                // A new newest row: the list slides to it itself (scrollToEnd).
-                                if newRowComing && oldHeight == newHeight { return }
+                                // A new newest row: the list slides to it itself (scrollToEnd), also as the list grows
+                                // under it — the Japanese keyboard's candidate row goes as the input empties, and a
+                                // scroll to the end here jumped the list in one frame before the slide (iOS 27, 2026-09-29).
+                                if newRowComing {
+                                    if !KeyboardBehavior.isSliding, let scrollView = scroller.scrollView {
+                                        KeyboardBehavior.slideToEnd(scrollView, duration: 0.25)
+                                    }
+                                    return
+                                }
                                 proxy.scrollTo("bottom", anchor: .bottom)
                             } else {
                                 // KeepsBottom moved the offset; the row keeps its distance from the bottom edge (KeyboardKept).
@@ -1307,7 +1314,10 @@ struct ComposerView: View {
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSend: Bool { uploading == 0 && (!trimmed.isEmpty || !pending.isEmpty) }
-    private var cameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    /// Asked once: the question took 8–20 ms on the main thread, and the input asked it on every keystroke and send
+    /// (the list stalled as the sent row came in; time profile, 2026-09-29).
+    private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
+    private var cameraAvailable: Bool { Self.hasCamera }
 
     private func upload(data: Data, filename: String, contentType: String) async {
         guard let controller else { return }
@@ -1808,3 +1818,4 @@ private struct SelectingTextField: View {
                                                               set: { box.raw = $0; box.text = text.wrappedValue }), axis: .vertical)
     }
 }
+

@@ -56,6 +56,9 @@ enum KeyboardBehavior {
                               target: { end(of: $0) })
     }
 
+    /// A slide is under way (its end follows the content by itself when slideToEnd started it).
+    static var isSliding: Bool { Slide.current != nil }
+
     /// The offset that shows the end of the content.
     static func end(of scrollView: UIScrollView) -> CGFloat {
         max(-scrollView.adjustedContentInset.top,
@@ -77,7 +80,8 @@ enum KeyboardBehavior {
         private let duration: TimeInterval
         /// Where the slide goes, asked again on each frame (slideToEnd); nil keeps `to`.
         private let target: ((UIScrollView) -> CGFloat)?
-        private let started = CACurrentMediaTime()
+        /// The first frame's time: a stall before it (the send's own work) delays the slide instead of skipping its start.
+        private var started: CFTimeInterval?
         private var link: CADisplayLink?
 
         init(scrollView: UIScrollView, from: CGFloat, to: CGFloat, duration: TimeInterval,
@@ -94,7 +98,10 @@ enum KeyboardBehavior {
         @objc private func tick() {
             guard let scrollView else { return stop() }
             if let target { to = target(scrollView) }
-            let t = min(1, (CACurrentMediaTime() - started) / duration)
+            let now = CACurrentMediaTime()
+            let begun = started ?? now - 1.0 / 60
+            started = begun
+            let t = min(1, (now - begun) / duration)
             let eased = 1 - pow(1 - t, 2) // ease out
             scrollView.contentOffset.y = from + (to - from) * eased
             if t >= 1 { stop() }
