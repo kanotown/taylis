@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,12 +45,10 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -66,6 +65,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -85,6 +85,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -102,7 +103,7 @@ import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, CHANNEL_INFO, SETTINGS, BROWSE, DIRECTORY }
+enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, SETTINGS, BROWSE, DIRECTORY }
 
 /** Channel list first; a selected channel opens as its own page (compact-width layout, like the iOS app). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,13 +146,17 @@ fun MainScreen(controller: AppController) {
     // THREADS.md §5: the followed-threads list replaces the channel list; a row opens its thread with the list behind it.
     var showThreads by rememberSaveable { mutableStateOf(false) }
     var threadFromList by rememberSaveable { mutableStateOf(false) }
-    // M11c: 「保存済み」 replaces the channel list; the pins pane replaces the open channel's timeline.
+    // M11c: 「保存済み」 replaces the channel list.
     var showSaved by rememberSaveable { mutableStateOf(false) }
-    var pinsOpen by rememberSaveable { mutableStateOf(false) }
+    // M29: the open conversation's tab (messages / pins / files, the row under the app bar) and its details page, both
+    // drawn over the timeline, which stays composed underneath. Opening a conversation starts on 「メッセージ」.
+    var conversationTab by rememberSaveable { mutableStateOf(ConversationTab.MESSAGES) }
+    var detailsOpen by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     // M11h: 「メンション」 and 「下書き」 replace the channel list the same way.
     var showMentions by rememberSaveable { mutableStateOf(false) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
-    // M11i: 「ファイル」 replaces the list (all channels) or the open channel's timeline (that channel only).
+    // M11i: 「ファイル」 (all channels, from the sidebar) replaces the list; a conversation's own files are its tab (M29).
     var showFiles by rememberSaveable { mutableStateOf(false) }
     var filesChannelId by rememberSaveable { mutableStateOf<String?>(null) }
     var showReminders by rememberSaveable { mutableStateOf(false) }
@@ -178,7 +183,8 @@ fun MainScreen(controller: AppController) {
         searchExpanded = false
         backToSearch = false
         searchThread = false
-        pinsOpen = false
+        conversationTab = ConversationTab.MESSAGES
+        detailsOpen = false
         showFiles = false
         showSaved = false
         showMentions = false
@@ -219,6 +225,11 @@ fun MainScreen(controller: AppController) {
 
     val selectedChannel = selection?.let { store.channel(it) }
     if (selectedChannel == null) threadId = null
+    // The tabs and the details belong to a joined conversation (closed, left, or removed from it: they go too).
+    if (selectedChannel?.isMember != true) {
+        if (detailsOpen) detailsOpen = false
+        if (conversationTab != ConversationTab.MESSAGES) conversationTab = ConversationTab.MESSAGES
+    }
 
     // --- search (M16b) ---
     fun openSearch() {
@@ -258,7 +269,8 @@ fun MainScreen(controller: AppController) {
         searching = true
     }
     fun returnToSearch() {
-        pinsOpen = false
+        conversationTab = ConversationTab.MESSAGES
+        detailsOpen = false
         showFiles = false
         threadId = null
         threadFromList = false
@@ -293,12 +305,24 @@ fun MainScreen(controller: AppController) {
         }
     }
     val closeChannel: () -> Unit = { if (backToSearch) returnToSearch() else selection = null }
+    // M29: back (the system's and the app bar's ←) closes the details page, then a pins / files tab (to 「メッセージ」),
+    // then the thread, then the conversation.
+    val backStep = ConversationNav.back(detailsOpen, conversationTab, threadId != null, selectedChannel != null, listReplaced)
+    fun goBack() {
+        when (backStep) {
+            ConversationNav.Back.DETAILS -> detailsOpen = false
+            ConversationNav.Back.TAB -> conversationTab = ConversationTab.MESSAGES
+            ConversationNav.Back.THREAD -> closeThread()
+            ConversationNav.Back.CHANNEL -> closeChannel()
+            ConversationNav.Back.LISTS -> closeLists()
+            ConversationNav.Back.NONE -> Unit
+        }
+    }
+    /** The keyboard goes with the composer when a page or tab covers the timeline. */
+    fun openDetails() { focusManager.clearFocus(); detailsOpen = true }
+    fun selectTab(tab: ConversationTab) { focusManager.clearFocus(); conversationTab = tab }
     BackHandler(enabled = searching && !searchExpanded) { closeSearch() }
-    BackHandler(enabled = !searching && pinsOpen && selectedChannel != null) { pinsOpen = false }
-    BackHandler(enabled = !searching && !pinsOpen && showFiles && selectedChannel != null) { showFiles = false }
-    BackHandler(enabled = !searching && !pinsOpen && threadId != null) { closeThread() }
-    BackHandler(enabled = !searching && threadId == null && !pinsOpen && !showFiles && selectedChannel != null) { closeChannel() }
-    BackHandler(enabled = !searching && selectedChannel == null && listReplaced) { closeLists() }
+    BackHandler(enabled = !searching && backStep != ConversationNav.Back.NONE) { goBack() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
         scope.launch {
@@ -341,10 +365,11 @@ fun MainScreen(controller: AppController) {
                 TopAppBar(
                     title = {
                         when {
-                            pinsOpen && selectedChannel != null -> TwoLineTitle("ピン留め", channelTitle(selectedChannel, store))
+                            detailsOpen && selectedChannel != null -> TwoLineTitle(channelTitle(selectedChannel, store), null)
                             threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
                             selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
-                            selectedChannel != null -> Column(Modifier.clickable { dialog = MainDialog.CHANNEL_INFO }) {
+                            // M29: the title opens the details page.
+                            selectedChannel != null -> Column(Modifier.clickable(onClickLabel = "チャンネル情報") { openDetails() }) {
                                 TwoLineTitle(
                                     channelTitle(selectedChannel, store),
                                     selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
@@ -361,10 +386,9 @@ fun MainScreen(controller: AppController) {
                     },
                     navigationIcon = {
                         when {
-                            selectedChannel != null -> IconButton(onClick = { if (pinsOpen) pinsOpen = false else if (showFiles) showFiles = false else if (threadId != null) closeThread() else closeChannel() }) {
+                            selectedChannel != null || listReplaced -> IconButton(onClick = ::goBack) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                             }
-                            listReplaced -> IconButton(onClick = closeLists) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") }
                             me != null -> IconButton(onClick = { dialog = MainDialog.SETTINGS }) { Avatar(me.id, me.displayName, size = 32.dp) }
                         }
                     },
@@ -404,7 +428,7 @@ fun MainScreen(controller: AppController) {
                         }
                         // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
                         // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
-                        if (selectedChannel != null && selectedChannel.isMember && threadId == null) {
+                        if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
                             val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                             val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
                             DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
@@ -428,20 +452,13 @@ fun MainScreen(controller: AppController) {
                         IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            if (selectedChannel != null && selectedChannel.isMember && threadId == null) {
+                            // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
+                            if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
                                 val starred = store.isFavorite(selectedChannel.id)
                                 DropdownMenuItem(
                                     text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
                                     leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
                                     onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(selectedChannel.id) } },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("ピン留め") }, leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
-                                    onClick = { menuOpen = false; pinsOpen = true; showFiles = false },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("ファイル") }, leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
-                                    onClick = { menuOpen = false; filesChannelId = selectedChannel.id; showFiles = true; pinsOpen = false },
                                 )
                                 val level = selectedChannel.channel.notification?.level ?: if (selectedChannel.channel.isDm) "all" else "mentions"
                                 val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
@@ -453,7 +470,7 @@ fun MainScreen(controller: AppController) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                    onClick = { menuOpen = false; dialog = MainDialog.CHANNEL_INFO },
+                                    onClick = { menuOpen = false; openDetails() },
                                 )
                                 HorizontalDivider()
                             }
@@ -482,6 +499,10 @@ fun MainScreen(controller: AppController) {
         // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
         // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
+            if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
+                ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab)
+            }
             ConnectionBanner(status)
             val shownSearch = searchParams
             if (!searching && backToSearch && shownSearch != null && selectedChannel != null) {
@@ -505,8 +526,6 @@ fun MainScreen(controller: AppController) {
                             onOpenFile = { item -> openFromSearch(item.messageId, item.channelId, item.parentId) },
                         )
                     }
-                } else if (selectedChannel != null && pinsOpen) {
-                    PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal)
                 } else if (showFiles) {
                     FilesPane(controller, version, channelId = filesChannelId, onScopeChange = { filesChannelId = it }) { messageId, channelId, parentId ->
                         scope.launch {
@@ -520,7 +539,28 @@ fun MainScreen(controller: AppController) {
                     SavedPane(controller, version, onOpen = ::reveal)
                 } else if (selectedChannel != null) {
                     if (previewing) PreviewPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
-                    else ChannelPane(controller, selectedChannel.id, version, onOpenThread = { threadId = it; searchThread = false })
+                    else {
+                        // M29: the timeline stays composed under the tabs and the details page (scroll position, read
+                        // anchor, draft), but counts as not on screen while they cover it (SYNC_PROTOCOL.md §10.1 2.).
+                        ChannelPane(
+                            controller, selectedChannel.id, version,
+                            onScreen = ConversationNav.conversationOnScreen(conversationTab, detailsOpen),
+                            onOpenThread = { threadId = it; searchThread = false },
+                        )
+                        when {
+                            detailsOpen -> CoveringPage { ChannelDetailsPane(controller, selectedChannel, version, onClose = { detailsOpen = false }) }
+                            // A pin or a file shows its message under 「メッセージ」 (its thread too for a reply): openConversation
+                            // goes back to that tab.
+                            conversationTab == ConversationTab.PINS -> CoveringPage { PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal) }
+                            conversationTab == ConversationTab.FILES -> CoveringPage {
+                                FilesPane(controller, version, channelId = selectedChannel.id, onScopeChange = null) { messageId, channelId, parentId ->
+                                    scope.launch {
+                                        if (controller.revealMessage(messageId, channelId, parentId)) openConversation(channelId, parentId)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else if (showReminders) {
                     RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
                 } else if (showMentions) {
@@ -573,7 +613,6 @@ fun MainScreen(controller: AppController) {
         MainDialog.DIRECTORY -> DirectoryDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.NEW_CHANNEL -> NewChannelDialog(controller, onDismiss = { dialog = null }, onOpened = { controller.messageFocus = null; openConversation(it) })
         MainDialog.ADD_MEMBER -> selectedChannel?.let { AddMemberDialog(controller, it.id, onDismiss = { dialog = null }) }
-        MainDialog.CHANNEL_INFO -> selectedChannel?.let { ChannelInfoDialog(controller, it, version, onDismiss = { dialog = null }, onAddMember = { dialog = MainDialog.ADD_MEMBER }) }
         MainDialog.SETTINGS -> SettingsDialog(controller, onDismiss = { dialog = null })
         MainDialog.BROWSE -> ChannelBrowserDialog(
             controller, version, onDismiss = { dialog = null },
@@ -609,6 +648,17 @@ object ConversationBar {
     private const val CHIP = 48f + 4f
 
     fun followLabelFits(barWidth: Float, title: Float, label: Float): Boolean = barWidth - START - END - CHIP - label >= title
+}
+
+/**
+ * M29: a page drawn over the conversation's timeline (a tab, the details). Opaque, and it takes every touch, so none
+ * reaches the timeline below; the keyboard of a field on it pushes its content up.
+ */
+@Composable
+private fun CoveringPage(content: @Composable () -> Unit) {
+    Surface(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().imePadding()) { content() }
+    }
 }
 
 @Composable

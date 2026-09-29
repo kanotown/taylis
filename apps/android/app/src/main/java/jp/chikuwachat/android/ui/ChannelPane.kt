@@ -85,6 +85,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,8 +97,14 @@ import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 
+/**
+ * One conversation's timeline and composer. `onScreen` (M29): false while the 「ピン留め」 / 「ファイル」 tab or the details
+ * page covers it. It stays composed underneath (its scroll position, read anchor and draft survive the switch), but it
+ * counts as not being looked at (SYNC_PROTOCOL.md §10.1 2.): no rows are judged or marked read, 「新着」 does not count
+ * rows as seen at the bottom, and TalkBack does not reach it.
+ */
 @Composable
-fun ChannelPane(controller: AppController, channelId: String, version: Int, onOpenThread: (String) -> Unit = {}) {
+fun ChannelPane(controller: AppController, channelId: String, version: Int, onScreen: Boolean = true, onOpenThread: (String) -> Unit = {}) {
     val store = controller.store
     val channel = store.channel(channelId) ?: return
     val me = store.me?.id
@@ -147,7 +154,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     // from others are 「新着」. Keyed like the divider: the search view moves it to its own (old) rows.
     var seenSeq by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
     val maxSeq = messages.maxOfOrNull { it.seq ?: 0 } ?: 0
-    LaunchedEffect(atBottom, maxSeq, positioned, anchor.landing) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned && !anchor.landing, atBottom, maxSeq) }
+    // M29: rows that reach the bottom while a tab covers the timeline were not seen there.
+    LaunchedEffect(atBottom, maxSeq, positioned, anchor.landing, onScreen) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned && !anchor.landing, atBottom && onScreen, maxSeq) }
     val unseenBelow = if (focus != null) 0 else ReadGate.newBelow(messages, seenSeq, me)
     val scope = rememberCoroutineScope()
     // §10.1 rule 11 (M28c): my own top-level post from this device shows at the bottom, whether it came from the outbox
@@ -195,13 +203,16 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     // Keyed on the read state too: a read.updated, a hold, a catch-up or a §7.3 reload must re-check the range.
     LaunchedEffect(
         channelId, focus?.messageId, positioned, controller.engineStatus, controller.appForeground, items,
-        shown.lastReadSeq, shown.unreadCount, shown.oldestLoadedSeq, shown.syncedSeq, shown.lastSeq, heldUnread,
+        shown.lastReadSeq, shown.unreadCount, shown.oldestLoadedSeq, shown.syncedSeq, shown.lastSeq, heldUnread, onScreen,
     ) {
         if (!positioned || focus != null) return@LaunchedEffect
-        // Rule 2-3: after a lowering, only a change of the view resumes marking. Being away (the background) or
-        // offline is one; a lowering noticed after it (a lower bootstrap on reconnecting) is quiet again.
-        if (!controller.appForeground || controller.engineStatus == EngineStatus.OFFLINE) anchor = anchor.resumed()
-        if (!controller.appForeground) return@LaunchedEffect
+        // Rule 2-3: after a lowering, only a change of the view resumes marking. Being away (the background, the pins or
+        // files tab, the details page) or offline is one; a lowering noticed after it (a lower bootstrap on reconnecting)
+        // is quiet again.
+        val away = !controller.appForeground || !onScreen
+        if (away || controller.engineStatus == EngineStatus.OFFLINE) anchor = anchor.resumed()
+        // Not looked at: no look at all (rule 2-4 judges only looks with rows on screen). Coming back is a fresh look.
+        if (away) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo }.collectLatest { layout ->
             val step = anchor.observe(shown, heldUnread, messages, me, layout.seenIndexes().mapNotNull { rowAt(items, it) }, layout.onScreenIds(items))
             anchor = step.anchor
@@ -248,11 +259,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
         }
     }
 
-    // M15f: the link bar and its editor (null link = add).
-    var editingLink by remember(channelId) { mutableStateOf<Pair<Boolean, jp.chikuwachat.android.api.ChannelLinkOut?>>(false to null) }
-    if (editingLink.first) ChannelLinkDialog(controller, channelId, editingLink.second, onDismiss = { editingLink = false to null })
-    Column(Modifier.fillMaxSize().imePadding()) {
-        ChannelLinksRow(controller, channel, version, onAdd = { editingLink = true to null }, onEdit = { editingLink = true to it })
+    // M29: the link bar moved into the tab row above (ConversationTabRow).
+    Column(Modifier.fillMaxSize().imePadding().then(if (onScreen) Modifier else Modifier.clearAndSetSemantics {})) {
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
@@ -339,7 +347,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                     }
                 }
             }
-            if (showJump && focus == null) {
+            if (showJump && focus == null && onScreen) {
                 if (unseenBelow > 0) {
                     ExtendedFloatingActionButton(
                         onClick = { scope.launch { listState.animateScrollToItem(0) } },

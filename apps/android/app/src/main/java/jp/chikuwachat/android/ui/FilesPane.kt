@@ -59,7 +59,8 @@ fun FilesPane(
     controller: AppController,
     version: Int,
     channelId: String?,
-    onScopeChange: (String?) -> Unit,
+    /** Picks the channel (null = all). Null (M29, a conversation's 「ファイル」 tab): that channel only, no selector. */
+    onScopeChange: ((String?) -> Unit)?,
     onOpen: (messageId: String, channelId: String, parentId: String?) -> Unit,
 ) {
     val store = controller.store
@@ -86,10 +87,12 @@ fun FilesPane(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         )
-        LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            item { FilterChip(selected = channelId == null, onClick = { onScopeChange(null) }, label = { Text("すべて") }, modifier = Modifier.padding(horizontal = 4.dp)) }
-            items(channels, key = { it.id }) { channel ->
-                FilterChip(selected = channelId == channel.id, onClick = { onScopeChange(channel.id) }, label = { Text(channelTitle(channel, store)) }, modifier = Modifier.padding(horizontal = 4.dp))
+        if (onScopeChange != null) {
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                item { FilterChip(selected = channelId == null, onClick = { onScopeChange(null) }, label = { Text("すべて") }, modifier = Modifier.padding(horizontal = 4.dp)) }
+                items(channels, key = { it.id }) { channel ->
+                    FilterChip(selected = channelId == channel.id, onClick = { onScopeChange(channel.id) }, label = { Text(channelTitle(channel, store)) }, modifier = Modifier.padding(horizontal = 4.dp))
+                }
             }
         }
         val list = items
