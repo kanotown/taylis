@@ -590,9 +590,10 @@ final class SyncEngine {
             onBadge?(store.badgeCount)
             scheduleThreadRefresh()
         case "notification_preference.updated":
-            if let id = frame.data["channel_id"]?.stringValue {
-                store.setNotification(id, level: frame.data["level"]?.stringValue ?? "mentions", mutedUntil: frame.data["muted_until"]?.stringValue)
-            }
+            // M35: follows_default and muted ride along (absent from older servers: decoded as before).
+            let pref = try frame.data.decode(NotificationPreferenceOut.self)
+            store.setNotification(pref.channelId, pref)
+            onBadge?(store.badgeCount)
         case "session.revoked":
             signOut()
         default:
@@ -751,9 +752,10 @@ final class SyncEngine {
     /// DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4).
     private func maybeNotify(_ message: MessageOut, _ channel: ChannelState, _ thread: ParentThread? = nil) {
         guard let me = store.me, message.senderId != me.id else { return }
-        // Same rule as the server's PushPlanner: the per-channel level, "none" or a timed mute silences everything.
-        let level = channel.channel.notification?.level ?? (channel.channel.isDm ? "all" : "mentions")
-        if channel.isMuted { return }
+        // Same rule as the server's PushPlanner: the channel's level (its own, else from my overall setting, M35);
+        // "none", a mute until unmuted or a timed mute silences everything.
+        let level = channel.pushLevel(overall: me.overallNotification, meId: me.id)
+        if level == "none" || channel.isMuted { return }
         let involved = message.mentionsMe(me) || (thread?.participantIds.contains(me.id) ?? false)
         if level == "mentions" && !involved { return }
         if isActive() && currentChannelId == channel.id { return }

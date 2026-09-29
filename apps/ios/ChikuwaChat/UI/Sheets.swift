@@ -387,25 +387,17 @@ struct ChannelInfoView: View {
                     purposeSection(channel, canEdit: canEdit)
                 }
                 if channel.isMember {
-                    let level = channel.channel.notification?.level ?? (isChannel ? "mentions" : "all")
-                    Section("通知") {
-                        Picker("通知", selection: Binding(get: { level }, set: { value in
-                            Task { await controller.setNotification(channelId, level: value, mutedUntil: channel.channel.notification?.mutedUntil) }
-                        })) {
-                            Text("すべてのメッセージ").tag("all")
-                            Text("メンションのみ").tag("mentions")
-                            Text("通知しない").tag("none")
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                        if let mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil) {
-                            Button("ミュート解除 (\(mute))") { Task { await controller.setNotification(channelId, level: level, mutedUntil: nil) } }
-                        } else {
-                            Button("8 時間ミュート") {
-                                let until = ISO8601DateFormatter().string(from: Date().addingTimeInterval(8 * 3600))
-                                Task { await controller.setNotification(channelId, level: level, mutedUntil: until) }
-                            }
-                        }
+                    // M35: 既定 / a level of its own, 「ミュート」 until unmuted, and the timed mute.
+                    let level = channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id)
+                    Section {
+                        NotificationLevelPicker(controller: controller, channel: channel)
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        NotificationMuteControls(controller: controller, channel: channel)
+                    } header: {
+                        Text("通知")
+                    } footer: {
+                        Text(isMuted(channel) ? "ミュート中: 通知せず、メンションだけを未読にします。" : "この会話の通知: \(NotificationRules.levelLabel(level))")
                     }
                 }
                 Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
@@ -609,6 +601,20 @@ struct SettingsView: View {
                             if nameSaved { Spacer(); Text("保存しました").font(.footnote).foregroundStyle(.secondary) }
                         }
                     }
+                }
+                // M35: what conversations without a level of their own notify me of (pushes only, not unread).
+                Section {
+                    Picker("通知するもの", selection: Binding(get: { controller.store.me?.overallNotification ?? "mentions" }, set: { value in
+                        Task { _ = await controller.updateProfile(notificationDefault: value) }
+                    })) {
+                        Text(NotificationRules.overallLabel("all")).tag("all")
+                        Text(NotificationRules.overallLabel("mentions")).tag("mentions")
+                        Text(NotificationRules.overallLabel("none")).tag("none")
+                    }
+                } header: {
+                    Text("通知")
+                } footer: {
+                    Text("チャンネルごとの設定が優先されます。DM は「なし」以外なら常に通知されます。")
                 }
                 // L4 (M31): nobody else sees whether I am here.
                 Section {

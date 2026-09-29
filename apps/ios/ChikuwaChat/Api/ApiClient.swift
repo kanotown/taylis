@@ -222,9 +222,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         return try await request("PATCH", "/api/v1/channels/\(id)", body: .object(body))
     }
 
-    func setNotificationPreference(channelId: String, level: String, mutedUntil: String?) async throws -> NotificationPreferenceOut {
-        try await request("PUT", "/api/v1/channels/\(channelId)/notification-preference",
-                          body: .object(["level": .string(level), "muted_until": mutedUntil.map { JSONValue.string($0) } ?? .null]))
+    /// level nil = follow my overall setting (M35); muted nil = leave the mute until unmuted as it is.
+    func setNotificationPreference(channelId: String, level: String?, mutedUntil: String?, muted: Bool? = nil) async throws -> NotificationPreferenceOut {
+        var body: [String: JSONValue] = ["level": level.map(JSONValue.string) ?? .null, "muted_until": mutedUntil.map(JSONValue.string) ?? .null]
+        if let muted { body["muted"] = .bool(muted) }
+        return try await request("PUT", "/api/v1/channels/\(channelId)/notification-preference", body: .object(body))
     }
 
     func updateMe(displayName: String? = nil, email: String? = nil) async throws -> UserMe {

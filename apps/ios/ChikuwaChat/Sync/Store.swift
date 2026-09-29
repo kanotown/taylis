@@ -21,19 +21,27 @@ struct ChannelState: Codable, Identifiable, Equatable {
     var firstUnreadAt: String?
 
     var id: String { channel.id }
-    /// Level "none" or an active timed mute (PUSH_NOTIFICATIONS.md §4).
+    /// The channel's own notification level; nil = it follows my overall setting (M35).
+    var ownNotificationLevel: String? { channel.notification?.ownLevel }
+    /// Own level "none", muted until unmuted (M35) or an active timed mute (SYNC_PROTOCOL.md §10.5). The overall
+    /// setting never counts: it silences pushes, not unread.
     var isMuted: Bool { isMuted(now: Date()) }
     func isMuted(now: Date) -> Bool {
         guard let pref = channel.notification else { return false }
-        if pref.level == "none" { return true }
+        if pref.ownLevel == "none" || pref.muted { return true }
         guard let until = pref.mutedUntil.flatMap(parseIsoDate) else { return false }
         return until > now
     }
-    /// M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a
-    /// faint dot otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
+    /// M24: someone else's times whose own level is not "all" is quiet unread: unread only with a mention, a faint dot
+    /// otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
     func isQuiet(meId: String?, now: Date = Date()) -> Bool {
         guard let owner = channel.timesOwnerId, owner != meId else { return false }
-        return channel.notification?.level != "all" && !isMuted(now: now)
+        return ownNotificationLevel != "all" && !isMuted(now: now)
+    }
+    /// M35: what this conversation notifies me of, with my overall setting (PUSH_NOTIFICATIONS.md §4).
+    func pushLevel(overall: String, meId: String?) -> String {
+        let othersTimes = channel.timesOwnerId.map { $0 != meId } ?? false
+        return NotificationRules.pushLevel(own: ownNotificationLevel, isDm: channel.isDm, othersTimes: othersTimes, overall: overall)
     }
     /// Slack / Mattermost rule: a muted conversation is unread only when I am mentioned; so is a quiet one (M24).
     /// Bold rows, the unread filter and the workspace dot all ask this, with my id.
@@ -724,9 +732,10 @@ final class Store {
             .sorted { ($0.state.lastReplyAt ?? "", $0.parent.seq) > ($1.state.lastReplyAt ?? "", $1.parent.seq) }
     }
 
-    func setNotification(_ channelId: String, level: String, mutedUntil: String?) {
+    /// A PUT response or a notification_preference.updated event: level, both mutes and whether it follows the default.
+    func setNotification(_ channelId: String, _ pref: NotificationPreferenceOut) {
         updateChannel(channelId) { state in
-            state.channel.notification = NotificationPreferenceOut(channelId: channelId, level: level, mutedUntil: mutedUntil)
+            state.channel.notification = pref
         }
     }
 
