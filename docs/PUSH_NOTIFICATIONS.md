@@ -94,7 +94,8 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 | `level = all` (DM / グループ DM の既定) | 対象 | M5 |
 | `level = mentions` (チャンネルの既定) | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
-| 既に既読 (`last_read_seq >= message.seq`) | 除外 | M8b (実装済み。送信直前にも再判定し `skipped / already_read`) |
+| 既に既読 (`last_read_seq >= message.seq`) | 除外。スレッドの返信 (チャンネルにも送信したものを除く) は `thread_follows.last_read_seq` で判定する (Desktop でスレッドを読んだ返信がスマホに届いていた。M28a) | M8b (実装済み。送信直前にも再判定し `skipped / already_read`。返信の再判定のために `push_deliveries.payload` に `parent_id` を添える) |
+| 有効なセッションの無い端末 (期限切れ) | 送信直前に除外 (`skipped / session_expired`)。1 時間ごとの掃除がその端末を無効にする (DATA_MODEL.md devices) | M28a |
 | 別端末でアクティブ (§4.1) | 除外 | M5 |
 | `push_token` を持つ有効な端末が無い | 除外 (Desktop のみのユーザー) | M5 |
 
@@ -125,6 +126,8 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
 
 `badge` = 受信者の「DM の未読数 + チャンネルのメンション数」の合計を計画時に数える (M8b で実装。受信者ごとに payload を作る)。
 近似値でよい。アプリは起動時に bootstrap の値でバッジを上書きする。
+未読数は受信者ごとに 1 つのクエリでまとめて数える (`reads.counts_for_user`、bootstrap と同じ)。以前はチャンネルごとに
+1 クエリで、`@channel` の 1 通が outbox リレーのトランザクションの中で 受信者 × チャンネル 回のクエリになっていた (M28a)。
 複数のワークスペースを使う端末では各サーバーが自分の分だけの値を付けるので、アプリは全ワークスペースの
 合計で上書きする (WORKSPACES.md §6)。
 
@@ -145,6 +148,9 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
   "sent_at": "2026-09-25T13:00:00Z"
 }
 ```
+
+行にはこの他に `expires_at` (有効期限) と、スレッドの返信なら `parent_id` (送信直前の既読の再判定に使う。M28a) を
+payload と並べて保存する。プロバイダはそのまま端末へ送る (クライアントは知らない項目を無視する)。
 
 | 項目 | APNs | FCM (Android) |
 | --- | --- | --- |
@@ -168,7 +174,7 @@ v1 では使わない (§12)。
 | 有効期限 | 計画時刻 + 10 分 (`PUSH_ALERT_TTL_SECONDS`)。過ぎたら `skipped`。10 分後に届く通知は役に立たない |
 | 再試行間隔 | 30 秒 → 2 分 → 10 分 (有効期限に収まる範囲で)。それ以上は `failed` |
 | 同時送信数 | 10 |
-| 送信前の再判定 | 既読済みならスキップ。端末が無効 / トークン無しならスキップ |
+| 送信前の再判定 | 既読済み (返信はスレッドの既読位置) ならスキップ。端末が無効 / トークン無し、有効なセッションが無い (`session_expired`) ならスキップ |
 
 ## 7. 重複・欠落・遅延への対応
 

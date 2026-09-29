@@ -121,7 +121,17 @@ async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audien
             GROUP_UPDATED,
             ROSTER_UPDATED,
         ):
-            return Audience(kind="users", ids=tuple(await repo.non_guest_user_ids(db)))
+            ids = await repo.non_guest_user_ids(db)
+            if (
+                event.event_type == events.CHANNEL_UPDATED
+                and event.channel_id is not None
+                and (event.payload.get("channel") or {}).get("type") == "private"
+            ):
+                # The bare event of a channel made private (update_channel): its members got
+                # the full one and must not drop the channel on this one.
+                members = await repo.member_ids_for_channels(db, [event.channel_id])
+                ids = [uid for uid in ids if uid not in set(members.get(event.channel_id, []))]
+            return Audience(kind="users", ids=tuple(ids))
         if event.event_type in USER_EVENTS:
             subject = uuid.UUID(str(event.payload["user"]["id"]))
             return Audience(kind="users", ids=tuple(await _user_event_audience(db, subject)))
@@ -143,14 +153,23 @@ async def _emit_channel(
     *,
     audience_type: AudienceType,
     audience_id: uuid.UUID | None = None,
+    bare: bool = False,
 ) -> None:
+    """`bare`: the event for people outside a channel that just became private, without the
+    topic, purpose, member count or member list (empty, so the clients drop the channel)."""
     member_ids = (await repo.member_ids_for_channels(db, [channel.id])).get(channel.id, [])
-    data = events.ChannelEventData(
-        channel=to_channel_out(
-            channel, None, member_ids if channel.is_dm else None, len(member_ids)
-        ),
-        member_ids=member_ids,
-    )
+    if bare:
+        out = to_channel_out(channel, None, None, None).model_copy(
+            update={"topic": None, "purpose": None}
+        )
+        data = events.ChannelEventData(channel=out, member_ids=[])
+    else:
+        data = events.ChannelEventData(
+            channel=to_channel_out(
+                channel, None, member_ids if channel.is_dm else None, len(member_ids)
+            ),
+            member_ids=member_ids,
+        )
     await write_outbox(
         db,
         event_type=event_type,
@@ -321,7 +340,9 @@ async def _out_with_count(
 async def get_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> ChannelOut:
     channel = await require_channel(db, channel_id)
     membership = await repo.get_membership(db, channel_id, actor.id)
-    if membership is None and channel.type != "public":
+    # The same rule as reading its messages (require_readable): a guest sees nothing of a public
+    # channel they are not in, not even its name and size (M13e).
+    if membership is None and (channel.type != "public" or actor.is_guest):
         raise forbidden("not_a_member", "You are not a member of this channel")
     dm_ids = None
     if channel.is_dm:
@@ -364,11 +385,22 @@ async def update_channel(
     channel.updated_at = utcnow()
     try:
         await db.flush()
-        # A visibility change reaches everyone (non-members drop or gain the channel in their
-        # browser); other changes only the members.
-        await _emit_channel(
-            db, events.CHANNEL_UPDATED, channel, audience_type="all" if converted else "channel"
-        )
+        if converted and channel.type == "private":
+            # Made private: the members get the full event; everyone else only learns that the
+            # channel left their browser (a bare event without its topic or member list, since
+            # those are now the members' business). resolve_event_audience keeps the members out
+            # of the second one.
+            await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
+            await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="all", bare=True)
+        else:
+            # A visibility change reaches everyone (non-members gain the channel in their
+            # browser); other changes only the members.
+            await _emit_channel(
+                db,
+                events.CHANNEL_UPDATED,
+                channel,
+                audience_type="all" if converted else "channel",
+            )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

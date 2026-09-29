@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
-from app.modules.messages.schemas import MAX_BODY_LENGTH
+from app.modules.messages.schemas import MAX_BODY_LENGTH, strip_control_chars
 
 
 class ScheduledCreate(BaseModel):
@@ -14,6 +14,13 @@ class ScheduledCreate(BaseModel):
     parent_id: UUID | None = None
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
     send_at: datetime
+
+    @field_validator("body")
+    @classmethod
+    def _clean_body(cls, value: str) -> str:
+        # The same cleaning as MessageCreate: a body this accepts must post when its time comes
+        # (a body of control characters alone used to pass here and fail at the send).
+        return strip_control_chars(value)
 
     @model_validator(mode="after")
     def _body_or_attachments(self) -> "ScheduledCreate":

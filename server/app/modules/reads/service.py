@@ -41,10 +41,20 @@ async def state_for(db: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID)
 async def states_for_user(
     db: AsyncSession, user_id: uuid.UUID, channel_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ReadStateOut]:
+    """Every channel's state in two queries (the positions, then the counts grouped by channel),
+    the same numbers `state_for` gives one channel at a time."""
     positions = await repo.states_for_user(db, user_id, channel_ids)
+    wanted = {channel_id: positions.get(channel_id, 0) for channel_id in channel_ids}
+    counted = await repo.counts_for_user(db, user_id, wanted)
     result: dict[uuid.UUID, ReadStateOut] = {}
-    for channel_id in channel_ids:
-        result[channel_id] = await _state(db, user_id, channel_id, positions.get(channel_id, 0))
+    for channel_id, last_read_seq in wanted.items():
+        unread, mentions, first_unread_at = counted.get(channel_id, (0, 0, None))
+        result[channel_id] = ReadStateOut(
+            last_read_seq=last_read_seq,
+            unread_count=unread,
+            mention_count=mentions,
+            first_unread_at=first_unread_at,
+        )
     return result
 
 

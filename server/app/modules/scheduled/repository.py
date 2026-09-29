@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.scheduled.models import ScheduledMessage
@@ -31,6 +31,18 @@ async def list_open_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Sched
         .order_by(ScheduledMessage.send_at.asc(), ScheduledMessage.id.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def count_open_for_user(db: AsyncSession, user_id: uuid.UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(ScheduledMessage)
+        .where(
+            ScheduledMessage.user_id == user_id,
+            ScheduledMessage.status.in_(("pending", "failed")),
+        )
+    )
+    return int((await db.execute(stmt)).scalar_one())
 
 
 async def due(db: AsyncSession, now: datetime, limit: int) -> list[ScheduledMessage]:

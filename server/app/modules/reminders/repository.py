@@ -26,6 +26,15 @@ async def list_open_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Remin
     return fired + pending
 
 
+async def count_open_for_user(db: AsyncSession, user_id: uuid.UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(Reminder)
+        .where(Reminder.user_id == user_id, Reminder.status.in_(("pending", "fired")))
+    )
+    return int((await db.execute(stmt)).scalar_one())
+
+
 async def fired_count(db: AsyncSession, user_id: uuid.UUID) -> int:
     stmt = (
         select(func.count())

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, not_found
+from app.core.errors import bad_request, conflict, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
@@ -25,6 +25,9 @@ from app.modules.users.models import User
 MIN_LEAD = timedelta(seconds=30)
 MAX_LEAD = timedelta(days=366)
 PREVIEW_LENGTH = 200
+# Open reminders (pending or fired) one person may have: it bounds GET /reminders too, whose
+# list is the open rows (SECURITY.md §5).
+MAX_OPEN_PER_USER = 200
 
 
 def _preview(body: str | None) -> str:
@@ -79,6 +82,8 @@ async def create(
         raise bad_request("remind_at_too_soon", "Pick a time at least a minute ahead")
     if data.remind_at > now + MAX_LEAD:
         raise bad_request("remind_at_too_far", "Pick a time within a year")
+    if await repo.count_open_for_user(db, actor.id) >= MAX_OPEN_PER_USER:
+        raise conflict("too_many_reminders", f"At most {MAX_OPEN_PER_USER} reminders at a time")
     row = Reminder(
         user_id=actor.id,
         message_id=message.id,

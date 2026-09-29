@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import Exists, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.outbox import write_outbox
@@ -100,6 +101,37 @@ async def revoke_sessions(
             .values(enabled=False, disabled_reason=reason, updated_at=now)
         )
     return len(device_ids)
+
+
+def _live_session_of(device_id: Any, now: datetime) -> Exists:
+    return (
+        select(UserSession.id)
+        .where(
+            UserSession.device_id == device_id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .exists()
+    )
+
+
+async def has_live_session(db: AsyncSession, device_id: uuid.UUID, now: datetime) -> bool:
+    """Whether the device can still act for its user (a session neither revoked nor expired)."""
+    return bool((await db.execute(select(_live_session_of(device_id, now)))).scalar_one())
+
+
+async def disable_devices_without_session(db: AsyncSession, now: datetime) -> int:
+    """Enabled devices whose every session has expired (or is gone) are disabled, as a logout
+    would have done: sessions only run out quietly, and an enabled row with a push token would
+    keep receiving message content long after the phone could show it (SECURITY.md §2.6)."""
+    stmt = (
+        update(Device)
+        .where(Device.enabled.is_(True), ~_live_session_of(Device.id, now))
+        .values(enabled=False, disabled_reason="session_expired", updated_at=now)
+        .returning(Device.id)
+        .execution_options(synchronize_session=False)
+    )
+    return len((await db.execute(stmt)).all())
 
 
 async def purge_sessions(db: AsyncSession, before: datetime) -> int:

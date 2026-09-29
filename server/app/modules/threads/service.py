@@ -69,9 +69,20 @@ async def _emit(
 
 
 async def _emit_to_followers(db: AsyncSession, parent: Message, reason: Reason) -> None:
-    followers = await repo.followers(db, parent.id)
-    for user_id in followers:
-        await _emit(db, parent, user_id, reason, followers)
+    """One thread.updated per follower (each carries that person's own counts and position),
+    from a single query for all of them."""
+    states = await repo.follower_states(db, parent.id)
+    followers = [row.user_id for row, _, _ in states]
+    for row, unread, mentions in states:
+        state = _state(parent, row, (unread, mentions), followers)
+        await write_outbox(
+            db,
+            event_type=THREAD_UPDATED,
+            audience_type="user",
+            audience_id=row.user_id,
+            channel_id=parent.channel_id,
+            payload=ThreadUpdatedData(reason=reason, **state.model_dump()).model_dump(mode="json"),
+        )
 
 
 async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
@@ -82,6 +93,19 @@ async def followers(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
 async def unfollowed(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
     """Members who unfollowed the thread by hand: its replies never push to them."""
     return await repo.unfollowed(db, parent_id)
+
+
+async def last_read_seqs(
+    db: AsyncSession, parent_id: uuid.UUID, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """The push planner's "already read" check for a reply: the thread's positions, not the
+    channel's (a reply read on the desktop must not ring the phone)."""
+    return await repo.last_read_seqs(db, parent_id, user_ids)
+
+
+async def is_read(db: AsyncSession, user_id: uuid.UUID, parent_id: uuid.UUID, seq: int) -> bool:
+    positions = await repo.last_read_seqs(db, parent_id, [user_id])
+    return positions.get(user_id, 0) >= seq
 
 
 async def on_reply_created_in_tx(db: AsyncSession, parent: Message, reply: Message) -> None:

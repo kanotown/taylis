@@ -1,5 +1,6 @@
 """PushSender: lease, backoff, expiry, invalid tokens (PUSH_NOTIFICATIONS.md §6, §7)."""
 
+import secrets
 from datetime import timedelta
 
 from fastapi import FastAPI
@@ -7,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
-from app.modules.auth.models import Device
+from app.modules.auth.models import Device, UserSession
 from app.modules.notifications.models import PushDelivery
 from app.modules.notifications.providers import FakePushProvider, PushResult
 from app.modules.notifications.sender import PushSender
@@ -22,6 +23,7 @@ async def seed(
     token: str | None = "tok",
     enabled: bool = True,
     expires_in: int = 600,
+    session_expires_in: int = 3600,
 ) -> PushDelivery:
     device = Device(
         user_id=user.id,
@@ -33,6 +35,15 @@ async def seed(
     )
     db.add(device)
     await db.flush()
+    # A device is only sent to while one of its sessions is alive (as after a real login).
+    db.add(
+        UserSession(
+            user_id=user.id,
+            device_id=device.id,
+            refresh_token_hash=secrets.token_bytes(32),
+            expires_at=utcnow() + timedelta(seconds=session_expires_in),
+        )
+    )
     delivery = PushDelivery(
         event_id=1,
         device_id=device.id,
@@ -115,11 +126,15 @@ async def test_expired_and_disabled_are_skipped_without_sending(
     user = await make_user(db, "alice")
     expired = await seed(db, user, expires_in=-1)
     disabled = await seed(db, user, token="tok2", enabled=False)
+    # The phone's session ran out (the hourly sweep has not disabled the device yet): a message
+    # it can no longer show is not sent to it (SECURITY.md §2.6).
+    logged_out = await seed(db, user, token="tok3", session_expires_in=-1)
     provider = FakePushProvider()
     await sender(app, provider).process_batch()
     assert provider.sent == []
     assert (await reload(db, expired.id)).last_error == "expired"
     assert (await reload(db, disabled.id)).last_error == "device_disabled"
+    assert (await reload(db, logged_out.id)).last_error == "session_expired"
 
 
 async def test_provider_crash_keeps_the_lease_for_a_retry(app: FastAPI, db: AsyncSession) -> None:

@@ -280,3 +280,14 @@ async def revoke_all_sessions(
     """Revoke all unrevoked sessions and disable their devices; the caller commits."""
     await users.get_user(db, user_id, for_update=True)
     return await repo.revoke_sessions(db, user_id, reason, now)
+
+
+async def has_live_session(db: AsyncSession, device_id: uuid.UUID, now: datetime) -> bool:
+    """For the push sender: a device whose sessions all expired must not get message content."""
+    return await repo.has_live_session(db, device_id, now)
+
+
+async def disable_expired_devices(db: AsyncSession, now: datetime) -> int:
+    """The hourly sweep (app.main): devices without a live session are disabled; the caller
+    commits. A new login makes a new device row, so nothing has to be re-enabled."""
+    return await repo.disable_devices_without_session(db, now)

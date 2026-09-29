@@ -144,18 +144,23 @@ async def update(db: AsyncSession, actor: User, group_id: uuid.UUID, data: Group
     if data.member_ids is not None:
         await repo.set_members(db, group.id, await _valid_members(db, data.member_ids))
     group.updated_at = utcnow()
-    await db.flush()
-    members = (await repo.member_ids_for(db, [group.id])).get(group.id, [])
-    out = await _emit(db, group, members, deleted=False)
-    await audit.record_in_tx(
-        db,
-        actor_id=actor.id,
-        action="admin.group_updated",
-        target_type="group",
-        target_id=group.id,
-        details=data.model_dump(exclude_none=True, mode="json"),
-    )
-    await db.commit()
+    try:
+        await db.flush()
+        members = (await repo.member_ids_for(db, [group.id])).get(group.id, [])
+        out = await _emit(db, group, members, deleted=False)
+        await audit.record_in_tx(
+            db,
+            actor_id=actor.id,
+            action="admin.group_updated",
+            target_type="group",
+            target_id=group.id,
+            details=data.model_dump(exclude_none=True, mode="json"),
+        )
+        await db.commit()
+    except IntegrityError as exc:
+        # The name was taken between the check above and the write (the unique index decides).
+        await db.rollback()
+        raise conflict("name_taken", "A group with that name already exists") from exc
     return out
 
 

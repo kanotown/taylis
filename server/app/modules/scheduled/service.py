@@ -10,6 +10,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta
 
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, conflict, not_found
@@ -32,6 +34,8 @@ log = logging.getLogger("app.scheduled")
 
 MIN_LEAD = timedelta(seconds=30)
 MAX_LEAD = timedelta(days=366)
+# Open rows (pending or failed and not yet dismissed) one person may have (SECURITY.md §5).
+MAX_OPEN_PER_USER = 100
 
 
 async def to_out(db: AsyncSession, row: ScheduledMessage) -> ScheduledOut:
@@ -68,10 +72,7 @@ async def create(
 ) -> ScheduledOut:
     existing = await repo.get_by_client_msg_id(db, data.client_msg_id)
     if existing is not None:
-        # A retried request: the row it created (the key is global, so check whose it is).
-        if existing.user_id != actor.id or existing.channel_id != channel_id:
-            raise conflict("idempotency_conflict", "client_msg_id was already used")
-        return await to_out(db, existing)
+        return await _retried(db, actor, channel_id, existing)
     channel, _ = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
     now = utcnow()
@@ -79,10 +80,15 @@ async def create(
         raise bad_request("send_at_too_soon", "Pick a time at least a minute ahead")
     if data.send_at > now + MAX_LEAD:
         raise bad_request("send_at_too_far", "Pick a time within a year")
+    if await repo.count_open_for_user(db, actor.id) >= MAX_OPEN_PER_USER:
+        raise conflict(
+            "too_many_scheduled", f"At most {MAX_OPEN_PER_USER} scheduled messages at a time"
+        )
     if data.parent_id is not None:
         parent = await messages.get_message(db, actor, data.parent_id)
         if parent.channel_id != channel.id or parent.parent_id is not None:
             raise bad_request("invalid_parent", "Replies go to a top-level message of the channel")
+    actor_id, channel_id = actor.id, channel.id  # instances expire on rollback
     await attachments.reserve_in_tx(db, actor.id, data.attachment_ids)
     row = ScheduledMessage(
         user_id=actor.id,
@@ -94,10 +100,29 @@ async def create(
         send_at=data.send_at,
     )
     db.add(row)
-    await db.flush()
-    await _emit(db, row)
-    await db.commit()
+    try:
+        await db.flush()
+        await _emit(db, row)
+        await db.commit()
+    except IntegrityError:
+        # The same request twice at once (a retry that overtook the first): the row the other
+        # one made is the answer, as when it had been found above.
+        await db.rollback()
+        existing = await repo.get_by_client_msg_id(db, data.client_msg_id)
+        if existing is None:
+            raise
+        actor = await users.require_user(db, actor_id)
+        return await _retried(db, actor, channel_id, existing)
     return await to_out(db, row)
+
+
+async def _retried(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, existing: ScheduledMessage
+) -> ScheduledOut:
+    """A retried request: the row it created (the key is global, so check whose it is)."""
+    if existing.user_id != actor.id or existing.channel_id != channel_id:
+        raise conflict("idempotency_conflict", "client_msg_id was already used")
+    return await to_out(db, existing)
 
 
 async def list_mine(db: AsyncSession, actor: User) -> list[ScheduledOut]:
@@ -135,12 +160,17 @@ async def send_now(db: AsyncSession, actor: User, scheduled_id: uuid.UUID) -> Me
 
 
 async def _send(db: AsyncSession, row: ScheduledMessage, user: User) -> Message:
-    data = MessageCreate(
-        client_msg_id=row.client_msg_id,
-        body=row.body,
-        parent_id=row.parent_id,
-        attachment_ids=list(row.attachment_ids or []),
-    )
+    try:
+        data = MessageCreate(
+            client_msg_id=row.client_msg_id,
+            body=row.body,
+            parent_id=row.parent_id,
+            attachment_ids=list(row.attachment_ids or []),
+        )
+    except ValidationError as exc:
+        # A row from before the body was checked at creation: failed like any other row, not a
+        # crash that would hold up every later row.
+        raise bad_request("invalid_body", "The message cannot be posted") from exc
     # Idempotent by client_msg_id: after a crash between the post and "sent", the retry finds the
     # message instead of failing on the channel's new state.
     message, _ = await messages.create_message(
@@ -157,7 +187,12 @@ async def _send(db: AsyncSession, row: ScheduledMessage, user: User) -> Message:
 
 
 async def send_due(db: AsyncSession, *, now: datetime | None = None, limit: int = 20) -> int:
-    """Posts every pending row whose time has come; a row that cannot be posted is marked failed."""
+    """Posts every pending row whose time has come; a row that cannot be posted is marked failed.
+
+    Any error stops only its own row: `due` orders by time, so a row that raised on every tick
+    would otherwise hold back every later message of everyone (nothing scheduled would ever go
+    out again until someone found the row).
+    """
     moment = now or utcnow()
     sent = 0
     # Ids are read up front: a rollback below expires the instances (and lazy loads are sync).
@@ -177,13 +212,18 @@ async def send_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
         try:
             await _send(db, row, user)
             sent += 1
-        except AppError as exc:
+        except Exception as exc:
+            if isinstance(exc, AppError):
+                error = exc.code
+                log.warning("scheduled message %s failed: %s", row_id, error)
+            else:
+                error = "send_failed"
+                log.exception("scheduled message %s failed", row_id)
             await db.rollback()
             fresh = await repo.get(db, row_id)
             if fresh is not None and fresh.status == "pending":
-                fresh.status, fresh.error, fresh.updated_at = "failed", exc.code, utcnow()
+                fresh.status, fresh.error, fresh.updated_at = "failed", error, utcnow()
                 await attachments.release_in_tx(db, list(fresh.attachment_ids or []))
                 await _emit(db, fresh)
                 await db.commit()
-            log.warning("scheduled message %s failed: %s", row_id, exc.code)
     return sent

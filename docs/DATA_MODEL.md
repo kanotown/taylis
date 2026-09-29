@@ -121,7 +121,10 @@ CREATE INDEX devices_user_enabled_idx ON devices (user_id) WHERE enabled;
 ```
 
 - ログインのたびに 1 行作る (クライアントが `platform` / `device_name` / `app_version` を送る)。
-  ログアウトやセッション失効で `enabled = false`。
+  ログアウトやセッション失効で `enabled = false`。セッションは静かに期限切れになるので、有効な (失効も期限切れも
+  していない) セッションが 1 つも無い端末は 1 時間ごとの掃除 (app.main の purge ループ) が
+  `disabled_reason = 'session_expired'` で無効にし、プッシュの送信直前にも有効なセッションを確かめる
+  (`skipped / session_expired`)。以前は期限切れの端末が有効なままで、本文入りのプッシュを受け取り続けていた (M28a)。
 - プッシュトークンは後から `PUT /devices/current` で登録・更新する。同じ `(push_provider, push_token)` が
   別の行にあれば、その行のトークンを NULL にしてから付け替える (端末を別ユーザーが使い始めた場合)。
 - 1 ユーザーが複数端末・複数トークンを持つ前提。Desktop は `push_provider = 'none'`。
@@ -236,8 +239,13 @@ CREATE TABLE read_states (
 
 - メッセージごとの既読行は作らない。ユーザー × チャンネルで 1 行。
 - 参加時に `last_read_seq = channels.last_seq` で作る (参加前のメッセージは未読にしない)。退出しても残す。
+  再参加 (join / メンバー追加) でも残った行を同じ値まで進める (`ON CONFLICT DO UPDATE` で `GREATEST`)。
+  以前は残った行がそのまま使われ、離れていた間の投稿が全部未読になっていた (M28a)。
 - 更新は常に `GREATEST(last_read_seq, $new)` で、後退しない。複数端末は `read.updated` イベントで揃える
-  (SYNC_PROTOCOL.md §10)。
+  (SYNC_PROTOCOL.md §10)。行がまだ無いときの最初の書き込みは `INSERT ... ON CONFLICT DO UPDATE` (thread_follows の
+  既読位置も同じ): 2 端末が同時に最初の 1 行を作っても主キーで衝突しない (M28a)。
+- 一覧・要約・プッシュのバッジは、チャンネルごとではなく利用者のチャンネル全部を 1 つのクエリ
+  (`VALUES` の位置表と messages の結合を channel_id で集計) で数える (`reads.counts_for_user`、M28a)。
 - 未読数はカウンタを持たず、seq の範囲から導出する (数十チャンネル × 数十人なら十分速い)。
   `channels.last_seq - last_read_seq` の引き算ではなく COUNT を使うのは、編集・リアクション・スレッド返信も
   seq を消費するため引き算では過大になるから。
@@ -326,6 +334,11 @@ CREATE INDEX scheduled_messages_user_idx ON scheduled_messages (user_id, send_at
   投稿と `sent` の間で落ちても、次回は同じ `client_msg_id` で既存メッセージが返るので二重投稿にならない。
 - 投稿できない (退出済み、アーカイブ、添付が無効) ときは `failed` + `error`。本人の各端末には `scheduled.updated`
   (audience=user) で pending / sent / failed / cancelled の変化が届く。一覧は `GET /scheduled` (pending のみ)。
+- 本文は投稿と同じ検証 (制御文字を除いて空なら `422`)。ワーカーは行ごとにあらゆる例外を捕まえ、送れない行を
+  `failed` (`error` は `invalid_body` / `send_failed` など) にして次の行へ進む。以前は予約時にだけ通る本文
+  (制御文字だけ) が送信時に例外になり、時刻順に取るワーカーがその行で毎回止まって以降の全員の予約が送られなかった (M28a)。
+  同じ `client_msg_id` の同時再送は一意制約で片方が負け、先に入った行を返す。
+- 1 人あたり pending + failed は 100 件まで (`409 too_many_scheduled`)。
 - 添付は予約時に `attachments.status = 'scheduled'` に予約し、未送信アップロードの GC から外す。取消 / 失敗で
   `deleted` に戻し、GC が実体を消す。
 
@@ -374,6 +387,8 @@ CREATE INDEX reminders_user_idx ON reminders (user_id, status, remind_at);
   を書き、PushPlanner がその行から本人の端末へ `kind = reminder` のプッシュを作る (DND 中は出さない)。
 - 一覧 `GET /reminders` は fired (新しい順) → pending (時刻順)。`DELETE /reminders/{id}` は pending なら
   `cancelled`、fired なら `done`。fired の件数はアプリのバッジに足す。
+- 1 人あたり pending + fired は 200 件まで (`409 too_many_reminders`、M28a)。一覧はこの上限で抑えられるので
+  ページングは持たない (done / cancelled は一覧にも上限にも数えない)。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 
@@ -720,6 +735,8 @@ CREATE TABLE poll_votes (
   クライアントは本文がこの `📊 質問` のままなら本文を出さない (投票のカードが質問を出すので、同じ質問が 2 回続いていた)。
 - `PUT/DELETE /messages/{id}/poll/votes/{index}` は reactions と同じ扱い: 変化があれば seq を 1 つ消費して
   `updated_seq` を進め、`message.updated` (`change = poll`) で全員に届く。単一選択は前の票を動かす。
+  投票は先にチャンネル行をロックしてから今の票を読む (`allocate_seq` と同じロック順なので返信と行き違わない)。
+  2 端末の同時投票が互いの票を見ずに単一選択に 2 票残していた (M28a)。
 - `POST /messages/{id}/poll/close` (投稿者だけ。admin も他人の投票は締め切れない、2026-09-29 テスターの要望) で `closed_at` を入れ、以後の投票は `409 poll_closed`。
 - 匿名 (M27、作成時の `poll.anonymous`、後から変えない): 誰が投票したかを誰にも見せない (投稿者・admin にも)。
   `PollOut.votes` は選択肢ごとに空の配列、`counts` が件数。票のテーブルは記名と同じ (同じ人が 2 回投票しないため)。
@@ -819,6 +836,8 @@ CREATE INDEX outbox_events_pending_idx ON outbox_events (id) WHERE processed_at 
   Relay が後から読み直すと、その間の変更で状態が変わり得るため。
 - 処理済み行は 7 日後に周期ジョブが削除する (デバッグ用に短期間残す)。
 - `attempts` が 10 を超えた行はスキップしてログに出す (poison event でリレーが止まらないようにする)。
+  そうした行は処理済みと同じ保持期間 (7 日) の後に削除し、`/readyz` では `outbox_pending` に数えず
+  `outbox_failed` として別に出す (以前は永遠に残り、pending として数えられ続けた。M28a)。
 
 ### push_deliveries
 

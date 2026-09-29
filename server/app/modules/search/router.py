@@ -1,3 +1,4 @@
+from typing import get_args
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -22,7 +23,8 @@ async def search_messages(
     from_user_id: UUID | None = None,
     after: AwareDatetime | None = None,
     before: AwareDatetime | None = None,
-    has: list[HasFlag] = Query(default=[]),
+    # One of each flag at most (the model's own limit; past it the request is a 422, not a 500).
+    has: list[HasFlag] = Query(default=[], max_length=len(get_args(HasFlag))),
     is_thread: bool = False,
     sort: SearchSort = "relevance",
     tz_offset_minutes: int = Query(default=0, ge=-840, le=840),

@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterator
-from typing import Any, Protocol
+from typing import IO, Any, Protocol
 
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
@@ -14,7 +14,10 @@ CHUNK = 256 * 1024
 class BlobStore(Protocol):
     async def ensure_bucket(self) -> None: ...
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+    async def put(self, key: str, data: bytes | IO[bytes], content_type: str) -> None:
+        """Store an object from bytes or from a file positioned at its start (an upload spooled
+        to a temporary file is handed over without being read into memory)."""
+        ...
 
     def stream(self, key: str) -> AsyncIterator[bytes]: ...
 
@@ -32,8 +35,8 @@ class MemoryBlobStore:
     async def ensure_bucket(self) -> None:
         return None
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        self.objects[key] = (data, content_type)
+    async def put(self, key: str, data: bytes | IO[bytes], content_type: str) -> None:
+        self.objects[key] = (data if isinstance(data, bytes) else data.read(), content_type)
 
     async def stream(self, key: str) -> AsyncIterator[bytes]:
         data, _ = self.objects[key]
@@ -84,7 +87,8 @@ class S3BlobStore:
 
         await run_in_threadpool(work)
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put(self, key: str, data: bytes | IO[bytes], content_type: str) -> None:
+        # boto3 reads a seekable file object as it sends it (and measures it by seeking).
         await run_in_threadpool(
             lambda: self.client.put_object(
                 Bucket=self.bucket, Key=key, Body=data, ContentType=content_type

@@ -17,7 +17,7 @@ from app.core.errors import AppError, bad_request, not_found
 from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES
+from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, open_checked
 from app.modules.users import service as users
 from app.modules.users.models import User
 
@@ -27,7 +27,7 @@ READ_CHUNK = 64 * 1024
 
 def _square_png(data: bytes) -> bytes:
     """Centre-cropped to a square, 256px, re-encoded as PNG (so no metadata survives)."""
-    with Image.open(io.BytesIO(data)) as image:
+    with open_checked(data) as image:  # the pixel count is checked before anything decodes
         upright = ImageOps.exif_transpose(image) or image
         rgba = upright.convert("RGBA")
     side = min(rgba.size)
@@ -66,6 +66,8 @@ async def upload(
         raise bad_request("avatar_not_image", "Use a PNG, GIF, JPEG or WebP image")
     try:
         png = await run_in_threadpool(_square_png, data)
+    except ImageTooLarge as exc:
+        raise AppError(422, "image_too_large", "The image has too many pixels") from exc
     except Exception as exc:
         raise bad_request("avatar_not_image", "The image could not be read") from exc
     key = f"avatars/{actor.id}/{uuid7()}"
