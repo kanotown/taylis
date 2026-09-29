@@ -465,6 +465,8 @@ struct ChannelInfoView: View {
 /// Profile (display name), password change and logout.
 struct SettingsView: View {
     @Bindable var controller: AppController
+    /// M34: the 自分 tab's page (no 「閉じる」); a sheet otherwise.
+    var embedded = false
     @Environment(\.dismiss) private var dismiss
     @State private var displayName = ""
     @State private var title = ""
@@ -658,9 +660,9 @@ struct SettingsView: View {
                     }
                 }
             }
-            .navigationTitle("設定")
+            .navigationTitle(embedded ? "自分" : "設定")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } }
+            .toolbar { if !embedded { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } } } }
             .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
             .sheet(item: $totpSheet) { sheet in
                 switch sheet {

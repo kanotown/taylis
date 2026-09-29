@@ -7,6 +7,8 @@ struct ThreadsListView: View {
 
     @Bindable var controller: AppController
     @State private var target: Target?
+    /// M34: inside the activity tab, whose title it keeps.
+    var embedded = false
 
     private struct Target: Identifiable, Hashable {
         let id: String
@@ -47,7 +49,7 @@ struct ThreadsListView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("スレッド")
+        .navigationTitle(embedded ? "アクティビティ" : "スレッド")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: controller.engine?.status) { await controller.engine?.loadThreads(filter: store.threadsFilter) }
         .refreshable { await controller.engine?.loadThreads(filter: store.threadsFilter) }
