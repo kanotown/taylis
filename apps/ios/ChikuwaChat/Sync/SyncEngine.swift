@@ -438,6 +438,7 @@ final class SyncEngine {
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
+        store.replaceTemplates(bootstrap.templates ?? [])
         store.replaceGroups(bootstrap.groups ?? [])
         store.replaceRoster(bootstrap.roster ?? [])
         store.replaceSidebar(bootstrap.sidebarSections ?? [])
@@ -531,6 +532,10 @@ final class SyncEngine {
             struct Payload: Decodable { let emoji: CustomEmojiOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyCustomEmoji(payload.emoji, deleted: payload.deleted)
+        case "template.updated":  // M30
+            struct Payload: Decodable { let template: TemplateOut; let deleted: Bool }
+            let payload = try frame.data.decode(Payload.self)
+            store.applyTemplate(payload.template, deleted: payload.deleted)
         case "channel.links_updated":
             struct Payload: Decodable { let channelId: String; let links: [ChannelLinkOut] }
             let payload = try frame.data.decode(Payload.self)

@@ -327,6 +327,8 @@ final class Store {
     var reminders: [String: ReminderOut] = [:]
     /// Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched.
     var customEmoji: [String: CustomEmojiOut] = [:]
+    /// Post templates (M30): the workspace's and mine; from bootstrap and template.updated.
+    var templates: [TemplateOut] = []
     var emojiImages: [String: UIImage] = [:]
     /// The frames of the animated ones (GIF), by id; their first frame is in `emojiImages`.
     var emojiAnimations: [String: EmojiAnimation] = [:]
@@ -587,6 +589,17 @@ final class Store {
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+    }
+
+    // MARK: post templates (M30)
+
+    func replaceTemplates(_ rows: [TemplateOut]) {
+        templates = rows
+    }
+
+    func applyTemplate(_ row: TemplateOut, deleted: Bool) {
+        templates.removeAll { $0.id == row.id }
+        if !deleted { templates.append(row) }
     }
 
     // MARK: sidebar sections (M14f)

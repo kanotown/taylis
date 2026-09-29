@@ -383,6 +383,8 @@ struct BootstrapOut: Codable {
     var favorites: [String]? = nil
     /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
     var customEmoji: [CustomEmojiOut]? = nil
+    /// Post templates (M30): the workspace's, then mine; changes arrive as template.updated.
+    var templates: [TemplateOut]? = nil
     /// User groups (M12k): every group with its members; changes arrive as group.updated.
     var groups: [GroupOut]? = nil
     /// The lab roster (M23) in roster order; changes arrive as roster.updated. Missing from older servers.
@@ -499,6 +501,19 @@ struct CustomEmojiOut: Codable, Identifiable, Equatable, Hashable {
     let height: Int
     let createdBy: String
     let createdAt: String
+}
+
+/// A post template (M30, DATA_MODEL.md message_templates): the workspace's (scope "workspace") or my own ("user").
+struct TemplateOut: Codable, Identifiable, Equatable, Hashable {
+    let id: String
+    let scope: String
+    var ownerId: String? = nil
+    let name: String
+    let body: String
+    let suggestIn: String
+    let position: Int
+    let createdAt: String
+    let updatedAt: String
 }
 
 /// PUT / DELETE /channels/{id}/favorite (M12a).

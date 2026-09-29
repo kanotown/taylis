@@ -1190,8 +1190,9 @@ struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showCamera = false
     @State private var showEmojiPicker = false
-    /// 「アンケートを作成」: from the ＋ menu, or `/poll` sent alone.
+    /// 「アンケートを作成」: from the ＋ menu, or `/poll` sent alone; `/日程` alone fills it in first (M30).
     @State private var showPollForm = false
+    @State private var pollPreset: Templates.Schedule?
     @State private var showSchedule = false
     @State private var showCustomSchedule = false
     @State private var customSendAt = Date().addingTimeInterval(3600)
@@ -1206,6 +1207,21 @@ struct ComposerView: View {
     private var commandHits: [SlashCommands.Command] {
         guard candidates.isEmpty, emojiCandidates.isEmpty else { return [] }
         return SlashCommands.candidates(text)
+    }
+    /// M30: then the templates whose name starts so.
+    private var templateHits: [TemplateOut] {
+        guard candidates.isEmpty, emojiCandidates.isEmpty, let prefix = SlashCommands.typedPrefix(text), let controller else { return [] }
+        return Templates.candidates(prefix: prefix, in: controller.store.templates, inTimes: inTimes)
+    }
+    private var inTimes: Bool { controller?.store.channel(channelId)?.channel.isTimes ?? false }
+    private var templates: [TemplateOut] { Templates.ordered(controller?.store.templates ?? [], inTimes: inTimes) }
+
+    /// M30: a template into the input, its date put in (DATA_MODEL.md message_templates); nothing is sent.
+    private func insertTemplate(_ template: TemplateOut, replacing: Bool = false, after rest: String = "") {
+        let body = Templates.expand(template.body, today: .today())
+        var value = replacing ? body : Templates.inserted(body, into: text)
+        if !rest.isEmpty { value += "\n" + rest }
+        setText(value, selecting: value.count..<value.count)
     }
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
@@ -1290,9 +1306,24 @@ struct ComposerView: View {
     private func send() {
         if let command = SlashCommands.parse(trimmed) {  // M13b
             guard let controller else { return }
-            if !command.known { controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"; return }
+            if !command.known {
+                // M30: `/日報` puts the template into the input instead (`/日報 文` keeps the words after it).
+                if let template = Templates.named(command.name, in: controller.store.templates) {
+                    insertTemplate(template, replacing: true, after: command.args)
+                    return
+                }
+                controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"
+                return
+            }
             if command.name == "poll" && command.args.isEmpty {  // the form instead of the syntax
                 controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
+                pollPreset = nil
+                showPollForm = true
+                return
+            }
+            if command.name == "日程" && command.args.isEmpty {  // M30: the form, with the next weekdays
+                controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
+                pollPreset = Templates.Schedule(question: "日程調整", options: Templates.nextWeekdays(after: .today()))
                 showPollForm = true
                 return
             }
@@ -1331,7 +1362,8 @@ struct ComposerView: View {
             Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
             if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
             Button("ファイル", systemImage: "folder") { showFileImporter = true }
-            Button("アンケート", systemImage: "chart.bar.doc.horizontal") { showPollForm = true }
+            Button("アンケート", systemImage: "chart.bar.doc.horizontal") { pollPreset = nil; showPollForm = true }
+            if !typing && !templates.isEmpty { templateMenu }
             if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
             if parentId == nil {
                 Divider()
@@ -1375,6 +1407,12 @@ struct ComposerView: View {
             }
             .accessibilityLabel("書式")
             toolButton("clock", label: "後で送信") { showSchedule = true }.disabled(!canSend)
+            if !templates.isEmpty {
+                Menu { templateItems } label: {
+                    Image(systemName: "doc.text").font(.system(size: 20)).frame(width: 36, height: 36)
+                }
+                .accessibilityLabel("テンプレート")
+            }
             Spacer()
             if uploading > 0 {
                 ProgressView().controlSize(.small).frame(width: 36, height: 36)
@@ -1386,6 +1424,18 @@ struct ComposerView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// M30: the templates, the workspace's then mine (those for times first in a times channel).
+    @ViewBuilder
+    private var templateItems: some View {
+        ForEach(templates) { template in
+            Button(template.scope == "user" ? "\(template.name) (個人)" : template.name) { insertTemplate(template) }
+        }
+    }
+
+    private var templateMenu: some View {
+        Menu { templateItems } label: { Label("テンプレート", systemImage: "doc.text") }
     }
 
     private func toolButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1498,12 +1548,22 @@ struct ComposerView: View {
                 }
                 .padding(.top, 6)
             }
-            if !commandHits.isEmpty {
+            if !commandHits.isEmpty || !templateHits.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(commandHits) { command in
                             Button { textBinding.wrappedValue = "/" + command.name + " " } label: {
                                 Text(command.usage).fontWeight(.semibold) + Text("  \(command.description)").foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        // M30: a template goes into the input at once.
+                        ForEach(templateHits) { template in
+                            Button { insertTemplate(template, replacing: true) } label: {
+                                Text("/" + template.name).fontWeight(.semibold)
+                                    + Text("  \(template.scope == "user" ? "個人 · " : "")\(Templates.summary(template.body))").foregroundStyle(.secondary)
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)
@@ -1553,7 +1613,14 @@ struct ComposerView: View {
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
         }
         .sheet(isPresented: $showPollForm) {
-            if let controller { PollFormView(controller: controller, channelId: channelId, parentId: parentId) }
+            if let controller {
+                if let preset = pollPreset {
+                    PollFormView(controller: controller, channelId: channelId, parentId: parentId, question: preset.question,
+                                 options: preset.options, multiple: true)
+                } else {
+                    PollFormView(controller: controller, channelId: channelId, parentId: parentId)
+                }
+            }
         }
         // Videos too (testers, 2026-09-29: they were not in the list at all).
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))
