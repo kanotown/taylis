@@ -86,7 +86,7 @@ describe("choosing a template (DATA_MODEL.md message_templates)", () => {
     expect(appendTemplate("書きかけ\n", "本文")).toBe("書きかけ\n\n本文");
     expect(templateWithText("本文", "")).toBe("本文");
     expect(templateWithText("本文", "追記")).toBe("本文\n追記");
-    expect(templateSummary("\n  \n**日報 {date}**\n- ")).toBe("**日報 {date}**");
+    expect(templateSummary("\n  \n**日報 {date}**\n- ")).toBe("日報 {date}");
   });
 
   it("loads templates from bootstrap and follows template.updated", async () => {

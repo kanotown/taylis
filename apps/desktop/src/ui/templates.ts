@@ -206,7 +206,7 @@ export function templateCandidates(text: string, ordered: readonly TemplateOut[]
   return ordered.filter((t) => key(t.name).startsWith(prefix));
 }
 
-/** The first line with text: what the lists show under a template's name. */
+/** The first line with text, without its bold marks: what the lists show under a template's name (as on iOS / Android). */
 export function templateSummary(body: string): string {
-  return body.split("\n").find((line) => line.trim())?.trim() ?? "";
+  return (body.split("\n").find((line) => line.trim())?.trim() ?? "").replaceAll("**", "");
 }
