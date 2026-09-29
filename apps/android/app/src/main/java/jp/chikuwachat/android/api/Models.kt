@@ -146,11 +146,12 @@ data class NotificationPreferenceOut(
     val channelId: String,
     val level: String,
     val mutedUntil: String? = null,
-    val followsDefault: Boolean = true,
+    /** Absent from servers before M35: their `level` is then the channel's own (a "none" stays muted, as before). */
+    val followsDefault: Boolean? = null,
     val muted: Boolean = false,
 ) {
     /** The channel's own level, null when it follows the overall setting (the unread rules take this one, §10.5). */
-    val ownLevel: String? get() = if (followsDefault) null else level
+    val ownLevel: String? get() = if (followsDefault == true) null else level
 }
 
 /**

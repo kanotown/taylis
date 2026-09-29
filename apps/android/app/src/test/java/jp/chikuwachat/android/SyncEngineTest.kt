@@ -306,7 +306,7 @@ class SyncEngineTest {
         w.server.emitNotificationPreference(w.bob, NotificationPreferenceOut(w.channelId, "all", null, followsDefault = true, muted = true)); settle(w.engine)
         val pref = w.store.channel(w.channelId)!!.channel.notification!!
         assertTrue(pref.muted)
-        assertTrue(pref.followsDefault)
+        assertEquals(true, pref.followsDefault)
         assertTrue(jp.chikuwachat.android.ui.Channels.isMuted(w.store.channel(w.channelId)!!))
         w.server.post(w.channelId, w.alice, "hey <@${w.bob}>"); settle(w.engine)
         assertEquals(listOf("plain"), w.notifications)

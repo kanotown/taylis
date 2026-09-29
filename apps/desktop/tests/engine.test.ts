@@ -480,10 +480,10 @@ describe("edits, deletions, reactions and mentions (M8a)", () => {
     expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: null, muted: false });
   });
 
-  it("M35: an event from an older server (no follows_default / muted) follows the default, unmuted", async () => {
+  it("M35: an older server's preference (no follows_default / muted) is the conversation's own level, unmuted", async () => {
     const { channel, store } = await setup();
     store.upsertChannel({ ...channel, notification: { channel_id: channel.id, level: "none", muted_until: null } as never }, { isMember: true });
-    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: null, muted: false });
+    expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: "none", muted: false });
     store.applyNotificationPreference({ channel_id: channel.id, level: "all", follows_default: false, muted: true });
     expect(store.getChannel(channel.id)).toMatchObject({ notificationLevel: "all", muted: true, mutedUntil: null });
   });
