@@ -241,6 +241,8 @@ class Store(private val persistence: Persistence? = null) {
     /** Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched. */
     val customEmoji = LinkedHashMap<String, CustomEmojiOut>()
     val emojiImages = HashMap<String, ImageBitmap>()
+    /** The frames of the animated ones (GIF), by id; their first frame is in [emojiImages]. */
+    val emojiAnimations = HashMap<String, jp.chikuwachat.android.ui.EmojiAnimation>()
     /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
     val groups = LinkedHashMap<String, GroupOut>()
     /** The lab roster (M23) by user id; from bootstrap and roster.updated, not persisted (like groups). Order: ui/Roster.kt. */
@@ -607,8 +609,9 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
-    fun setEmojiImage(id: String, image: ImageBitmap) {
+    fun setEmojiImage(id: String, image: ImageBitmap, animation: jp.chikuwachat.android.ui.EmojiAnimation? = null) {
         emojiImages[id] = image
+        if (animation != null) emojiAnimations[id] = animation
         emit()
     }
 

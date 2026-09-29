@@ -57,6 +57,7 @@ struct ThreadView: View {
                             .padding()
                             .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
                             .background(ScrollViewProbe.Marker(probe: scroller))
+                            .background(StatusBarTapStays())
                         }
                         .coordinateSpace(name: "threadViewport")
                         .dismissesKeyboardOnTap()

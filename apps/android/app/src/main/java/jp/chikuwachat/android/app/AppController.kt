@@ -981,8 +981,10 @@ class AppController(private val app: Application) {
         scope.launch {
             try {
                 val bytes = fetchBytes("/api/v1/emoji/${emoji.id}/image")
-                val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-                if (bitmap != null) store.setEmojiImage(emoji.id, bitmap)
+                val (bitmap, animation) = withContext(Dispatchers.Default) {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() to jp.chikuwachat.android.ui.EmojiAnimation.decode(bytes)
+                }
+                if (bitmap != null) store.setEmojiImage(emoji.id, bitmap, animation)
             } catch (_: Exception) {
                 // the text form stays; a later render retries
             } finally { emojiLoads.remove(emoji.id) }

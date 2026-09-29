@@ -63,6 +63,8 @@ fun MessageBody(
     /** M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one. */
     customEmoji: Map<String, CustomEmojiOut> = emptyMap(),
     emojiImages: Map<String, ImageBitmap> = emptyMap(),
+    /** The animated ones' frames (GIF), shown moving. */
+    emojiAnimations: Map<String, EmojiAnimation> = emptyMap(),
     onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
     /** M12k: user groups by id, for `<@group:id>`. */
     groups: Map<String, GroupOut> = emptyMap(),
@@ -87,7 +89,7 @@ fun MessageBody(
                         val key = "emoji:" + emoji.id
                         // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
                         inlineContent[key] = InlineTextContent(Placeholder(1.25.em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
-                            Image(image, contentDescription = ":${piece.name}:", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                            EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
                         }
                         appendInlineContent(key, ":${piece.name}:")
                     }

@@ -474,6 +474,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 rm -rf /srv/chikuwachat/import
 ```
 
+大きなカスタム絵文字 (512 px か 256 KB を超えるもの) は縮めて取り込む。動く GIF は動く GIF のまま 128 / 96 / 64 px に縮める
+(以前の版は最初の 1 コマの PNG にしていた)。以前の版で取り込んだ絵文字を動くようにするには、同じコマンドに
+`--refresh-emoji` を付けて実行する (取り込み済みの絵文字の画像を Mattermost から読み直す。投稿などは増えた分だけ足す)。
+開いているアプリは再起動すると新しい画像になる。
+
 `--actor` は実行する管理者 (監査ログと、作成者が分からない行の作成者になる)。結果には人の対応付け
 (`@kanotown → @kano (--user)` など)、件数 (`posts`、`replies`、`files`、`files_missing` など)、警告 (見つからない
 ファイル、名前の変更など) が出る。`files_over_upload_limit` はアップロードの上限を超えるが読み込んだファイルの数。

@@ -5,6 +5,8 @@ struct EmojiPickerView: View {
     /// M12f: custom emoji shown under 「カスタム」 and found by name; a pick hands back `:name:`.
     var custom: [CustomEmojiOut] = []
     var images: [String: UIImage] = [:]
+    /// The animated ones' frames (GIF), shown moving.
+    var animations: [String: EmojiAnimation] = [:]
     var onNeedImage: ((CustomEmojiOut) -> Void)? = nil
     let onPick: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -49,7 +51,7 @@ struct EmojiPickerView: View {
         Button { pick(":\(emoji.name):") } label: {
             Group {
                 if let image = images[emoji.id] {
-                    Image(uiImage: image).resizable().scaledToFit()
+                    EmojiImage(still: image, animation: animations[emoji.id])
                 } else {
                     ProgressView().controlSize(.mini)
                 }

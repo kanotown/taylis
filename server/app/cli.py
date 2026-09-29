@@ -335,6 +335,7 @@ async def _import_mattermost(args: argparse.Namespace) -> int:
                     blobs=build_blobstore(settings),
                     settings=settings,
                     dry_run=args.dry_run,
+                    refresh_emoji=args.refresh_emoji,
                 )
             except (ImportFailed, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)
@@ -427,6 +428,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mm_import.add_argument("--actor", required=True, help="the administrator running the import")
     mm_import.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
+    mm_import.add_argument(
+        "--refresh-emoji",
+        action="store_true",
+        help="read emoji imported before again (an animated GIF stored as its first frame moves)",
+    )
     mm_import.set_defaults(func=cmd_import_mattermost)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")

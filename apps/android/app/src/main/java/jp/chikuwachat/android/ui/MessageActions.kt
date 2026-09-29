@@ -199,7 +199,7 @@ fun ReactionChips(
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 if (image != null) {
-                    androidx.compose.foundation.Image(image, contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
+                    EmojiImage(image, custom?.let { store.emojiAnimations[it.id] }, contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
                     Text(" ${reaction.count}", style = MaterialTheme.typography.labelLarge)
                 } else {
                     Text("${reaction.emoji} ${reaction.count}", style = MaterialTheme.typography.labelLarge)

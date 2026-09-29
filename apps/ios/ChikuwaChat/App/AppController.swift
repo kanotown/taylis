@@ -649,8 +649,10 @@ final class AppController {
         emojiLoads.insert(emoji.id)
         Task {
             defer { emojiLoads.remove(emoji.id) }
-            guard let data = try? await api.fetchData("/api/v1/emoji/\(emoji.id)/image"), let image = UIImage(data: data) else { return }
-            store.emojiImages[emoji.id] = CustomEmoji.inlineImage(image)
+            guard let data = try? await api.fetchData("/api/v1/emoji/\(emoji.id)/image"),
+                  let decoded = await Task.detached(operation: { CustomEmoji.decode(data) }).value else { return }
+            if let animation = decoded.animation { store.emojiAnimations[emoji.id] = animation }
+            store.emojiImages[emoji.id] = decoded.still
         }
     }
 

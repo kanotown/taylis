@@ -11,7 +11,7 @@ struct SectionIcon: View {
             Group {
                 if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
                     if let image = controller.store.emojiImages[custom.id] {
-                        Image(uiImage: image).resizable().scaledToFit().frame(width: size, height: size)
+                        EmojiImage(still: image, animation: controller.store.emojiAnimations[custom.id]).frame(width: size, height: size)
                     } else {
                         Text(emoji).font(.system(size: size * 0.6)).lineLimit(1).onAppear { controller.loadEmojiImage(custom) }
                     }
@@ -106,7 +106,7 @@ struct SectionFormView: View {
                 }
             }
             .sheet(isPresented: $picking) {
-                EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages,
+                EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
                                 onNeedImage: { controller.loadEmojiImage($0) }) { glyph in emoji = glyph }
             }
         }

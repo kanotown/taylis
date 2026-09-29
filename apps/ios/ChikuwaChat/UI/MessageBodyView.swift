@@ -230,9 +230,34 @@ struct MessageBodyView: View {
     /// M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one.
     var customEmoji: [String: CustomEmojiOut] = [:]
     var emojiImages: [String: UIImage] = [:]
+    /// The animated ones' frames by id: a body with one of them is drawn again as its frames change (GIF).
+    var emojiAnimations: [String: EmojiAnimation] = [:]
     var onNeedEmojiImage: ((CustomEmojiOut) -> Void)? = nil
 
+    /// The animated custom emoji in this text, by id.
+    private var animatedHere: [String: EmojiAnimation] {
+        guard !emojiAnimations.isEmpty, text.contains(":") else { return [:] }
+        var found: [String: EmojiAnimation] = [:]
+        for case .emoji(let name) in CustomEmoji.split(text, known: { customEmoji[$0] != nil }) {
+            if let id = customEmoji[name]?.id, let animation = emojiAnimations[id] { found[id] = animation }
+        }
+        return found
+    }
+
     var body: some View {
+        let animated = animatedHere
+        if animated.isEmpty {
+            blocks
+        } else {
+            TimelineView(.animation(minimumInterval: 0.04)) { context in
+                var moment = self
+                let _ = animated.forEach { id, animation in moment.emojiImages[id] = animation.frame(at: context.date.timeIntervalSinceReferenceDate) }
+                moment.blocks
+            }
+        }
+    }
+
+    private var blocks: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(BodyTokenizer.parseBlocks(text).enumerated()), id: \.offset) { _, block in
                 blockView(block)
