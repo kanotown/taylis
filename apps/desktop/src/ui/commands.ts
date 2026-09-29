@@ -23,6 +23,7 @@ export const COMMANDS: readonly SlashCommand[] = [
   { name: "me", usage: "/me 文", description: "動作を斜体で投稿" },
   { name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿" },
   { name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "アンケートを作る (/poll だけでフォームを開く)" },
+  { name: "日程", usage: "/日程 [質問] 日付 …", description: "日付を選択肢にした複数選択の投票 (/日程 だけでフォームを開く)" },
   { name: "help", usage: "/help", description: "コマンド一覧" },
 ];
 
@@ -32,19 +33,23 @@ export interface ParsedCommand {
   known: boolean;
 }
 
+/** A command's (or a template's, M30) name: letters of any script, digits, `_` and `-` (`/日報`, `/日程`). */
+const COMMAND = /^\/([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$/u;
+const COMMAND_PREFIX = /^\/([\p{L}\p{N}_-]*)$/u;
+
 /** `/name args` at the start of the text; null when the text is not a command at all. */
 export function parseSlashCommand(text: string): ParsedCommand | null {
-  const match = /^\/([a-z]+)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+  const match = COMMAND.exec(text.trim());
   if (!match) return null;
-  const name = match[1]!.toLowerCase();
+  const name = match[1]!.normalize("NFC").toLowerCase();
   return { name, args: (match[2] ?? "").trim(), known: COMMANDS.some((c) => c.name === name) };
 }
 
 /** Commands whose name starts with what was typed (`/`, `/st` …); empty once a space follows. */
 export function commandCandidates(text: string): SlashCommand[] {
-  const match = /^\/([a-z]*)$/i.exec(text);
+  const match = COMMAND_PREFIX.exec(text);
   if (!match) return [];
-  const prefix = match[1]!.toLowerCase();
+  const prefix = match[1]!.normalize("NFC").toLowerCase();
   return COMMANDS.filter((c) => c.name.startsWith(prefix));
 }
 

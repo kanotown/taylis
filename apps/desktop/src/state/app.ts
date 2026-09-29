@@ -10,9 +10,10 @@ import { configureAvatars, noteVersions } from "../ui/avatars";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
+import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1386,6 +1387,62 @@ export class AppController {
     }
   }
 
+  // --- post templates (M30) -----------------------------------------------------------------
+
+  /** Adds a template (mine, or the workspace's for an admin); the row, or null when refused (the toast says why). */
+  async createTemplate(body: TemplateCreate): Promise<TemplateOut | null> {
+    if (!this.api) return null;
+    try {
+      const row = await this.api.createTemplate(body);
+      this.store.applyTemplate(row, false); // template.updated confirms on every device
+      return row;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async updateTemplate(templateId: string, patch: TemplateUpdate): Promise<TemplateOut | null> {
+    if (!this.api) return null;
+    try {
+      const row = await this.api.updateTemplate(templateId, patch);
+      this.store.applyTemplate(row, false);
+      return row;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async deleteTemplate(templateId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.deleteTemplate(templateId);
+      const row = this.store.templates.get(templateId);
+      if (row) this.store.applyTemplate(row, true);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /**
+   * Moves a template one place up or down among `rows` (one scope, in their order): every row whose position is not
+   * its place yet gets it, so rows that shared a position (all 0) end up in a clear order.
+   */
+  async moveTemplate(rows: readonly TemplateOut[], templateId: string, step: -1 | 1): Promise<boolean> {
+    const from = rows.findIndex((row) => row.id === templateId);
+    const to = from + step;
+    if (from < 0 || to < 0 || to >= rows.length) return false;
+    const order = [...rows];
+    [order[from], order[to]] = [order[to]!, order[from]!];
+    for (const [index, row] of order.entries()) {
+      if (row.position !== index && !(await this.updateTemplate(row.id, { position: index }))) return false;
+    }
+    return true;
+  }
+
   // --- slash commands (M13b) ---------------------------------------------------------------
 
   /** A conversation a command asked for (/join, /dm); the main screen opens it and clears this. */
@@ -1416,9 +1473,13 @@ export class AppController {
     };
     const level = channel.notificationLevel ?? (isDm ? "all" : "mentions");
     switch (command.name) {
-      case "help":
-        this.setNotice(COMMANDS.map((c) => c.usage).join(" · "));
+      case "help": {
+        // M30: the templates too, after the commands.
+        const templates = orderTemplates(this.store.templates.values()).map((t) => `/${t.name}`);
+        const names = [...new Set(templates)];
+        this.setNotice(COMMANDS.map((c) => c.usage).join(" · ") + (names.length > 0 ? ` · テンプレート: ${names.join(" ")}` : ""));
         return true;
+      }
       case "status": {
         if (!command.args || command.args === "clear") {
           const cleared = await this.updateProfile({ status_text: null, status_emoji: null, status_expires_at: null });
@@ -1527,6 +1588,15 @@ export class AppController {
           return false;
         }
         return this.createPoll(channel.id, parentId, parts[0]!, parts.slice(1), false);
+      }
+      case "日程": {
+        // M30: dates as the options of a multiple-choice poll (`/日程` alone opens the form, in the composer).
+        const schedule = parseSchedule(command.args);
+        if (!schedule) {
+          this.setError(SCHEDULE_USAGE);
+          return false;
+        }
+        return this.createPoll(channel.id, parentId, schedule.question, schedule.options, true);
       }
     }
     return false;

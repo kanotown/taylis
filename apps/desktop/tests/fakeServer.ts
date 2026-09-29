@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut } from "../src/api/types";
+import type { BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -568,6 +568,16 @@ export class FakeServer {
     return row;
   }
 
+  /** M30: post templates by id (bootstrap `templates`, template.updated: the workspace's to all, one's own to them). */
+  readonly templates = new Map<string, TemplateOut>();
+
+  emitTemplate(row: TemplateOut, deleted: boolean): void {
+    if (deleted) this.templates.delete(row.id);
+    else this.templates.set(row.id, row);
+    const audience = row.scope === "workspace" ? new Set(this.users.keys()) : new Set([row.owner_id!]);
+    this.emit(audience, { type: "event", id: ++this.eventId, event: "template.updated", ts: now(), channel_id: null, seq: null, data: { template: row, deleted } });
+  }
+
   /** M23: the lab roster by user id (bootstrap `roster`, roster.updated). */
   readonly roster = new Map<string, LabProfileOut>();
 
@@ -760,7 +770,7 @@ export class FakeServer {
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           custom_emoji: [...this.customEmoji.values()],
-          templates: [],
+          templates: [...this.templates.values()].filter((t) => t.scope === "workspace" || t.owner_id === userId),
           groups: [],
           roster: [...this.roster.values()],
           sidebar_sections: [],

@@ -11,6 +11,7 @@ import { StatusEmoji, UserPopover } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 import { type SendKey } from "./prefs";
 import { compareByRoster, rosterLabel } from "./roster";
+import { TemplatesSettings } from "./TemplatesSettings";
 import { isTauri } from "../platform/env";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
@@ -536,6 +537,7 @@ export function SettingsDialog({ controller, onClose, onStatus }: { controller: 
             ))}
           </div>
         </div>
+        <TemplatesSettings controller={controller} />
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">通知</h3>
           <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">

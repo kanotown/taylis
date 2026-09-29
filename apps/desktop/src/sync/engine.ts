@@ -5,7 +5,7 @@
  */
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
-import type { BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -520,6 +520,7 @@ export class SyncEngine {
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceRoster(bootstrap.roster ?? []);
     store.replaceGroups(bootstrap.groups ?? []);
+    store.replaceTemplates(bootstrap.templates ?? []);
     store.replaceSidebar(bootstrap.sidebar_sections ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     void this.loadScheduled();
@@ -656,6 +657,11 @@ export class SyncEngine {
       case "sidebar.updated": {
         const data = frame.data as { sections: SidebarSectionOut[] };
         store.replaceSidebar(data.sections);
+        return;
+      }
+      case "template.updated": {
+        const data = frame.data as { template: TemplateOut; deleted: boolean };
+        store.applyTemplate(data.template, data.deleted);
         return;
       }
       case "group.updated": {
