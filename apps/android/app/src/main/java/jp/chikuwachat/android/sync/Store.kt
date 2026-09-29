@@ -316,21 +316,29 @@ class Store(private val persistence: Persistence? = null) {
     /** M15d: told about every local text change (the engine saves it on the server a moment later). */
     var onDraftEdited: ((channelId: String, parentId: String?) -> Unit)? = null
 
-    fun setDraft(channelId: String, parentId: String? = null, mutate: (Draft) -> Draft) {
+    /**
+     * `quiet` (M28c): the composer writes each keystroke through without a version bump (which recomposed the whole
+     * screen); it shows the text from its own state and bumps the version itself when it leaves ([notifyChanged]).
+     * Everything else about the draft (persisted, dirty, the sync's save after the pause) is the same.
+     */
+    fun setDraft(channelId: String, parentId: String? = null, quiet: Boolean = false, mutate: (Draft) -> Draft) {
         val previous = draft(channelId, parentId)
         var value = mutate(previous)
         val edited = value.text != previous.text
         if (edited) value = value.copy(dirty = true)
-        writeDraft(draftKey(channelId, parentId), value)
+        writeDraft(draftKey(channelId, parentId), value, quiet)
         if (edited) onDraftEdited?.invoke(channelId, parentId)
     }
 
-    private fun writeDraft(key: String, value: Draft) {
+    private fun writeDraft(key: String, value: Draft, quiet: Boolean = false) {
         val keep = value.text.isNotEmpty() || value.attachments.isNotEmpty() || value.dirty
         if (keep) drafts[key] = value else drafts.remove(key)
         persist { it.saveMeta(key, drafts[key]?.let { d -> Codec.plain.encodeToString(Draft.serializer(), d) }) }
-        emit()
+        if (!quiet) emit()
     }
+
+    /** A version bump for changes written quietly (see [setDraft]): the screens read the Store again. */
+    fun notifyChanged() = emit()
 
     /** M15d: every stored draft, including emptied ones whose delete is not saved yet. */
     fun draftEntries(): List<DraftEntry> = drafts.entries.mapNotNull { (key, draft) ->
@@ -863,8 +871,11 @@ class Store(private val persistence: Persistence? = null) {
         return true
     }
 
-    /** Rows with a seq held for the channel: the engine trims once they pass the cap by a margin. */
-    fun heldCount(channelId: String): Int = messagesByChannel[channelId]?.values?.count { it.seq != null } ?: 0
+    /**
+     * Rows held for the channel, pending ones too (they are held rows; the desktop and iOS count the same, M28c): the
+     * engine trims once they pass the cap by a margin. The trim itself drops rows with a seq only (§7.7).
+     */
+    fun heldCount(channelId: String): Int = messagesByChannel[channelId]?.size ?: 0
 
     /** Keeps the newest CACHED_MESSAGES_PER_CHANNEL rows with a seq; the loaded range then starts after the dropped ones. */
     private fun trimCache(channelId: String): Boolean {

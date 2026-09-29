@@ -62,12 +62,14 @@ fun AckBar(message: MessageState, store: Store, controller: AppController, versi
                 Text(if (mine) " 確認済み" else " 確認しました", style = MaterialTheme.typography.labelMedium)
             }
         }
+        // M28c: a 48 dp touch target around the names line (the row's layout is unchanged).
         Text(
             if (people.isEmpty()) "まだ誰も確認していません" else PeopleText.acknowledged(people.map { it.name }),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).padding(start = if (!own && !readOnly) 8.dp else 0.dp)
-                .clickable(enabled = people.isNotEmpty(), onClickLabel = "確認した人") { showNames = true },
+            modifier = Modifier.weight(1f, fill = false).padding(start = if (!own && !readOnly) 8.dp else 0.dp).touchTarget { source ->
+                Modifier.clickable(interactionSource = source, indication = null, enabled = people.isNotEmpty(), onClickLabel = "確認した人") { showNames = true }
+            },
         )
     }
     if (showNames) PeopleDialog("確認した人", people, onDismiss = { showNames = false })

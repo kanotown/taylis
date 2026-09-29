@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -25,11 +26,15 @@ import jp.chikuwachat.android.sync.Store
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
-/** The start of a conversation (M11h): what the channel is for, who made it and how many are in it. */
+/**
+ * The start of a conversation (M11h): what the channel is for, who made it and how many are in it. `version`: the
+ * creator's name (and a DM partner's) comes from the Store's users, which arrive on their own (M28c).
+ */
 @Composable
-fun ChannelIntro(channel: ChannelState, store: Store) {
+fun ChannelIntro(channel: ChannelState, store: Store, version: Int) {
     val out = channel.channel
-    val title = channelTitle(channel, store)
+    val title = remember(version, channel) { channelTitle(channel, store) }
+    val summary = remember(version, channel) { introSummary(channel, store) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -41,7 +46,7 @@ fun ChannelIntro(channel: ChannelState, store: Store) {
             Spacer(Modifier.width(6.dp))
             Text(if (out.isDm) title else title.trimStart('#'), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
-        Text(introSummary(channel, store), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         (out.purpose ?: out.topic)?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp)) }
         HorizontalDivider(Modifier.padding(top = 12.dp))
     }

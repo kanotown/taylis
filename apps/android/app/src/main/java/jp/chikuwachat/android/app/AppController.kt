@@ -16,8 +16,11 @@ import kotlinx.serialization.json.JsonObject
 import jp.chikuwachat.android.ui.Permalink
 import android.content.ClipboardManager
 import android.content.ClipData
+import android.content.Intent
 import android.app.Application
 import android.os.Build
+import android.provider.Settings
+import jp.chikuwachat.android.ui.Channels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -118,6 +121,11 @@ class AppController(private val app: Application) {
         private set
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
+    /**
+     * M28c: with [pendingChannelId], the reply a tapped notification was about and its thread's parent (message id to
+     * parent id): the thread opens at the reply, as a permalink does. Null for a top-level post (the channel opens).
+     */
+    var pendingReply by mutableStateOf<Pair<String, String>?>(null)
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -383,6 +391,7 @@ class AppController(private val app: Application) {
         if (serverUrl == activeKey && api != null && screen != Screen.LOGIN) return
         error = null
         pendingChannelId = null
+        pendingReply = null
         openWorkspace(entry)
     }
 
@@ -668,14 +677,17 @@ class AppController(private val app: Application) {
         engine.onReminder = { row ->
             val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
             notice = "⏰ $text"
-            if (!dndActive(store)) notify(workspace(), row.channelId, "リマインダー", text, key = "reminder:${row.id}")
+            if (!dndActive(store)) notify(workspace(), row.channelId, "リマインダー", text, key = "reminder:${row.id}", messageId = row.messageId)
         }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
                 val sender = store.users[message.senderId]?.displayName ?: "?"
                 val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
-                notify(workspace(), channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" })
+                notify(
+                    workspace(), channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" },
+                    messageId = message.id, parentId = message.parentId,
+                )
             }
         }
         this.engine = engine
@@ -713,10 +725,36 @@ class AppController(private val app: Application) {
         return true
     }
 
-    /** A local notification, for the workspace it belongs to (named when there are two or more, WORKSPACES.md §7). */
-    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId) {
+    /**
+     * A local notification, for the workspace it belongs to (named when there are two or more, WORKSPACES.md §7). M28c:
+     * with the message (and its thread for a reply), and my unread count across the workspaces as the icon's number.
+     */
+    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId, messageId: String? = null, parentId: String? = null) {
         val named = workspaces.size >= 2
-        notifier.notifyMessage(channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null)
+        notifier.notifyMessage(
+            channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
+            messageId = messageId, parentId = parentId, badge = totalBadge(),
+        )
+    }
+
+    /**
+     * My unread count across the workspaces (WORKSPACES.md §6): the one on screen from its own store, by the shared rule
+     * of SYNC_PROTOCOL.md §10.5 (mentions in channels, every message in DMs), the others from their last summary or push.
+     */
+    private fun totalBadge(): Int {
+        val active = if (api != null) store.channels.values.sumOf { Channels.badgeCount(it) } else 0
+        return active + workspaces.filter { !it.signedOut && it.serverUrl != activeKey }.sumOf { it.badge }
+    }
+
+    /** M28c: whether the system lets the app post notifications (asked once by the main screen; refusals show in the settings). */
+    val notificationsPermitted: Boolean get() = notifier.permitted
+
+    /** The system's notification page for this app, from the settings' hint after a refusal (M28c). */
+    fun openNotificationSettings() {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { app.startActivity(intent) }.onFailure { error = ErrorMessages.UNKNOWN }
     }
 
     /**
@@ -738,12 +776,18 @@ class AppController(private val app: Application) {
                 // over it (and alerts from there).
                 val live = appForeground && engineStatus == EngineStatus.ONLINE
                 val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
-                if (!message.isSilent && !live && !reading && message.channelId != null && key != null) notify(target, message.channelId, message.displayTitle, message.body, key)
-                engine?.reconnectNow()
+                if (!message.isSilent && !live && !reading && message.channelId != null && key != null) {
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId)
+                }
+                // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
+                engine?.pushReceived(message.channelId, message.messageId)
                 return@launch
             }
-            if (!message.isSilent && message.channelId != null && key != null) notify(target, message.channelId, message.displayTitle, message.body, key)
+            // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
+            if (!message.isSilent && message.channelId != null && key != null) {
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId)
+            }
         }
     }
 
@@ -760,9 +804,11 @@ class AppController(private val app: Application) {
      * A tapped notification (WORKSPACES.md §7): its workspace comes on screen (switching if needed), then the
      * conversation opens as before (the main screen opens [pendingChannelId] once the store knows it).
      */
-    fun openFromNotification(workspaceKey: String?, channelId: String) {
+    fun openFromNotification(workspaceKey: String?, channelId: String, messageId: String? = null, parentId: String? = null) {
         pendingWorkspaceKey = workspaceKey
         pendingChannelId = channelId
+        // M28c: a reply's notification opens its thread at the reply (the main screen reveals it once the store knows the channel).
+        pendingReply = if (messageId != null && parentId != null) messageId to parentId else null
         scope.launch {
             sessionLock.withLock {
                 if (!restored) return@withLock // startup opens the pending workspace itself
@@ -796,19 +842,34 @@ class AppController(private val app: Application) {
     }
 
     fun closeChannel() {
-        // The engine keeps currentChannelId for its own suppression; pushes check what is on screen now.
         openChannelId = null
-        engine?.closePreview() // §7.6.1: a closed preview is not kept
+        // M28c: the engine forgets the open conversation too (§7.7, §10): its rows may be trimmed, its notices show
+        // again, a mark-as-unread hold ends, and a closed preview is not kept (§7.6.1) nor opened again on a reconnect.
+        engine?.closeConversation()
     }
 
-    /** §7.6.1: more of a previewed channel as the reader scrolls up. */
-    suspend fun loadOlderPreview(channelId: String) {
-        try { engine?.loadOlderPreview(channelId) } catch (e: Exception) { report(e) }
+    /** §7.6.1: more of a previewed channel as the reader scrolls up. False when the page failed (the pane offers 「再読み込み」, M28c). */
+    suspend fun loadOlderPreview(channelId: String): Boolean =
+        try { engine?.loadOlderPreview(channelId); true } catch (e: Exception) { report(e); false }
+
+    /** §7.6.1: a thread opened from a preview; its replies stay in the preview. False when the fetch failed (M28c). */
+    suspend fun loadPreviewReplies(channelId: String, parentId: String): Boolean =
+        try { engine?.loadPreviewReplies(channelId, parentId); true } catch (e: Exception) { report(e); false }
+
+    /**
+     * THREADS.md §5: follow or unfollow a thread. Offline it says so (M28c): the engine's queued call returned without
+     * effect, and the toggle looked as if it had worked. A failure on the way is reported too.
+     */
+    suspend fun setThreadFollow(parentId: String, following: Boolean): Boolean {
+        if (engineStatus != EngineStatus.ONLINE) { error = ErrorMessages.NETWORK; return false }
+        val engine = engine ?: return false
+        return attempt { engine.setThreadFollow(parentId, following) }.onFailure { report(it) }.isSuccess
     }
 
-    /** §7.6.1: a thread opened from a preview; its replies stay in the preview. */
-    suspend fun loadPreviewReplies(channelId: String, parentId: String) {
-        try { engine?.loadPreviewReplies(channelId, parentId) } catch (e: Exception) { report(e) }
+    /** 「ここから未読にする」 (SYNC_PROTOCOL.md §10): the position it now holds, or null; offline it says so (M28c). */
+    fun markUnread(channelId: String, seq: Int): Int? {
+        if (engineStatus != EngineStatus.ONLINE) { error = ErrorMessages.NETWORK; return null }
+        return engine?.markUnread(channelId, seq)
     }
 
     /**
@@ -880,6 +941,7 @@ class AppController(private val app: Application) {
         if (wasActive) {
             closeActive()
             pendingChannelId = null
+            pendingReply = null
         }
         push.detach(serverUrl)
         val username = entry?.username ?: if (wasActive) savedUsername else null
@@ -1399,8 +1461,15 @@ class AppController(private val app: Application) {
     suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean, anonymous: Boolean = false): Boolean = attempt {
         val message = api!!.postPoll(channelId, parentId, question, options, multiple, anonymous)
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
+        if (message.parentId == null) postedHere = message.id
         true
     }.getOrElse { error = describe(it); false }
+
+    /**
+     * §10.1 rule 11 (M28c): the id of my latest top-level post made through an endpoint of its own (a poll), for the
+     * open conversation to show it at the bottom like a send from the outbox (the desktop's and iOS's postedHere).
+     */
+    var postedHere by mutableStateOf<String?>(null)
 
     // --- slash commands (M13b) ---------------------------------------------------------------
 

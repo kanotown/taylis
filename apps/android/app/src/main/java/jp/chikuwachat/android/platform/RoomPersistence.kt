@@ -65,7 +65,7 @@ interface LocalDao {
     @Query("DELETE FROM outbox WHERE clientMsgId = :clientMsgId") fun deleteOutbox(clientMsgId: String)
 }
 
-@Database(entities = [MetaRow::class, UserRow::class, ChannelRow::class, MessageRow::class, OutboxRow::class], version = 1, exportSchema = false)
+@Database(entities = [MetaRow::class, UserRow::class, ChannelRow::class, MessageRow::class, OutboxRow::class], version = RoomPersistence.SCHEMA_VERSION, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun dao(): LocalDao
 }
@@ -122,6 +122,14 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         private const val DELETE_CHUNK = 500
 
         /**
+         * The schema version of [LocalDatabase]. The builders below fall back to a destructive migration, which is
+         * only right while this is 1 (the first schema, nothing to migrate from): a bump must ship a `Migration` and
+         * drop the fallback, or every device would lose its cached rows, drafts and unsent messages at the update.
+         * RoomPersistenceTest pins the value so the bump cannot slip through without that.
+         */
+        const val SCHEMA_VERSION = 1
+
+        /**
          * One database per (server, user) profile, named by a hash of both (SYNC_PROTOCOL.md §11), so switching
          * accounts never mixes timelines and similar names cannot collide.
          */
@@ -132,7 +140,7 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
 
         fun open(context: Context, profile: String): RoomPersistence {
             val db = Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile))
-                .fallbackToDestructiveMigration(true)
+                .fallbackToDestructiveMigration(true) // see SCHEMA_VERSION: version 1 only
                 .build()
             return RoomPersistence(db)
         }

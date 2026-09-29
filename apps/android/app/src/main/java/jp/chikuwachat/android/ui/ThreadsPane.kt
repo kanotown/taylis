@@ -20,8 +20,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ThreadEntry
 import kotlinx.coroutines.launch
@@ -40,12 +45,19 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
     val rows = remember(version) { store.threadList() }
     val filter = store.threadsFilter
     val scope = rememberCoroutineScope()
-    LaunchedEffect(controller.engineStatus) {
-        try { controller.engine?.loadThreads(store.threadsFilter) } catch (e: Exception) { controller.report(e) }
+    // M28c: offline the list says so instead of 「読み込んでいます…」 for good (the engine's load returns at once), and a
+    // failed load offers 「再読み込み」; the reconnect loads again by itself (keyed on the status).
+    var failed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
+    val offline = controller.engineStatus == EngineStatus.OFFLINE
+    LaunchedEffect(controller.engineStatus, attempt) {
+        failed = false
+        try { controller.engine?.loadThreads(store.threadsFilter) } catch (e: Exception) { failed = true; controller.report(e) }
     }
     fun load(next: String, more: Boolean = false) {
         scope.launch {
-            try { controller.engine?.loadThreads(next, more) } catch (e: Exception) { controller.report(e) }
+            failed = false
+            try { controller.engine?.loadThreads(next, more) } catch (e: Exception) { failed = true; controller.report(e) }
         }
     }
 
@@ -61,6 +73,8 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         when {
+                            !store.threadsLoaded && offline -> "オフラインのためスレッドを読み込めません"
+                            !store.threadsLoaded && failed -> "スレッドを読み込めませんでした"
                             !store.threadsLoaded -> "読み込んでいます…"
                             filter == "unread" -> "未読のスレッドはありません"
                             else -> "フォロー中のスレッドはありません"
@@ -68,12 +82,13 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        "自分が投稿・返信・メンションされたスレッドはここに集まります。",
+                        if (!store.threadsLoaded && offline) "接続が戻ると読み込みます。" else "自分が投稿・返信・メンションされたスレッドはここに集まります。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                    if (!store.threadsLoaded && failed && !offline) TextButton(onClick = { attempt += 1 }) { Text("再読み込み") }
                 }
             }
         } else {

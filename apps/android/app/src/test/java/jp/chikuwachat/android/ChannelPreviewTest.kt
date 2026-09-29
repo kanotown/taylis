@@ -114,6 +114,31 @@ class ChannelPreviewTest {
         w.close()
     }
 
+    @Test fun anArchivedChannelOpenedFromALinkKeepsItsPreviewAcrossAReconnect() = runBlocking { // M28c
+        val w = World()
+        val old = w.server.createChannel("old", w.alice.id)
+        w.server.post(old.id, w.alice.id, "kept")
+        w.server.channels.getValue(old.id).let { it.channel = it.channel.copy(archived = true) }
+        w.engine.start(); w.settle()
+        assertNull(w.store.channel(old.id)) // archived: not offered for joining
+        // AppController.revealMessage put it in the store as browsable, and its preview opened.
+        w.store.upsertChannel(w.server.channels.getValue(old.id).channel.copy(membership = null), isMember = false)
+        w.engine.openChannel(old.id); w.settle()
+        assertEquals(listOf("kept"), w.store.preview?.messages?.map { it.body })
+        // The reconnect's browse list does not have it; the preview on screen keeps it (it used to close).
+        w.engine.stop(); w.engine.start(); w.settle()
+        assertNotNull(w.store.channel(old.id))
+        assertEquals(old.id, w.store.preview?.channelId)
+        // Closed, the next reconnect neither keeps the channel nor opens its preview again.
+        w.engine.closeConversation(); w.settle()
+        assertNull(w.store.preview)
+        assertNull(w.engine.currentChannelId)
+        w.engine.stop(); w.engine.start(); w.settle()
+        assertNull(w.store.preview)
+        assertNull(w.store.channel(old.id))
+        w.close()
+    }
+
     @Test fun guestsNeverPreview() = runBlocking {
         val w = World(role = "guest")
         w.engine.start(); w.settle()

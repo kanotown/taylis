@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import android.util.Log
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.LabProfileOut
@@ -220,7 +221,7 @@ class SyncEngine(
 
     private fun ensureWorker() {
         if (worker?.isActive == true) return
-        worker = scope.launch { for (work in queue) runCatching { work() }.onFailure { println("sync step failed: $it") } }
+        worker = scope.launch { for (work in queue) runCatching { work() }.onFailure { Log.w("SyncEngine", "sync step failed", it) } }
     }
 
     /** Runs `work` after everything already queued and returns when it has finished. */
@@ -426,6 +427,19 @@ class SyncEngine(
         }
     }
 
+    /**
+     * A push named a message (PUSH_NOTIFICATIONS.md §9): the push only says new data may exist, so its conversation
+     * catches up as well when its row is not here yet (the socket may be half open and the heartbeat has not noticed),
+     * besides what [reconnectNow] does. A row already here came over the socket: nothing to fetch. M28c.
+     */
+    fun pushReceived(channelId: String?, messageId: String?) {
+        reconnectNow()
+        if (_status.value != EngineStatus.ONLINE || channelId == null || channelId == currentChannelId) return
+        if (store.channel(channelId)?.isMember != true) return
+        if (messageId != null && store.message(channelId, messageId) != null) return
+        post { catchUp(channelId) }
+    }
+
     // --- frames -----------------------------------------------------------------------------
 
     private suspend fun onFrame(frame: ServerFrame, connection: Connection) {
@@ -490,6 +504,7 @@ class SyncEngine(
             store.upsertChannel(channel, isMember = true)
         }
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { dropChannel(it.id) }
+        reapplyUnsentReads()
         bootstrap.threads?.let { store.setThreadSummary(it) }
         store.setLimits(bootstrap.limits)
         store.replacePresence(bootstrap.presence)
@@ -502,6 +517,25 @@ class SyncEngine(
         drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
+    }
+
+    /**
+     * §10: a read position that moved here but never reached the server (the PUT failed, or the connection dropped
+     * first) is applied over the bootstrap's again before it is sent: the server's older position showed the rows
+     * unread on every reconnect until the resend's read.updated (M28c; the desktop and iOS do the same). One the server
+     * has reached, or of a channel I am no longer in, is forgotten.
+     */
+    private fun reapplyUnsentReads() {
+        store.channels.values.toList().forEach { channel ->
+            val seq = channel.unsentReadSeq ?: return@forEach
+            if (!channel.isMember || seq <= channel.lastReadSeq) {
+                store.updateChannel(channel.id) { it.copy(unsentReadSeq = null) }
+                return@forEach
+            }
+            store.updateChannel(channel.id) {
+                if (seq >= it.lastSeq) it.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0, firstUnreadAt = null) else it.copy(lastReadSeq = seq)
+            }
+        }
     }
 
     /** M12e: open reminders; refreshed after every bootstrap. */
@@ -553,7 +587,11 @@ class SyncEngine(
         val listed = runCatching { api.publicChannels() }.getOrNull() ?: return
         val ids = listed.map { it.id }.toSet()
         listed.filter { store.channel(it.id) == null }.forEach { store.upsertChannel(it, isMember = false) }
-        store.channels.values.toList().filter { !it.isMember && it.id !in ids }.forEach { dropChannel(it.id) }
+        // The one being read as a preview (§7.6.1) stays even when the list no longer has it: an archived channel
+        // opened from a link is not listed, and dropping it closed its preview on every reconnect (M28c). A channel
+        // that merely went private while open is still dropped (its threads are forgotten, V53).
+        val kept = setOfNotNull(store.preview?.channelId, currentChannelId?.takeIf { store.channel(it)?.channel?.archived == true })
+        store.channels.values.toList().filter { !it.isMember && it.id !in ids && it.id !in kept }.forEach { dropChannel(it.id) }
     }
 
     private suspend fun applyEvent(frame: EventFrame) {
@@ -690,10 +728,14 @@ class SyncEngine(
         return store.message(channelId, parentId) != null || store.replies(channelId, parentId).isNotEmpty()
     }
 
-    /** lastSeq moves up; a new top-level post also moves lastMessageAt, which orders the DM list (§7.4). */
+    /**
+     * lastSeq moves up; a new message in the timeline (a top-level post, or a reply also sent to the channel, M15c) also
+     * moves lastMessageAt, which orders the DM list (§7.4; the desktop and iOS count the shared reply too, M28c).
+     */
     private fun ChannelState.advancedTo(seq: Int, message: MessageOut, isNew: Boolean): ChannelState {
         val moved = copy(lastSeq = maxOf(lastSeq, seq))
-        if (!isNew || message.parentId != null || !isLater(message.createdAt, channel.lastMessageAt)) return moved
+        val inTimeline = message.parentId == null || message.alsoInChannel
+        if (!isNew || !inTimeline || !isLater(message.createdAt, channel.lastMessageAt)) return moved
         return moved.copy(channel = channel.copy(lastMessageAt = message.createdAt))
     }
 
@@ -817,6 +859,19 @@ class SyncEngine(
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)
             // Only the visible timeline advances read state.
         }
+    }
+
+    /**
+     * The conversation was closed without another opening (M28c; iOS closeChannel): nothing is open, so its rows may be
+     * trimmed (§7.7 rule 2), its notices show again on the list, a 「ここから未読にする」 hold ends as when another
+     * conversation opens (§10), a preview goes (§7.6.1), and the next reconnect does not open it again.
+     */
+    fun closeConversation() {
+        closePreview()
+        val previous = currentChannelId ?: return
+        currentChannelId = null
+        unreadHold.clear()
+        trimLater(previous)
     }
 
     /**
@@ -1008,7 +1063,9 @@ class SyncEngine(
      * §7.3. The unread count covers the rows up to `countedTo` (the last seq known from bootstrap and counted live
      * events). The rows the catch-up brings past it, up to the new synced seq, are counted here: their events, if they
      * come at all, are stale by then (a gap, a post during the reconnect's bootstrap). A row past the synced seq
-     * (committed while the page was read, §4.3) is left to its event, which still applies in order.
+     * (committed while the page was read, §4.3) is left to its event, which still applies in order. Kept on purpose
+     * (M28c): the desktop and iOS count the gap event's own row only and end one short of the server's count until
+     * the next bootstrap (no read.updated comes for a row nobody read); UnreadRangeTest pins the parity here.
      */
     suspend fun catchUp(channelId: String, countedTo: Int? = null) {
         catchUps += 1

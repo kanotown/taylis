@@ -174,8 +174,11 @@ class FakeServer {
         override suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut {
             maybeFail()
             readCalls.add(lastReadSeq)
+            readGate?.let { gate -> readGate = null; gate.await() }
             return this@FakeServer.markRead(userId, channelId, lastReadSeq)
         }
+        /** When set, the next PUT read waits for it (a read mark still on its way, §10). */
+        var readGate: CompletableDeferred<Unit>? = null
         override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
         override suspend fun listScheduled(): List<ScheduledOut> { maybeFail(); return scheduled[userId]?.toList() ?: emptyList() }
         override suspend fun listReminders(): List<ReminderOut> { maybeFail(); return reminders[userId]?.toList() ?: emptyList() }
@@ -186,7 +189,8 @@ class FakeServer {
         }
         override suspend fun publicChannels(): List<ChannelOut> =
             if (users[userId]?.role == "guest") emptyList() // M13e: guests are shown only their own channels
-            else channels.values.filter { it.channel.type == "public" && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
+            // Like the server (channels/service.py): archived channels are not offered for joining.
+            else channels.values.filter { it.channel.type == "public" && !it.channel.archived && userId !in it.members }.map { it.channel.copy(membership = null, memberCount = it.members.size) }
         override suspend fun threads(filter: String, cursor: String?, limit: Int): ThreadListOut { maybeFail(); return this@FakeServer.threads(userId, filter, cursor, limit) }
         override suspend fun threadState(messageId: String): ThreadState { maybeFail(); return this@FakeServer.threadState(userId, messageId) }
         override suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState {

@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +52,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var isPrivate by remember { mutableStateOf(false) }
+    // The forms in this file survive a rotation (M28c): what was typed was lost with the activity.
+    var name by rememberSaveable { mutableStateOf("") }
+    var isPrivate by rememberSaveable { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     AlertDialog(
@@ -188,26 +190,29 @@ private fun UserPicker(users: List<UserPublic>, onPick: (UserPublic) -> Unit) {
     }
 }
 
-/** Channel info: topic (editable by members), notification level, members with roles. */
+/**
+ * Channel info: topic (editable by members), notification level, members with roles. `version` (M28c): the members'
+ * names, presence and status come from the Store.
+ */
 @Composable
-fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismiss: () -> Unit, onAddMember: () -> Unit) {
+fun ChannelInfoDialog(controller: AppController, channel: ChannelState, version: Int, onDismiss: () -> Unit, onAddMember: () -> Unit) {
     val store = controller.store
     val scope = rememberCoroutineScope()
     val isChannel = !channel.channel.isDm
     var members by remember { mutableStateOf<List<MemberOut>?>(null) }
-    var profileUserId by remember { mutableStateOf<String?>(null) }
+    var profileUserId by rememberSaveable { mutableStateOf<String?>(null) }
     profileUserId?.let { id ->
-        ProfileDialog(controller, id, onDismiss = { profileUserId = null }, onOpenDm = { profileUserId = null; onDismiss(); controller.pendingChannelId = it })
+        ProfileDialog(controller, id, version, onDismiss = { profileUserId = null }, onOpenDm = { profileUserId = null; onDismiss(); controller.pendingChannelId = it })
         return
     }
-    var editingTopic by remember { mutableStateOf(false) }
-    var topic by remember { mutableStateOf(channel.channel.topic ?: "") }
+    var editingTopic by rememberSaveable { mutableStateOf(false) }
+    var topic by rememberSaveable { mutableStateOf(channel.channel.topic ?: "") }
     // M11h: purpose editor and channel management (leave; rename / archive for owners and admins).
-    var editingPurpose by remember { mutableStateOf(false) }
-    var purpose by remember { mutableStateOf(channel.channel.purpose ?: "") }
-    var renaming by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf<String?>(null) }
+    var editingPurpose by rememberSaveable { mutableStateOf(false) }
+    var purpose by rememberSaveable { mutableStateOf(channel.channel.purpose ?: "") }
+    var renaming by rememberSaveable { mutableStateOf(false) }
+    var newName by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf<String?>(null) }
     val isAdmin = store.me?.role == "admin"
     val canManage = channel.channel.membership?.role == "owner" || isAdmin
     val toPrivate = channel.channel.type == "public"
@@ -278,7 +283,7 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
                         val user = store.users[member.userId]
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             val presence = store.presenceOf(member.userId)
-                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence, modifier = Modifier.clickable { profileUserId = member.userId })
+                            Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence, onClick = { profileUserId = member.userId })
                             Column(Modifier.weight(1f).padding(start = 10.dp).clickable { profileUserId = member.userId }) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(user?.displayName ?: "?")
@@ -377,10 +382,10 @@ fun ChannelInfoDialog(controller: AppController, channel: ChannelState, onDismis
 fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
     val me = controller.store.me ?: controller.me
     val scope = rememberCoroutineScope()
-    var displayName by remember { mutableStateOf(me?.displayName ?: "") }
-    var title by remember { mutableStateOf(me?.title ?: "") }
+    var displayName by rememberSaveable { mutableStateOf(me?.displayName ?: "") }
+    var title by rememberSaveable { mutableStateOf(me?.title ?: "") }
     // M12g: notification keywords, edited as a comma-separated line.
-    var keywords by remember { mutableStateOf((me?.notifyKeywords ?: emptyList()).joinToString(", ")) }
+    var keywords by rememberSaveable { mutableStateOf((me?.notifyKeywords ?: emptyList()).joinToString(", ")) }
     val parsedKeywords: List<String> = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
     val keywordsChanged = parsedKeywords != (me?.notifyKeywords ?: emptyList<String>())
     // M23: my research topic and reading, only when an administrator has put me on the lab roster (keyed on that, so
@@ -481,6 +486,14 @@ fun SettingsDialog(controller: AppController, onDismiss: () -> Unit) {
                         },
                     ) { Text("プロフィールを保存") }
                     if (nameSaved) Text("保存しました", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // M28c: the notification permission is asked once after sign-in; a refusal shows here with the way to the
+                // system's page (checked again when the app comes back from it).
+                val notificationsPermitted = remember(controller.appForeground) { controller.notificationsPermitted }
+                if (!notificationsPermitted) {
+                    SectionLabel("通知")
+                    Text("通知が許可されていないため、新しいメッセージの通知は届きません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { controller.openNotificationSettings() }, contentPadding = PaddingValues(0.dp)) { Text("端末の設定で許可する") }
                 }
                 SectionLabel("2 要素認証")
                 Row(verticalAlignment = Alignment.CenterVertically) {

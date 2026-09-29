@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.ReadGate
 import kotlinx.coroutines.flow.Flow
@@ -182,5 +183,15 @@ object Timeline {
         val until = mutedUntil?.let { parse(it, zone) } ?: return null
         if (!until.isAfter(ZonedDateTime.now(zone))) return null
         return until.format(TIME) + " までミュート"
+    }
+
+    /** What a conversation without rows shows (M28c): the first page on its way, offline before any page, or truly empty. */
+    enum class FirstPage { LOADING, OFFLINE, EMPTY }
+
+    /** `syncedSeq` null = no page has ever arrived on this device: 「まだメッセージはありません」 would be a guess. */
+    fun firstPage(syncedSeq: Int?, status: EngineStatus): FirstPage = when {
+        syncedSeq != null -> FirstPage.EMPTY
+        status == EngineStatus.OFFLINE -> FirstPage.OFFLINE
+        else -> FirstPage.LOADING
     }
 }

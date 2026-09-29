@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -154,8 +155,9 @@ fun MessageMenu(
                     Text(label, color = color, style = MaterialTheme.typography.bodyLarge)
                 }
             }
-            if (onReply != null) item("スレッドで返信", Icons.Outlined.ChatBubbleOutline, action = onReply)
+            // 「リアクションした人」 right after the reactions, as on the web (M28c).
             if (onShowReactors != null) item("リアクションした人", Icons.Outlined.People, action = onShowReactors)
+            if (onReply != null) item("スレッドで返信", Icons.Outlined.ChatBubbleOutline, action = onReply)
             if (canEdit) item("編集", Icons.Outlined.Edit, action = onEdit)
             if (onCopyText != null) item("テキストをコピー", Icons.Outlined.ContentCopy, action = onCopyText)
             if (onBookmark != null) item(if (bookmarked) "保存を解除" else "あとで見る (保存)", if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
@@ -200,17 +202,21 @@ fun ReactionChips(
             val custom = CustomEmoji.name(reaction.emoji)?.let { store.customEmoji[it] }
             val image = custom?.let { store.emojiImages[it.id] }
             if (custom != null && image == null) onNeedEmojiImage?.invoke(custom)
+            // M28c: a 48 dp touch target around the 26 dp chip (its look and the rows' spacing unchanged).
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .touchTarget { source ->
+                        Modifier.combinedClickable(
+                            interactionSource = source, indication = null,
+                            enabled = onToggle != null || onShowReactors != null,
+                            onLongClickLabel = "リアクションした人",
+                            onLongClick = onShowReactors,
+                            onClick = { onToggle?.invoke(reaction.emoji) },
+                        )
+                    }
                     .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
                     .background(background, shape)
-                    .combinedClickable(
-                        enabled = onToggle != null || onShowReactors != null,
-                        onLongClickLabel = "リアクションした人",
-                        onLongClick = onShowReactors,
-                        onClick = { onToggle?.invoke(reaction.emoji) },
-                    )
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 if (image != null) {
@@ -228,10 +234,10 @@ fun ReactionChips(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onAdd) }
                     .heightIn(min = with(LocalDensity.current) { lineHeight.toDp() } + 6.dp)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                     .clip(shape)
-                    .clickable(role = Role.Button, onClick = onAdd)
                     .padding(horizontal = 8.dp),
             ) {
                 Icon(Icons.Outlined.AddReaction, contentDescription = "リアクションを追加", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
@@ -242,7 +248,8 @@ fun ReactionChips(
 
 @Composable
 fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
+    // Saveable (M28c): a rotation while editing kept the dialog but lost what was typed.
+    var text by rememberSaveable { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("メッセージを編集") },

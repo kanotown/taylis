@@ -47,12 +47,13 @@ import java.time.format.DateTimeFormatter
  * the lab roster (M23) also 「M1 · 指導教員: …」 and the research topic.
  */
 @Composable
-fun ProfileDialog(controller: AppController, userId: String, onDismiss: () -> Unit, onOpenDm: (String) -> Unit) {
+fun ProfileDialog(controller: AppController, userId: String, version: Int, onDismiss: () -> Unit, onOpenDm: (String) -> Unit) {
     val store = controller.store
-    val user = store.users[userId]
-    val line = store.roster[userId]
+    // `version` (M28c): the person, the roster line and the presence live in the Store; a change while the card is up shows.
+    val user = remember(version, userId) { store.users[userId] }
+    val line = remember(version, userId) { store.roster[userId] }
     val isMe = store.me?.id == userId
-    val presence = store.presenceOf(userId)
+    val presence = remember(version, userId) { store.presenceOf(userId) }
     val status = activeStatus(user)
     val scope = rememberCoroutineScope()
     var editingStatus by remember { mutableStateOf(false) }

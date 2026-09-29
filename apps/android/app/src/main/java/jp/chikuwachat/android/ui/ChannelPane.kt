@@ -68,6 +68,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -75,13 +76,18 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.AttachmentOut
@@ -96,7 +102,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     val channel = store.channel(channelId) ?: return
     val me = store.me?.id
     val focus = controller.messageFocus?.takeIf { it.channelId == channelId }
-    val messages = remember(version, channelId, focus) {
+    // The same list instance while the rows are unchanged (M28c): every version bump (a typing frame, a presence
+    // change) otherwise built the timeline again and restarted the read effect below.
+    val messages = rememberUnchanged(version, channelId, focus) {
         focus?.context?.map { message ->
             store.message(channelId, message.id)?.takeIf { it.updatedSeq >= message.updatedSeq } ?: message
         }?.filter { !it.deleted } ?: store.messages(channelId)
@@ -107,15 +115,20 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     // A §7.3 reload replaced every row: the view opens again (position, anchor, divider) as if just opened.
     val reloadGen = remember(version, channelId, focus) { controller.engine?.reloadCount(channelId) ?: 0 }
     var loadingOlder by remember(channelId) { mutableStateOf(false) }
-    var positioned by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    // M28c: a failed older page offers 「再読み込み」 instead of spinning for good (the effect only ran again on a new row).
+    var olderFailed by remember(channelId) { mutableStateOf(false) }
+    var olderAttempt by remember(channelId) { mutableIntStateOf(0) }
+    // The position, the divider, the anchor and the seen seq are saveable (M28c): across an activity recreation (a
+    // rotation) the list keeps its scroll position, so the open positioning must not run again (the divider jumped).
+    var positioned by rememberSaveable(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
     // §10.1 rule 4: a drag before the view is positioned (it may wait for a catch-up) leaves the list where it is.
-    var userScrolled by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
+    var userScrolled by rememberSaveable(channelId, focus?.messageId, reloadGen) { mutableStateOf(false) }
     // The 「新着メッセージ」 divider stays where it was when the channel was opened (「最初の未読へ」 moves it). Leaving the
     // search view, however it is left, captures it again like a fresh open (§10.1 rule 4).
-    var capturedMark by remember(channelId, reloadGen, focus?.messageId) { mutableStateOf(ReadGate.openMark(shown)) }
+    var capturedMark by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableStateOf(ReadGate.openMark(shown)) }
     val heldUnread = controller.engine?.heldUnread(channelId)
     // §10.1 rule 2: visible rows are read only after the first unread row was on screen with every unread row held.
-    var anchor by remember(channelId, focus?.messageId, reloadGen) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
+    var anchor by rememberSaveable(channelId, focus?.messageId, reloadGen, stateSaver = ReadAnchorSaver) { mutableStateOf(ReadAnchor.opened(shown, heldUnread)) }
     var jumping by remember(channelId) { mutableStateOf(false) }
     val shownChannelId by rememberUpdatedState(channelId)
     // Drawn only where the loaded range reaches (§10.1 rule 3): above the oldest loaded row it would be a lie.
@@ -132,11 +145,21 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
     // §10.1 rule 7: the divider's position when positioned there, else the newest seq seen at the bottom; later rows
     // from others are 「新着」. Keyed like the divider: the search view moves it to its own (old) rows.
-    var seenSeq by remember(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
+    var seenSeq by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
     val maxSeq = messages.maxOfOrNull { it.seq ?: 0 } ?: 0
     LaunchedEffect(atBottom, maxSeq, positioned, anchor.landing) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned && !anchor.landing, atBottom, maxSeq) }
     val unseenBelow = if (focus != null) 0 else ReadGate.newBelow(messages, seenSeq, me)
     val scope = rememberCoroutineScope()
+    // §10.1 rule 11 (M28c): my own top-level post from this device shows at the bottom, whether it came from the outbox
+    // (its pending row) or an endpoint of its own (a poll, `postedHere`), as on the desktop and iOS.
+    val newest = messages.lastOrNull()
+    LaunchedEffect(newest?.rowKey, controller.postedHere) {
+        val last = newest ?: return@LaunchedEffect
+        if (focus != null || !positioned || last.senderId != me || last.parentId != null) return@LaunchedEffect
+        if (!last.pending && last.id != controller.postedHere) return@LaunchedEffect
+        if (anchor.landing) anchor = anchor.landed()
+        listState.scrollToItem(0)
+    }
     LaunchedEffect(listState, channelId, focus?.messageId, reloadGen) {
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start && !positioned) userScrolled = true }
     }
@@ -274,8 +297,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                 // Not offered where it would read unread rows this device never loaded (§10.1).
+                                // Through the controller (M28c): offline it says so instead of silently doing nothing.
                                 onMarkUnread = message.seq?.takeIf { !message.pending && ReadGate.markUnreadOffered(shown, it) }?.let { seq ->
-                                    { controller.engine?.markUnread(channelId, seq)?.let { capturedMark = it } }
+                                    { controller.markUnread(channelId, seq)?.let { capturedMark = it } }
                                 },
                             )
                         }
@@ -283,25 +307,35 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
                 }
                 if (focus == null && channel.hasOlder && channel.syncedSeq != null) {
                     item(key = "older") {
-                        LaunchedEffect(messages.size, controller.engineStatus) {
-                            if (controller.engineStatus != jp.chikuwachat.android.sync.EngineStatus.ONLINE || loadingOlder) return@LaunchedEffect
+                        LaunchedEffect(messages.size, controller.engineStatus, olderAttempt) {
+                            if (controller.engineStatus != EngineStatus.ONLINE || loadingOlder || olderFailed) return@LaunchedEffect
                             loadingOlder = true
-                            try { controller.engine?.loadOlder(channelId) }
-                            catch (e: Exception) { controller.report(e) }
+                            try { controller.engine?.loadOlder(channelId); olderFailed = false }
+                            catch (e: Exception) { controller.report(e); olderFailed = true }
                             finally { loadingOlder = false }
                         }
-                        Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
+                        if (olderFailed) LoadFailedRow("以前のメッセージを読み込めませんでした") { olderFailed = false; olderAttempt += 1 }
+                        else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                     }
                 } else if (messages.isEmpty()) {
                     item(key = "empty") {
-                        Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
-                            Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // M28c: a channel never loaded here shows its first page on its way (or that it is offline), not
+                        // 「まだメッセージはありません」.
+                        when (Timeline.firstPage(channel.syncedSeq, controller.engineStatus)) {
+                            Timeline.FirstPage.LOADING -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp) }
+                            Timeline.FirstPage.OFFLINE -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("オフラインのため読み込めません", style = MaterialTheme.typography.titleMedium)
+                                Text("接続が戻ると読み込みます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Timeline.FirstPage.EMPTY -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
+                                Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 } else if (focus == null) {
                     item(key = "start") {
-                        controller.store.channel(channelId)?.let { ChannelIntro(it, controller.store) }
+                        controller.store.channel(channelId)?.let { ChannelIntro(it, controller.store, version) }
                     }
                 }
             }
@@ -322,10 +356,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
             }
         }
         HorizontalDivider()
+        // A channel I am not in never reaches this pane: MainScreen opens it as a preview (PreviewPane, §7.6.1).
         if (channel.channel.archived) {
             Text("このチャンネルはアーカイブされています", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (!channel.isMember) {
-            TextButton(onClick = { scope.launch { controller.joinChannel(channelId) } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text("このチャンネルに参加する") }
         } else if (!channel.canPostTopLevel(isAdmin = controller.store.me?.role == "admin")) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -342,6 +375,30 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onOp
 }
 
 private fun rowAt(items: List<TimelineItem>, index: Int): MessageState? = (items.getOrNull(index) as? TimelineItem.Message)?.message
+
+/**
+ * M28c: the read anchor across an activity recreation (a rotation), as one line. A landing never survives (its scroll
+ * went with the composition); the quiet ids come back as they were. Message ids are UUIDs, so the separators are safe.
+ */
+internal val ReadAnchorSaver = Saver<ReadAnchor, String>(
+    save = { listOf(if (it.anchored) "1" else "0", it.readSeq.toString(), it.held?.toString() ?: "", it.quiet?.joinToString(",") ?: "-").joinToString("\n") },
+    restore = { saved ->
+        val parts = saved.split("\n")
+        ReadAnchor(
+            anchored = parts[0] == "1", landing = false, readSeq = parts[1].toInt(), held = parts[2].toIntOrNull(),
+            quiet = parts.getOrNull(3)?.takeIf { it != "-" }?.split(",")?.filter { s -> s.isNotEmpty() }?.toSet(),
+        )
+    },
+)
+
+/** M28c: a page (or a thread's replies) that could not be loaded: the words and 「再読み込み」, instead of a spinner for good. */
+@Composable
+internal fun LoadFailedRow(text: String, onRetry: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        TextButton(onClick = onRetry) { Text("再読み込み") }
+    }
+}
 
 /** Indexes of the items the reader can be said to have seen: fully visible, or taller than the viewport (§10). */
 internal fun LazyListLayoutInfo.seenIndexes(): List<Int> = visibleItemsInfo.mapNotNull { visible ->
@@ -407,9 +464,11 @@ private fun ReplyLine(message: MessageState, store: Store, version: Int, onOpenT
     if (onOpenThread != null) {
         val parent = remember(version, message.parentId) { message.parentId?.let { store.message(message.channelId, it) } }
         val excerpt = parent?.let { p -> plainText(Mentions.toNames(p.body, store.users, store.groups), 80).ifEmpty { if (p.attachments.isEmpty()) "" else "(添付ファイル)" } }
+        // M28c: a 48 dp touch target around the one-line link.
         Text(
             "スレッドに返信: " + (excerpt ?: "元のメッセージ"), style = style, color = color, maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.clickable { onOpenThread() },
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "スレッドを開く") { onOpenThread() } },
         )
     } else if (message.alsoInChannel) {
         Text("チャンネルにも送信済み", style = style, color = color)
@@ -445,13 +504,14 @@ fun MessageRow(
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var showingReactors by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
+    // The edit and share dialogs (with their text) survive a rotation (M28c); the rows are keyed, so the state is theirs.
+    var editing by rememberSaveable { mutableStateOf(false) }
     var savingEdit by remember { mutableStateOf(false) }
     val rowScope = rememberCoroutineScope()
     var confirmingDelete by remember { mutableStateOf(false) }
     var showingProfile by remember { mutableStateOf(false) }
     var pickingReaction by remember { mutableStateOf(false) }
-    var sharing by remember { mutableStateOf(false) }
+    var sharing by rememberSaveable { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
@@ -474,7 +534,7 @@ fun MessageRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), textAlign = TextAlign.Center,
                     modifier = Modifier.width(36.dp).padding(top = 3.dp),
                 )
-            } else Avatar(message.senderId, sender, size = 36.dp, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
+            } else Avatar(message.senderId, sender, size = 36.dp, onClick = if (message.pending) null else ({ showingProfile = true }))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, onOpenThread)  // M15c
@@ -507,10 +567,13 @@ fun MessageRow(
                         if (message.editedAt != null) {
                             Spacer(Modifier.width(4.dp))
                             val own = message.senderId == store.me?.id
+                            // M28c: my own 「(編集済み)」 opens the revisions from a 48 dp touch target; others' is plain text.
                             Text(
                                 "(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textDecoration = if (own) androidx.compose.ui.text.style.TextDecoration.Underline else null,
-                                modifier = Modifier.clickable(enabled = own) { showingRevisions = true },
+                                modifier = if (!own) Modifier else Modifier.touchTarget { source ->
+                                    Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "編集履歴") { showingRevisions = true }
+                                },
                             )
                         }
                     }
@@ -569,10 +632,10 @@ fun MessageRow(
         )
     }
     if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
-    if (sharing) ShareDialog(controller, message, onDismiss = { sharing = false })
+    if (sharing) ShareDialog(controller, message, version, onDismiss = { sharing = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
     if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
-    if (showingProfile) ProfileDialog(controller, message.senderId, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
+    if (showingProfile) ProfileDialog(controller, message.senderId, version, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
         rowScope.launch {
@@ -594,11 +657,19 @@ fun MessageRow(
 fun ConversationComposer(controller: AppController, channelId: String, version: Int, parentId: String? = null) {
     val store = controller.store
     val state = remember(version, channelId, parentId) { store.draft(channelId, parentId) }
-    val draft = state.text
+    // M28c: what is typed lives here and is written through to the Store's draft quietly (a keystroke bumped the version,
+    // and the whole screen recomposed: every row parsed its body again, the timeline was built again). The field follows
+    // the Store when the draft changes under it (sent, scheduled, a slash command, a draft from another device), and the
+    // version is bumped once when the composer leaves, so the list's 「下書き」 count sees the quiet writes.
+    var text by remember(channelId, parentId) { mutableStateOf(state.text) }
+    LaunchedEffect(state.text) { if (state.text != text) text = state.text }
+    DisposableEffect(channelId, parentId) { onDispose { store.notifyChanged() } }
+    val draft = text
     val pendingUploads = state.attachments
     val uploading = store.uploading(channelId, parentId)
     fun setText(value: String) {
-        store.setDraft(channelId, parentId) { it.copy(text = value) }
+        text = value
+        store.setDraft(channelId, parentId, quiet = true) { it.copy(text = value) }
         if (value.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
     }
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
@@ -625,7 +696,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             val names = store.customEmoji.keys.filter { it.startsWith(q) || it.contains(q) }.take(4)
             (names.map { EmojiEntry(shortcode = it, glyph = ":$it:", category = "custom", keywords = it) } + Emoji.candidates(q)).take(8)
         } ?: emptyList() else emptyList()
-        var pickingEmoji by remember { mutableStateOf(false) }
+        var pickingEmoji by rememberSaveable { mutableStateOf(false) }
         if (pickingEmoji) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; setText(draft + it) })
         if (emojiHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -657,8 +728,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         PendingAttachments(pendingUploads, controller, uploading) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
-        // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack).
-        var alsoInChannel by remember(channelId, parentId) { mutableStateOf(false) }
+        // M15c: "also send to the channel" for a thread reply; unticked again after each send (Slack). The toggles below
+        // are saveable (M28c): a rotation reset them.
+        var alsoInChannel by rememberSaveable(channelId, parentId) { mutableStateOf(false) }
         val channel = store.channel(channelId)
         val canShare = parentId != null && channel?.canPostTopLevel(isAdmin = store.me?.role == "admin") == true
         if (canShare) {
@@ -668,40 +740,35 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         // M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
-        var priority by remember(channelId, parentId) { mutableStateOf<String?>(null) }
-        var ackRequested by remember(channelId, parentId) { mutableStateOf(false) }
+        var priority by rememberSaveable(channelId, parentId) { mutableStateOf<String?>(null) }
+        var ackRequested by rememberSaveable(channelId, parentId) { mutableStateOf(false) }
         var priorityOpen by remember { mutableStateOf(false) }
         if (priority != null || ackRequested) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 16.dp, top = 6.dp)) {
                 priority?.let { PriorityLabel(it) }
                 if (ackRequested) Text("確認を求める", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("外す", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { priority = null; ackRequested = false })
+                // M28c: a 48 dp touch target around the small link.
+                Text(
+                    "外す", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null) { priority = null; ackRequested = false } },
+                )
             }
         }
         // 「アンケートを作成」 (testers): from the attachment menu, or /poll alone.
-        var pollOpen by remember { mutableStateOf(false) }
+        var pollOpen by rememberSaveable { mutableStateOf(false) }
         if (pollOpen) PollDialog(
             onDismiss = { pollOpen = false },
             onCreate = { question, options, multiple, anonymous -> controller.createPoll(channelId, parentId, question, options, multiple, anonymous) },
             launch = { work -> controller.scope.launch { work() } },
         )
+        // M28c: below ComposerLayout.COMPACT_BELOW_DP (a 360 dp phone) the schedule and priority controls move into the
+        // attachment menu: five buttons left the field about 100 dp, and the placeholder wrapped at a larger font.
+        val compact = with(LocalDensity.current) { ComposerLayout.compact(LocalWindowInfo.current.containerSize.width.toDp().value) }
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
             var attachmentMenu by remember { mutableStateOf(false) }
-            Box {
-                IconButton(enabled = uploading == 0, onClick = { attachmentMenu = true }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
-                DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
-                    DropdownMenuItem(text = { Text("写真・動画") }, onClick = {
-                        attachmentMenu = false
-                        mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                    })
-                    DropdownMenuItem(text = { Text("ファイル") }, onClick = { attachmentMenu = false; picker.launch("*/*") })
-                    DropdownMenuItem(text = { Text("アンケート") }, onClick = { attachmentMenu = false; pollOpen = true })
-                }
-            }
-            IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
             // M12d 「後で送信」: the same draft, posted by the server at the chosen time.
             var scheduleOpen by remember { mutableStateOf(false) }
-            var customOpen by remember { mutableStateOf(false) }
+            var customOpen by rememberSaveable { mutableStateOf(false) }
             // Codex audit C2: one key per schedule, kept while the same draft is scheduled again after a failure; no
             // second request while one is on its way.
             var scheduling by remember { mutableStateOf(false) }
@@ -727,38 +794,50 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
             Box {
-                IconButton(enabled = canSchedule, onClick = { scheduleOpen = true }) { Icon(Icons.Outlined.Schedule, contentDescription = "後で送信") }
-                DropdownMenu(expanded = scheduleOpen, onDismissRequest = { scheduleOpen = false }) {
-                    Schedule.presets().forEach { preset ->
-                        DropdownMenuItem(text = { Text(preset.label + "  " + Schedule.label(preset.at)) }, onClick = { scheduleOpen = false; schedule(preset.at) })
+                IconButton(enabled = uploading == 0, onClick = { attachmentMenu = true }) { Icon(Icons.Default.AttachFile, contentDescription = "ファイルを添付") }
+                DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
+                    DropdownMenuItem(text = { Text("写真・動画") }, onClick = {
+                        attachmentMenu = false
+                        mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    })
+                    DropdownMenuItem(text = { Text("ファイル") }, onClick = { attachmentMenu = false; picker.launch("*/*") })
+                    DropdownMenuItem(text = { Text("アンケート") }, onClick = { attachmentMenu = false; pollOpen = true })
+                    if (compact) {
+                        HorizontalDivider()
+                        if (parentId == null) {
+                            DropdownMenuItem(
+                                text = { Text("重要度…") }, leadingIcon = { Icon(Icons.Outlined.Flag, contentDescription = null) },
+                                onClick = { attachmentMenu = false; priorityOpen = true },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("後で送信…") }, leadingIcon = { Icon(Icons.Outlined.Schedule, contentDescription = null) },
+                            enabled = canSchedule, onClick = { attachmentMenu = false; scheduleOpen = true },
+                        )
                     }
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("日時を指定…") }, onClick = { scheduleOpen = false; customOpen = true })
+                }
+                if (compact) {
+                    ScheduleMenu(expanded = scheduleOpen, onDismiss = { scheduleOpen = false }, onPick = ::schedule, onCustom = { customOpen = true })
+                    if (parentId == null) PriorityMenu(priorityOpen, { priorityOpen = false }, priority, ackRequested, onPriority = { priority = it }, onToggleAck = { ackRequested = !ackRequested })
+                }
+            }
+            IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字") }
+            if (!compact) {
+                Box {
+                    IconButton(enabled = canSchedule, onClick = { scheduleOpen = true }) { Icon(Icons.Outlined.Schedule, contentDescription = "後で送信") }
+                    ScheduleMenu(expanded = scheduleOpen, onDismiss = { scheduleOpen = false }, onPick = ::schedule, onCustom = { customOpen = true })
                 }
             }
             if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }
             OutlinedTextField(
-                draft, { setText(it) }, modifier = Modifier.weight(1f), placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信") }, maxLines = 6,
-                trailingIcon = if (parentId != null) null else { {
+                draft, { setText(it) }, modifier = Modifier.weight(1f), maxLines = 6,
+                placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                trailingIcon = if (parentId != null || compact) null else { {
                     Box {
                         IconButton(onClick = { priorityOpen = true }) {
                             Icon(Icons.Outlined.Flag, contentDescription = "重要度", tint = if (priority != null || ackRequested) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        DropdownMenu(expanded = priorityOpen, onDismissRequest = { priorityOpen = false }) {
-                            listOf(null to "通常", "important" to "重要", "urgent" to "緊急").forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = { if (value == null) Text(label) else PriorityLabel(value) },
-                                    onClick = { priority = value; priorityOpen = false },
-                                    trailingIcon = { if (priority == value) Icon(Icons.Default.Check, contentDescription = null) },
-                                )
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("確認を求める") },
-                                onClick = { ackRequested = !ackRequested },
-                                leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) },
-                            )
-                        }
+                        PriorityMenu(priorityOpen, { priorityOpen = false }, priority, ackRequested, onPriority = { priority = it }, onToggleAck = { ackRequested = !ackRequested })
                     }
                 } },
             )
@@ -790,5 +869,41 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 enabled = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty()),
             ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "送信") }
         }
+    }
+}
+
+/** The composer's layout at narrow widths (M28c). */
+object ComposerLayout {
+    /** Below this window width the schedule and priority controls move into the attachment menu (a 360 dp phone). */
+    const val COMPACT_BELOW_DP = 400f
+
+    fun compact(windowWidthDp: Float): Boolean = windowWidthDp < COMPACT_BELOW_DP
+}
+
+/** M15e: 通常 / 重要 / 緊急 and 「確認を求める」, from the flag beside the field or the attachment menu (compact). */
+@Composable
+private fun PriorityMenu(expanded: Boolean, onDismiss: () -> Unit, priority: String?, ackRequested: Boolean, onPriority: (String?) -> Unit, onToggleAck: () -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        listOf(null to "通常", "important" to "重要", "urgent" to "緊急").forEach { (value, label) ->
+            DropdownMenuItem(
+                text = { if (value == null) Text(label) else PriorityLabel(value) },
+                onClick = { onPriority(value); onDismiss() },
+                trailingIcon = { if (priority == value) Icon(Icons.Default.Check, contentDescription = null) },
+            )
+        }
+        HorizontalDivider()
+        DropdownMenuItem(text = { Text("確認を求める") }, onClick = onToggleAck, leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) })
+    }
+}
+
+/** M12d 「後で送信」: the presets and 「日時を指定…」, from the clock button or the attachment menu (compact). */
+@Composable
+private fun ScheduleMenu(expanded: Boolean, onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit, onCustom: () -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        Schedule.presets().forEach { preset ->
+            DropdownMenuItem(text = { Text(preset.label + "  " + Schedule.label(preset.at)) }, onClick = { onDismiss(); onPick(preset.at) })
+        }
+        HorizontalDivider()
+        DropdownMenuItem(text = { Text("日時を指定…") }, onClick = { onDismiss(); onCustom() })
     }
 }
