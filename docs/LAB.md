@@ -1,6 +1,6 @@
 # LAB (研究室向け機能の設計)
 
-2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3 も実装済み (M30、仕様は DATA_MODEL.md message_templates)。H (確認の拡張と教員の権限) と J (プライバシー) = L4 も実装済み (M31)。**次は L7 (I 4 月の受け入れ・年度更新・卒業、2027 年 3 月までに)**。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
+2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。A (L1 名簿と学年グループ) と B (L2 times) は実装済み (M23・M24)。C (投稿テンプレート) と G (ゼミの日程調整、`/日程`) = L3 も実装済み (M30、仕様は DATA_MODEL.md message_templates)。H (確認の拡張と教員の権限) と J (プライバシー) = L4 も実装済み (M31)。I (4 月の受け入れ・年度更新・卒業) = L7 も実装済み (M32、仕様は DATA_MODEL.md invites / lab_rollovers)。実装した部分は DATA_MODEL.md などに移し、本書には未実装の設計を残す。
 
 ## 0. 前提と方針
 
@@ -241,6 +241,8 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 
 ### I. 4 月の受け入れ・年度更新・卒業
 
+**実装済み (M32)** (「ようこそ」の bot 投稿と Canvas のしおりは作っていない)。以下は設計時の文面。
+
 **受け入れ (4 月や配属のとき)**
 - 招待リンクに「プリセット」を付けられるようにする。
   - 設定できるもの: 身分、学年、指導教員、times を作るかどうか、参加するチャンネル (これは既存)。
@@ -386,6 +388,6 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 | L4 | 確認の拡張・教員の権限・プライバシー | サーバ: reminders.create_system_in_tx、POST /messages/{id}/ack/remind (1 時間に 1 回)、PATCH /channels/{id}/members/{user_id} (ロール)、非公開→公開をメンバーの admin に限定、users.presence_hidden (Hub で絞る)。3 端末: 未確認の人の一覧とリマインドボタン、メンバーのロール変更、在席を隠す設定。 | M | 実装済み (M31) |
 | L5 | 締切 (学会・提出物) | サーバ: 葉モジュール deadlines (deadlines、deadline_notices)、CRUD API、deadline.updated、bootstrap に 90 日分、研究室 bot、scheduled ループでの事前通知 (冪等)。3 端末: 見出しのチップ、「締切」一覧、作成と編集。 | L | 未着手 |
 | L6 | 定期投稿と週報の回収 | サーバ: recurring_posts、messages.report、ワーカー (uuid5 の冪等キー、tz を使った次回計算)、GET /messages/{id}/report、MessageOut の report_summary、期限後の未提出者へ本人だけのリマインダー。Desktop: チャンネル ⋯ の「定期投稿」設定画面。3 端末: 提出状況のカード。 | L | 未着手 |
-| L7 | 年度更新・受け入れプリセット・卒業処理 | サーバ: rollover の preview と apply、lab_rollovers (二重適用は 409、before で取り消し)、招待プリセット (身分・学年・指導教員・times)、卒業処理 (alumni、ゲスト化、指定外のチャンネルから外す、times のアーカイブ)、監査ログ。Desktop: 年度更新の画面、招待プリセット。モバイル: 受諾時の表示。2027 年 2 月までに終える。 | M | 未着手 |
+| L7 | 年度更新・受け入れプリセット・卒業処理 | サーバ: rollover の preview と apply、lab_rollovers (二重適用は 409、before で取り消し)、招待プリセット (身分・学年・指導教員・times)、卒業処理 (alumni、ゲスト化、指定外のチャンネルから外す、times のアーカイブ)、監査ログ。Desktop: 年度更新の画面、招待プリセット。モバイル: 受諾時の表示。2027 年 2 月までに終える。 | M | 実装済み (M32) |
 | L8 | Times フィードと times の検索 | サーバ: GET /times/feed (LATERAL で上位 N 件、(created_at, id) カーソル)、検索修飾子 is:times。3 端末: フィード画面 (モバイルはスマホ UI の見直しに合わせてタブかホームの上部)。 | M | 未着手 |
 | L9 | 添削・レビュー依頼 | サーバ: review_requests、状態変更 (message.updated change=review、seq を消費)、GET /reviews (自分宛て / 自分が出した)、希望日に依頼先へ本人だけのリマインダー。3 端末: 依頼の付与、カード、依頼一覧。 | M | 未着手 |
