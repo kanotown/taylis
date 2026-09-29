@@ -387,6 +387,17 @@ async def test_bad_options_fail_before_writing(
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 4
 
 
+def test_mattermost_emoji_names_with_hyphens_find_their_glyph() -> None:
+    """The 🍤 team's dry run left :woman-bowing: and :rainbow-flag: unmatched (2026-09-29)."""
+    from app.modules.importer.mattermost_import import standard_glyph
+
+    assert standard_glyph("rainbow-flag") == standard_glyph("rainbow_flag") is not None
+    assert standard_glyph("woman-bowing") == standard_glyph("bowing_woman") is not None
+    assert standard_glyph("man-bowing") == standard_glyph("man_bowing") is not None
+    assert standard_glyph("thumbsup") is not None
+    assert standard_glyph("no-such-emoji") is None
+
+
 def test_channel_names() -> None:
     assert channel_name("研究 報告") == "研究-報告"
     assert channel_name(" #random / @misc ") == "random--misc"

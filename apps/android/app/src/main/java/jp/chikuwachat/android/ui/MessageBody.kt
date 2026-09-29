@@ -12,7 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.foundation.text.appendInlineContent
@@ -70,7 +70,7 @@ fun MessageBody(
      * The Store's version when the maps above are the Store's own (changed in place): a new value makes the
      * body render again, so names and custom emoji images appear once they arrive (strong skipping).
      */
-    @Suppress("UNUSED_PARAMETER") version: Int = 0,
+    version: Int = 0,
 ) {
     val inlineContent = HashMap<String, InlineTextContent>()
     fun AnnotatedString.Builder.appendWithEmoji(text: String) {
@@ -85,7 +85,8 @@ fun MessageBody(
                     if (image == null) { onNeedEmojiImage?.invoke(emoji); append(":${piece.name}:") }
                     else {
                         val key = "emoji:" + emoji.id
-                        inlineContent[key] = InlineTextContent(Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.TextCenter)) {
+                        // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
+                        inlineContent[key] = InlineTextContent(Placeholder(1.25.em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
                             Image(image, contentDescription = ":${piece.name}:", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                         }
                         appendInlineContent(key, ":${piece.name}:")
@@ -132,13 +133,18 @@ fun MessageBody(
         }
     }
 
-    val blocks = remember(text) { parseBlocks(text) } // rows now re-render on every Store change (`version`)
+    // `version` is read here on purpose: the Compose compiler leaves a parameter the body never reads out of the skip
+    // check, so the body was never drawn again and custom emoji images that arrived after the first draw stayed
+    // `:name:` (2026-09-29).
+    val blocks = remember(text, version) { parseBlocks(text) }
     Column(modifier = modifier) {
         for (block in blocks) {
             when (block) {
+                // Larger than they were (testers, 2026-09-29), with their custom emoji drawn (they showed as :name:).
                 is BodyBlock.Heading -> Text(
                     inline(block.tokens),
-                    style = when (block.level) { 1 -> MaterialTheme.typography.titleLarge; 2 -> MaterialTheme.typography.titleMedium; else -> MaterialTheme.typography.titleSmall },
+                    inlineContent = inlineContent,
+                    style = when (block.level) { 1 -> MaterialTheme.typography.headlineMedium; 2 -> MaterialTheme.typography.headlineSmall; else -> MaterialTheme.typography.titleLarge },
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 2.dp),
                 )

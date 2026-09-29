@@ -176,10 +176,12 @@ fun ReactionChips(
     /** The 「＋」 chip: the picker the sheet's 「その他のリアクション」 opens. Null = no chip. */
     onAdd: (() -> Unit)? = null,
     /** The Store's version: custom emoji images land in the Store, not in `message` (strong skipping). */
-    @Suppress("UNUSED_PARAMETER") version: Int = 0,
+    version: Int = 0,
 ) {
     if (message.reactions.isEmpty()) return
-    val me = store.me?.id
+    // Read on purpose (MessageBody): an unread parameter is left out of the skip check, and a custom emoji's image that
+    // arrived after the first draw never showed.
+    val me = remember(version) { store.me?.id }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
         message.reactions.forEach { reaction ->
             val mine = me != null && me in reaction.userIds
