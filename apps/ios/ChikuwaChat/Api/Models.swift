@@ -146,7 +146,32 @@ struct PollOut: Codable, Equatable {
     let options: [String]
     var multiple: Bool = false
     var closedAt: String? = nil
+    /// Who voted for each option (empty lists in an anonymous poll).
     var votes: [[String]] = []
+    /// M27: nobody sees who voted. The next three are absent from a server before M27.
+    var anonymous: Bool? = nil
+    /// How many voted for each option.
+    var counts: [Int]? = nil
+    /// The options I voted for, in a response to me; nil in events, which keep what was known (SYNC_PROTOCOL.md §8).
+    var mine: [Int]? = nil
+
+    var isAnonymous: Bool { anonymous ?? false }
+
+    /// Who voted for option `index` (none in an anonymous poll).
+    func voters(_ index: Int) -> [String] { index < votes.count ? votes[index] : [] }
+
+    func count(_ index: Int) -> Int {
+        if let counts, index < counts.count { return counts[index] }
+        return voters(index).count
+    }
+
+    var total: Int { options.indices.reduce(0) { $0 + count($1) } }
+
+    /// Whether I voted for option `index`: what the server told me, else (a named poll) from the voters.
+    func votedByMe(_ index: Int, me: String?) -> Bool {
+        if let mine { return mine.contains(index) }
+        return me.map(voters(index).contains) ?? false
+    }
 }
 
 /// A body an edit replaced (M14c); the current body is the message's own.

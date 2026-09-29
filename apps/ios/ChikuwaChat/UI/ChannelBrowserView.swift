@@ -86,7 +86,13 @@ struct ChannelBrowserView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { if mine { onOpen(channel.id); dismiss() } }
+        .onTapGesture {
+            // M27: a public channel I have not joined opens read-only first (its preview, Slack).
+            if !mine && (channel.type != "public" || channel.archived) { return }
+            if !mine, controller.store.channel(channel.id) == nil { controller.store.upsertChannel(channel, isMember: false) }
+            onOpen(channel.id)
+            dismiss()
+        }
         .opacity(channel.archived ? 0.6 : 1)
     }
 

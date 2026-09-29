@@ -19,6 +19,8 @@ struct PriorityLabelView: View {
 struct AckBarView: View {
     let message: MessageState
     @Bindable var controller: AppController
+    /// A channel read before joining (M27): who confirmed, without the button.
+    var readOnly = false
 
     var body: some View {
         let store = controller.store
@@ -26,7 +28,7 @@ struct AckBarView: View {
         let own = store.me?.id == message.senderId
         let names = message.acks.map { store.users[$0.userId]?.displayName ?? "?" }
         HStack(spacing: 8) {
-            if !own {
+            if !own && !readOnly {
                 Button { Task { await controller.toggleAck(message) } } label: {
                     Label(mine ? "確認済み" : "確認しました", systemImage: "checkmark.circle")
                 }
@@ -37,11 +39,13 @@ struct AckBarView: View {
             if names.isEmpty {
                 Text("まだ誰も確認していません").font(.caption).foregroundStyle(.secondary)
             } else {
+                // M27: who, not only how many (a tap lists everyone).
                 Menu {
                     ForEach(Array(names.enumerated()), id: \.offset) { _, name in Text(name) }
                 } label: {
-                    Text("\(names.count) 人が確認").font(.caption).foregroundStyle(.secondary)
+                    Text(PeopleList.compact(names) + " が確認").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
+                .accessibilityLabel("\(names.count) 人が確認: " + names.joined(separator: "、"))
             }
         }
         .padding(.top, 2)

@@ -82,13 +82,20 @@ struct ChannelListView: View {
             if !browse.isEmpty {
                 Section("参加できるチャンネル") {
                     ForEach(browse) { channel in
-                        Button { join(channel.id) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "number").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
-                                Text(rowTitle(channel)).foregroundStyle(Color.primary.opacity(0.72))
-                                Spacer()
-                                Text("参加").font(.footnote).foregroundStyle(Color.accentColor)
+                        // M27: a tap reads the channel first (Slack); 「参加」 joins at once.
+                        HStack(spacing: 10) {
+                            Button { selection = channel.id } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "number").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
+                                    Text(rowTitle(channel)).foregroundStyle(Color.primary.opacity(0.72))
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.borderless)
+                            Button("参加") { join(channel.id) }
+                                .font(.footnote)
+                                .buttonStyle(.borderless)
                         }
                         .listRowInsets(Self.rowInsets)
                         .listRowSeparator(.hidden)
