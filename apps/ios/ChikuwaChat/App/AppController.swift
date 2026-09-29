@@ -1144,8 +1144,7 @@ final class AppController {
             if ok { notice = "\(Schedule.label(until)) まで通知を止めます" }
             return ok
         case "topic":
-            _ = await updateTopic(channelId, topic: command.args)
-            return true
+            return await updateTopic(channelId, topic: command.args) // false when refused: the composer keeps the text
         case "leave":
             _ = await leaveChannel(channelId)
             return true
