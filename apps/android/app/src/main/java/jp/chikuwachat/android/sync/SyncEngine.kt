@@ -3,6 +3,7 @@ package jp.chikuwachat.android.sync
 import android.util.Log
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.TemplateOut
 import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.hitsKeyword
@@ -654,7 +655,8 @@ class SyncEngine(
                 val channel = Codec.snake.decodeFromJsonElement(ChannelOut.serializer(), frame.data["channel"] ?: return)
                 val memberIds = (frame.data["member_ids"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
                 val isMember = store.me?.id?.let { it in memberIds } ?: false
-                if (isMember || channel.type == "public") store.upsertChannel(channel, isMember = isMember)
+                val mine = if (frame.event == "channel.created" && isMember) createdByMe(channel) else channel
+                if (isMember || channel.type == "public") store.upsertChannel(mine, isMember = isMember)
                 else if (store.channel(channel.id) != null) dropChannel(channel.id) // made private (M15b)
             }
             "channel.archived" -> frame.data.str("channel_id")?.let { id ->
@@ -837,6 +839,18 @@ class SyncEngine(
     /** A channel's local rows are gone (§7.3 reload, removed from it): its threads must be fetched again. */
     private fun forgetThreads(channelId: String) {
         completeThreads.values.removeAll { it == channelId }
+    }
+
+    /**
+     * M32: channel.created carries no per-user membership. A channel (not a DM or group DM) I created on another device
+     * arrives here without one, and owner-only actions would stay hidden until the next bootstrap; its creator is its
+     * first owner, so it is one here too (joined when it was made). A membership already known is left alone.
+     */
+    private fun createdByMe(channel: ChannelOut): ChannelOut {
+        val me = store.me?.id ?: return channel
+        if (channel.type == "dm" || channel.type == "group_dm" || channel.createdBy != me) return channel
+        if (channel.membership != null || store.channel(channel.id)?.channel?.membership != null) return channel
+        return channel.copy(membership = MembershipOut("owner", channel.createdAt))
     }
 
     /** The channel leaves this device (I left it, it was made private, it is no longer browsable). */

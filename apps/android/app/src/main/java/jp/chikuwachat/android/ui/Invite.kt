@@ -1,5 +1,7 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.api.InviteLabPreview
+
 /** Invite links (M12h): `<server>/invite/<token>`; the token is 20-128 URL-safe characters. */
 object Invite {
     private val TOKEN = Regex("^[A-Za-z0-9_-]{20,128}$")
@@ -14,6 +16,25 @@ object Invite {
         val match = LINK.find(text) ?: return null
         val token = match.groupValues[2]
         return if (TOKEN.matches(token)) Target(match.groupValues[1], token) else null
+    }
+
+    /**
+     * M32: what the invite's lab preset does, in one line for the acceptance screen, with the roster's labels:
+     * 「研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。」
+     */
+    fun labText(lab: InviteLabPreview): String {
+        val affiliation = Roster.AFFILIATIONS.firstOrNull { it.first == lab.affiliation }?.second
+        val step = when (lab.affiliation) {
+            "faculty" -> lab.rank?.let { rank -> Roster.RANKS.firstOrNull { it.first == rank }?.second ?: rank }
+            "student" -> lab.grade
+            else -> null
+        }
+        val who = listOfNotNull(
+            affiliation?.let { if (step != null) "$it ($step)" else it },
+            lab.supervisorName?.ifBlank { null }?.let { "指導教員 $it" },
+        )
+        val roster = if (who.isEmpty()) "研究室の名簿に載ります。" else "研究室の名簿に ${who.joinToString("・")} として載ります。"
+        return if (lab.times) roster + "times を作ります。" else roster
     }
 
     /** Invite failures in words; null for anything that is not invite specific. */
