@@ -92,7 +92,7 @@ describe("templates in the composer (M30)", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "/" } });
     const items = [...screen.getByLabelText("コマンドの候補").querySelectorAll("li")].map((li) => li.textContent ?? "");
     expect(items).toHaveLength(14 + 3);
-    expect(items.slice(14)).toEqual(["/日報**日報 {date}**", "/週報週報 {week}", "/メモメモ ({weekday})個人"]);
+    expect(items.slice(14)).toEqual(["/日報日報 {date}", "/週報週報 {week}", "/メモメモ ({weekday})個人"]);
   });
 
   it("the 「テンプレート」 button inserts: the body into an empty input, else after a blank line", async () => {
