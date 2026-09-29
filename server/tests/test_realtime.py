@@ -172,7 +172,11 @@ async def test_ws_events_missed_while_disconnected_are_recovered_by_delta(
 
     ws = await _connect(live, bob["access_token"])
     await _post(live, alice, channel_id, "m4")
+    # The relay polls, so m3's event may still be published after the reconnect; a late event
+    # for a seq the delta already brought is allowed (clients drop it by seq).
     event = await _recv_type(ws, "event")
+    while event["seq"] < 4:
+        event = await _recv_type(ws, "event")
     assert event["seq"] == 4 and event["data"]["message"]["body"] == "m4"
     await ws.close()
 
