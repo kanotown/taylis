@@ -30,7 +30,7 @@ targets:
       properties:
         CFBundleDisplayName: ChikuwaChat
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "19"
+        CFBundleVersion: "20"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.

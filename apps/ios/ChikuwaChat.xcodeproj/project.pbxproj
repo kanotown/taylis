@@ -27,6 +27,7 @@
 		26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */; };
 		2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6511D58639F80B71BAF90EC5 /* Assets.xcassets */; };
 		2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */; };
+		2C1FC428F01A262CAFD3A2B5 /* PeopleList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D41462A5457300887E01A5 /* PeopleList.swift */; };
 		2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551D58741D5F426321F75F3F /* AppDelegate.swift */; };
 		31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */; };
 		3254F9BB576535AC2148731D /* PollFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9506961B0BB337D742C6CD06 /* PollFormView.swift */; };
@@ -46,7 +47,9 @@
 		4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7662F23ED981268EBFB0F8 /* ChannelView.swift */; };
 		4D1FD0A84466DAB53C3CC055 /* TotpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684FAA7E106DDB3A241A57B4 /* TotpView.swift */; };
 		4F2C96CF6E06B8753F4011DD /* ShareMessageSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */; };
+		4FCBC813DBA604CC324CDD29 /* ChannelPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E000C191299DE61BDC3CCF4F /* ChannelPreviewView.swift */; };
 		500A85FC8BEF5289D246D082 /* Invite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AD78A04AB0A93B55D3FBD1 /* Invite.swift */; };
+		530944C23EA2DF5F405D1D04 /* WhoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 898C6A9DAE763E84AC1644F1 /* WhoTests.swift */; };
 		534CDBAC78E22E10C74356C0 /* CoverProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */; };
 		56C48C77F91642F79A806183 /* CustomEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7D2AF429061631950C7906 /* CustomEmoji.swift */; };
 		581692ADE9D9F2BF23170BDE /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5396B11E764B50A589735215 /* ImageViewer.swift */; };
@@ -210,6 +213,7 @@
 		84C41EAEB3980354A4AA86E1 /* BodyTokenizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyTokenizerTests.swift; sourceTree = "<group>"; };
 		86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSyncTests.swift; sourceTree = "<group>"; };
 		888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLinksTests.swift; sourceTree = "<group>"; };
+		898C6A9DAE763E84AC1644F1 /* WhoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhoTests.swift; sourceTree = "<group>"; };
 		89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionFormView.swift; sourceTree = "<group>"; };
 		8DDC445F3DDA1CFB83264C1B /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
 		8E494C7AA73C2DCB826BFF98 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
@@ -226,6 +230,7 @@
 		9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRulesTests.swift; sourceTree = "<group>"; };
 		A0A51B81551C8578ACBBC035 /* UserScrollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserScrollTests.swift; sourceTree = "<group>"; };
 		A676948BB8E2458464753586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A8D41462A5457300887E01A5 /* PeopleList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleList.swift; sourceTree = "<group>"; };
 		A980BB847A9CA5813A391341 /* DraftSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSync.swift; sourceTree = "<group>"; };
 		AD73867C215B4C74259890CB /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		AD8985AFAA19CE7A4EEF8F77 /* DraftsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftsTests.swift; sourceTree = "<group>"; };
@@ -252,6 +257,7 @@
 		DB0A0535FF76A382E3A1CBBE /* CoverProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverProbeTests.swift; sourceTree = "<group>"; };
 		DD69D59780770BA776367B43 /* InviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteView.swift; sourceTree = "<group>"; };
 		DD7B56434AC3E290743128FF /* Roster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Roster.swift; sourceTree = "<group>"; };
+		E000C191299DE61BDC3CCF4F /* ChannelPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelPreviewView.swift; sourceTree = "<group>"; };
 		E07A0F52A69CE44C46D2213A /* ReadAnchorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadAnchorTests.swift; sourceTree = "<group>"; };
 		E07AA1D9EDE0DEABBA2BA87B /* SearchWorkspaceSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchWorkspaceSnapshotTests.swift; sourceTree = "<group>"; };
 		E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChikuwaChatApp.swift; sourceTree = "<group>"; };
@@ -386,6 +392,7 @@
 				43373D2E141F21E4C78457CF /* UnreadBannerSnapshotTests.swift */,
 				53CCFFE89EA1C7A2E59262F2 /* UnreadRangeTests.swift */,
 				A0A51B81551C8578ACBBC035 /* UserScrollTests.swift */,
+				898C6A9DAE763E84AC1644F1 /* WhoTests.swift */,
 				5EB0EC6D3A44DDEB8FDB92A4 /* WorkspacesTests.swift */,
 			);
 			path = ChikuwaChatTests;
@@ -403,6 +410,7 @@
 				040510582EF3182E66D21640 /* ChannelIntroView.swift */,
 				1A98B6538AD4A468120DB91A /* ChannelLinks.swift */,
 				9B7251E3E02E155A12489239 /* ChannelListView.swift */,
+				E000C191299DE61BDC3CCF4F /* ChannelPreviewView.swift */,
 				3F7662F23ED981268EBFB0F8 /* ChannelView.swift */,
 				5A1F069A68D7455481B1FB4B /* Commands.swift */,
 				191961E1D178CA371B035C04 /* ComposerFormat.swift */,
@@ -426,6 +434,7 @@
 				4B42F0BDEFE3B98EEFF6C089 /* MessageActions.swift */,
 				7C74AC169B95554B18E616A6 /* MessageBodyView.swift */,
 				CC72EC7EE82888C41D902D52 /* NoticeToast.swift */,
+				A8D41462A5457300887E01A5 /* PeopleList.swift */,
 				C5B17C0044CEFA7773C29BDC /* Permalink.swift */,
 				B5CFB01E67A972B78B96D8C2 /* PinsView.swift */,
 				11ADABD71F51A91011248A1E /* PollCardView.swift */,
@@ -637,6 +646,7 @@
 				21B7288F1CFA4D0BE7A342FD /* UnreadBannerSnapshotTests.swift in Sources */,
 				FF91D7B337478DE41D4D5486 /* UnreadRangeTests.swift in Sources */,
 				B4CD4CF8E05DA616E9EBA973 /* UserScrollTests.swift in Sources */,
+				530944C23EA2DF5F405D1D04 /* WhoTests.swift in Sources */,
 				A1719158034259BB3144A2D9 /* WorkspacesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -658,6 +668,7 @@
 				B60B25516F421B2D785D44C4 /* ChannelIntroView.swift in Sources */,
 				4A200550DAB5D48B6138873E /* ChannelLinks.swift in Sources */,
 				BCEA516CDCFE4577A8CE97B7 /* ChannelListView.swift in Sources */,
+				4FCBC813DBA604CC324CDD29 /* ChannelPreviewView.swift in Sources */,
 				4CC82AFD90F0409F6821FE4B /* ChannelView.swift in Sources */,
 				2C1CC04036F021F758936608 /* ChikuwaChatApp.swift in Sources */,
 				DA913C2DF69793934EEF259E /* Commands.swift in Sources */,
@@ -688,6 +699,7 @@
 				ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */,
 				73929A42759EC180C603E753 /* Models.swift in Sources */,
 				5C1990D579D1995D99A86ADD /* NoticeToast.swift in Sources */,
+				2C1FC428F01A262CAFD3A2B5 /* PeopleList.swift in Sources */,
 				028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */,
 				DD186BA276E115EA76964F24 /* PinsView.swift in Sources */,
 				A99FA5C06C95385D0101DF52 /* PollCardView.swift in Sources */,

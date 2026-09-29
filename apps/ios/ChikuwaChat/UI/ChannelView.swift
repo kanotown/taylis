@@ -754,6 +754,8 @@ struct MessageRow: View {
     var onOpenThread: (() -> Void)? = nil
     /// Asks the conversation for one of the message's sheets (`messageSheets`); the row presents nothing itself.
     var present: ((MessageSheet) -> Void)? = nil
+    /// A channel read before joining (M27): its reactions, poll and confirmation show but take nothing.
+    var readOnly = false
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -867,8 +869,8 @@ struct MessageRow: View {
                 if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil {
                     LinkPreviewCard(controller: controller, url: link)
                 }
-                if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller) }  // M14b
-                if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller) }  // M15e
+                if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
+                if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly) }  // M15e
                 if !message.reactions.isEmpty {
                     ChipsLayout(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in
@@ -893,17 +895,20 @@ struct MessageRow: View {
                         }
                         // M25: one more reaction right there (Slack; the web's 「＋」): the picker the action sheet's
                         // smiley opens.
-                        Button { show(.reactions) } label: {
-                            HStack(spacing: 1) {
-                                Image(systemName: "plus").font(.system(size: 8, weight: .bold))
-                                Image(systemName: "face.smiling").font(.caption)
+                        if !readOnly {
+                            Button { show(.reactions) } label: {
+                                HStack(spacing: 1) {
+                                    Image(systemName: "plus").font(.system(size: 8, weight: .bold))
+                                    Image(systemName: "face.smiling").font(.caption)
+                                }
                             }
+                            .buttonStyle(.bordered)
+                            .tint(Color.secondary)
+                            .controlSize(.mini)
+                            .accessibilityLabel("リアクションを追加")
                         }
-                        .buttonStyle(.bordered)
-                        .tint(Color.secondary)
-                        .controlSize(.mini)
-                        .accessibilityLabel("リアクションを追加")
                     }
+                    .allowsHitTesting(!readOnly) // a tap goes to the row (the thread)
                     .padding(.top, 2)
                 }
                 if message.replyCount > 0, let onOpenThread {
@@ -1545,7 +1550,7 @@ final class RowFrames {
 extension MessageRow: Equatable {
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
         lhs.message == rhs.message && lhs.compact == rhs.compact && lhs.margin == rhs.margin && lhs.highlighted == rhs.highlighted
-            && lhs.controller === rhs.controller
+            && lhs.readOnly == rhs.readOnly && lhs.controller === rhs.controller
             && (lhs.onOpenThread == nil) == (rhs.onOpenThread == nil) && (lhs.present == nil) == (rhs.present == nil)
     }
 }

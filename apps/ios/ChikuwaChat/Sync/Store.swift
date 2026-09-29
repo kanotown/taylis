@@ -794,7 +794,22 @@ final class Store {
                 persist { try $0.deleteMessage(id: placeholder) }
             }
         }
-        if let local = rows.byId[message.id], message.updatedSeq <= local.updatedSeq { return false }
+        var message = message
+        if let local = rows.byId[message.id] {
+            if message.updatedSeq < local.updatedSeq { return false }
+            if message.updatedSeq == local.updatedSeq {
+                // §8 (M27): my own poll votes come only in a response to me; one that comes after the event of the same
+                // change still brings them.
+                guard let mine = message.poll?.mine, local.poll != nil, local.poll?.mine != mine else { return false }
+                var kept = local
+                kept.poll?.mine = mine
+                rows.byId[message.id] = kept
+                persist { try $0.saveMessage(kept) }
+                return true
+            }
+            // An event (mine = nil) keeps the votes of mine I knew of.
+            if message.poll != nil, message.poll?.mine == nil { message.poll?.mine = local.poll?.mine }
+        }
         if message.deleted {
             rows.byId.removeValue(forKey: message.id)
             persist { try $0.deleteMessage(id: message.id) }

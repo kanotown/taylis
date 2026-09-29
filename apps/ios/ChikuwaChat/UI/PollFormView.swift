@@ -25,6 +25,8 @@ struct PollFormView: View {
     @State private var question = ""
     @State private var options = ["", ""]
     @State private var multiple = false
+    /// M27: who voted is shown to nobody.
+    @State private var anonymous = false
     @State private var busy = false
     @State private var tried = false
     @State private var error: String?
@@ -59,6 +61,12 @@ struct PollFormView: View {
                 }
                 Section {
                     Toggle("複数選択を許可する", isOn: $multiple)
+                    Toggle(isOn: $anonymous) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("匿名にする")
+                            Text("誰が投票したかを表示しません").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 if let message = error ?? (tried ? problem : nil) {
                     Text(message).font(.footnote).foregroundStyle(.red)
@@ -82,7 +90,7 @@ struct PollFormView: View {
         let filled = options.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         Task {
             let made = await controller.createPoll(channelId: channelId, parentId: parentId, question: question.trimmingCharacters(in: .whitespaces),
-                                                   options: filled, multiple: multiple)
+                                                   options: filled, multiple: multiple, anonymous: anonymous)
             busy = false
             if made {
                 dismiss()

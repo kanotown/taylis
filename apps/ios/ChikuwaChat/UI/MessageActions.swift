@@ -3,7 +3,7 @@ import UIKit
 
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
-    case thread, edit, moreReactions, share, delete
+    case thread, edit, moreReactions, reactors, share, delete
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -11,7 +11,7 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, share, revisions, profile, edit, file }
+    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file }
     let kind: Kind
     let message: MessageState
     /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
@@ -51,6 +51,7 @@ private struct MessageSheets: ViewModifier {
         case (.thread, let message)?: openThread?(message)
         case (.edit, let message)?: sheet = MessageSheet(kind: .edit, message: message)
         case (.moreReactions, let message)?: sheet = MessageSheet(kind: .reactions, message: message)
+        case (.reactors, let message)?: sheet = MessageSheet(kind: .reactors, message: message)
         case (.share, let message)?: sheet = MessageSheet(kind: .share, message: message)
         case (.delete, let message)?: deleting = message
         case nil: break
@@ -72,6 +73,8 @@ private struct MessageSheets: ViewModifier {
                                     onNeedImage: { controller.loadEmojiImage($0) }) { glyph in
                         Task { await controller.toggleReaction(current(message), emoji: glyph) }
                     }
+                case .reactors:
+                    ReactorsSheet(message: message, controller: controller)
                 case .share:
                     ShareMessageSheet(controller: controller, message: message)
                 case .revisions:
@@ -152,6 +155,8 @@ struct MessageActionsSheet: View {
                 .padding(.top, 22)
                 .padding(.bottom, 8)
                 if canThread { row("スレッドで返信", "bubble.left.and.bubble.right") { then(.thread) } }
+                // M27: who reacted (a long press on a reaction in Slack; here the message's own long press).
+                if !message.reactions.isEmpty { row("リアクションした人", "person.2") { then(.reactors) } }
                 if isMine { row("編集", "pencil") { then(.edit) } }
                 if !message.body.isEmpty {
                     row("テキストをコピー", "doc.on.doc") {

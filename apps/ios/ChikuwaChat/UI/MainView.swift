@@ -92,8 +92,13 @@ struct MainView: View {
                     pendingThreadId = parentId
                 }
             } else if let id = selection, let channel = controller.store.channel(id) {
-                // View state resets; conversation drafts live in the persistent Store.
-                ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
+                if !channel.isMember && channel.channel.type == "public" && !controller.isGuest {
+                    // M27: a public channel I have not joined is read before joining (Slack); joining shows the channel.
+                    ChannelPreviewView(controller: controller, channelId: channel.id).id("preview " + channel.id)
+                } else {
+                    // View state resets; conversation drafts live in the persistent Store.
+                    ChannelView(controller: controller, channelId: channel.id, pendingThreadId: $pendingThreadId).id(channel.id)
+                }
             } else {
                 ContentUnavailableView("チャンネルを選択してください", systemImage: "bubble.left.and.bubble.right",
                                        description: Text("左のリストからチャンネルや相手を選びます。"))

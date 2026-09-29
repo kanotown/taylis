@@ -605,12 +605,16 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
     }
 
     /// A message that carries a poll; posted directly (not through the offline queue).
-    func postPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool) async throws -> MessageOut {
+    func postPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool,
+                  anonymous: Bool = false) async throws -> MessageOut {
+        var poll: [String: JSONValue] = ["question": .string(question), "options": .array(options.map(JSONValue.string)), "multiple": .bool(multiple)]
+        // Only when asked for: a server before M27 refuses a poll with a field it does not know.
+        if anonymous { poll["anonymous"] = .bool(true) }
         let body: JSONValue = .object([
             "client_msg_id": .string(UUID().uuidString.lowercased()),
             "body": .string(""),
             "parent_id": parentId.map(JSONValue.string) ?? .null,
-            "poll": .object(["question": .string(question), "options": .array(options.map(JSONValue.string)), "multiple": .bool(multiple)]),
+            "poll": .object(poll),
         ])
         return try await request("POST", "/api/v1/channels/\(channelId)/messages", body: body)
     }

@@ -732,6 +732,11 @@ final class AppController {
         guard let api else { return }
         do {
             let message = try await api.message(id: messageId)
+            // M27: a public channel I have not joined opens as its preview (the newest messages, read-only).
+            if store.channel(message.channelId)?.isMember == false {
+                NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": message.channelId])
+                return
+            }
             if await revealMessage(message) {
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
                                                 userInfo: ["id": message.channelId, "parentId": message.parentId as Any])
@@ -1069,10 +1074,12 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
-    func createPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool) async -> Bool {
+    func createPoll(channelId: String, parentId: String?, question: String, options: [String], multiple: Bool,
+                    anonymous: Bool = false) async -> Bool {
         guard let api else { return false }
         do {
-            let message = try await api.postPoll(channelId: channelId, parentId: parentId, question: question, options: options, multiple: multiple)
+            let message = try await api.postPoll(channelId: channelId, parentId: parentId, question: question, options: options,
+                                                 multiple: multiple, anonymous: anonymous)
             if let engine { engine.postedFromHere(message) } else { store.upsertMessage(message) }
             return true
         } catch { self.error = describe(error); return false }
