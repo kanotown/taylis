@@ -3282,6 +3282,8 @@ export interface components {
             alumni_channel_id?: string | null;
             /** Items */
             items: components["schemas"]["RolloverItem"][];
+            /** Stay Channel Ids */
+            stay_channel_ids?: string[];
         };
         /** RolloverChannelOut */
         RolloverChannelOut: {

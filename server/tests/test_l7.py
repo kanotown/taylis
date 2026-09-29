@@ -249,3 +249,39 @@ async def test_rollover_graduation_and_undo(
     assert (
         await client.post("/api/v1/lab/rollover/preview", json={"academic_year": 2026})
     ).status_code == 403
+
+
+async def test_graduates_stay_in_the_common_channels(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The OB/OG and all-hands channels: every graduate joins and stays; the rest are left."""
+    root = await make_user(db, "root", role="admin")
+    grad = await make_user(db, "grad")
+    grad_id = grad.id
+    as_user(root)
+    await _line(client, grad, affiliation="student", grade="M2")
+    lab = (await client.post("/api/v1/channels", json={"name": "lab"})).json()
+    obog = (await client.post("/api/v1/channels", json={"name": "obog"})).json()
+    everyone = (await client.post("/api/v1/channels", json={"name": "zentai"})).json()
+    for channel in (lab, everyone):
+        await client.post(
+            f"/api/v1/channels/{channel['id']}/members", json={"user_id": str(grad_id)}
+        )
+    body = {
+        "academic_year": 2027,
+        "stay_channel_ids": [obog["id"], everyone["id"]],
+        "items": [{"user_id": str(grad_id), "action": "graduate", "guest": True}],
+    }
+    applied = await client.post("/api/v1/lab/rollovers", json=body)
+    assert applied.status_code == 200, applied.text
+    assert await _member_role(db, lab["id"], grad_id) is None
+    assert await _member_role(db, obog["id"], grad_id) == "member"
+    assert await _member_role(db, everyone["id"], grad_id) == "member"
+    assert (await client.post("/api/v1/lab/rollovers/2027/undo")).status_code == 200
+    # Back in the lab; out of the OB/OG channel it joined; still in the all-hands one it was in.
+    assert await _member_role(db, lab["id"], grad_id) == "member"
+    assert await _member_role(db, obog["id"], grad_id) is None
+    assert await _member_role(db, everyone["id"], grad_id) == "member"
+    dm = (await client.post("/api/v1/dms", json={"user_ids": [str(grad_id)]})).json()
+    bad = await client.post("/api/v1/lab/rollovers", json={**body, "stay_channel_ids": [dm["id"]]})
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_alumni_channel"

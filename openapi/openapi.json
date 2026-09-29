@@ -3466,6 +3466,15 @@
             "minItems": 1,
             "title": "Items",
             "type": "array"
+          },
+          "stay_channel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Stay Channel Ids",
+            "type": "array"
           }
         },
         "required": [

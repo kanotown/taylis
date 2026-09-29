@@ -24,7 +24,8 @@ function NoteLine({ note }: { note: Note | null }) {
 
 /**
  * Administration → 名簿 → 年度更新 (L7 / M32, LAB.md I): every student with the proposal, the choice per person (and for
- * graduates: guest, the channels they keep), the alumni channel, a confirmation, then one transaction on the server.
+ * graduates: guest, the channels they keep), the channels every graduate stays in, a confirmation, then one transaction
+ * on the server.
  * Below it the years applied, each undoable. Results and errors are said here (the app toast sits behind the dialog).
  */
 export function RolloverView({ controller }: { controller: AppController }) {
@@ -33,7 +34,8 @@ export function RolloverView({ controller }: { controller: AppController }) {
   const [year, setYear] = useState(() => String(academicYear(new Date())));
   const [preview, setPreview] = useState<RolloverPreviewOut | null>(null);
   const [choices, setChoices] = useState<Map<string, RolloverChoice>>(new Map());
-  const [alumniId, setAlumniId] = useState("");
+  // The channels every graduate joins and stays in (OB・OG, 全体連絡…).
+  const [stayIds, setStayIds] = useState<Set<string>>(() => new Set());
   const [history, setHistory] = useState<RolloverOut[] | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -99,7 +101,7 @@ export function RolloverView({ controller }: { controller: AppController }) {
     choose(userId, { keep });
   };
 
-  const body = preview ? rolloverBody(preview.academic_year, preview.items, choices, alumniId || null) : null;
+  const body = preview ? rolloverBody(preview.academic_year, preview.items, choices, [...stayIds]) : null;
   const counts = body ? rolloverCounts(body) : null;
 
   const apply = async () => {
@@ -205,12 +207,26 @@ export function RolloverView({ controller }: { controller: AppController }) {
           </ul>
           <div className="flex items-end gap-3">
             <div className="min-w-0 flex-1">
-              <Field label="卒業生のチャンネル (任意、卒業・修了する人が加わります)">
-                <select value={alumniId} onChange={(e) => setAlumniId(e.target.value)} disabled={!!preview.applied_at} className={SELECT}>
-                  <option value="">なし</option>
-                  {channels.map((c) => <option key={c.id} value={c.id}>{c.type === "private" ? "🔒" : "#"}{c.name}</option>)}
-                </select>
-              </Field>
+              <div className="text-xs font-medium text-muted" id="stay-channels-label">
+                卒業生が入って残るチャンネル (OB・OG 用、全体連絡など。ほかは DM だけが残ります)
+              </div>
+              <div className="mt-1 flex max-h-24 flex-wrap gap-x-3 gap-y-1 overflow-y-auto text-sm" role="group" aria-labelledby="stay-channels-label">
+                {channels.map((c) => (
+                  <label key={c.id} className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={stayIds.has(c.id)}
+                      disabled={!!preview.applied_at}
+                      onChange={(e) => setStayIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(c.id); else next.delete(c.id);
+                        return next;
+                      })}
+                    />
+                    {c.type === "private" ? "🔒" : "#"}{c.name}
+                  </label>
+                ))}
+              </div>
             </div>
             <Button
               size="sm"
@@ -256,7 +272,7 @@ export function RolloverView({ controller }: { controller: AppController }) {
             <li>進級: {counts.advance} 人</li>
             <li>据え置き: {counts.stay} 人</li>
             <li>卒業・修了: {counts.graduate} 人{counts.graduate > 0 && ` (うちゲストにする ${counts.guests} 人)`}</li>
-            {counts.graduate > 0 && <li>卒業生のチャンネル: {alumniId ? `#${store.channels.get(alumniId)?.name ?? ""}` : "なし"}</li>}
+            {counts.graduate > 0 && <li>卒業生が入って残るチャンネル: {stayIds.size ? [...stayIds].map((id) => `#${store.channels.get(id)?.name ?? ""}`).join("、") : "なし"}</li>}
           </ul>
           {counts.graduate > 0 && (
             <p className="mt-3 rounded-lg bg-panel-2 px-3 py-2 text-sm">
