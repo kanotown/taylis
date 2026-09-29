@@ -34,11 +34,25 @@ export function ChannelLinksBar({ controller, channel, onAdd, onEdit }: {
   onAdd: () => void;
   onEdit: (link: ChannelLinkOut) => void;
 }) {
-  const links = controller.store.linksOf(channel.id);
-  if (links.length === 0) return null;
-  const editable = canEditLinks(channel, controller);
+  if (controller.store.linksOf(channel.id).length === 0) return null;
   return (
     <div className="flex items-center gap-1 overflow-x-auto border-b border-line px-3 py-1" aria-label="リンク">
+      <ChannelLinkChips controller={controller} channel={channel} onAdd={onAdd} onEdit={onEdit} />
+    </div>
+  );
+}
+
+/** The link chips and 「＋ リンク」 (for those who may edit them): in the bar, or after the tabs on a phone (M29). */
+export function ChannelLinkChips({ controller, channel, onAdd, onEdit }: {
+  controller: AppController;
+  channel: ChannelState;
+  onAdd: () => void;
+  onEdit: (link: ChannelLinkOut) => void;
+}) {
+  const links = controller.store.linksOf(channel.id);
+  const editable = canEditLinks(channel, controller);
+  return (
+    <>
       {links.map((link, index) => {
         const chip = (
           <a
@@ -74,7 +88,7 @@ export function ChannelLinksBar({ controller, channel, onAdd, onEdit }: {
           <Plus size={13} /> リンク
         </button>
       )}
-    </div>
+    </>
   );
 }
 

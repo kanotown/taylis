@@ -236,21 +236,49 @@ export function NewChannelDialog({ controller, onClose, onOpen }: DialogProps) {
 
 /** Members of a channel with the option to add more (channels only). */
 export function MembersDialog({ controller, channel, onClose, onAdd }: { controller: AppController; channel: ChannelState; onClose: () => void; onAdd: () => void }) {
-  const [members, setMembers] = useState<MemberOut[] | null>(null);
-  const canManage = controller.isAdmin || channel.membership?.role === "owner";
-  useEffect(() => {
-    if (!controller.api) return;
-    void controller.api.members(channel.id).then(setMembers, (error) => controller.setError(error));
-  }, [controller, channel.id]);
-  const users = controller.store.users;
-  const roster = controller.store.roster;
+  const [members, setMembers] = useMembers(controller, channel.id);
   return (
     <Modal onClose={onClose} title={`メンバー${members ? ` (${members.length})` : ""}`}>
       <div className="mt-4 space-y-3">
-        {members === null ? (
+        <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} className="max-h-80" />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            閉じる
+          </Button>
+          {channel.isMember && !channel.archived && <Button onClick={onAdd}>メンバーを追加</Button>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** A conversation's members, fetched on open and again when `reload` changes; null while loading. */
+export function useMembers(controller: AppController, channelId: string, reload: unknown = null) {
+  const [members, setMembers] = useState<MemberOut[] | null>(null);
+  useEffect(() => {
+    if (!controller.api) return;
+    void controller.api.members(channelId).then(setMembers, (error) => controller.setError(error));
+  }, [controller, channelId, reload]);
+  return [members, setMembers] as const;
+}
+
+/** The member rows (roster order, badges, 「外す」 for owners and admins); in the dialog and the channel details (M29). */
+export function MemberList({ controller, channel, members, onChange, className }: {
+  controller: AppController;
+  channel: ChannelState;
+  members: MemberOut[] | null;
+  onChange: (update: (members: MemberOut[] | null) => MemberOut[] | null) => void;
+  className?: string;
+}) {
+  // Not in a DM (its members are the conversation itself).
+  const canManage = (controller.isAdmin || channel.membership?.role === "owner") && (channel.type === "public" || channel.type === "private");
+  const users = controller.store.users;
+  const roster = controller.store.roster;
+  const setMembers = onChange;
+  return members === null ? (
           <p className="py-6 text-center text-sm text-muted">読み込み中…</p>
         ) : (
-          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line">
+          <ul className={cn("divide-y divide-line overflow-y-auto rounded-xl border border-line", className)}>
             {members
               .map((m) => ({ member: m, user: users.get(m.user_id) }))
               // M23: roster order when either is on the lab roster, else by name.
@@ -285,16 +313,7 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
                 </li>
               ))}
           </ul>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            閉じる
-          </Button>
-          {channel.isMember && !channel.archived && <Button onClick={onAdd}>メンバーを追加</Button>}
-        </div>
-      </div>
-    </Modal>
-  );
+        );
 }
 
 export function TopicDialog({ controller, channel, onClose }: { controller: AppController; channel: ChannelState; onClose: () => void }) {

@@ -89,7 +89,7 @@ function controllerFor(w: World) {
 }
 
 /** Re-renders on every store change and engine status change, like the app. */
-function View({ w, controller, parentId }: { w: World; controller: ReturnType<typeof controllerFor>; parentId?: string }) {
+function View({ w, controller, parentId, active }: { w: World; controller: ReturnType<typeof controllerFor>; parentId?: string; active?: boolean }) {
   useSyncExternalStore(
     (listener) => {
       const a = w.store.subscribe(listener);
@@ -104,7 +104,7 @@ function View({ w, controller, parentId }: { w: World; controller: ReturnType<ty
   const channel = w.store.getChannel(w.channelId);
   if (!channel) return null;
   const app = controller as unknown as AppController;
-  return parentId ? <ThreadPane controller={app} channel={channel} parentId={parentId} onClose={() => {}} /> : <Timeline controller={app} channel={channel} />;
+  return parentId ? <ThreadPane controller={app} channel={channel} parentId={parentId} onClose={() => {}} /> : <Timeline controller={app} channel={channel} active={active} />;
 }
 
 /** Start, show the (empty) conversation, then open it: the newest page arrives and the view positions itself. */
@@ -359,6 +359,45 @@ describe("channel view with more unread than one page (§10.1)", { timeout: 30_0
     expect(dividerBefore()).toBeNull();
     await settle(w);
     expect(w.calls.reads).toEqual([]);
+    w.engine.stop();
+  });
+
+  it("M29: kept mounted under another tab (a phone's pins / files), the view reads nothing and counts nothing seen; back on screen it reads what it shows", async () => {
+    const w = world({ posts: 130, lastRead: 100 });
+    const { view, controller, timeline } = await openView(w);
+    await settle(w);
+    expect(serverRead(w)).toBe(115); // rows 101..115 on screen
+    const reads = w.calls.reads.length;
+
+    expect(screen.getByText("新着 30 件")).toBeTruthy();
+
+    view.rerender(<View w={w} controller={controller} active={false} />);
+    expect(screen.queryByText(/^新着 \d+ 件$/)).toBeNull(); // not drawn while hidden
+    // Rows 116..130 where the screen would be: nothing is on screen, so nothing is read.
+    layout.first = 116;
+    userScroll(timeline);
+    await settle(w);
+    expect(w.calls.reads.length).toBe(reads);
+    expect(serverRead(w)).toBe(115);
+
+    // Back on 「メッセージ」: the rows shown now are read.
+    view.rerender(<View w={w} controller={controller} active />);
+    await settle(w);
+    expect(serverRead(w)).toBe(130);
+
+    // A new row while hidden follows at the bottom but is not read (nor seen) until the view is back.
+    view.rerender(<View w={w} controller={controller} active={false} />);
+    const before = w.calls.reads.length;
+    await act(async () => {
+      w.server.post(w.channelId, w.alice.id, "m131");
+      await w.engine.idle();
+    });
+    await settle(w);
+    expect(w.calls.reads.length).toBe(before);
+    expect(serverRead(w)).toBe(130);
+    view.rerender(<View w={w} controller={controller} active />);
+    await settle(w);
+    expect(serverRead(w)).toBe(131);
     w.engine.stop();
   });
 });

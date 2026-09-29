@@ -13,11 +13,13 @@ import { formatMuted } from "./format";
 import { PANE_DEFAULT, PANE_MAX, PANE_MIN, readPaneWidth, readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writePaneWidth, writeSidebarWidth } from "./prefs";
 import { Badge, Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { QuickSwitcher } from "./QuickSwitcher";
-import { PinsPane } from "./PinsPane";
+import { ChannelPins, PinsPane } from "./PinsPane";
+import { ChannelDetails } from "./ChannelDetails";
+import { type ConversationTab, ConversationTabs } from "./ConversationTabs";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
-import { FilesView } from "./FilesView";
+import { ChannelFiles, FilesView } from "./FilesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
@@ -94,9 +96,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
   }, [compact]);
   const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
-  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch };
+  // M29, phones only: the conversation's tab (the timeline stays mounted under the others) and its details page.
+  const [tab, setTab] = useState<ConversationTab>("messages");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [membersVersion, setMembersVersion] = useState(0);
+  const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch, tab, details: detailsOpen };
   const focus = controller.messageFocus;
-  const navigationKey = JSON.stringify({ ...navigation, focus: focus?.messageId ?? null });
+  // One entry for 「ピン留め」 and 「ファイル」 together: Back from either returns to 「メッセージ」 first (M29).
+  const navigationKey = JSON.stringify({ ...navigation, tab: tab !== "messages", focus: focus?.messageId ?? null });
   useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current }, (previous) => {
     controller.messageFocus = previous.focus;
     controller.setEditing(null);
@@ -105,6 +112,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadId(previous.threadId);
     setThreadChannelId(previous.threadChannelId);
     setPinsOpen(previous.pinsOpen);
+    setTab(previous.tab);
+    setDetailsOpen(previous.details);
     setPane(previous.pane);
     setFilesChannelId(previous.filesChannelId);
     setSearch(previous.search);
@@ -188,8 +197,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const banner = useConnectionBanner(status);
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen });
-  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen };
+  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen });
+  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen };
+  /** A conversation always opens on 「メッセージ」, without its details page (M29). */
+  const resetConversation = () => {
+    setTab("messages");
+    setDetailsOpen(false);
+  };
 
   useEffect(() => {
     // Only a channel I belong to; a new member without channels sees the empty state (M12h invites).
@@ -210,6 +224,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadId(null);
     setThreadChannelId(null);
     setPinsOpen(false);
+    resetConversation();
   }, [currentGone, currentId, engine]);
 
   // A focus set outside this screen (a permalink opened in the browser, M12j): show its conversation.
@@ -220,6 +235,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setView("channel");
     setSearchOpen(false);
     setPinsOpen(false);
+    resetConversation();
     setCurrentId(focus.channelId);
     setThreadChannelId(focus.channelId);
     setThreadId(focus.parentId);
@@ -250,6 +266,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadId(null);
     setThreadChannelId(null);
     setPinsOpen(false);
+    resetConversation();
     setView("channel");
     setSwitcher(false);
     setBackToSearch(false);
@@ -264,11 +281,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setBackToSearch(false);
     setPinsOpen(false);
+    resetConversation();
     setPane("main");
     setView((v) => (v === "saved" && !compactRef.current ? "channel" : "saved"));
   };
 
-  /** A card in the pins pane / saved view: show the message in its conversation. */
+  /** A card in the pins pane / saved view (or a phone's pins / files tab): show the message in its conversation. */
   const revealFromList = (message: MessageOut) => {
     void controller.revealMessage(message).then((ok) => {
       if (!ok) return;
@@ -276,6 +294,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       setSearchOpen(false);
       setBackToSearch(false);
       setPinsOpen(false);
+      resetConversation();
       setCurrentId(message.channel_id);
       setThreadChannelId(message.channel_id);
       setThreadId(message.parent_id ?? null);
@@ -292,6 +311,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadId(null);
     setThreadChannelId(null);
     setPinsOpen(false);
+    resetConversation();
     setBackToSearch(false);
     setView("search");
     setPane("main");
@@ -303,6 +323,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       if (!ok) return;
       setView("channel");
       setPinsOpen(false);
+      resetConversation();
       setCurrentId(message.channel_id);
       setThreadChannelId(message.channel_id);
       setThreadId(message.parent_id ?? null);
@@ -318,6 +339,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setBackToSearch(false);
     setPinsOpen(false);
+    resetConversation();
     setFilesChannelId(channelId);
     setView("files");
     setPane("main");
@@ -331,6 +353,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setBackToSearch(false);
     setPinsOpen(false);
+    resetConversation();
     setPane("main");
     setView((v) => (v === next && !compactRef.current ? "channel" : next));
   };
@@ -342,6 +365,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadChannelId(null);
     setSearchOpen(false);
     setBackToSearch(false);
+    resetConversation();
     setPane("main");
     setView((v) => (v === "threads" && !compactRef.current ? "channel" : "threads"));
   };
@@ -414,9 +438,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
         if (s.switcher) setSwitcher(false);
         else if (s.dialog) setDialog(null);
         else if (s.searchOpen) setSearchOpen(false);
+        else if (s.detailsOpen) setDetailsOpen(false);
         else if (s.pinsOpen) setPinsOpen(false);
         else if (s.threadId) setThreadId(null);
         else if (controller.editing) controller.setEditing(null);
+        else if (s.tab !== "messages") setTab("messages");
         else if (s.view !== "channel") setView("channel");
         else if (s.currentId) {
           // Nothing to close: Esc marks the open conversation read (Mattermost).
@@ -446,6 +472,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const join = async (id: string) => {
     if (!(await controller.joinChannel(id))) return;
     setCurrentId(id);
+    resetConversation();
     setPane("main");
   };
 
@@ -525,6 +552,34 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>アーカイブを解除</MenuItem>}
     </>
   ) : null;
+  // The thread or the pinned messages: a resizable column on the right, the whole screen on a phone (where the pins are
+  // a tab of the conversation instead, M29).
+  const sidePane =
+    pinsOpen && !compact && current && view === "channel" ? (
+      <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
+    ) : threadId && threadChannel && threadChannel.isMember ? (
+      <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+    ) : threadId && threadChannel && previewing && threadChannel.id === current?.id ? (
+      <PreviewThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
+    ) : null;
+  // M29, phones: the conversation's tab row and details page (joined conversations, not a preview).
+  const tabbed = compact && !!current && current.isMember && !previewing;
+  const showDetails = tabbed && detailsOpen && view === "channel";
+  const shownTab: ConversationTab = tabbed ? tab : "messages";
+  // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
+  const conversationOnScreen = !compact || (shownTab === "messages" && !showDetails && !sidePane);
+  const openDetails = () => {
+    controller.setEditing(null);
+    setDetailsOpen(true);
+  };
+  const addLink = () => {
+    setEditingLink(null);
+    setDialog("link");
+  };
+  const editLink = (link: ChannelLinkOut) => {
+    setEditingLink(link);
+    setDialog("link");
+  };
   const centre = (
     <>
       {banner && (
@@ -575,12 +630,27 @@ export function MainScreen({ controller }: { controller: AppController }) {
             </button>
           )}
           <header className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:gap-2 max-md:pr-2">
-            <BackButton />
+            {/* On a phone, Back from 「ピン留め」 / 「ファイル」 returns to 「メッセージ」 first (M29). */}
+            <BackToList.Provider value={tabbed && tab !== "messages" ? () => setTab("messages") : back}>
+              <BackButton />
+            </BackToList.Provider>
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="text-muted">
-                {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
-              </span>
-              <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+              {tabbed ? (
+                // M29: the name opens the conversation's details page.
+                <button type="button" className="flex min-w-0 items-center gap-2 rounded-md text-left" title={isChannel ? "チャンネル情報" : "会話の情報"} onClick={openDetails}>
+                  <span className="text-muted">
+                    {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
+                  </span>
+                  <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+                </button>
+              ) : (
+                <>
+                  <span className="text-muted">
+                    {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
+                  </span>
+                  <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+                </>
+              )}
               {current.archived && <Badge>アーカイブ済み</Badge>}
               {isChannel && current.posting_policy === "owners" && (
                 <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
@@ -671,17 +741,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </MenuTrigger>
                   <MenuContent align="end">
                     <MenuLabel>{isChannel ? `#${current.name}` : channelTitle(current, controller)}</MenuLabel>
-                    {compact && (
+                    {/* A phone: the pins and files are tabs, the channel's own items are on its details page (M29). */}
+                    {compact ? (
                       <>
                         <MenuItem onSelect={() => void controller.toggleFavorite(current.id)}>
                           {store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
                         </MenuItem>
-                        <MenuItem onSelect={() => setPinsOpen(true)}>ピン留め</MenuItem>
-                        <MenuItem onSelect={() => openFiles(current.id)}>ファイル</MenuItem>
-                        {isChannel && <MenuSeparator />}
+                        <MenuItem onSelect={openDetails}>{isChannel ? "チャンネル情報" : "会話の情報"}</MenuItem>
                       </>
+                    ) : (
+                      isChannel && channelMenuItems
                     )}
-                    {isChannel && channelMenuItems}
                   </MenuContent>
                 </Menu>
               )}
@@ -692,26 +762,46 @@ export function MainScreen({ controller }: { controller: AppController }) {
               )}
             </div>
           </header>
-          <ChannelLinksBar controller={controller} channel={current} onAdd={() => { setEditingLink(null); setDialog("link"); }} onEdit={(link) => { setEditingLink(link); setDialog("link"); }} />
-          {previewing ? (
-            <>
-              <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
-              <PreviewJoinBar controller={controller} channel={current} onJoin={join} />
-            </>
+          {tabbed ? (
+            <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} />
           ) : (
-            <Timeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+            <ChannelLinksBar controller={controller} channel={current} onAdd={addLink} onEdit={editLink} />
           )}
-          {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
-            <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
-          )}
-          {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
-            <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
-              <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
+          {/* M29: on a phone the pins and files tabs cover the conversation, which stays mounted (its scroll position,
+              read anchor and draft survive) but hidden, out of reach, and not looked at (the timeline's `active`). */}
+          <div className={compact ? "relative flex min-h-0 flex-1 flex-col" : "contents"}>
+            <div className={cn(compact ? "flex min-h-0 flex-1 flex-col" : "contents", shownTab !== "messages" && "invisible")} inert={shownTab !== "messages" || undefined}>
+              {previewing ? (
+                <>
+                  <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+                  <PreviewJoinBar controller={controller} channel={current} onJoin={join} />
+                </>
+              ) : (
+                <Timeline controller={controller} channel={current} active={conversationOnScreen} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
+              )}
+              {current.isMember && !current.archived && canPostTopLevel(current, controller.isAdmin) && (
+                <Composer key={current.id} controller={controller} channel={current} onReplyLast={replyToLast} />
+              )}
+              {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
+                <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
+                  <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
+                </div>
+              )}
+              {/* Under the input, as in Slack: its line above it left a wide gap over the input (2026-09-29). */}
+              {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
+              {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
             </div>
-          )}
-          {/* Under the input, as in Slack: its line above it left a wide gap over the input (2026-09-29). */}
-          {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
-          {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
+            {shownTab === "pins" && (
+              <div role="tabpanel" aria-label="ピン留め" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <ChannelPins controller={controller} channel={current} onOpen={revealFromList} />
+              </div>
+            )}
+            {shownTab === "files" && (
+              <div role="tabpanel" aria-label="ファイル" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <ChannelFiles controller={controller} channel={current} onOpen={revealFromList} />
+              </div>
+            )}
+          </div>
         </>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
@@ -724,15 +814,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
       )}
     </>
   );
-  // The thread or the pinned messages: a resizable column on the right, the whole screen on a phone.
-  const sidePane =
-    pinsOpen && current && view === "channel" ? (
-      <PinsPane controller={controller} channel={current} onOpen={revealFromList} onClose={() => setPinsOpen(false)} />
-    ) : threadId && threadChannel && threadChannel.isMember ? (
-      <ThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
-    ) : threadId && threadChannel && previewing && threadChannel.id === current?.id ? (
-      <PreviewThreadPane controller={controller} channel={threadChannel} parentId={threadId} onClose={() => setThreadId(null)} />
-    ) : null;
   const overlays = (
     <>
       <Toast controller={controller} />
@@ -744,7 +825,19 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "members" && current && (
         <MembersDialog controller={controller} channel={current} onClose={() => setDialog(null)} onAdd={() => setDialog("add-member")} />
       )}
-      {dialog === "add-member" && current && <AddMemberDialog controller={controller} channelId={current.id} onClose={() => setDialog("members")} />}
+      {dialog === "add-member" && current && (
+        <AddMemberDialog
+          controller={controller}
+          channelId={current.id}
+          onClose={() => {
+            // Back to where it was opened: the details page (whose list then reloads) or the members dialog.
+            if (showDetails) {
+              setDialog(null);
+              setMembersVersion((v) => v + 1);
+            } else setDialog("members");
+          }}
+        />
+      )}
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} onStatus={() => setDialog("status")} />}
       {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
@@ -771,7 +864,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <p className="mt-3 text-sm text-muted">{current.type === "private" ? "非公開チャンネルなので、戻るには誰かに追加してもらう必要があります。" : "公開チャンネルなので、いつでも再参加できます。"}</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDialog(null)}>キャンセル</Button>
-            <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) { setCurrentId(null); setPane("list"); } }); }}>
+            <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) { setCurrentId(null); resetConversation(); setPane("list"); } }); }}>
               退出する
             </Button>
           </div>
@@ -796,6 +889,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
           {/* Mounted only while on screen: a hidden timeline would mark messages read. */}
           {pane === "main" && <main className="absolute inset-0 flex min-h-0 flex-col bg-canvas">{centre}</main>}
           {pane === "main" && sidePane && <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">{sidePane}</div>}
+          {/* M29: the details page over the conversation, which stays mounted under it. */}
+          {pane === "main" && showDetails && current && (
+            <div className="absolute inset-0 z-30 flex min-h-0 bg-canvas">
+              <ChannelDetails
+                controller={controller}
+                channel={current}
+                membersVersion={membersVersion}
+                onClose={() => setDetailsOpen(false)}
+                onDialog={(next) => {
+                  if (next === "link") setEditingLink(null);
+                  setDialog(next);
+                }}
+              />
+            </div>
+          )}
           {overlays}
         </div>
       </BackToList.Provider>

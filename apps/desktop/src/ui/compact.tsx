@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { useMediaQuery } from "./hooks";
@@ -21,6 +21,26 @@ export function BackButton() {
   return (
     <IconButton label="戻る" className="-ml-2 shrink-0" onClick={back}>
       <ArrowLeft size={20} />
+    </IconButton>
+  );
+}
+
+/** M29: a side pane (the thread) is a page on a phone: 「戻る」 (←) starts its header there, instead of ✕ at its end. */
+export function PaneBackButton({ onClick }: { onClick: () => void }) {
+  if (!useCompact()) return null;
+  return (
+    <IconButton label="戻る" className="-ml-2 shrink-0" onClick={onClick}>
+      <ArrowLeft size={20} />
+    </IconButton>
+  );
+}
+
+/** The ✕ that ends a side pane's header in the wide layout (none on a phone, see PaneBackButton). */
+export function PaneCloseButton({ onClick }: { onClick: () => void }) {
+  if (useCompact()) return null;
+  return (
+    <IconButton label="閉じる (Esc)" onClick={onClick}>
+      <X size={18} />
     </IconButton>
   );
 }

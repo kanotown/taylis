@@ -3,22 +3,15 @@ import { useEffect, useState } from "react";
 
 import type { FileItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
+import type { ChannelState } from "../sync/types";
 import { formatSize, useAttachmentUrl } from "./Attachments";
 import { fullTimestamp } from "./format";
 import { channelTitle } from "./MainScreen";
 import { BackButton } from "./compact";
-import { Button, IconButton, Input } from "./primitives";
+import { Button, cn, IconButton, Input } from "./primitives";
 
-/** 「ファイル」 (M11i): attachments in my channels (or one channel), newest first; a row reveals its message. */
-export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
-  controller: AppController;
-  /** null: every channel I belong to. */
-  channelId: string | null;
-  onChannelChange: (channelId: string | null) => void;
-  onOpen: (message: MessageOut) => void;
-}) {
-  const store = controller.store;
-  const [query, setQuery] = useState("");
+/** Attachments in my channels (or one channel), newest first, filtered by file name; pages of 50. */
+function useFileItems(controller: AppController, channelId: string | null, query: string) {
   const [items, setItems] = useState<FileItem[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const load = async (more = false) => {
@@ -35,6 +28,57 @@ export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
     const timer = setTimeout(() => void load(), query ? 250 : 0);
     return () => clearTimeout(timer);
   }, [controller.api, channelId, query, controller.engine?.status]);
+  return { items, cursor, loadMore: () => void load(true) };
+}
+
+function FileItemsList({ controller, items, cursor, onMore, empty, onOpen }: {
+  controller: AppController;
+  items: FileItem[] | null;
+  cursor: string | null;
+  onMore: () => void;
+  empty: string;
+  onOpen: (message: MessageOut) => void;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      {items === null ? (
+        <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+      ) : items.length === 0 ? (
+        <div className="py-16 text-center text-sm text-muted">{empty}</div>
+      ) : (
+        <ul className="mx-auto max-w-3xl divide-y divide-line rounded-xl border border-line">
+          {items.map((item) => <FileRow key={item.attachment.id} item={item} controller={controller} onOpen={onOpen} />)}
+          {cursor && (
+            <li className="py-2 text-center">
+              <Button variant="secondary" size="sm" onClick={onMore}>さらに読み込む</Button>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function FileFilter({ query, onChange, className }: { query: string; onChange: (query: string) => void; className?: string }) {
+  return (
+    <div className={cn("relative", className)}>
+      <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+      <Input value={query} placeholder="ファイル名で絞り込む" className="h-8 pl-8 text-sm" onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+/** 「ファイル」 (M11i): attachments in my channels (or one channel), newest first; a row reveals its message. */
+export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
+  controller: AppController;
+  /** null: every channel I belong to. */
+  channelId: string | null;
+  onChannelChange: (channelId: string | null) => void;
+  onOpen: (message: MessageOut) => void;
+}) {
+  const store = controller.store;
+  const [query, setQuery] = useState("");
+  const { items, cursor, loadMore } = useFileItems(controller, channelId, query);
   const channels = [...store.channels.values()].filter((c) => c.isMember).sort((a, b) => channelTitle(a, controller).localeCompare(channelTitle(b, controller)));
   const scope = channelId ? store.getChannel(channelId) : null;
   return (
@@ -52,27 +96,37 @@ export function FilesView({ controller, channelId, onChannelChange, onOpen }: {
           <option value="">すべてのチャンネル</option>
           {channels.map((c) => <option key={c.id} value={c.id}>{channelTitle(c, controller)}</option>)}
         </select>
-        <div className="relative ml-auto w-64 max-md:ml-0 max-md:w-full">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <Input value={query} placeholder="ファイル名で絞り込む" className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />
-        </div>
+        <FileFilter query={query} onChange={setQuery} className="ml-auto w-64 max-md:ml-0 max-md:w-full" />
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {items === null ? (
-          <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
-        ) : items.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted">{query ? "見つかりません" : scope ? `${channelTitle(scope, controller)} にはまだファイルがありません` : "まだファイルはありません"}</div>
-        ) : (
-          <ul className="mx-auto max-w-3xl divide-y divide-line rounded-xl border border-line">
-            {items.map((item) => <FileRow key={item.attachment.id} item={item} controller={controller} onOpen={onOpen} />)}
-            {cursor && (
-              <li className="py-2 text-center">
-                <Button variant="secondary" size="sm" onClick={() => void load(true)}>さらに読み込む</Button>
-              </li>
-            )}
-          </ul>
-        )}
+      <FileItemsList
+        controller={controller}
+        items={items}
+        cursor={cursor}
+        onMore={loadMore}
+        empty={query ? "見つかりません" : scope ? `${channelTitle(scope, controller)} にはまだファイルがありません` : "まだファイルはありません"}
+        onOpen={onOpen}
+      />
+    </div>
+  );
+}
+
+/** M29: a conversation's 「ファイル」 tab on a phone: this channel only (no channel choice), with the name filter. */
+export function ChannelFiles({ controller, channel, onOpen }: { controller: AppController; channel: ChannelState; onOpen: (message: MessageOut) => void }) {
+  const [query, setQuery] = useState("");
+  const { items, cursor, loadMore } = useFileItems(controller, channel.id, query);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-line px-4 py-2">
+        <FileFilter query={query} onChange={setQuery} />
       </div>
+      <FileItemsList
+        controller={controller}
+        items={items}
+        cursor={cursor}
+        onMore={loadMore}
+        empty={query ? "見つかりません" : `${channelTitle(channel, controller)} にはまだファイルがありません`}
+        onOpen={onOpen}
+      />
     </div>
   );
 }

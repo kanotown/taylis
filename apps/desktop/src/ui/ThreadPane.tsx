@@ -1,4 +1,4 @@
-import { Bell, BellRing, X } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { MessageOut } from "../api/types";
@@ -9,7 +9,8 @@ import { tapClosesKeyboard } from "../platform/viewport";
 import { Composer } from "./Composer";
 import { rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
-import { Button, IconButton } from "./primitives";
+import { PaneBackButton, PaneCloseButton } from "./compact";
+import { Button } from "./primitives";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
 import { READER_BACK } from "../platform/idle";
@@ -172,6 +173,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
+        <PaneBackButton onClick={onClose} />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">スレッド</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
@@ -188,9 +190,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
             {state.following ? "フォロー中" : "フォロー"}
           </Button>
         )}
-        <IconButton label="閉じる (Esc)" onClick={onClose}>
-          <X size={18} />
-        </IconButton>
+        <PaneCloseButton onClick={onClose} />
       </header>
       <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2" {...tapHandlers}>
         {parent ? (
