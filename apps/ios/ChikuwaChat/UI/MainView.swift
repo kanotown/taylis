@@ -197,9 +197,18 @@ struct MainView: View {
             .toolbar {
                 // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
                 ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
-                // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down.
-                ToolbarItem(placement: .topBarLeading) {
-                    HomeAvatarButton(controller: controller, status: status) { tab = .you }
+                // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down. Without the
+                // glass circle iOS 26 puts behind a bar item: a rounded-square picture in a circle looked odd, and the
+                // glass washed the badge's colour out (testers, 2026-09-30).
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HomeAvatarButton(controller: controller, status: status) { tab = .you }
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HomeAvatarButton(controller: controller, status: status) { tab = .you }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) { homeMenu }
             }
