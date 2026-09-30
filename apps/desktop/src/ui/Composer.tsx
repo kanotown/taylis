@@ -1,5 +1,5 @@
-import { Bold, Check, CheckCheck, Clock, Code, Eye, EyeOff, Flag, Heading, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Type, Vote, X } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AtSign, Bold, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X } from "lucide-react";
+import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -7,7 +7,7 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
-import { continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { changedRange, continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
@@ -15,16 +15,16 @@ import { canPostTopLevel } from "./channels";
 import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
-import { isSendKey, sendKeyLabel } from "./prefs";
+import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
 import { appendTemplate, expandTemplate, findTemplate, nextWeekdays, orderTemplates, parseSchedule, SCHEDULE_QUESTION, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
-import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
+/** Bold, italic, strikethrough, code, code block: always on the formatting bar. */
+const PRIMARY_TOOLS = 5;
 /** WebKit delivers the Enter that commits an IME composition after compositionend. */
-/** Bold, italic, strikethrough, code: always on the toolbar. */
-const PRIMARY_TOOLS = 4;
 const IME_COMMIT_GRACE_MS = 100;
 
 export function Composer({
@@ -214,26 +214,14 @@ export function Composer({
     if (!query) return;
     const next = text.slice(0, query.start) + "@" + candidate.username + " " + text.slice(caret);
     const position = query.start + candidate.username.length + 2;
-    setText(next);
     setSelected(0);
-    setCaret(position);
-    requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(position, position);
-    });
+    apply({ text: next, start: position, end: position });
   };
 
   /** Replaces the input and puts the caret at its end (a template inserted, M30). */
   const putText = (next: string) => {
-    setText(next);
     setSelected(0);
-    setCaret(next.length);
-    const restore = () => {
-      area.current?.focus();
-      area.current?.setSelectionRange(next.length, next.length);
-    };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
-    else setTimeout(restore, 0);
+    apply({ text: next, start: next.length, end: next.length });
   };
 
   /** The 「テンプレート」 button: the body alone in an empty input, else after what is there and a blank line. */
@@ -248,27 +236,15 @@ export function Composer({
   };
 
   const pickCommand = (command: SlashCommand) => {
-    const next = `/${command.name} `;
-    setText(next);
-    setSelected(0);
-    setCaret(next.length);
-    requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(next.length, next.length);
-    });
+    putText(`/${command.name} `);
   };
 
   const pickEmoji = (entry: EmojiEntry) => {
     if (!emojiAt) return;
     const next = completeEmoji(text, emojiAt.start, caret, entry.glyph);
     rememberEmoji(entry.glyph);
-    setText(next.text);
     setSelected(0);
-    setCaret(next.caret);
-    requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(next.caret, next.caret);
-    });
+    apply({ text: next.text, start: next.caret, end: next.caret });
   };
 
   /** The toolbar picker: insert at the caret (replacing a selection) and keep typing. */
@@ -280,35 +256,81 @@ export function Composer({
 
   const syncCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
 
-  /** Run a markdown edit on the current selection and restore focus + selection afterwards. */
-  const edit = (transform: (state: EditState) => EditState | null): boolean => {
+  /**
+   * Puts `next` in the text area through the browser's own editing (replaceThroughBrowser), so ⌘Z / Ctrl+Z takes back
+   * a format, an emoji, a completion, a template or a continued list one step at a time between what was typed, and
+   * ⌘⇧Z / Ctrl+Y redoes it (tester, 2026-09-30). Setting the draft from React would drop the text area's undo history;
+   * that stays the way only where the browser does not take the edit. Focus and selection come back afterwards.
+   */
+  const apply = (next: EditState) => {
     const el = area.current;
-    if (!el) return false;
-    const next = transform({ text, start: el.selectionStart ?? text.length, end: el.selectionEnd ?? text.length });
-    if (!next) return false;
-    setText(next.text);
+    if (el && replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
+    else setText(next.text);
     setCaret(next.start);
+    // Again on the next frame: a closing popover hands focus back to its button meanwhile.
     const restore = () => {
-      el.focus();
-      el.setSelectionRange(next.start, next.end);
+      area.current?.focus();
+      area.current?.setSelectionRange(next.start, next.end);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
     else setTimeout(restore, 0);
+  };
+
+  /** Run a markdown edit on the current selection. */
+  const edit = (transform: (state: EditState) => EditState | null): boolean => {
+    const el = area.current;
+    if (!el) return false;
+    const value = el.value;
+    const next = transform({ text: value, start: el.selectionStart ?? value.length, end: el.selectionEnd ?? value.length });
+    if (!next) return false;
+    apply(next);
     return true;
   };
-  // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow.
-  const tools: Array<{ icon: ReactNode; label: string; run: () => void }> = [
+
+  /** 「@」: an @ at the caret (after a space when a word ends there), which opens the member list. */
+  const startMention = () => edit((s) => {
+    const at = s.start > 0 && !/\s/.test(s.text[s.start - 1]!) ? " @" : "@";
+    const caret = s.start + at.length;
+    return { text: s.text.slice(0, s.start) + at + s.text.slice(s.end), start: caret, end: caret };
+  });
+
+  // The formatting bar above the text (Slack), shown or hidden with 「Aa」, per device.
+  const [formatBar, setFormatBar] = useState(readFormatBar);
+  const toggleFormatBar = () => {
+    writeFormatBar(!formatBar);
+    setFormatBar(!formatBar);
+  };
+  // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow. `group`
+  // starts a group after a divider.
+  const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true }> = [
     { icon: <Bold size={15} />, label: `太字 (${modKey()}+B)`, run: () => edit((s) => toggleWrap(s, "**")) },
     { icon: <Italic size={15} />, label: `斜体 (${modKey()}+I)`, run: () => edit((s) => toggleWrap(s, "_")) },
     { icon: <Strikethrough size={15} />, label: `取り消し線 (${modKey()}+Shift+X)`, run: () => edit((s) => toggleWrap(s, "~~")) },
-    { icon: <Code size={15} />, label: `コード (${modKey()}+Shift+C)`, run: () => edit((s) => toggleWrap(s, "`")) },
+    { icon: <Code size={15} />, label: `コード (${modKey()}+Shift+C)`, run: () => edit((s) => toggleWrap(s, "`")), group: true },
     { icon: <SquareCode size={15} />, label: "コードブロック", run: () => edit(toggleFence) },
-    { icon: <Heading size={15} />, label: "見出し (## )", run: () => edit((s) => toggleLinePrefix(s, "## ")) },
+    { icon: <Heading size={15} />, label: "見出し (## )", run: () => edit((s) => toggleLinePrefix(s, "## ")), group: true },
     { icon: <TextQuote size={15} />, label: "引用", run: () => edit((s) => toggleLinePrefix(s, "> ")) },
     { icon: <List size={15} />, label: "箇条書き", run: () => edit((s) => toggleLinePrefix(s, "- ")) },
     { icon: <ListOrdered size={15} />, label: "番号付きリスト", run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
-    { icon: <LinkIcon size={15} />, label: `リンク (${modKey()}+Shift+U)`, run: () => edit((s) => insertLink(s)) },
+    { icon: <LinkIcon size={15} />, label: `リンク (${modKey()}+Shift+U)`, run: () => edit((s) => insertLink(s)), group: true },
   ];
+
+  // A menu entry that opens something else (a popover, the poll form, the member list) runs once the menu has closed
+  // and handed focus back, which the new layer would otherwise take for a click outside and close again (Radix).
+  const afterMenu = useRef<(() => void) | null>(null);
+  const runAfterMenu = (event: Event) => {
+    const run = afterMenu.current;
+    if (!run) return;
+    afterMenu.current = null;
+    event.preventDefault();
+    run();
+  };
+  // On a narrow composer the emoji, 「@」 and priority buttons fold into 「…」; their popovers then open from there.
+  const emojiButton = useRef<HTMLButtonElement>(null);
+  const priorityButton = useRef<HTMLButtonElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const emojiAnchor = useShownAnchor(emojiButton, moreButton);
+  const priorityAnchor = useShownAnchor(priorityButton, moreButton);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const imeEnter =
@@ -343,7 +365,7 @@ export function Composer({
       }
     }
     const mod = event.metaKey || event.ctrlKey;
-    if (mod && !event.altKey) {
+    if (mod && !event.altKey && !event.nativeEvent.isComposing && !composing.current) {
       const key = event.key.toLowerCase();
       let handled = false;
       if (key === "b" && !event.shiftKey) handled = edit((s) => toggleWrap(s, "**"));
@@ -472,7 +494,52 @@ export function Composer({
           ))}
         </ul>
       )}
-      <div className="rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+      {/* Sized by the composer, not the window: a thread pane or a narrow window folds what does not fit; no row wraps. */}
+      <div className="@container rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+        {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. */}
+        {formatBar && (
+          <div className="flex items-center gap-0.5 px-2 pt-1.5" aria-label="書式">
+            {tools.map((tool, index) => (
+              <Fragment key={tool.label}>
+                {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[22rem]:block")} />}
+                <IconButton
+                  label={tool.label}
+                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[22rem]:inline-flex")}
+                  disabled={preview}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={tool.run}
+                >
+                  {tool.icon}
+                </IconButton>
+              </Fragment>
+            ))}
+            <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" title="その他の書式" aria-label="その他の書式" disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[22rem]:hidden">
+                  <Ellipsis size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-1.5" onOpenAutoFocus={(e) => e.preventDefault()}>
+                <div className="flex gap-0.5">
+                  {tools.slice(PRIMARY_TOOLS).map((tool) => (
+                    <IconButton
+                      key={tool.label}
+                      label={tool.label}
+                      className="h-8 w-8 text-muted hover:text-ink"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        tool.run();
+                        setMoreToolsOpen(false);
+                      }}
+                    >
+                      {tool.icon}
+                    </IconButton>
+                  ))}
+                </div>
+              </PopoverContent>
+            </PopoverRoot>
+          </div>
+        )}
         {(priority || ackRequested) && (
           <div className="flex items-center gap-2 px-3 pt-2 text-xs">
             {priority && <PriorityLabel priority={priority} />}
@@ -512,109 +579,73 @@ export function Composer({
             e.target.value = "";
           }}
         />
-        {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
-        {preview && (
-          <div className="max-h-[280px] min-h-14 overflow-y-auto px-3 pb-1 pt-3" aria-label="プレビュー">
-            {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
-          </div>
-        )}
-        <textarea
-          ref={area}
-          value={text}
-          maxLength={MAX_LENGTH}
-          placeholder={placeholder}
-          className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent px-3 pb-1 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
-          onChange={(e) => {
-            setText(e.target.value);
-            syncCaret(e.target);
-            if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
-          }}
-          onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(event.clipboardData.files); } }}
-          aria-label={parentId ? "スレッドの返信" : "メッセージ"}
-          onKeyDown={onKeyDown}
-          onKeyUp={(e) => syncCaret(e.currentTarget)}
-          onClick={(e) => syncCaret(e.currentTarget)}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={() => {
-            composing.current = false;
-            composedAt.current = Date.now();
-          }}
-          rows={2}
-        />
-        {/* Sized by the composer, not the window: a thread pane or a narrow window folds the toolbar. */}
-        <div className="@container px-2 pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-0.5">
-            {tools.map((tool, index) => (
-              <IconButton
-                key={tool.label}
-                label={tool.label}
-                className={cn("h-7 w-7 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @2xl:inline-flex")}
-                disabled={preview}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={tool.run}
-              >
-                {tool.icon}
-              </IconButton>
-            ))}
-            <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" title="その他の書式" aria-label="その他の書式" disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @2xl:hidden">
-                  <Type size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-1.5" onOpenAutoFocus={(e) => e.preventDefault()}>
-                <div className="flex gap-0.5">
-                  {tools.slice(PRIMARY_TOOLS).map((tool) => (
-                    <IconButton
-                      key={tool.label}
-                      label={tool.label}
-                      className="h-8 w-8 text-muted hover:text-ink"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        tool.run();
-                        setMoreToolsOpen(false);
-                      }}
-                    >
-                      {tool.icon}
-                    </IconButton>
-                  ))}
-                </div>
-              </PopoverContent>
-            </PopoverRoot>
-            <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" title="絵文字" aria-label="絵文字" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
-                  <Smile size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-3">
-                <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
-              </PopoverContent>
-            </PopoverRoot>
-            <span className="mx-1 h-4 w-px bg-line" />
-            <Menu>
-              <MenuTrigger asChild>
-                <IconButton label={`ファイルを添付 (${modKey()}+U)`} className="h-7 w-7 text-muted hover:text-ink" disabled={uploading > 0}>
-                  <Paperclip size={15} />
-                </IconButton>
-              </MenuTrigger>
-              <MenuContent align="start" side="top">
-                <MenuItem onSelect={() => mediaInput.current?.click()}>写真・動画</MenuItem>
-                <MenuItem onSelect={() => fileInput.current?.click()}>ファイル</MenuItem>
-              </MenuContent>
-            </Menu>
-            <IconButton label="アンケートを作成" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setPollForm({})}>
-              <Vote size={15} />
+        <div className="relative">
+          {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
+          {preview && (
+            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-16 pt-3" aria-label="プレビュー">
+              {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
+            </div>
+          )}
+          <textarea
+            ref={area}
+            value={text}
+            maxLength={MAX_LENGTH}
+            placeholder={placeholder}
+            className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-16 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
+            onChange={(e) => {
+              setText(e.target.value);
+              syncCaret(e.target);
+              if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
+            }}
+            onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(event.clipboardData.files); } }}
+            aria-label={parentId ? "スレッドの返信" : "メッセージ"}
+            onKeyDown={onKeyDown}
+            onKeyUp={(e) => syncCaret(e.currentTarget)}
+            onClick={(e) => syncCaret(e.currentTarget)}
+            onCompositionStart={() => {
+              composing.current = true;
+            }}
+            onCompositionEnd={() => {
+              composing.current = false;
+              composedAt.current = Date.now();
+            }}
+            rows={2}
+          />
+          {/* On the text's top right, as in Mattermost (tester, 2026-09-30), not on a row of their own. */}
+          <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5">
+            <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
+              {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </IconButton>
+            <MarkdownHelp />
+          </div>
+        </div>
+        <div className="flex flex-nowrap items-center gap-2 px-2 pb-2" data-composer-actions>
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
+            {/* 「＋」: attachments, a poll and the templates (Slack). The template list opens from it. */}
             <PopoverRoot open={templatesOpen} onOpenChange={setTemplatesOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" title="テンプレート" aria-label="テンプレート" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
-                  <LayoutTemplate size={15} />
-                </button>
-              </PopoverTrigger>
+              <Menu>
+                <PopoverAnchor asChild>
+                  <MenuTrigger asChild>
+                    <IconButton label={`ファイルを添付・その他 (${modKey()}+U)`} className="h-7 w-7 shrink-0 text-muted hover:text-ink">
+                      <Plus size={17} />
+                    </IconButton>
+                  </MenuTrigger>
+                </PopoverAnchor>
+                <MenuContent align="start" side="top" onCloseAutoFocus={runAfterMenu}>
+                  <MenuItem disabled={uploading > 0} onSelect={() => mediaInput.current?.click()}>
+                    <Image size={14} className="text-muted" /> 写真・動画
+                  </MenuItem>
+                  <MenuItem disabled={uploading > 0} onSelect={() => fileInput.current?.click()}>
+                    <Paperclip size={14} className="text-muted" /> ファイル <Kbd className="ml-auto">{modKey()}+U</Kbd>
+                  </MenuItem>
+                  <MenuItem onSelect={() => { afterMenu.current = () => setPollForm({}); }}>
+                    <Vote size={14} className="text-muted" /> アンケート
+                  </MenuItem>
+                  <MenuItem onSelect={() => { afterMenu.current = () => setTemplatesOpen(true); }}>
+                    <LayoutTemplate size={14} className="text-muted" /> テンプレート…
+                  </MenuItem>
+                </MenuContent>
+              </Menu>
               <PopoverContent align="start" side="top" className="w-80 p-1" onCloseAutoFocus={(e) => e.preventDefault()}>
                 <div className="px-2 pb-1 pt-1 text-xs font-semibold text-muted">テンプレート</div>
                 {templates.length === 0 ? (
@@ -634,18 +665,32 @@ export function Composer({
                 )}
               </PopoverContent>
             </PopoverRoot>
-            <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
-              {preview ? <EyeOff size={15} /> : <Eye size={15} />}
+            <IconButton label={formatBar ? "書式を隠す" : "書式を表示"} className={cn("h-7 w-7 shrink-0 hover:text-ink", formatBar ? "text-ink" : "text-muted")} onMouseDown={(e) => e.preventDefault()} onClick={toggleFormatBar}>
+              <CaseSensitive size={18} />
             </IconButton>
-            <MarkdownHelp />
+            <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <PopoverAnchor virtualRef={emojiAnchor} />
+              <PopoverTrigger asChild>
+                <button ref={emojiButton} type="button" title="絵文字" aria-label="絵文字" className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
+                  <Smile size={15} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="w-auto p-3">
+                <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
+              </PopoverContent>
+            </PopoverRoot>
+            <IconButton label="メンションを追加" className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[17rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>
+              <AtSign size={15} />
+            </IconButton>
             {!parentId && (
               <PopoverRoot open={priorityOpen} onOpenChange={setPriorityOpen}>
+                <PopoverAnchor virtualRef={priorityAnchor} />
                 <PopoverTrigger asChild>
-                  <button type="button" title="重要度" aria-label="重要度" className={cn("inline-flex h-7 w-7 items-center justify-center rounded-lg hover:bg-ink/6", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
+                  <button ref={priorityButton} type="button" title="重要度" aria-label="重要度" className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
                     <Flag size={15} />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-60 p-2">
+                <PopoverContent align="start" side="top" className="w-60 p-2">
                   <div className="px-1 pb-1 text-xs font-semibold text-muted">重要度</div>
                   {([[null, "通常"], ["important", "重要"], ["urgent", "緊急"]] as Array<[Priority | null, string]>).map(([value, label]) => (
                     <button key={label} type="button" className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel", priority === value && "bg-accent-soft")} onClick={() => setPriority(value)}>
@@ -660,40 +705,62 @@ export function Composer({
                 </PopoverContent>
               </PopoverRoot>
             )}
+            <Menu>
+              <MenuTrigger asChild>
+                <button ref={moreButton} type="button" title="その他" aria-label="その他の操作" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:hidden">
+                  <Ellipsis size={15} />
+                </button>
+              </MenuTrigger>
+              <MenuContent align="start" side="top" onCloseAutoFocus={runAfterMenu}>
+                <MenuItem onSelect={() => { afterMenu.current = () => setEmojiOpen(true); }}>
+                  <Smile size={14} className="text-muted" /> 絵文字
+                </MenuItem>
+                <MenuItem disabled={preview} onSelect={() => { afterMenu.current = startMention; }}>
+                  <AtSign size={14} className="text-muted" /> メンションを追加
+                </MenuItem>
+                {!parentId && (
+                  <MenuItem onSelect={() => { afterMenu.current = () => setPriorityOpen(true); }}>
+                    <Flag size={14} className="text-muted" /> 重要度
+                  </MenuItem>
+                )}
+              </MenuContent>
+            </Menu>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-3">
-            <span className="hidden items-center gap-1 text-[11px] text-muted @3xl:flex">
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="hidden items-center gap-1 whitespace-nowrap text-[11px] text-muted @3xl:flex">
               <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").newline}</Kbd> 改行
             </span>
-            <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ink/6 hover:text-ink disabled:opacity-40">
-                  <Clock size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-3">
-                <div className="mb-2 text-xs font-semibold text-muted">後で送信</div>
-                <ul className="space-y-0.5">
-                  {schedulePresets().map((preset) => (
-                    <li key={preset.key}>
-                      <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => void schedule(preset.at)}>
-                        <span>{preset.label}</span>
-                        <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
-                  <input type="datetime-local" value={customAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setCustomAt(e.target.value)} />
-                  <Button size="sm" variant="secondary" onClick={() => void schedule(new Date(customAt))}>予約</Button>
-                </div>
-              </PopoverContent>
-            </PopoverRoot>
-            <Button size="sm" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
-              <SendHorizontal size={14} /> 送信
-            </Button>
+            {/* 「送信」 and its ▾ with 「後で送信」, as Slack's schedule dropdown. */}
+            <div className="flex items-center">
+              <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
+                <SendHorizontal size={14} /> 送信
+              </Button>
+              <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
+                <PopoverTrigger asChild>
+                  <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent text-white shadow-sm transition-colors hover:bg-accent/90 disabled:pointer-events-none disabled:opacity-50">
+                    <ChevronDown size={14} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" side="top" className="w-72 p-3">
+                  <div className="mb-2 text-xs font-semibold text-muted">後で送信</div>
+                  <ul className="space-y-0.5">
+                    {schedulePresets().map((preset) => (
+                      <li key={preset.key}>
+                        <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => void schedule(preset.at)}>
+                          <span>{preset.label}</span>
+                          <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
+                    <input type="datetime-local" value={customAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setCustomAt(e.target.value)} />
+                    <Button size="sm" variant="secondary" onClick={() => void schedule(new Date(customAt))}>予約</Button>
+                  </div>
+                </PopoverContent>
+              </PopoverRoot>
+            </div>
           </div>
-        </div>
         </div>
       </div>
       {canShare && (
@@ -707,6 +774,36 @@ export function Composer({
 }
 
 type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut };
+
+/**
+ * Makes the text area read `next` as if it had been typed: the smallest changed range (changedRange) selected, then
+ * replaced with `execCommand("insertText")`, which Chrome / WebView2 and WebKit (Tauri on macOS) put on the text area's
+ * own undo stack, merged with typing, and announce with an `input` event (the draft follows through onChange). The
+ * command is deprecated but has no replacement for this, and a stack of our own would fight the native one (the Edit
+ * menu, IME). False where the browser does not take it (jsdom, a hidden text area): the caller sets the draft instead.
+ */
+function replaceThroughBrowser(el: HTMLTextAreaElement, next: string): boolean {
+  if (el.value === next) return true;
+  el.focus();
+  if (document.activeElement !== el || typeof document.execCommand !== "function") return false;
+  const { start, end, text } = changedRange(el.value, next);
+  el.setSelectionRange(start, end);
+  try {
+    return document.execCommand(text ? "insertText" : "delete", false, text) && el.value === next;
+  } catch {
+    return false;
+  }
+}
+
+/** A popover anchor at the first of these elements that is shown (the others folded away by the composer's width). */
+function useShownAnchor(...elements: Array<RefObject<HTMLElement | null>>): RefObject<{ getBoundingClientRect(): DOMRect }> {
+  return useRef({
+    getBoundingClientRect: () => {
+      const shown = elements.map((ref) => ref.current).find((el) => el && el.getClientRects().length > 0);
+      return shown ? shown.getBoundingClientRect() : new DOMRect();
+    },
+  });
+}
 
 /** Marks my own templates in the lists (the workspace's have none). */
 function TemplateMark() {
@@ -736,7 +833,7 @@ function MarkdownHelp() {
           <Info size={15} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[420px] p-3">
+      <PopoverContent align="end" className="w-[420px] p-3">
         <div className="mb-2 text-xs font-semibold">書式 (軽量 Markdown)</div>
         <table className="w-full text-xs">
           <tbody className="divide-y divide-line">

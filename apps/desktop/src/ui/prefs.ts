@@ -7,6 +7,7 @@ const SIDEBAR_WIDTH = "chikuwa.prefs.sidebarWidth";
 const PANE_WIDTH = "chikuwa.prefs.paneWidth";
 const GROUP_POSTS = "chikuwa.prefs.groupPosts";
 const CANVAS_SPLIT = "chikuwa.prefs.canvasSplit";
+const FORMAT_BAR = "chikuwa.prefs.formatBar";
 /** The right-hand pane (thread, pins): dragged by its left edge. */
 export const PANE_MIN = 320;
 export const PANE_MAX = 760;
@@ -49,6 +50,15 @@ export function readGroupPosts(): boolean {
 
 export function writeGroupPosts(value: boolean): void {
   write(GROUP_POSTS, value ? "1" : null);
+}
+
+/** The composer's formatting bar, shown or hidden with 「Aa」 (tester, 2026-09-30, as in Slack). Default shown. */
+export function readFormatBar(): boolean {
+  return read(FORMAT_BAR) !== "0";
+}
+
+export function writeFormatBar(value: boolean): void {
+  write(FORMAT_BAR, value ? null : "0");
 }
 
 /** The canvas editor's share of the width beside its preview (tester, 2026-09-30: the preview's width adjustable). */

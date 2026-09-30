@@ -199,6 +199,7 @@ export function MenuLabel({ children }: { children: ReactNode }) {
 
 export const PopoverRoot = Popover.Root;
 export const PopoverTrigger = Popover.Trigger;
+export const PopoverAnchor = Popover.Anchor;
 
 export function PopoverContent({ className, children, ...props }: ComponentProps<typeof Popover.Content>) {
   return (
