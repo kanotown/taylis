@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.api
 
+import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
@@ -57,7 +58,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -455,6 +456,18 @@ class ApiClient(
     /** M11h: messages that mention me or everyone in my channels. */
     suspend fun listMentions(cursor: String? = null, limit: Int = 50): MentionListOut =
         request("GET", "/api/v1/mentions?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+
+    // --- activity (M39, MOBILE_UI.md §7.2) -----------------------------------------------------
+
+    /** GET /activity: `filter` all / mentions / reactions / threads; `cursor` is the previous page's next_cursor. */
+    suspend fun listActivity(filter: String = "all", cursor: String? = null, limit: Int = 50): ActivityListOut =
+        request("GET", "/api/v1/activity?filter=$filter&limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+
+    override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary")
+
+    /** PUT /activity/read: everything up to `readAt` is read (the server only moves it forward, never past now). */
+    suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
+        request("PUT", "/api/v1/activity/read", buildJsonObject { put("read_at", readAt) })
 
     suspend fun listBookmarks(cursor: String? = null, limit: Int = 50): BookmarkListOut =
         request("GET", "/api/v1/bookmarks?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))

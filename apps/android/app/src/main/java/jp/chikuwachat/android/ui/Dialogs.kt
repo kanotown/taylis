@@ -589,6 +589,28 @@ fun YouScreen(controller: AppController, version: Int, scrollState: ScrollState)
             }
         }
         Text(NotificationLabels.OVERALL_FOOTNOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // M39: a banner when someone reacts to my message (off by default); only against a server that has the activity.
+        if (controller.store.activity != null) {
+            val notifyReactions = remember(version) { (controller.store.me ?: controller.me)?.notifyReactions ?: false }
+            var savingReactions by remember { mutableStateOf(false) }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).padding(top = 8.dp)
+                    .toggleable(value = notifyReactions, enabled = !savingReactions, role = Role.Switch) { on ->
+                        scope.launch {
+                            savingReactions = true
+                            controller.setNotifyReactions(on)
+                            savingReactions = false
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("リアクションのバナー")
+                    Text("オフでもアクティビティに表示されます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = notifyReactions, onCheckedChange = null, enabled = !savingReactions, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
         // M28c: the notification permission is asked once after sign-in; a refusal shows here with the way to the
         // system's page (checked again when the app comes back from it).
         val notificationsPermitted = remember(controller.appForeground) { controller.notificationsPermitted }

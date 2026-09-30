@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.runtime.saveable.Saver
+import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.sync.ChannelState
@@ -168,10 +169,12 @@ object MainTabs {
     data class ActivityBadge(val count: Int, val mention: Boolean)
 
     /**
-     * Activity tab (stage A): the followed threads' unread count plus my channels (not DMs) with a mention; red when any
-     * of those channels or threads mentions me.
+     * Activity tab. M39 (stage B, MOBILE_UI.md §6.4): the server's `activity` summary, the items after my read position,
+     * red when a mention is among them. Without one (a server before M39, or no bootstrap yet), stage A: the followed
+     * threads' unread count plus my channels (not DMs) with a mention; red when any of those mentions me.
      */
-    fun activityBadge(channels: Collection<ChannelState>, threads: ThreadSummary): ActivityBadge {
+    fun activityBadge(channels: Collection<ChannelState>, threads: ThreadSummary, activity: ActivitySummaryOut? = null): ActivityBadge {
+        if (activity != null) return ActivityBadge(activity.unreadCount, mention = activity.unreadCount > 0 && activity.mentionUnread)
         val mentioned = channels.count { it.isMember && !it.channel.isDm && it.mentionCount > 0 }
         return ActivityBadge(threads.unreadCount + mentioned, mention = mentioned > 0 || threads.mentionCount > 0)
     }

@@ -21,14 +21,23 @@ data class PushMessage(
 ) {
     val isSilent: Boolean get() = kind == "silent"
 
+    /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
+    val isReaction: Boolean get() = kind == "reaction"
+
     /** "#general · Alice", or just the sender for a DM (the same title the in-app notifications use). */
     val displayTitle: String get() = listOfNotNull(title.takeIf { it.isNotBlank() }, subtitle?.takeIf { it.isNotBlank() }).joinToString(" · ")
 
     /**
      * Which notification this replaces: one per conversation for messages (so reading it elsewhere clears
-     * it), one per reminder for reminders (never replaced by the next message, nor cleared by a read).
+     * it), one per reminder for reminders (never replaced by the next message, nor cleared by a read). M39: one per
+     * message reacted to ("reaction:<message id>"): the next reaction to it replaces it, and it neither replaces nor
+     * is cleared with its conversation's message notification.
      */
-    val notificationKey: String? get() = if (kind == "reminder") collapseKey ?: messageId?.let { "reminder:$it" } else channelId
+    val notificationKey: String? get() = when (kind) {
+        "reminder" -> collapseKey ?: messageId?.let { "reminder:$it" }
+        "reaction" -> collapseKey ?: messageId?.let { "reaction:$it" }
+        else -> channelId
+    }
 
     companion object {
         fun parse(data: Map<String, String>): PushMessage? {

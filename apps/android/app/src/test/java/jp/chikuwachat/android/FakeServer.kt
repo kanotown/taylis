@@ -12,6 +12,8 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DraftOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.ChannelLinkOut
+import jp.chikuwachat.android.api.ActivitySummaryOut
+import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
@@ -112,7 +114,15 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+        /** M39: GET /activity/summary calls made (the badge refreshes the events trigger). */
+        var activitySummaryCalls = 0
+        override suspend fun activitySummary(): ActivitySummaryOut {
+            maybeFail()
+            activitySummaryCalls += 1
+            return activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
+        }
+
         override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> { maybeFail(); requireMember(channelId, userId); return links[channelId] ?: emptyList() }
         override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
         override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
@@ -208,6 +218,11 @@ class FakeServer {
     class ChannelRecord(var channel: ChannelOut, val members: MutableSet<String>, val messages: MutableList<MessageOut>)
 
     val users = LinkedHashMap<String, UserPublic>()
+    /**
+     * M39: each user's activity summary as GET /activity/summary answers it and bootstrap carries it; a user without
+     * one is on a server before M39 (bootstrap has no `activity`, the endpoint 404s).
+     */
+    val activity = HashMap<String, ActivitySummaryOut>()
     val channels = LinkedHashMap<String, ChannelRecord>()
     /** "user:channel" → last_read_seq (DATA_MODEL.md read_states). */
     val readPositions = HashMap<String, Int>()
@@ -689,7 +704,18 @@ class FakeServer {
         record.channel = record.channel.copy(lastSeq = seq)
         val updated = message.copy(updatedSeq = seq, reactions = groups.map { (e, ids) -> ReactionOut(e, ids.size, ids.toList()) })
         replace(record, updated, "message.updated", "reactions")
+        // M39: news to the author (their activity badge), not when they reacted themselves nor when one is taken away.
+        if (present && message.senderId != userId) {
+            emit(setOf(message.senderId), event("reaction.added", null, null, buildJsonObject {
+                put("channel_id", channelId); put("message_id", messageId); put("user_id", userId); put("emoji", emoji); put("at", now())
+            }))
+        }
         return updated to true
+    }
+
+    /** M39: PUT /activity/read on another device of `userId`: activity.read to their devices. */
+    fun emitActivityRead(userId: String, readAt: String) {
+        emit(setOf(userId), event("activity.read", null, null, buildJsonObject { put("read_at", readAt) }))
     }
 
     private fun event(name: String, channelId: String?, seq: Int?, data: JsonObject): JsonObject = buildJsonObject {
@@ -778,6 +804,7 @@ class FakeServer {
             customEmoji = customEmoji.values.toList(),
             roster = roster.values.toList(),
             drafts = draftsOf(userId),
+            activity = activity[userId],
         )
     }
 

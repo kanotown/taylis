@@ -119,6 +119,9 @@ fun MainScreen(controller: AppController) {
     val dmListState = rememberLazyListState()
     val mentionsListState = rememberLazyListState()
     val threadsListState = rememberLazyListState()
+    val activityListState = rememberLazyListState()
+    // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
+    var activityReadAll by remember { mutableStateOf(false) }
     val youScrollState = rememberScrollState()
     // M16b: the search screen (its route: the bar expanded = suggestions, the search on screen). The results stay while
     // a result's conversation is open, so going back shows them as they were.
@@ -207,7 +210,11 @@ fun MainScreen(controller: AppController) {
                 when (tab) {
                     MainTab.HOME -> homeListState.animateScrollToItem(0)
                     MainTab.DM -> dmListState.animateScrollToItem(0)
-                    MainTab.ACTIVITY -> (if ((top as? Route.Activity)?.segment == ActivitySegment.THREADS) threadsListState else mentionsListState).animateScrollToItem(0)
+                    MainTab.ACTIVITY -> when {
+                        store.activity != null -> activityListState
+                        (top as? Route.Activity)?.segment == ActivitySegment.THREADS -> threadsListState
+                        else -> mentionsListState
+                    }.animateScrollToItem(0)
                     MainTab.YOU -> youScrollState.animateScrollTo(0)
                 }
             }
@@ -239,9 +246,15 @@ fun MainScreen(controller: AppController) {
             controller.pendingChannelId = null
             val reply = controller.pendingReply
             controller.pendingReply = null
+            // M39: a reaction's notification: the message reacted to (the permalink path lands it, in its thread for a reply).
+            val revealId = controller.pendingRevealId
+            controller.pendingRevealId = null
             controller.messageFocus = null
-            if (reply == null) land(id)
-            else scope.launch { if (controller.revealMessage(reply.first, id, reply.second)) land(id, reply.second) else land(id) }
+            when {
+                reply != null -> scope.launch { if (controller.revealMessage(reply.first, id, reply.second)) land(id, reply.second) else land(id) }
+                revealId != null -> scope.launch { if (!controller.openPermalink(revealId)) land(id) }
+                else -> land(id)
+            }
         }
     }
     // M34 (8), MOBILE_UI.md §10 1.: the engine's open conversation is the selected tab's; one left on another tab is not.
@@ -529,6 +542,12 @@ fun MainScreen(controller: AppController) {
                             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4), in place of the channels' one.
+                            val onActivity = top is Route.Activity && store.activity != null
+                            if (onActivity) {
+                                DropdownMenuItem(text = { Text("すべて既読") }, onClick = { menuOpen = false; activityReadAll = true })
+                                HorizontalDivider()
+                            }
                             // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
                             if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
                                 val starred = store.isFavorite(selectedChannel.id)
@@ -567,7 +586,7 @@ fun MainScreen(controller: AppController) {
                                 DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
                             }
                             DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
-                            DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
+                            if (!onActivity) DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
                             if (isChannel && selectedChannel.isMember && !selectedChannel.channel.archived) {
                                 DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
                             }
@@ -673,9 +692,15 @@ fun MainScreen(controller: AppController) {
                     // Rows push their conversation / thread on this tab's stack (back returns here).
                     ActivityScreen(
                         controller, version, top.segment,
-                        onSegment = { tabs = MainTabs.selectSegment(tabs, it) },
+                        onSegment = {
+                            tabs = MainTabs.selectSegment(tabs, it)
+                            activityListState.requestScrollToItem(0)
+                        },
+                        listState = activityListState,
                         mentionsState = mentionsListState,
                         threadsState = threadsListState,
+                        readAllRequested = activityReadAll,
+                        onReadAllHandled = { activityReadAll = false },
                         onOpenMessage = ::reveal,
                         onOpenThread = { entry ->
                             controller.messageFocus = null

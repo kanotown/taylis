@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.sync
 
 import androidx.compose.ui.graphics.ImageBitmap
+import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.PollOut
@@ -249,6 +250,19 @@ class Store(private val persistence: Persistence? = null) {
     /** Followed threads (THREADS.md §5), replaced by thread.updated and GET /threads pages. */
     val threads = LinkedHashMap<String, ThreadEntry>()
     var threadSummary = ThreadSummary()
+        private set
+    /**
+     * M39: the activity tab's badge, from bootstrap (every connect) and GET /activity/summary. Null until a bootstrap
+     * brought one, or from a server before M39: the tab then keeps its stage-A lists and badge (MainTabs.activityBadge).
+     * Not persisted.
+     */
+    var activity: ActivitySummaryOut? = null
+        private set
+    /**
+     * M39: bumped by each event that may add an activity item (reaction.added, a mention, a reply in a followed
+     * thread): the activity list on screen reads its first page again.
+     */
+    var activityRevision = 0
         private set
     var threadsFilter = "all"
         private set
@@ -591,6 +605,19 @@ class Store(private val persistence: Persistence? = null) {
     fun setThreadSummary(summary: ThreadSummary) {
         if (summary == threadSummary) return
         threadSummary = summary
+        emit()
+    }
+
+    // --- activity (M39) -----------------------------------------------------------------------
+
+    fun setActivity(summary: ActivitySummaryOut?) {
+        if (summary == activity) return
+        activity = summary
+        emit()
+    }
+
+    fun noteActivity() {
+        activityRevision += 1
         emit()
     }
 
