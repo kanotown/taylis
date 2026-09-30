@@ -26,7 +26,7 @@ import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
-import { plainText } from "../ui/markdown";
+import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
@@ -1341,7 +1341,7 @@ export class AppController {
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
         const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";
-        const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || "新しいメッセージ";
+        const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || attachmentText(message.attachments) || "新しいメッセージ";
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
         if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text);
         else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);

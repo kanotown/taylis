@@ -275,3 +275,15 @@ export function plainText(body: string, maxLength = 200): string {
     .trim();
   return text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
 }
+
+/**
+ * What a message without text sent, for notifications and one-line excerpts (tester, 2026-09-30: 「画像を送信」 rather
+ * than 「新しいメッセージ」). The server's push and the phones use the same words. "" without attachments.
+ */
+export function attachmentText(attachments: ReadonlyArray<{ content_type: string }> | undefined): string {
+  const n = attachments?.length ?? 0;
+  if (!attachments || n === 0) return "";
+  if (attachments.every((a) => a.content_type.startsWith("image/"))) return n === 1 ? "画像を送信しました" : `画像を ${n} 枚送信しました`;
+  if (attachments.every((a) => a.content_type.startsWith("video/"))) return n === 1 ? "動画を送信しました" : `動画を ${n} 本送信しました`;
+  return n === 1 ? "ファイルを送信しました" : `ファイルを ${n} 件送信しました`;
+}
