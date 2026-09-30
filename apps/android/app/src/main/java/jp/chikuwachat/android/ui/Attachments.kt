@@ -197,11 +197,28 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
     if (viewing) ImageViewer(item, controller, onDismiss = { viewing = false })
 }
 
+/**
+ * Where a download sits under the cache's `downloads/` (the FileProvider's path). 仕上げ A (MOBILE_POLISH.md V1): the
+ * viewer shows the file's own name, so the attachment id is a folder (two files of the same name stay apart) rather
+ * than a prefix of the name (「01a0f275-…_ゼミ資料.pdf」). Neither part can leave its folder: separators become 「_」, and a
+ * name of only dots (or none) is 「file」.
+ */
+object DownloadCache {
+    fun path(attachmentId: String, filename: String): String = segment(attachmentId, "attachment") + "/" + segment(filename, "file")
+
+    private fun segment(name: String, fallback: String): String {
+        val safe = name.map { if (it == '/' || it == '\\' || it == '\u0000') '_' else it }.joinToString("").trim()
+        return if (safe.isEmpty() || safe.all { it == '.' }) fallback else safe
+    }
+}
+
 /** Download to the cache and hand the file to another app (FileProvider; SECURITY.md §4: never inline HTML). */
 suspend fun openDownloaded(context: android.content.Context, attachment: AttachmentOut, bytes: ByteArray) {
-    val dir = File(context.cacheDir, "downloads").apply { mkdirs() }
-    val file = File(dir, attachment.id + "_" + attachment.filename.replace('/', '_'))
-    withContext(Dispatchers.IO) { file.writeBytes(bytes) }
+    val file = File(File(context.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
+    withContext(Dispatchers.IO) {
+        file.parentFile?.mkdirs()
+        file.writeBytes(bytes)
+    }
     val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.contentType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     context.startActivity(Intent.createChooser(intent, attachment.filename).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

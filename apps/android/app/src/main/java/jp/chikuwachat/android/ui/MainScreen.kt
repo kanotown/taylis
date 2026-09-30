@@ -9,31 +9,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
@@ -65,7 +63,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -423,7 +420,6 @@ fun MainScreen(controller: AppController) {
                 TopAppBar(
                     title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
                     actions = {
-                        StatusBadge(status)
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; confirmReadAll = true })
@@ -476,7 +472,8 @@ fun MainScreen(controller: AppController) {
                             pane == Route.Drafts -> Text("下書き")
                             pane is Route.Files -> Text("ファイル")
                             pane == Route.Reminders -> Text("リマインダー")
-                            top == Route.DmList -> Text("ダイレクトメッセージ", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
+                            top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -495,7 +492,16 @@ fun MainScreen(controller: AppController) {
                         }
                     },
                     actions = {
-                        StatusBadge(status)
+                        // 仕上げ A (MOBILE_POLISH.md C5): no connection dot here; ConnectionBanner says when the socket is down.
+                        // C6: the ⋮ holds this screen's own actions only (BarMenu), and is not shown without any.
+                        val conversationPage = selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen
+                        val menuItems = BarMenu.items(
+                            conversation = conversationPage,
+                            channel = isChannel,
+                            archived = selectedChannel?.channel?.archived == true,
+                            activityFeed = top is Route.Activity && store.activity != null,
+                        )
+                        val barButtons = top != Route.You && top !is Route.Settings
                         // THREADS.md §5: follow / unfollow the open thread.
                         val openId = threadId
                         val threadState = openId?.let { store.threads[it]?.state }
@@ -508,6 +514,7 @@ fun MainScreen(controller: AppController) {
                                     barWidth = LocalWindowInfo.current.containerSize.width.toDp().value,
                                     title = measurer.measure("スレッド", MaterialTheme.typography.titleMedium).size.width.toDp().value,
                                     label = measurer.measure("フォロー中", MaterialTheme.typography.labelLarge).size.width.toDp().value,
+                                    menu = barButtons && menuItems.isNotEmpty(),
                                 )
                             }
                             val bell = if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone
@@ -530,7 +537,7 @@ fun MainScreen(controller: AppController) {
                         }
                         // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
                         // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
-                        if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
+                        if (conversationPage && selectedChannel != null) {
                             // M35: 「既定 (…)」 follows the overall setting (level null); 「ミュート」 lasts until unmuted.
                             val ownLevel = NotificationLevels.own(selectedChannel)
                             val overall = store.me?.notificationDefault ?: NotificationLevels.MENTIONS
@@ -561,64 +568,58 @@ fun MainScreen(controller: AppController) {
                             }
                         }
                         // The 自分 tab is the settings page: no search or menu over it.
-                        if (top != Route.You && top !is Route.Settings) {
+                        if (barButtons) {
                             IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
-                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                            if (menuItems.isNotEmpty()) {
+                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                            }
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4), in place of the channels' one.
-                            val onActivity = top is Route.Activity && store.activity != null
-                            if (onActivity) {
-                                DropdownMenuItem(text = { Text("すべて既読") }, onClick = { menuOpen = false; activityReadAll = true })
-                                HorizontalDivider()
-                            }
-                            // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
-                            if (selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen) {
-                                val starred = store.isFavorite(selectedChannel.id)
-                                DropdownMenuItem(
-                                    text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
-                                    leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
-                                    onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(selectedChannel.id) } },
-                                )
-                                // M35: the level resolved with my overall setting as it is now (a change shows at once).
-                                val level = NotificationLevels.resolved(selectedChannel, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
-                                val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
-                                val mutedOn = NotificationLevels.mutedUntilUnmuted(selectedChannel)
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            when {
-                                                mutedOn -> "通知 (ミュート中)"
-                                                mute != null -> "通知 ($mute)"
-                                                else -> "通知: " + NotificationLabels.shortLabel(level)
-                                            },
+                        DropdownMenu(expanded = menuOpen && menuItems.isNotEmpty(), onDismissRequest = { menuOpen = false }) {
+                            menuItems.forEach { item ->
+                                when (item) {
+                                    // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4).
+                                    BarMenuItem.READ_ALL_ACTIVITY -> DropdownMenuItem(
+                                        text = { Text("すべて既読") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                        onClick = { menuOpen = false; activityReadAll = true },
+                                    )
+                                    // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
+                                    BarMenuItem.FAVORITE -> selectedChannel?.let { open ->
+                                        val starred = store.isFavorite(open.id)
+                                        DropdownMenuItem(
+                                            text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
+                                            leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
+                                            onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(open.id) } },
                                         )
-                                    },
-                                    leadingIcon = { Icon(if (level == NotificationLevels.NONE || mutedOn || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
-                                    onClick = { menuOpen = false; bellOpen = true },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                    onClick = { menuOpen = false; openDetails() },
-                                )
-                                HorizontalDivider()
+                                    }
+                                    BarMenuItem.NOTIFICATIONS -> selectedChannel?.let { open ->
+                                        // M35: the level resolved with my overall setting as it is now (a change shows at once).
+                                        val level = NotificationLevels.resolved(open, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
+                                        val mute = Timeline.muteLabel(open.channel.notification?.mutedUntil)
+                                        val mutedOn = NotificationLevels.mutedUntilUnmuted(open)
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    when {
+                                                        mutedOn -> "通知 (ミュート中)"
+                                                        mute != null -> "通知 ($mute)"
+                                                        else -> "通知: " + NotificationLabels.shortLabel(level)
+                                                    },
+                                                )
+                                            },
+                                            leadingIcon = { Icon(if (level == NotificationLevels.NONE || mutedOn || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
+                                            onClick = { menuOpen = false; bellOpen = true },
+                                        )
+                                    }
+                                    BarMenuItem.DETAILS -> DropdownMenuItem(
+                                        text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                        onClick = { menuOpen = false; openDetails() },
+                                    )
+                                    BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
+                                        text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                                        onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
+                                    )
+                                }
                             }
-                            DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
-                            DropdownMenuItem(text = { Text("メンバー") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
-                            if (!controller.isGuest) {
-                                DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
-                                DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
-                            }
-                            DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
-                            if (!onActivity) DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; scope.launch { controller.markAllRead() } })
-                            if (isChannel && selectedChannel.isMember && !selectedChannel.channel.archived) {
-                                DropdownMenuItem(text = { Text("メンバーを追加") }, onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER })
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
-                            // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
-                            val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
-                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
                         }
                     },
                 )
@@ -839,12 +840,17 @@ fun MainScreen(controller: AppController) {
 object ConversationBar {
     /** The back button with the bar's start padding (4 + 48) and the title's own padding (4 + 4). */
     private const val START = 52f + 8f
-    /** The connection dot (26, a 30 spinner while connecting), search and ⋮ (48 + 48), the bar's end padding (4). */
-    private const val END = 30f + 96f + 4f
+    /**
+     * Search (48) and the bar's end padding (4); ⋮ (48) when the screen has a menu (BarMenu: a thread has none). 仕上げ A
+     * (MOBILE_POLISH.md C5): the connection dot (26, a 30 spinner while connecting) is gone from the bar.
+     */
+    private const val END = 48f + 4f
+    private const val MENU = 48f
     /** The FilterChip around its label (paddings 8 + 8 + 16 and the 16 bell) and its end padding (4). */
     private const val CHIP = 48f + 4f
 
-    fun followLabelFits(barWidth: Float, title: Float, label: Float): Boolean = barWidth - START - END - CHIP - label >= title
+    fun followLabelFits(barWidth: Float, title: Float, label: Float, menu: Boolean = false): Boolean =
+        barWidth - START - END - (if (menu) MENU else 0f) - CHIP - label >= title
 }
 
 /**
@@ -891,24 +897,6 @@ fun ConnectionBanner(status: EngineStatus) {
 }
 
 private const val BANNER_GRACE_MS = 2_000L
-
-/** The connection dot in the app bar; M28c: TalkBack reads the state it shows (the dot said nothing). */
-@Composable
-fun StatusBadge(status: EngineStatus) {
-    val label = when (status) {
-        EngineStatus.ONLINE -> "サーバに接続中"
-        EngineStatus.CONNECTING -> "サーバに接続しています"
-        EngineStatus.OFFLINE -> "オフライン"
-        else -> null
-    }
-    val described = if (label == null) Modifier else Modifier.semantics { contentDescription = label }
-    when (status) {
-        EngineStatus.ONLINE -> Box(described.padding(8.dp).size(10.dp).background(Color(0xFF34C759), CircleShape))
-        EngineStatus.CONNECTING -> CircularProgressIndicator(described.padding(8.dp).size(14.dp), strokeWidth = 2.dp)
-        EngineStatus.OFFLINE -> Box(described.padding(8.dp).size(10.dp).background(Color(0xFFFF9500), CircleShape))
-        else -> Spacer(Modifier.width(0.dp))
-    }
-}
 
 /** 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) as the app bar subtitle. */
 private fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {

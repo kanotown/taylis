@@ -688,7 +688,9 @@ private fun ResultRow(controller: AppController, version: Int, message: MessageO
     val store = controller.store
     val channel = store.channel(message.channelId)
     val sender = store.users[message.senderId]?.displayName ?: "?"
-    val text = remember(message.id, message.body, version) { plainText(Mentions.toNames(message.body, store.users, store.groups), maxLength = 400) }
+    // 仕上げ A (MOBILE_POLISH.md X1): the one-line excerpt every list uses (apps/shared/dm-preview.json's rule); the
+    // attachments are listed below it by name, so no 「画像を送信しました」 stands in for an empty body.
+    val text = remember(message.id, message.body, version) { messageLine(message.body, emptyList(), store.users, store.groups, maxLength = 400) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxWidth().clickable(onClickLabel = if (message.parentId != null) "スレッドで表示" else "会話で表示", onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -708,7 +710,7 @@ private fun ResultRow(controller: AppController, version: Int, message: MessageO
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Text(Timeline.fullLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
+            Text(Timeline.stampLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
         }
         Row(Modifier.padding(top = 6.dp)) {
             Avatar(message.senderId, sender, size = 36.dp)
