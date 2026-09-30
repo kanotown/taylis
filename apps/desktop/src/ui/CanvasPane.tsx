@@ -5,7 +5,7 @@
  * the settings (title, who edits, the tab) and the trash. The history, search, images and sharing come in M44.
  */
 import { Check, ChevronDown, CircleAlert, Cloud, CloudOff, Copy, FileText, History, ListTree, Loader2, MessageSquare, MoreHorizontal, Pencil, Plus, RotateCcw, Share2, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { CanvasConflict, CanvasMeta, CanvasOut, CanvasTemplateOut } from "../api/types";
 import { describeError } from "../api/errors";
@@ -18,6 +18,7 @@ import { canvasRights, type CanvasRights, isDmConversation, NO_CANVAS_RIGHTS } f
 import { CanvasHistoryDialog } from "./CanvasHistory";
 import { outline, taskProgress, toggleTaskLine } from "./canvasText";
 import { useCompact } from "./compact";
+import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, readCanvasSplit, writeCanvasSplit } from "./prefs";
 import { sinceLabel } from "./format";
 import { mentionsToNames } from "./mentions";
 import { Badge, Button, cn, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
@@ -173,6 +174,34 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
   const meta: CanvasMeta | null = listed && (!saver.canvas || listed.version >= saver.canvas.version) ? listed : saver.canvas;
   const rights = meta ? canvasRights(channel, actorOf(controller), meta) : NO_CANVAS_RIGHTS;
   const [mode, setMode] = useState<Mode>(() => (compact ? "view" : "edit"));
+  // The editor's share of the width beside the preview: dragged by the line between them, kept on this device.
+  const [split, setSplit] = useState(readCanvasSplit);
+  const splitBox = useRef<HTMLDivElement>(null);
+  const changeSplit = (value: number) => {
+    setSplit(value);
+    writeCanvasSplit(value);
+  };
+  const startSplitResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = splitBox.current?.getBoundingClientRect();
+    if (!box || box.width <= 0) return;
+    event.preventDefault();
+    let value = split;
+    const move = (e: PointerEvent) => {
+      value = clampCanvasSplit((e.clientX - box.left) / box.width);
+      setSplit(value);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      writeCanvasSplit(value);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const [renaming, setRenaming] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -257,10 +286,31 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
       {saver.status === "loading" ? (
         <Empty icon={<Loader2 size={22} className="animate-spin" />} title="読み込み中…" />
       ) : editing ? (
-        <div className={cn("flex min-h-0 flex-1", compact ? "flex-col" : "flex-row")}>
-          <CanvasEditor controller={controller} saver={saver} className={cn("flex-1", !compact && "basis-1/2 border-r border-line")} />
+        <div ref={splitBox} className={cn("flex min-h-0 flex-1", compact ? "flex-col" : "flex-row")}>
+          <CanvasEditor controller={controller} saver={saver} className={cn("min-w-0", compact ? "flex-1" : "shrink-0")} style={compact ? undefined : { width: `${split * 100}%` }} />
           {!compact && (
-            <div className="min-h-0 basis-1/2 overflow-y-auto" aria-label="キャンバスのプレビュー">
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="編集とプレビューの幅"
+              aria-valuemin={CANVAS_SPLIT_MIN * 100}
+              aria-valuemax={CANVAS_SPLIT_MAX * 100}
+              aria-valuenow={Math.round(split * 100)}
+              tabIndex={0}
+              title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+              onPointerDown={startSplitResize}
+              onDoubleClick={() => changeSplit(CANVAS_SPLIT_DEFAULT)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                  event.preventDefault();
+                  changeSplit(clampCanvasSplit(split + (event.key === "ArrowLeft" ? -0.05 : 0.05)));
+                }
+              }}
+              className="relative w-px shrink-0 cursor-col-resize bg-line outline-none before:absolute before:inset-y-0 before:-left-1 before:w-2 before:content-[''] hover:bg-accent/60 focus-visible:bg-accent"
+            />
+          )}
+          {!compact && (
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label="キャンバスのプレビュー">
               <div className="mx-auto max-w-3xl px-6 py-4">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">プレビュー</div>
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} />

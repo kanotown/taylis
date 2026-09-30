@@ -13,7 +13,7 @@ import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { ackLine, bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
-import { plainText } from "./markdown";
+import { attachmentText, plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
 import { PollCard, pollHidesBody } from "./PollCard";
 import { PriorityLabel } from "./PriorityLabel";
@@ -757,7 +757,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       onTouchCancel={cancelPress}
       onContextMenu={(event) => { if (touchScreen()) event.preventDefault(); }}
     >
-      <div className="flex justify-center pt-0.5">
+      {/* items-start: the avatar's button would stretch to the row's height and centre the picture in it (a tall message's
+          picture sat beside its middle, below the name). */}
+      <div className="flex items-start justify-center pt-0.5">
         {compact ? (
           // Grouped under the previous message: its time, faint, where the avatar would be, so where one message ends
           // and the next begins shows (testers, 2026-09-28; the same on iOS and Android).
@@ -773,7 +775,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <button type="button" className="mb-0.5 flex max-w-full items-center gap-1 text-left text-[11px] text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
             <MessageSquare size={11} className="shrink-0" />
             <span className="shrink-0">スレッドに返信:</span>
-            <span className="truncate">{threadParent ? plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || "(添付ファイル)" : "元のメッセージ"}</span>
+            <span className="truncate">{threadParent ? plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || attachmentText(threadParent.attachments) || "(添付ファイル)" : "元のメッセージ"}</span>
           </button>
         )}
         {thread && message.parent_id && message.also_in_channel && (

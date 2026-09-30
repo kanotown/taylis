@@ -6,6 +6,7 @@ const SEND_KEY = "chikuwa.prefs.sendKey";
 const SIDEBAR_WIDTH = "chikuwa.prefs.sidebarWidth";
 const PANE_WIDTH = "chikuwa.prefs.paneWidth";
 const GROUP_POSTS = "chikuwa.prefs.groupPosts";
+const CANVAS_SPLIT = "chikuwa.prefs.canvasSplit";
 /** The right-hand pane (thread, pins): dragged by its left edge. */
 export const PANE_MIN = 320;
 export const PANE_MAX = 760;
@@ -48,6 +49,24 @@ export function readGroupPosts(): boolean {
 
 export function writeGroupPosts(value: boolean): void {
   write(GROUP_POSTS, value ? "1" : null);
+}
+
+/** The canvas editor's share of the width beside its preview (tester, 2026-09-30: the preview's width adjustable). */
+export const CANVAS_SPLIT_MIN = 0.25;
+export const CANVAS_SPLIT_MAX = 0.75;
+export const CANVAS_SPLIT_DEFAULT = 0.5;
+
+export function clampCanvasSplit(value: number): number {
+  return Math.min(CANVAS_SPLIT_MAX, Math.max(CANVAS_SPLIT_MIN, value));
+}
+
+export function readCanvasSplit(): number {
+  const value = Number(read(CANVAS_SPLIT));
+  return Number.isFinite(value) && value >= CANVAS_SPLIT_MIN && value <= CANVAS_SPLIT_MAX ? value : CANVAS_SPLIT_DEFAULT;
+}
+
+export function writeCanvasSplit(value: number): void {
+  write(CANVAS_SPLIT, value === CANVAS_SPLIT_DEFAULT ? null : value.toFixed(3));
 }
 
 export function readSidebarWidth(): number {

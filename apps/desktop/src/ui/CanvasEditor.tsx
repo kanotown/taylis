@@ -5,7 +5,7 @@
  * loop replaces (someone else's merged edits, a box ticked in the preview) comes back here with the caret kept.
  */
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, TextQuote } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
 import type { CanvasSaver } from "../sync/canvasSave";
@@ -15,10 +15,11 @@ import { continueStructure, type EditState, indentListLine, insertLink, toggleLi
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
 
-export function CanvasEditor({ controller, saver, className, autoFocus = false }: {
+export function CanvasEditor({ controller, saver, className, style, autoFocus = false }: {
   controller: AppController;
   saver: CanvasSaver;
   className?: string;
+  style?: CSSProperties;
   autoFocus?: boolean;
 }) {
   const store = controller.store;
@@ -223,7 +224,7 @@ export function CanvasEditor({ controller, saver, className, autoFocus = false }
   };
 
   return (
-    <div className={cn("relative flex min-h-0 flex-col", className)}>
+    <div className={cn("relative flex min-h-0 flex-col", className)} style={style}>
       <div role="toolbar" aria-label="書式" className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1 [scrollbar-width:none]">
         {tools.map((tool, index) =>
           tool === "gap" ? (

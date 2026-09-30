@@ -39,16 +39,26 @@ export function LinkPreviewCard({ controller, url }: { controller: AppController
       target="_blank"
       rel="noreferrer noopener"
       onClick={(event) => openExternalLink(event, preview.url)}
-      className="mt-1.5 flex max-w-xl gap-3 rounded-lg border border-line border-l-[3px] border-l-accent/60 bg-panel px-3 py-2 text-sm no-underline transition-colors hover:bg-panel-2"
+      // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked "AI-like").
+      className="mt-1.5 flex max-w-xl gap-3 rounded-lg border border-line px-3 py-2.5 text-sm no-underline transition-colors hover:bg-panel"
     >
       <div className="min-w-0 flex-1">
-        {preview.site_name && <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted">{preview.site_name}</div>}
-        {preview.title && <div className="line-clamp-2 font-semibold text-ink">{preview.title}</div>}
-        {preview.description && <div className="mt-0.5 line-clamp-3 text-[13px] text-muted">{preview.description}</div>}
+        <div className="truncate text-xs text-muted">{preview.site_name || hostOf(preview.url)}</div>
+        {preview.title && <div className="mt-0.5 line-clamp-2 font-semibold text-ink">{preview.title}</div>}
+        {preview.description && <div className="mt-0.5 line-clamp-2 text-[13px] text-muted">{preview.description}</div>}
       </div>
-      {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-md object-cover" />}
+      {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
     </a>
   );
+}
+
+/** The link's host without "www.", for a page that names no site. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 /** The nearest scrolling ancestor: the observer's root, so its margin reaches rows just outside the scroller's view. */

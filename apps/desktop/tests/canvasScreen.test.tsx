@@ -113,6 +113,19 @@ it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a
   expect(saveState()).toBe("saved");
   // The preview beside it renders the tasks.
   expect(within(screen.getByLabelText("キャンバスのプレビュー")).getAllByRole("checkbox")).toHaveLength(2);
+  // The line between them sets the editor's share (arrow keys here, a drag with the pointer), kept on this device;
+  // a double click puts it back.
+  const line = screen.getByRole("separator", { name: "編集とプレビューの幅" });
+  expect(line.getAttribute("aria-valuenow")).toBe("50");
+  fireEvent.keyDown(line, { key: "ArrowRight" });
+  fireEvent.keyDown(line, { key: "ArrowRight" });
+  expect(line.getAttribute("aria-valuenow")).toBe("60");
+  expect(localStorage.getItem("chikuwa.prefs.canvasSplit")).toBe("0.600");
+  for (let i = 0; i < 10; i++) fireEvent.keyDown(line, { key: "ArrowRight" });
+  expect(line.getAttribute("aria-valuenow")).toBe("75");
+  fireEvent.doubleClick(line);
+  expect(line.getAttribute("aria-valuenow")).toBe("50");
+  expect(localStorage.getItem("chikuwa.prefs.canvasSplit")).toBeNull();
 
   // Back to the messages: the tab comes back as it was left.
   fireEvent.click(screen.getByRole("tab", { name: "メッセージ" }));
