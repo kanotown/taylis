@@ -608,6 +608,7 @@ fun MessageRow(
                 if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
+                        onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                     )
                 }

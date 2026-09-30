@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,6 +61,8 @@ fun MessageBody(
     /** M12b: links on this server (`<base>/m/<id>`) open the message in place instead of a browser. */
     internalBase: String? = null,
     onOpenMessage: ((String) -> Unit)? = null,
+    /** M46: canvas links on this server (`<base>/c/<id>`) open the canvas in place. */
+    onOpenCanvas: ((String) -> Unit)? = null,
     /** M12f: custom emoji by name and their cached images; `onNeedEmojiImage` fetches a missing one. */
     customEmoji: Map<String, CustomEmojiOut> = emptyMap(),
     emojiImages: Map<String, ImageBitmap> = emptyMap(),
@@ -74,6 +77,41 @@ fun MessageBody(
      */
     version: Int = 0,
 ) {
+    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version)
+    // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
+    // row on screen again).
+    val blocks = remember(text) { parseBlocks(text) }
+    Column(modifier = modifier) {
+        for (block in blocks) BodyBlockView(block, inline)
+    }
+}
+
+/**
+ * Inline tokens as styled text (mentions, links, custom emoji), and the images that text refers to. [build] fills
+ * [inlineContent] as it goes, so a Text passes both, built first (M46: shared by the message body and the canvas).
+ */
+class BodyInline(val build: (List<BodyToken>) -> AnnotatedString, val inlineContent: Map<String, InlineTextContent>) {
+    fun joined(lines: List<List<BodyToken>>): AnnotatedString = buildAnnotatedString {
+        lines.forEachIndexed { index, tokens ->
+            if (index > 0) append("\n")
+            append(build(tokens))
+        }
+    }
+}
+
+@Composable
+fun bodyInline(
+    users: Map<String, UserPublic>,
+    internalBase: String? = null,
+    onOpenMessage: ((String) -> Unit)? = null,
+    onOpenCanvas: ((String) -> Unit)? = null,
+    customEmoji: Map<String, CustomEmojiOut> = emptyMap(),
+    emojiImages: Map<String, ImageBitmap> = emptyMap(),
+    emojiAnimations: Map<String, EmojiAnimation> = emptyMap(),
+    onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
+    groups: Map<String, GroupOut> = emptyMap(),
+    version: Int = 0,
+): BodyInline {
     // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
     // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
     // emoji images that arrived after the first draw stayed `:name:`, 2026-09-29). The images are what it keys.
@@ -103,7 +141,6 @@ fun MessageBody(
     }
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     fun inline(tokens: List<BodyToken>): AnnotatedString = buildAnnotatedString {
         for (token in tokens) {
             when (token) {
@@ -115,9 +152,14 @@ fun MessageBody(
                 is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(token.text) }
                 is BodyToken.Link -> {
                     val internal = internalBase?.let { Permalink.messageId(it, token.url) }
+                    val canvas = internalBase?.let { Permalink.canvasId(it, token.url) }
                     if (internal != null && onOpenMessage != null) {
                         withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
                             append("💬 " + (token.label?.takeIf { it != token.url } ?: "メッセージを表示"))
+                        }
+                    } else if (canvas != null && onOpenCanvas != null) {
+                        withLink(LinkAnnotation.Clickable("canvas:$canvas", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenCanvas(canvas) }) {
+                            append("📄 " + (token.label?.takeIf { it != token.url } ?: "キャンバスを開く"))
                         }
                     } else withLink(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),
@@ -132,52 +174,58 @@ fun MessageBody(
             }
         }
     }
-    fun joined(lines: List<List<BodyToken>>): AnnotatedString = buildAnnotatedString {
-        lines.forEachIndexed { index, tokens ->
-            if (index > 0) append("\n")
-            append(inline(tokens))
-        }
-    }
+    return BodyInline(::inline, inlineContent)
+}
 
-    // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
-    // row on screen again).
-    val blocks = remember(text) { parseBlocks(text) }
-    Column(modifier = modifier) {
-        for (block in blocks) {
-            when (block) {
-                // Larger than they were (testers, 2026-09-29), with their custom emoji drawn (they showed as :name:).
-                is BodyBlock.Heading -> Text(
-                    inline(block.tokens),
-                    inlineContent = inlineContent,
-                    style = when (block.level) { 1 -> MaterialTheme.typography.headlineMedium; 2 -> MaterialTheme.typography.headlineSmall; else -> MaterialTheme.typography.titleLarge },
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                is BodyBlock.Paragraph -> Text(joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
-                is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
-                    Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, color = muted)
-                }
-                is BodyBlock.ListBlock -> Column(Modifier.padding(vertical = 1.dp)) {
-                    block.items.forEachIndexed { index, item ->
-                        Row(Modifier.padding(start = (item.level * 16).dp), verticalAlignment = Alignment.Top) {
-                            val marker = if (block.ordered) "${block.start + index}." else if (item.level > 0) "◦" else "•"
-                            Text(marker, style = MaterialTheme.typography.bodyLarge, color = muted, modifier = Modifier.width(22.dp))
-                            Text(inline(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
-                        }
-                    }
-                }
-                is BodyBlock.Table -> MarkdownTable(block, { inline(it) }, inlineContent)
-                is BodyBlock.CodeBlock -> Column(
-                    Modifier.fillMaxWidth().padding(vertical = 2.dp).background(codeBackground, RoundedCornerShape(6.dp)).padding(8.dp),
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    block.lang?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = muted) }
-                    Text(block.text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+/** One block of a body (the canvas draws its tasks, images and headings itself, ui/CanvasBody.kt). */
+@Composable
+fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    val inlineContent = inline.inlineContent
+    when (block) {
+        // Larger than they were (testers, 2026-09-29), with their custom emoji drawn (they showed as :name:).
+        is BodyBlock.Heading -> Text(
+            inline.build(block.tokens),
+            inlineContent = inlineContent,
+            style = when (block.level) { 1 -> MaterialTheme.typography.headlineMedium; 2 -> MaterialTheme.typography.headlineSmall; else -> MaterialTheme.typography.titleLarge },
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        is BodyBlock.Paragraph -> Text(inline.joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
+        is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
+            Spacer(Modifier.width(8.dp))
+            Text(inline.joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, color = muted)
+        }
+        is BodyBlock.ListBlock -> Column(Modifier.padding(vertical = 1.dp)) {
+            block.items.forEachIndexed { index, item ->
+                Row(Modifier.padding(start = (item.level * 16).dp), verticalAlignment = Alignment.Top) {
+                    val marker = if (block.ordered) "${block.start + index}." else if (item.level > 0) "◦" else "•"
+                    Text(marker, style = MaterialTheme.typography.bodyLarge, color = muted, modifier = Modifier.width(22.dp))
+                    Text(inline.build(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
+        is BodyBlock.Table -> MarkdownTable(block, inline.build, inlineContent)
+        is BodyBlock.CodeBlock -> Column(
+            Modifier.fillMaxWidth().padding(vertical = 2.dp).background(codeBackground, RoundedCornerShape(6.dp)).padding(8.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            block.lang?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = muted) }
+            Text(block.text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+        }
+        // The canvas dialect only (parseBlocks(canvas = true)); CanvasBody draws these with boxes that tick and images.
+        is BodyBlock.Tasks -> Column(Modifier.padding(vertical = 1.dp)) {
+            block.items.forEach { item ->
+                Row(Modifier.padding(start = (item.level * 16).dp)) {
+                    Text(if (item.done) "☑" else "☐", style = MaterialTheme.typography.bodyLarge, color = muted, modifier = Modifier.width(22.dp))
+                    Text(inline.build(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+        is BodyBlock.Image -> Text("🖼 " + block.alt.ifEmpty { "画像" }, style = MaterialTheme.typography.bodyMedium, color = muted)
+        BodyBlock.Rule -> HorizontalDivider(Modifier.padding(vertical = 8.dp))
     }
 }
 

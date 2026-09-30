@@ -39,9 +39,12 @@ sealed interface Route {
     @Serializable @SerialName("settings")
     data class Settings(val page: SettingsPage) : Route
 
-    /** A conversation, on one of its tabs (M29), with or without its details page over it. */
+    /**
+     * A conversation, on one of its tabs (M29), with or without its details page over it. M46: [canvasId] is the canvas
+     * its 「キャンバス」 tab shows (null: the conversation's tab canvas, else the newest).
+     */
     @Serializable @SerialName("channel")
-    data class Channel(val id: String, val tab: ConversationTab = ConversationTab.MESSAGES, val detailsOpen: Boolean = false) : Route
+    data class Channel(val id: String, val tab: ConversationTab = ConversationTab.MESSAGES, val detailsOpen: Boolean = false, val canvasId: String? = null) : Route
 
     /** A thread, always on top of its conversation's [Channel]; [from] says where back returns to. */
     @Serializable @SerialName("thread")
@@ -183,6 +186,14 @@ object MainNav {
 
     /** M29: a tab of the conversation on screen. */
     fun selectTab(stack: List<Route>, tab: ConversationTab): List<Route> = updateChannel(stack) { it.copy(tab = tab) }
+
+    /** M46: a canvas of the conversation on screen, in its 「キャンバス」 tab (null: the default one). */
+    fun selectCanvas(stack: List<Route>, canvasId: String?): List<Route> =
+        updateChannel(stack) { it.copy(tab = ConversationTab.CANVAS, canvasId = canvasId, detailsOpen = false) }
+
+    /** M46: a `/c/<id>` link: the canvas's conversation opens on its 「キャンバス」 tab, as [openConversation] does. */
+    fun openCanvas(stack: List<Route>, channelId: String, canvasId: String): List<Route> =
+        base(stack) + Route.Channel(channelId, tab = ConversationTab.CANVAS, canvasId = canvasId)
 
     /** M29: the conversation's details page, over whichever tab. */
     fun openDetails(stack: List<Route>): List<Route> = updateChannel(stack) { it.copy(detailsOpen = true) }

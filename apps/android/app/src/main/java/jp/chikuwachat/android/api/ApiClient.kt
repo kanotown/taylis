@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.ActivityApi
+import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
@@ -30,7 +31,8 @@ import java.net.URLEncoder as Enc
 
 /** Structured API errors (ARCHITECTURE.md §9). */
 sealed class ApiException(message: String) : Exception(message) {
-    class Api(val status: Int, val code: String, val detail: String) : ApiException("$detail ($code)") {
+    /** `details`: the error envelope's extra facts (M46: a canvas conflict carries the current canvas), when it has any. */
+    class Api(val status: Int, val code: String, val detail: String, val details: JsonElement? = null) : ApiException("$detail ($code)") {
         val isAuth: Boolean get() = status == 401
         /** Temporary failures worth retrying; the idempotency key prevents duplicates. */
         val isRetryable: Boolean get() = status == 429 || status >= 500
@@ -58,7 +60,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -387,7 +389,7 @@ class ApiClient(
 
     private fun decodeError(status: Int, text: String): ApiException.Api {
         val envelope = runCatching { Codec.plain.decodeFromString(ErrorEnvelope.serializer(), text) }.getOrNull()
-        return ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed")
+        return ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed", envelope?.error?.details)
     }
 
     suspend fun messageContext(messageId: String): List<MessageOut> = request("GET", "/api/v1/messages/$messageId/context")
@@ -559,6 +561,70 @@ class ApiClient(
 
     suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
 
+    // --- canvases (CANVAS.md §4.5, M46) ---------------------------------------------------------
+
+    /** The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead). */
+    override suspend fun listCanvases(channelId: String, trashed: Boolean): List<CanvasMeta> =
+        request("GET", "/api/v1/channels/$channelId/canvases" + if (trashed) "?trashed=true" else "")
+
+    /** A new canvas (a retry with the same client_save_id returns the first one). The server fills a template in `tz`. */
+    override suspend fun createCanvas(channelId: String, clientSaveId: String, templateKey: String?, title: String?, asTab: Boolean, tz: String?): CanvasOut =
+        request("POST", "/api/v1/channels/$channelId/canvases", buildJsonObject {
+            put("client_save_id", clientSaveId)
+            put("as_tab", asTab)
+            put("share_to_channel", false) // M42: posting it to the conversation is its own action
+            tz?.let { put("tz", it) }
+            templateKey?.let { put("template_key", it) }
+            title?.let { put("title", it) }
+        })
+
+    /** Metadata and body; null when `knownVersion` is still the current one (If-None-Match → 304). */
+    override suspend fun getCanvas(canvasId: String, knownVersion: Long?): CanvasOut? {
+        val headers = if (knownVersion == null) emptyMap() else mapOf("If-None-Match" to "\"v$knownVersion\"")
+        val (text, status) = requestRaw("GET", "/api/v1/canvases/$canvasId", null, auth = true, retry401 = true, headers = headers)
+        if (status == 304) return null
+        return try {
+            Codec.snake.decodeFromString(CanvasOut.serializer(), text)
+        } catch (e: Exception) {
+            throw ApiException.Api(0, "decode_error", "Unexpected response: ${e.message}")
+        }
+    }
+
+    /** §4.4: the whole body written on `baseRevId`; 409 canvas_conflict / canvas_base_expired carry the head in `details`. */
+    override suspend fun saveCanvas(canvasId: String, baseRevId: String, body: String, clientSaveId: String, onConflict: String): CanvasSaveOut =
+        request("PUT", "/api/v1/canvases/$canvasId/content", buildJsonObject {
+            put("base_rev_id", baseRevId)
+            put("body", body)
+            put("client_save_id", clientSaveId)
+            put("on_conflict", onConflict)
+        })
+
+    /** Title, who edits (`editPolicy` "members" | "owners"), the conversation's tab. */
+    override suspend fun updateCanvas(canvasId: String, title: String?, editPolicy: String?, isChannelTab: Boolean?): CanvasOut =
+        request("PATCH", "/api/v1/canvases/$canvasId", buildJsonObject {
+            title?.let { put("title", it) }
+            editPolicy?.let { put("edit_policy", it) }
+            isChannelTab?.let { put("is_channel_tab", it) }
+        })
+
+    /** To the trash (204). */
+    override suspend fun deleteCanvas(canvasId: String) {
+        requestRaw("DELETE", "/api/v1/canvases/$canvasId", null, auth = true, retry401 = true)
+    }
+
+    override suspend fun restoreCanvas(canvasId: String): CanvasOut = request("POST", "/api/v1/canvases/$canvasId/restore", buildJsonObject {})
+
+    override suspend fun canvasTemplates(): List<CanvasTemplateOut> = request("GET", "/api/v1/canvas-templates")
+
+    /** The history, newest first (no side versions, no bodies). */
+    suspend fun canvasRevisions(canvasId: String, cursor: String? = null): CanvasRevisionPage =
+        request("GET", "/api/v1/canvases/$canvasId/revisions" + (cursor?.let { "?cursor=" + URLEncoder.encode(it, "UTF-8") } ?: ""))
+
+    suspend fun canvasRevision(canvasId: String, revisionId: String): CanvasRevisionOut = request("GET", "/api/v1/canvases/$canvasId/revisions/$revisionId")
+
+    /** An attachment's metadata (a canvas image knows only its id). */
+    suspend fun attachment(attachmentId: String): AttachmentOut = request("GET", "/api/v1/attachments/$attachmentId")
+
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
     suspend fun acknowledge(messageId: String, present: Boolean): MessageOut =
@@ -637,9 +703,10 @@ class ApiClient(
         }
     }
 
-    private suspend fun requestRaw(method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean): Pair<String, Int> {
+    private suspend fun requestRaw(method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean, headers: Map<String, String> = emptyMap()): Pair<String, Int> {
         if (auth && accessToken == null && refreshToken != null) ensureAccessToken()
         val builder = Request.Builder().url(baseUrl.trimEnd('/') + path).header("Accept", "application/json")
+        headers.forEach { (name, value) -> builder.header(name, value) }
         val requestBody = body?.let { Codec.plain.encodeToString(JsonElement.serializer(), it).toRequestBody("application/json".toMediaType()) }
         builder.method(method, requestBody ?: if (method == "GET") null else "".toRequestBody(null))
         if (auth) accessToken?.let { builder.header("Authorization", "Bearer $it") }
@@ -651,13 +718,14 @@ class ApiClient(
                 throw ApiException.Network(e)
             }
         }
-        if (status in 200..299) return text to status
+        // 304: an If-None-Match that still matches (M46 canvases); only the caller that sent one sees it.
+        if (status in 200..299 || status == 304) return text to status
 
         val envelope = runCatching { Codec.plain.decodeFromString(ErrorEnvelope.serializer(), text) }.getOrNull()
-        val error = ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed")
+        val error = ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed", envelope?.error?.details)
         if (auth && status == 401 && error.code == "token_expired" && retry401) {
             refresh()
-            return requestRaw(method, path, body, auth, retry401 = false)
+            return requestRaw(method, path, body, auth, retry401 = false, headers = headers)
         }
         if (auth && status == 401 && error.code != "token_expired") signOut()
         throw error

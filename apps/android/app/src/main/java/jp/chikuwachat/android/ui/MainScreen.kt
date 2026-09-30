@@ -370,6 +370,15 @@ fun MainScreen(controller: AppController) {
         controller.pendingReveal = null
         land(message.channelId, message.parentId)
     }
+    // M46: a `/c/<id>` link tapped in a body: the canvas opens in its conversation's 「キャンバス」 tab, landing like a permalink.
+    LaunchedEffect(controller.pendingCanvas, version) {
+        val (channelId, canvasId) = controller.pendingCanvas ?: return@LaunchedEffect
+        val channel = store.channel(channelId) ?: return@LaunchedEffect
+        controller.pendingCanvas = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = MainTabs.landCanvas(tabs, MainTabs.landingTab(channel), channelId, canvasId)
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
@@ -673,6 +682,13 @@ fun MainScreen(controller: AppController) {
                             // A pin or a file shows its message under 「メッセージ」 (its thread too for a reply): openConversation
                             // goes back to that tab.
                             conversationTab == ConversationTab.PINS -> CoveringPage { PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal) }
+                            // M46 (CANVAS.md §4.1): the conversation's canvas (or the one picked from its list / a /c/ link).
+                            conversationTab == ConversationTab.CANVAS -> CoveringPage {
+                                CanvasPane(controller, selectedChannel, version, conversation.canvasId, onSelect = { id ->
+                                    focusManager.clearFocus()
+                                    stack = MainNav.selectCanvas(stack, id)
+                                })
+                            }
                             conversationTab == ConversationTab.FILES -> CoveringPage {
                                 FilesPane(controller, version, channelId = selectedChannel.id, onScopeChange = null) { messageId, channelId, parentId ->
                                     scope.launch {

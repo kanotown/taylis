@@ -565,8 +565,9 @@ data class AckRemindOut(val reminded: Int = 0)
 @Serializable
 data class ErrorEnvelope(val error: ErrorInner)
 
+/** `details` (M46): extra facts of some errors, e.g. the current canvas of a 409 canvas_conflict (CANVAS.md §4.4). */
 @Serializable
-data class ErrorInner(val code: String, val message: String)
+data class ErrorInner(val code: String, val message: String, val details: kotlinx.serialization.json.JsonElement? = null)
 
 @Serializable
 data class SearchHit(val message: MessageOut, val score: Double = 0.0)

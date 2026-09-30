@@ -39,6 +39,8 @@ import jp.chikuwachat.android.sync.ChannelState
 /** M29: what the body of an open conversation shows, picked from the tab row under the app bar. */
 enum class ConversationTab(val label: String) {
     MESSAGES("メッセージ"),
+    /** M46 (CANVAS.md §4.1): the conversation's canvas (its tab canvas, else the newest), and the others from its list. */
+    CANVAS("キャンバス"),
     PINS("ピン留め"),
     FILES("ファイル"),
 }

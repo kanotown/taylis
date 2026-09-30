@@ -141,6 +141,8 @@ class AppController(private val app: Application) {
     var pendingRevealId by mutableStateOf<String?>(null)
     /** M40: a 自分 screen to open (the own profile card's 「ステータスを設定」): the main screen opens it on the 自分 tab. */
     var pendingSettings by mutableStateOf<jp.chikuwachat.android.ui.SettingsPage?>(null)
+    /** M46: a canvas to open once the main screen sees it (a `/c/<id>` link tapped in a body): its conversation and id. */
+    var pendingCanvas by mutableStateOf<Pair<String, String>?>(null)
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -382,6 +384,7 @@ class AppController(private val app: Application) {
         engineStatus = EngineStatus.IDLE
         messageFocus = null
         pendingReveal = null
+        pendingCanvas = null
         linkPreviews.clear()
         previewLoads.clear()
         emojiLoads.clear()
@@ -862,6 +865,7 @@ class AppController(private val app: Application) {
     fun setForeground(active: Boolean) {
         appForeground = active
         engine?.reportActivity()
+        if (!active) engine?.canvases?.flushAll() // M46 (CANVAS.md §4.4): what is typed is saved when the app goes to the background
         if (active) {
             engine?.reconnectNow()
             if (api != null) push.refresh()
@@ -950,6 +954,11 @@ class AppController(private val app: Application) {
         if (onScreen) {
             val engine = engine
             if (engine != null) attempt { engine.flushDrafts() } // typed but not saved yet: kept on the server
+            if (engine != null) {
+                // M46: a canvas typed in the last seconds too (briefly: the sign-out does not wait on a dead network).
+                engine.canvases.flushAll()
+                kotlinx.coroutines.withTimeoutOrNull(3_000) { engine.canvases.settleAll() }
+            }
             engine?.stop()
         }
         val revoked = client.logout() // onSignedOut → clientSignedOut
@@ -1232,6 +1241,115 @@ class AppController(private val app: Application) {
             val message = api.message(messageId)
             revealMessage(message).also { if (it) pendingReveal = message }
         } catch (e: Exception) { report(e); false }
+    }
+
+    // --- canvases (M46, CANVAS.md §4.5) ---------------------------------------------------------
+
+    /**
+     * A `/c/<id>` link (CANVAS.md §4.13): the canvas opens in its conversation's 「キャンバス」 tab. Someone outside the
+     * conversation is told so (403 not_a_member), a canvas in the trash or gone as not found.
+     */
+    suspend fun openCanvasLink(canvasId: String): Boolean {
+        val api = api ?: return false
+        return try {
+            val canvas = api.getCanvas(canvasId, null) ?: return false
+            if (store.channel(canvas.channelId)?.isMember != true) {
+                error = "このキャンバスの会話のメンバーではありません"
+                return false
+            }
+            pendingCanvas = canvas.channelId to canvas.id
+            true
+        } catch (e: ApiException.Api) {
+            error = when {
+                e.status == 403 -> "このキャンバスの会話のメンバーではありません"
+                e.status == 404 -> ErrorMessages.byCode["canvas_not_found"] ?: describe(e)
+                else -> describe(e)
+            }
+            false
+        } catch (e: Exception) { report(e); false }
+    }
+
+    /** The templates to start a canvas from (read each time the picker opens: they send no events, CANVAS.md §11). */
+    suspend fun canvasTemplates(): List<jp.chikuwachat.android.api.CanvasTemplateOut>? {
+        val api = api ?: return null
+        return attempt { api.canvasTemplates() }.onFailure { report(it) }.getOrNull()
+    }
+
+    /**
+     * A new canvas in the conversation, empty or from a template (the server fills {{date}} and the rest in my zone). A
+     * failure on the network is retried with the same key, so a retry never makes a second canvas.
+     */
+    suspend fun createCanvas(channelId: String, templateKey: String?, title: String?, asTab: Boolean): jp.chikuwachat.android.api.CanvasOut? {
+        val api = api ?: return null
+        val key = UUID.randomUUID().toString()
+        val zone = java.time.ZoneId.systemDefault().id
+        var attemptNo = 0
+        while (true) {
+            try {
+                val canvas = api.createCanvas(channelId, key, templateKey, title, asTab, zone)
+                store.applyCanvasMeta(canvas.meta)
+                return canvas
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attemptNo < 2 && e is ApiException.Network) { attemptNo++; kotlinx.coroutines.delay(1_000L * attemptNo); continue }
+                report(e)
+                return null
+            }
+        }
+    }
+
+    /** Title, who may edit, the conversation's tab (§4.7: the creator, owners and administrators; anyone in a DM). */
+    suspend fun updateCanvas(canvasId: String, title: String? = null, editPolicy: String? = null, isChannelTab: Boolean? = null): Boolean {
+        val api = api ?: return false
+        return attempt { api.updateCanvas(canvasId, title, editPolicy, isChannelTab) }
+            .onSuccess { canvas ->
+                store.applyCanvasMeta(canvas.meta)
+                engine?.canvases?.current(canvasId)?.applyMeta(canvas.meta)
+            }
+            .onFailure { report(it) }.isSuccess
+    }
+
+    /** To the trash (restorable from the conversation's canvas list for 30 days). */
+    suspend fun trashCanvas(canvasId: String, channelId: String): Boolean {
+        val api = api ?: return false
+        return attempt { api.deleteCanvas(canvasId) }
+            .onSuccess { engine?.canvases?.trashed(canvasId, channelId) }
+            .onFailure { report(it) }.isSuccess
+    }
+
+    suspend fun trashedCanvases(channelId: String): List<jp.chikuwachat.android.api.CanvasMeta>? {
+        val api = api ?: return null
+        return attempt { api.listCanvases(channelId, trashed = true) }.onFailure { report(it) }.getOrNull()
+    }
+
+    suspend fun restoreCanvas(canvasId: String): jp.chikuwachat.android.api.CanvasOut? {
+        val api = api ?: return null
+        return attempt { api.restoreCanvas(canvasId) }.onSuccess { store.applyCanvasMeta(it.meta) }.onFailure { report(it) }.getOrNull()
+    }
+
+    /** The history (read only on Android, M46): versions newest first, and one version's body. */
+    suspend fun canvasRevisions(canvasId: String): List<jp.chikuwachat.android.api.CanvasRevisionMeta>? {
+        val api = api ?: return null
+        return attempt { api.canvasRevisions(canvasId).items }.onFailure { report(it) }.getOrNull()
+    }
+
+    suspend fun canvasRevision(canvasId: String, revisionId: String): jp.chikuwachat.android.api.CanvasRevisionOut? {
+        val api = api ?: return null
+        return attempt { api.canvasRevision(canvasId, revisionId) }.onFailure { report(it) }.getOrNull()
+    }
+
+    /** A canvas image's metadata (the body names only its id); null when it cannot be seen. */
+    suspend fun canvasAttachment(attachmentId: String): AttachmentOut? {
+        val api = api ?: return null
+        return attempt { api.attachment(attachmentId) }.getOrNull()
+    }
+
+    /** A canvas's text to the clipboard (mentions as @names), e.g. when saving it stopped. */
+    fun copyCanvasText(stored: String) {
+        val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("ChikuwaChat", Mentions.decode(stored, store.users, store.groups)))
+        notice = "本文をコピーしました"
     }
 
     /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */

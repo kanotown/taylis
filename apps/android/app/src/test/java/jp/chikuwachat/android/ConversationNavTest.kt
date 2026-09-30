@@ -26,11 +26,13 @@ class ConversationNavTest {
         assertTrue(ConversationNav.conversationOnScreen(ConversationTab.MESSAGES, detailsOpen = false))
         assertFalse(ConversationNav.conversationOnScreen(ConversationTab.PINS, detailsOpen = false))
         assertFalse(ConversationNav.conversationOnScreen(ConversationTab.FILES, detailsOpen = false))
+        assertFalse(ConversationNav.conversationOnScreen(ConversationTab.CANVAS, detailsOpen = false))
         assertFalse(ConversationNav.conversationOnScreen(ConversationTab.MESSAGES, detailsOpen = true))
     }
 
     @Test
     fun theTabsAreInTheSpecsOrder() {
-        assertEquals(listOf("メッセージ", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
+        // M46: 「キャンバス」 second (CANVAS.md §4.1, as the desktop's phone width).
+        assertEquals(listOf("メッセージ", "キャンバス", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
     }
 }
