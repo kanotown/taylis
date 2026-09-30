@@ -4,7 +4,7 @@ import UserNotifications
 
 /// The screens under the 自分 tab (M40, MOBILE_UI.md §6.5).
 enum YouRoute: Hashable {
-    case status, pause, quietHours, notifications, appearance, profile, account, password, workspaces
+    case status, pause, quietHours, notifications, appearance, profile, account, password, workspaces, admin
 }
 
 /// M40: the 自分 tab as one list of rows that open screens — who I am, my status, the pause and the quiet hours at the
@@ -47,6 +47,9 @@ struct YouView: View {
                     NavigationLink(value: YouRoute.profile) { YouRow(title: "プロフィールを編集", symbol: "person.crop.circle") }
                     NavigationLink(value: YouRoute.account) { YouRow(title: "アカウント", symbol: "lock") }
                     NavigationLink(value: YouRoute.workspaces) { YouRow(title: "ワークスペース", symbol: "square.stack", value: controller.workspaceName) }
+                    if controller.store.me?.role == "admin" {
+                        NavigationLink(value: YouRoute.admin) { YouRow(title: "管理", symbol: "shield") }
+                    }
                 }
                 Section {
                     Button(logoutTitle, role: .destructive) { confirmLogout = true }
@@ -119,6 +122,8 @@ struct YouView: View {
             WorkspaceListView(controller: controller) { onClose?() }
                 .navigationTitle("ワークスペース")
                 .navigationBarTitleDisplayMode(.inline)
+        case .admin:
+            AdminInfoView(serverUrl: controller.activeServerUrl)
         }
     }
 }
@@ -720,6 +725,25 @@ struct PasswordChangeView: View {
             }
         }
         .navigationTitle("パスワードを変更")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// 「管理」 (admins, M40): the administration (users, roster, groups, invites, webhooks, channels, emoji) is the web and
+/// desktop clients' 管理 dialog; the iPhone app has none of its own, so this opens the web client, as on Android.
+private struct AdminInfoView: View {
+    let serverUrl: String?
+
+    var body: some View {
+        Form {
+            Section {
+                Text("ユーザー・名簿・グループ・招待・Webhook・チャンネル・絵文字の管理は、Web 版とデスクトップ版の「管理」で行います。")
+                if let serverUrl, let url = URL(string: serverUrl) {
+                    Link("ブラウザで開く", destination: url)
+                }
+            }
+        }
+        .navigationTitle("管理")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
