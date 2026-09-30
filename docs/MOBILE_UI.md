@@ -180,7 +180,8 @@ TabView / NavigationBar (4 タブ、会話・スレッドの中ではタブバ�
 - 入力中:
   - 一致する会話を先頭に出し、タップで移動する
   - 次に人 (タップで DM を開く)、最後に「"語" をメッセージ検索」(既存の結果画面 SearchView / SearchResultsPane)
-- Desktop の ⌘K (QuickSwitcher.tsx) と同じ一致規則にする。前方一致を先に、かな/英字は大文字小文字を区別しない。
+- Desktop の ⌘K (QuickSwitcher.tsx) と同じ一致規則にする。前方一致を先に、かな/英字は大文字小文字を区別しない。規則と検証ケースは `apps/shared/jump-match.json` (M37 で決定。⌘K もこれに合わせる)。
+- 決定事項 1 (M37): 「移動・検索」の欄はホームの上部に置く。決定事項 5 (M37): Web のスマホ幅のホームは明るい地のリスト。
 
 ### 6.3 DM タブ
 ```
