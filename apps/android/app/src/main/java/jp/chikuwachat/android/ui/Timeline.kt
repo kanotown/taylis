@@ -59,6 +59,16 @@ object Timeline {
         return dateLabel(at.toLocalDate(), now.toLocalDate()) + " " + at.format(TIME)
     }
 
+    /**
+     * C3 (MOBILE_POLISH.md): the thread line's 「最終返信 今日 14:05」 (「最終返信 昨日 09:05」, 「最終返信 9月26日 (金) 14:05」),
+     * as the web's lastReplyLabel; empty for a time it cannot read.
+     */
+    fun lastReplyLabel(iso: String, now: ZonedDateTime = ZonedDateTime.now()): String =
+        stampLabel(iso, now).takeIf { it.isNotEmpty() }?.let { "最終返信 $it" } ?: ""
+
+    /** C3: the first three repliers shown as avatars (the list is most recent first, without repeats). */
+    fun replierAvatars(ids: List<String>): List<String> = ids.distinct().take(3)
+
     /** 今日 / 昨日 / 9月26日 (金) / 2025年12月31日 (水). */
     fun dateLabel(day: LocalDate, today: LocalDate): String {
         if (day == today) return "今日"

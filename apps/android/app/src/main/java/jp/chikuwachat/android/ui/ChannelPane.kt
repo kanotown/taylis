@@ -643,13 +643,7 @@ fun MessageRow(
                     onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
                     onShowReactors = { showingReactors = true },  // M27
                 )
-                if (message.replyCount > 0 && onOpenThread != null) {
-                    TextButton(onClick = onOpenThread, contentPadding = PaddingValues(0.dp)) {
-                        Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("${message.replyCount} 件の返信", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
+                if (message.replyCount > 0 && onOpenThread != null) ThreadSummaryLine(message, store, onOpenThread, onNeedRepliers = controller::loadRepliers)  // C3
                 if (message.failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
@@ -679,7 +673,7 @@ fun MessageRow(
     if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
     if (sharing) ShareDialog(controller, message, version, onDismiss = { sharing = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
-    if (pickingReaction) EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
+    if (pickingReaction) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, version, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->

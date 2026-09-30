@@ -1,8 +1,6 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,11 +43,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.RadioButton
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.sync.ChannelState
-import jp.chikuwachat.android.sync.NotificationLevels
-import java.time.Instant
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
@@ -195,13 +190,14 @@ private fun UserPicker(users: List<UserPublic>, onPick: (UserPublic) -> Unit) {
 }
 
 /**
- * Channel details (M29: a full-screen page in place of the conversation, the app bar's ← and back return to it): topic
- * and purpose (editable by members), notification level and mute, members with roles and 「メンバーを追加」, links,
- * posting policy, convert, rename, archive, leave. `onClose` leaves the page (also after leaving or archiving).
- * `version` (M28c): the members' names, presence and status come from the Store.
+ * Channel details (M29: a full-screen page in place of the conversation, the app bar's ← and back return to it): D1's
+ * header (glyph, name, member count, topic and round buttons: favourite, notifications, search, add), topic and purpose
+ * (editable by members), notifications in one row, members with roles and 「メンバーを追加」, links, posting policy,
+ * convert, rename, archive, leave. `onClose` leaves the page (also after leaving or archiving); `onSearch` searches
+ * this conversation. `version` (M28c): the members' names, presence and status come from the Store.
  */
 @Composable
-fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version: Int, onClose: () -> Unit) {
+fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version: Int, onClose: () -> Unit, onSearch: () -> Unit = {}) {
     val store = controller.store
     val scope = rememberCoroutineScope()
     val isChannel = !channel.channel.isDm
@@ -240,73 +236,34 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
             store.users[it.userId] ?: UserPublic(it.userId, "", "", "member", createdAt = "", updatedAt = "")
         })
     }
-    // M35: the channel's own level (null = it follows the overall setting), the mute until unmuted, the timed mute.
-    val ownLevel = NotificationLevels.own(channel)
-    val overall = (store.me ?: controller.me)?.notificationDefault ?: NotificationLevels.MENTIONS
-    val mutedOn = NotificationLevels.mutedUntilUnmuted(channel)
-    val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
 
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+        ChannelDetailsHeader(controller, channel, version, memberCount = members?.size, onSearch = onSearch, onAddMember = { addingMember = true })
+        val editable = channel.isMember && !channel.channel.archived
         if (isChannel) {
-            SectionLabel("トピック")
             if (editingTopic) {
+                SectionLabel("トピック")
                 OutlinedTextField(topic, { topic = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: 週次の進捗共有") })
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { scope.launch { if (controller.updateTopic(channel.id, topic)) editingTopic = false } }) { Text("保存") }
                     TextButton(onClick = { editingTopic = false; topic = channel.channel.topic ?: "" }) { Text("キャンセル") }
                 }
             } else {
-                Text(channel.channel.topic?.takeIf { it.isNotBlank() } ?: "未設定", color = if (channel.channel.topic.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                if (channel.isMember && !channel.channel.archived) TextButton(onClick = { topic = channel.channel.topic ?: ""; editingTopic = true }, contentPadding = PaddingValues(0.dp)) { Text("編集") }
+                EditableRow("トピック", channel.channel.topic, editable) { topic = channel.channel.topic ?: ""; editingTopic = true }
             }
-            SectionLabel("説明")
             if (editingPurpose) {
+                SectionLabel("説明")
                 OutlinedTextField(purpose, { purpose = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: デザインレビューの依頼と結果を共有する") })
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { scope.launch { if (controller.updatePurpose(channel.id, purpose)) editingPurpose = false } }) { Text("保存") }
                     TextButton(onClick = { editingPurpose = false; purpose = channel.channel.purpose ?: "" }) { Text("キャンセル") }
                 }
             } else {
-                Text(channel.channel.purpose?.takeIf { it.isNotBlank() } ?: "未設定", color = if (channel.channel.purpose.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                if (channel.isMember && !channel.channel.archived) TextButton(onClick = { purpose = channel.channel.purpose ?: ""; editingPurpose = true }, contentPadding = PaddingValues(0.dp)) { Text("編集") }
+                EditableRow("説明", channel.channel.purpose, editable) { purpose = channel.channel.purpose ?: ""; editingPurpose = true }
             }
         }
-        if (channel.isMember) {
-            SectionLabel("通知")
-            // Whole rows as radio buttons, 48 dp high (TalkBack reads the choice and its state).
-            Column(Modifier.selectableGroup()) {
-                (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(overall)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
-                    .forEach { (value, label) ->
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).selectable(selected = ownLevel == value, role = Role.RadioButton) {
-                                scope.launch { controller.setChannelLevel(channel.id, value) }
-                            },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = ownLevel == value, onClick = null)
-                            Text(label, modifier = Modifier.padding(start = 8.dp))
-                        }
-                    }
-            }
-            // M35: muted until unmuted; the whole row toggles it (48 dp, TalkBack reads it as a switch).
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = mutedOn, role = Role.Switch) { on ->
-                    scope.launch { controller.setChannelMuted(channel.id, on) }
-                },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("ミュート")
-                    Text("解除するまで通知しません (メンションだけ未読になります)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = mutedOn, onCheckedChange = null, modifier = Modifier.padding(start = 8.dp))
-            }
-            if (mute != null) {
-                TextButton(onClick = { scope.launch { controller.setChannelTimedMute(channel.id, null) } }, contentPadding = PaddingValues(0.dp)) { Text("ミュート解除 ($mute)") }
-            } else {
-                TextButton(onClick = { scope.launch { controller.setChannelTimedMute(channel.id, Instant.now().plusSeconds(8 * 3600).toString()) } }, contentPadding = PaddingValues(0.dp)) { Text("8 時間ミュート") }
-            }
-        }
+        // D1: the level, the mute and the timed mute were six rows here; one row now, the choices open from it.
+        if (channel.isMember) ChannelNotificationRow(controller, channel)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { SectionLabel("メンバー" + (members?.let { " (${it.size})" } ?: "")) }
             if (isChannel && channel.isMember && !channel.channel.archived) {
@@ -422,6 +379,25 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                 }
             }
         }
+    }
+}
+
+/**
+ * D1: a topic / purpose as a label over its text with 「編集」 at the end of the row (the button sat under the text,
+ * indented by its own padding).
+ */
+@Composable
+private fun EditableRow(label: String, value: String?, editable: Boolean, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                value?.takeIf { it.isNotBlank() } ?: "未設定",
+                color = if (value.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (editable) TextButton(onClick = onEdit) { Text("編集") }
     }
 }
 

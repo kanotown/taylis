@@ -92,6 +92,8 @@ data class MessageState(
     val alsoInChannel: Boolean = false,
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
+    /** C3: who replied, most recent first (MessageOut.reply_user_ids); rows persisted earlier lack it. */
+    val replyUserIds: List<String> = emptyList(),
     val attachments: List<AttachmentOut> = emptyList(),
     /** M11c: pinned in the channel; rows persisted earlier lack the fields. */
     val pinnedAt: String? = null,
@@ -119,7 +121,7 @@ data class MessageState(
             updatedSeq = message.updatedSeq, clientMsgId = message.clientMsgId, body = message.body,
             createdAt = message.createdAt, editedAt = message.editedAt, deleted = message.deleted,
             reactions = message.reactions, mentionedUserIds = message.mentionedUserIds, mentionAll = message.mentionAll,
-            parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, attachments = message.attachments,
+            parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, replyUserIds = message.replyUserIds, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
         )
@@ -244,7 +246,7 @@ fun MessageState.toOut(): MessageOut? {
     return MessageOut(
         id = id, channelId = channelId, senderId = senderId, seq = seq, updatedSeq = updatedSeq, clientMsgId = clientMsgId,
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
-        attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
+        attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, replyUserIds = replyUserIds, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
         pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
     )
 }
@@ -727,7 +729,11 @@ class Store(private val persistence: Persistence? = null) {
     fun applyParentThread(channelId: String, thread: ParentThread) {
         val parent = bucket(channelId)[thread.id] ?: return
         if (thread.updatedSeq <= parent.updatedSeq) return
-        val updated = parent.copy(replyCount = thread.replyCount, lastReplyAt = thread.lastReplyAt, updatedSeq = thread.updatedSeq)
+        // C3: an older server sends no list; the parent keeps what it had.
+        val updated = parent.copy(
+            replyCount = thread.replyCount, lastReplyAt = thread.lastReplyAt, replyUserIds = thread.replyUserIds ?: parent.replyUserIds,
+            updatedSeq = thread.updatedSeq,
+        )
         bucket(channelId)[parent.id] = updated
         persist { it.saveMessage(updated) }
         emit()
@@ -991,7 +997,12 @@ class Store(private val persistence: Persistence? = null) {
         }
         val local = bucket[message.id]
         if (local != null && message.updatedSeq <= local.updatedSeq) {
-            val merged = withMyVotes(local, message) ?: return false
+            // C3: the server filled reply_user_ids for existing parents without moving updated_seq (migration 0049), so
+            // a row stored before has none; the same version from the server brings the list.
+            val filled = if (message.updatedSeq == local.updatedSeq && message.replyUserIds != local.replyUserIds && message.replyUserIds.isNotEmpty()) {
+                local.copy(replyUserIds = message.replyUserIds)
+            } else null
+            val merged = withMyVotes(filled ?: local, message) ?: filled ?: return false
             bucket[message.id] = merged
             persist { it.saveMessage(merged) }
             emit()

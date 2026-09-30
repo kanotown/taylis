@@ -316,6 +316,8 @@ data class MessageOut(
     val attachments: List<AttachmentOut> = emptyList(),
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
+    /** C3 (THREADS.md §3.1): who replied, most recent first, at most 5; empty without replies or from an older server. */
+    val replyUserIds: List<String> = emptyList(),
     val createdAt: String,
     val editedAt: String? = null,
     val deleted: Boolean,
@@ -354,6 +356,8 @@ data class ParentThread(
     val lastReplyAt: String? = null,
     val updatedSeq: Int,
     val participantIds: List<String> = emptyList(),
+    /** C3: the parent's repliers after this change; null from an older server (the parent keeps its list). */
+    val replyUserIds: List<String>? = null,
 )
 
 @Serializable

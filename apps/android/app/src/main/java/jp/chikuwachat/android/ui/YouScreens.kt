@@ -371,7 +371,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
     val scope = rememberCoroutineScope()
     val store = controller.store
     if (pickingEmoji) {
-        EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations,
+        EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store,
             onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; emoji = it })
     }
     ScreenColumn {
