@@ -320,7 +320,7 @@ private fun ActivityRow(
     val channel = store.channel(item.message.channelId)
     val where = remember(version, item.message.channelId) { channel?.let { channelTitle(it, store) } ?: "" }
     val excerpt = remember(version, item) {
-        plainText(Mentions.toNames(item.message.body, store.users, store.groups)).ifEmpty { item.message.attachments.joinToString(", ") { it.filename } }
+        messageLine(item.message.body, item.message.attachments, store)
     }
     val time = MainTabs.dmTimeLabel(item.at, now) ?: ""
     Row(

@@ -1,0 +1,122 @@
+package jp.chikuwachat.android
+
+import jp.chikuwachat.android.api.ChannelOut
+import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.sync.ReadAnchor
+import jp.chikuwachat.android.sync.ReadGate
+import jp.chikuwachat.android.ui.ThreadRows
+import jp.chikuwachat.android.ui.Timeline
+import jp.chikuwachat.android.ui.TimelineItem
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
+
+/**
+ * A message from someone else arriving in an open conversation (tester, 2026-09-30: on iOS the list jolted and
+ * 「新着メッセージ」 flashed). At the newest edge the list follows the row, which is read like any row on screen: no
+ * divider, no banner, no 「新着 N 件」. Scrolled up, the reader stays put and gets 「新着 N 件」.
+ */
+class ArrivalTest {
+    private val zone = ZoneId.of("Asia/Tokyo")
+    private val today = LocalDate.of(2026, 9, 30)
+    private val me = "me"
+
+    private fun row(seq: Int, sender: String = "alice", at: String = "2026-09-30T01:00:00Z", parentId: String? = null) = MessageState(
+        id = "id-$seq", channelId = "c", senderId = sender, seq = seq, updatedSeq = seq, clientMsgId = "cmid-$seq", body = "m$seq",
+        createdAt = at, parentId = parentId,
+    )
+
+    private fun channel(lastRead: Int, unread: Int, last: Int) = ChannelState(
+        ChannelOut(id = "c", type = "public", name = "general", createdBy = "alice", createdAt = "", updatedAt = "", lastSeq = last, archived = false),
+        isMember = true, syncedSeq = last, lastSeq = last, lastReadSeq = lastRead, unreadCount = unread, oldestLoadedSeq = 1,
+    )
+
+    /** The channel's LazyColumn items: newest first. */
+    private fun items(rows: List<MessageState>, mark: Int?) = Timeline.build(rows, mark, me, today = today, zone = zone).asReversed()
+
+    private fun keys(items: List<TimelineItem>) = items.map { it.key }
+
+    @Test fun theNewestEdgeIsTheFirstItemScrolledNoFurtherThanTheSlop() {
+        assertTrue(Timeline.atNewestEdge(0, 0, 21))
+        assertTrue(Timeline.atNewestEdge(0, 21, 21))
+        assertFalse(Timeline.atNewestEdge(0, 22, 21))
+        assertFalse(Timeline.atNewestEdge(1, 0, 21))
+    }
+
+    @Test fun onlyRowsAddedAtTheNewestEndCountAsArrivals() {
+        val rows = (1..5).map { row(it) }
+        val before = keys(items(rows, null))
+        assertTrue(Timeline.arrivedAtNewest(before, keys(items(rows + row(6), null))))
+        assertTrue(Timeline.arrivedAtNewest(before, keys(items(rows + row(6) + row(7), null))))
+        // The first row of a new day brings its day separator too: the old newest row is two items further.
+        assertTrue(Timeline.arrivedAtNewest(before, keys(items(rows + row(6, at = "2026-09-30T16:00:00Z"), null))))
+        // An older page (the far end), an edit, the newest row deleted, another conversation or a reload: no arrival.
+        assertFalse(Timeline.arrivedAtNewest(before, keys(items(listOf(row(0)) + rows, null))))
+        assertFalse(Timeline.arrivedAtNewest(before, keys(items(rows, null))))
+        assertFalse(Timeline.arrivedAtNewest(before, keys(items(rows.dropLast(1), null))))
+        assertFalse(Timeline.arrivedAtNewest(before, keys(items((10..12).map { row(it) }, null))))
+        assertFalse(Timeline.arrivedAtNewest(emptyList(), keys(items(rows, null))))
+        assertFalse(Timeline.arrivedAtNewest(before, emptyList()))
+    }
+
+    @Test fun theListFollowsOnlyAtTheEdgeOnceSettled() {
+        assertTrue(Timeline.followsArrival(atNewestEdge = true, arrived = true, positioned = true))
+        assertFalse(Timeline.followsArrival(atNewestEdge = false, arrived = true, positioned = true)) // scrolled up
+        assertFalse(Timeline.followsArrival(atNewestEdge = true, arrived = false, positioned = true))
+        assertFalse(Timeline.followsArrival(atNewestEdge = true, arrived = true, positioned = false)) // the open positioning decides
+        assertFalse(Timeline.followsArrival(atNewestEdge = true, arrived = true, positioned = true, landing = true))
+        assertFalse(Timeline.followsArrival(atNewestEdge = true, arrived = true, positioned = true, focused = true))
+    }
+
+    @Test fun anArrivalAtTheEdgeIsReadWithoutDividerBannerOrNewPill() {
+        // Opened with nothing unread: no divider captured, positioned at the bottom and anchored.
+        val rows = (1..20).map { row(it, sender = if (it % 3 == 0) me else "alice") }
+        val opened = channel(lastRead = 20, unread = 0, last = 20)
+        val captured = ReadGate.openMark(opened)
+        assertNull(captured)
+        var anchor = ReadAnchor.opened(opened, null).observe(opened, null, rows, me, rows.takeLast(6), rows.takeLast(6).map { it.id }.toSet()).anchor
+        assertTrue(anchor.anchored)
+        var seenSeq = ReadGate.nextSeenSeq(opened.lastReadSeq, settled = true, atBottom = true, newestSeq = 20)
+
+        // alice posts seq 21: the engine counts it before the view reads it.
+        val after = rows + row(21)
+        val arrived = channel(lastRead = 20, unread = 1, last = 21)
+        val mark = ReadGate.dividerMark(null, captured, arrived.oldestLoadedSeq)
+        assertNull(mark)
+        assertTrue(items(after, mark).none { it is TimelineItem.UnreadSeparator })
+        // The view followed, so the new row is among the visible ones.
+        assertTrue(Timeline.followsArrival(Timeline.atNewestEdge(0, 0, 21), Timeline.arrivedAtNewest(keys(items(rows, null)), keys(items(after, mark))), positioned = true))
+        assertFalse(ReadGate.bannerShown(false, true, arrived.unreadCount, anchor.anchored, held = false))
+        val step = anchor.observe(arrived, null, after, me, after.takeLast(6), after.takeLast(6).map { it.id }.toSet())
+        anchor = step.anchor
+        assertTrue(anchor.anchored)
+        assertEquals(21, step.markSeq)
+        seenSeq = ReadGate.nextSeenSeq(seenSeq, settled = true, atBottom = true, newestSeq = 21)
+        assertEquals(0, ReadGate.newBelow(after, seenSeq, me))
+    }
+
+    @Test fun anArrivalWhileScrolledUpIsCountedAsNew() {
+        val rows = (1..20).map { row(it) }
+        val after = rows + row(21) + row(22)
+        assertFalse(Timeline.followsArrival(Timeline.atNewestEdge(8, 0, 21), Timeline.arrivedAtNewest(keys(items(rows, null)), keys(items(after, null))), positioned = true))
+        // seenSeq stays where the reader left the bottom: 「新着 2 件」.
+        val seenSeq = ReadGate.nextSeenSeq(20, settled = true, atBottom = false, newestSeq = 22)
+        assertEquals(2, ReadGate.newBelow(after, seenSeq, me))
+    }
+
+    @Test fun theThreadDividerIsTakenWhenPositionedNotFromTheLiveReadPosition() {
+        val replies = (11..14).map { row(it, sender = if (it == 12) me else "alice", parentId = "p") }
+        // Everything read at the open: no divider for this open, whatever arrives later.
+        assertNull(ThreadRows.dividerMark(replies, 14, me))
+        // Unread from 13: the divider precedes 13 and stays there after it is read.
+        assertEquals(12, ThreadRows.dividerMark(replies, 12, me))
+        // Only my own reply after the position: nothing unread.
+        assertNull(ThreadRows.dividerMark(replies.take(2), 11, me))
+        assertNull(ThreadRows.dividerMark(replies, null, me))
+    }
+}

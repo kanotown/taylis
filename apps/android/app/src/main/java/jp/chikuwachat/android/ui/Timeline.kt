@@ -151,6 +151,34 @@ object Timeline {
         return if (index >= 0) OpenPosition.Top(index) else OpenPosition.Bottom
     }
 
+    /**
+     * How far (dp) from the newest edge still counts as at it: a reader a hair off the edge (a fling that stopped a few
+     * pixels short) still sees the arriving row.
+     */
+    const val NEWEST_EDGE_SLOP_DP = 8
+
+    /** At the newest edge of a list laid out from the bottom (the channel): its newest item first and not scrolled off. */
+    fun atNewestEdge(firstVisibleIndex: Int, firstVisibleOffset: Int, slopPx: Int): Boolean = firstVisibleIndex == 0 && firstVisibleOffset <= slopPx
+
+    /**
+     * Rows came in at the newest end: the newest key changed and the row that was newest is still there, now further
+     * from that end (not a reload, a switch of conversation or a deletion of the newest row). Keys newest first.
+     */
+    fun arrivedAtNewest(beforeNewestFirst: List<String>, afterNewestFirst: List<String>): Boolean {
+        val old = beforeNewestFirst.firstOrNull() ?: return false
+        val new = afterNewestFirst.firstOrNull() ?: return false
+        return old != new && afterNewestFirst.indexOf(old) > 0
+    }
+
+    /**
+     * §10.1 2-4: a row that arrives while the reader is at the newest edge is shown there (the list follows it), so it
+     * is read like any row on screen and never becomes 「新着 N 件」 below a reader who did not move. Not before the open
+     * positioning, while a positioning scroll lands, or over a search position. A reader scrolled up stays where they
+     * are (and gets 「新着 N 件」).
+     */
+    fun followsArrival(atNewestEdge: Boolean, arrived: Boolean, positioned: Boolean, landing: Boolean = false, focused: Boolean = false): Boolean =
+        atNewestEdge && arrived && positioned && !landing && !focused
+
     /** §10.1 rule 4: the longest an opened conversation waits for its catch-up before positioning anyway. */
     const val CATCH_UP_WAIT_MS = 3_000L
 

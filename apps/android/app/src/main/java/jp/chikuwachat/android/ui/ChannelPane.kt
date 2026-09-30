@@ -70,6 +70,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.derivedStateOf
@@ -160,6 +162,21 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     val listState = rememberLazyListState()
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
     val atBottom by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
+    // §10.1 2-4 (tester, 2026-09-30): a row that arrives while the reader is at the newest edge is shown there. The list
+    // keeps its first item (the old newest row) in place by key, so the new row went just below the edge, unseen and
+    // unread, and after a few of them 「新着 N 件」 came up for a reader who never left the bottom. Asked for in the
+    // composition that brings the row (the list's position is still the one before it), the list lays it out at the
+    // edge in the same frame: no jolt.
+    val followed = remember(channelId) { LastShown<List<TimelineItem>>() }
+    val edgeSlop = with(LocalDensity.current) { Timeline.NEWEST_EDGE_SLOP_DP.dp.roundToPx() }
+    followed.value?.let { before ->
+        if (before !== items) {
+            val atEdge = Snapshot.withoutReadObservation { Timeline.atNewestEdge(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, edgeSlop) }
+            val arrived = atEdge && Timeline.arrivedAtNewest(before.map { it.key }, items.map { it.key })
+            if (Timeline.followsArrival(atEdge, arrived, positioned, anchor.landing, focus != null)) listState.requestScrollToItem(0)
+        }
+    }
+    SideEffect { followed.value = items }
     // §10.1 rule 7: the divider's position when positioned there, else the newest seq seen at the bottom; later rows
     // from others are 「新着」. Keyed like the divider: the search view moves it to its own (old) rows.
     var seenSeq by rememberSaveable(channelId, reloadGen, focus?.messageId) { mutableIntStateOf(shown.lastReadSeq) }
@@ -398,7 +415,10 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     }
 }
 
-private fun rowAt(items: List<TimelineItem>, index: Int): MessageState? = (items.getOrNull(index) as? TimelineItem.Message)?.message
+/** What the last applied composition showed (not state: written in a SideEffect, read by the next composition). */
+internal class LastShown<T> { var value: T? = null }
+
+private fun rowAt(items: List<TimelineItem>, index: Int): MessageState? =(items.getOrNull(index) as? TimelineItem.Message)?.message
 
 /**
  * M28c: the read anchor across an activity recreation (a rotation), as one line. A landing never survives (its scroll
@@ -487,7 +507,7 @@ private fun ReplyLine(message: MessageState, store: Store, version: Int, onOpenT
     val color = MaterialTheme.colorScheme.onSurfaceVariant
     if (onOpenThread != null) {
         val parent = remember(version, message.parentId) { message.parentId?.let { store.message(message.channelId, it) } }
-        val excerpt = parent?.let { p -> plainText(Mentions.toNames(p.body, store.users, store.groups), 80).ifEmpty { if (p.attachments.isEmpty()) "" else "(添付ファイル)" } }
+        val excerpt = parent?.let { p -> messageLine(p.body, p.attachments, store, 80) }
         // M28c: a 48 dp touch target around the one-line link.
         Text(
             "スレッドに返信: " + (excerpt ?: "元のメッセージ"), style = style, color = color, maxLines = 1,

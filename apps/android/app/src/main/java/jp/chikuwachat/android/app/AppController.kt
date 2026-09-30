@@ -84,7 +84,7 @@ import jp.chikuwachat.android.sync.SyncEngine
 import jp.chikuwachat.android.ui.Mentions
 import jp.chikuwachat.android.ui.channelTitle
 import jp.chikuwachat.android.ui.formatSize
-import jp.chikuwachat.android.ui.plainText
+import jp.chikuwachat.android.ui.messageLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -725,7 +725,7 @@ class AppController(private val app: Application) {
                 val sender = store.users[message.senderId]?.displayName ?: "?"
                 val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
                 notify(
-                    workspace(), channel.id, title, plainText(Mentions.toNames(message.body, store.users, store.groups)).ifEmpty { "新しいメッセージ" },
+                    workspace(), channel.id, title, messageLine(message.body, message.attachments, store).ifEmpty { "新しいメッセージ" },
                     messageId = message.id, parentId = message.parentId,
                 )
             }
