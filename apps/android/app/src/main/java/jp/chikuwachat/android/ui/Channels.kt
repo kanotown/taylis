@@ -54,7 +54,13 @@ object Channels {
         val times: List<ChannelState> = emptyList(),
         /** M37: with 「未読をまとめる」, every unread conversation (DMs too), newest first; left out of every other section. */
         val unread: List<ChannelState> = emptyList(),
-    )
+    ) {
+        /**
+         * 仕上げ A (MOBILE_POLISH.md H3): the home shows 「未読」 only with something in it (as iOS), not an empty section
+         * with 「未読の会話はありません」.
+         */
+        val unreadShown: Boolean get() = unread.isNotEmpty()
+    }
 
     /**
      * List order: [unread (M37, with `groupUnread`)], favorites, channels by name, times (M24), DMs by recency (my own DM

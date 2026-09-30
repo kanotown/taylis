@@ -50,6 +50,15 @@ object Timeline {
 
     fun fullLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String = parse(iso, zone)?.format(FULL) ?: ""
 
+    /**
+     * 仕上げ A (MOBILE_POLISH.md S1): a search result's time as iOS writes it, the day separator's word and the time:
+     * 「今日 22:16」, 「昨日 09:05」, 「9月26日 (金) 10:00」, 「2025年12月31日 (水) 10:00」 (was always 「2026年9月30日 19:50」).
+     */
+    fun stampLabel(iso: String, now: ZonedDateTime = ZonedDateTime.now()): String {
+        val at = parse(iso, now.zone) ?: return ""
+        return dateLabel(at.toLocalDate(), now.toLocalDate()) + " " + at.format(TIME)
+    }
+
     /** 今日 / 昨日 / 9月26日 (金) / 2025年12月31日 (水). */
     fun dateLabel(day: LocalDate, today: LocalDate): String {
         if (day == today) return "今日"

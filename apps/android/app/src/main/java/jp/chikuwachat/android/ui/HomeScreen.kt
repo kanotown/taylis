@@ -161,10 +161,10 @@ fun HomeScreen(
             // Room at the bottom for the ✏️ button over the last rows.
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 88.dp)) {
                 item(key = "tiles") { TileRow(tiles, onTile) }
-                if (groupUnread) {
+                // 仕上げ A (MOBILE_POLISH.md H3): with nothing unread there is no 「未読」 section (as on iOS), not an empty one.
+                if (sections.unreadShown) {
                     item(key = "header:unread") { Box(Modifier.folding(this)) { PlainSectionHeader("未読") } }
                     items(sections.unread, key = { "unread:" + it.id }) { row(it) }
-                    if (sections.unread.isEmpty()) item(key = "unread-empty") { Box(Modifier.folding(this)) { EmptyHint("未読の会話はありません") } }
                 }
                 if (sections.favorites.isNotEmpty()) {
                     val fold = FoldedSections.FAVORITES in folded
@@ -336,10 +336,14 @@ private fun SectionHeader(title: String, collapsed: Boolean, onToggle: () -> Uni
     }
 }
 
-/** 「未読」: not folded (everything in it is unread, which a fold keeps anyway). */
+/**
+ * 「未読」: not folded (everything in it is unread, which a fold keeps anyway), so no chevron. 仕上げ A (H3): its title
+ * starts where the other headers' chevrons do (the rows' icons, 16 dp), as iOS's plain header does, instead of under
+ * their titles, which read as a header missing its ∨.
+ */
 @Composable
 private fun PlainSectionHeader(title: String) {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(min = ROW_MIN).padding(start = 34.dp, end = 16.dp).semantics { heading() }, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(min = ROW_MIN).padding(start = 16.dp, end = 16.dp).semantics { heading() }, verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

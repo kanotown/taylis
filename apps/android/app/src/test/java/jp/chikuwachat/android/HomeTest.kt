@@ -92,6 +92,10 @@ class HomeTest {
         assertEquals(listOf("plain"), sections.custom.single().second.map { it.id })
         assertEquals(listOf("mutedQuiet"), sections.channels.map { it.id })
         assertEquals(emptyList<ChannelState>(), sections.dms)
+        assertTrue(sections.unreadShown)
+        // 仕上げ A (H3): nothing unread, no 「未読」 section at all; nor with 「未読をまとめる」 off.
+        assertFalse(Channels.sections(listOf(channel("plain"), dm("dm")), groupUnread = true, now = now, meId = me).unreadShown)
+        assertFalse(Channels.sections(all, groupUnread = false, now = now, meId = me).unreadShown)
         // Folded sections still show their unread rows (M26), which grouping leaves nowhere else.
         assertEquals(listOf("inSection"), Channels.shown(Channels.sections(all, favorites = setOf("fav"), sidebar = sidebar, now = now, meId = me).custom.single().second, collapsed = true, meId = me, now = now).map { it.id })
     }
