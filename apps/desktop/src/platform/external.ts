@@ -14,3 +14,9 @@ export function openExternalLink(event: MouseEvent<HTMLElement>, url: string): v
     .then(({ openUrl }) => openUrl(url))
     .catch((err: unknown) => console.error("could not open the link", err));
 }
+
+/** Open a URL in the system browser from the Tauri app (Google sign-in's start page, docs/SSO.md §6). */
+export async function openInBrowser(url: string): Promise<void> {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+}

@@ -163,7 +163,7 @@ Google が有効なら「Google でログイン」を出す。`verifier` を作�
 | 端末 | 開き方 | 戻り方 |
 |---|---|---|
 | Web | 同じタブで開始 URL へ | `/#sso_ticket=` を読んだらすぐフラグメントを消し (`history.replaceState`)、それから交換する。`#sso_error=` はログイン画面に日本語の文で出す。sessionStorage に `verifier` が無ければ (別のタブで始めた等) 交換せず `invalid_ticket` の文を出す |
-| Desktop (Tauri) | 既定のブラウザ | `chikuwachat://sso` を deep link で受ける (`tauri-plugin-deep-link`、macOS / Windows にスキームを登録) |
+| Desktop (Tauri) | 既定のブラウザ (tauri-plugin-opener)。ログイン画面は「ブラウザでログインを続けてください」と「キャンセル」に替わる | `chikuwachat://sso` を deep link で受ける (`tauri-plugin-deep-link`、スキームは tauri.conf.json でインストーラが macOS / Windows に登録。Windows は `tauri-plugin-single-instance` が 2 つめのプロセスの URL を動いているアプリに渡す)。受けたらウィンドウを前に出す。待っているログインが無いとき (起動した URL、キャンセルの後、2 度目) は無視する。`verifier` はメモリだけに持つ。refresh token はパスワードのログインと同じく資格情報ストア |
 | iOS | `ASWebAuthenticationSession` (callbackURLScheme `chikuwachat`) | セッションの完了ハンドラ。トークンは今までどおり Keychain |
 | Android | Custom Tabs (無ければ既定のブラウザ) | `chikuwachat://sso` の intent filter (singleTask) |
 

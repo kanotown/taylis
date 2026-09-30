@@ -2,6 +2,8 @@
  * Google sign-in (M48, docs/SSO.md §6) in the browser build: the page makes a secret `verifier`, keeps it in
  * sessionStorage while the tab visits Google, and sends the server only its SHA-256 (`challenge`). The server returns
  * to `/#sso_ticket=…` (or `#sso_error=…`); the ticket is worth nothing without the verifier.
+ * The Tauri app opens the start page in the system browser and gets `chikuwachat://sso?ticket=…` back through a deep
+ * link; it keeps its pending sign-in in memory (AppController).
  */
 import { ERROR_MESSAGES } from "../api/errorMessages";
 
@@ -64,6 +66,22 @@ export function takeSsoPending(): SsoPending | null {
 export function parseSsoReturn(hash: string): SsoReturn | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const ticket = params.get("sso_ticket");
+  if (ticket) return { kind: "ticket", ticket };
+  const code = params.get("sso_error");
+  if (code !== null) return { kind: "error", code: CODE.test(code) ? code : "provider_error" };
+  return null;
+}
+
+/**
+ * The Tauri app's return: `chikuwachat://sso?ticket=…` (or `?sso_error=`), opened by the browser. null for any other
+ * link (the scheme is anyone's to open). Read by hand: older WebView2 (Chromium) builds give a custom scheme's URL no
+ * host.
+ */
+export function parseSsoDeepLink(link: string): SsoReturn | null {
+  const match = /^chikuwachat:\/\/sso\/?\?([^#]*)/i.exec(link.trim());
+  if (!match) return null;
+  const params = new URLSearchParams(match[1]);
+  const ticket = params.get("ticket");
   if (ticket) return { kind: "ticket", ticket };
   const code = params.get("sso_error");
   if (code !== null) return { kind: "error", code: CODE.test(code) ? code : "provider_error" };

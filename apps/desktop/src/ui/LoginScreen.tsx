@@ -15,28 +15,32 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
   // M16c: adding another workspace (cancel returns), or signing back in to a registered one.
   const adding = controller.addingWorkspace;
   const entry = adding ? null : controller.activeEntry;
-  // M48: 「Google でログイン」 when the server offers it. Browser build only for now: the Tauri app needs the
-  // `chikuwachat://sso` deep link (docs/SSO.md §6), which comes with the desktop step.
+  // M48: 「Google でログイン」 when the server offers it (docs/SSO.md §6). The browser's server is the page's own
+  // origin, asked once; the Tauri app asks again as the server URL is typed (and gets the ticket by a deep link).
   const [google, setGoogle] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const methodsKey = isWeb() ? "" : server.trim();
   useEffect(() => {
-    if (!isWeb()) return;
     let current = true;
-    void controller.authMethods(server).then((methods) => {
-      if (current) setGoogle(methods?.google.enabled === true);
-    });
+    setGoogle(false);
+    const timer = setTimeout(() => {
+      void controller.authMethods(methodsKey).then((methods) => {
+        if (current) setGoogle(methods?.google.enabled === true);
+      });
+    }, isWeb() || methodsKey === controller.serverUrl.trim() ? 0 : 400);
     return () => {
       current = false;
+      clearTimeout(timer);
     };
-    // The browser's server is the page's own origin: asked once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controller]);
+  }, [controller, methodsKey]);
 
   const signInWithGoogle = async () => {
     setLeaving(true);
     await controller.startGoogleSignIn(server);
     setLeaving(false); // still here: the start failed and the form shows why
   };
+
+  if (controller.ssoState !== "idle") return <SsoWaiting controller={controller} />;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -84,7 +88,7 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           {busy && <Loader2 size={16} className="animate-spin" />}
           {busy ? "ログイン中…" : needsCode ? "コードを確認してログイン" : "ログイン"}
         </Button>
-        {google && !adding && (
+        {google && !(adding && isWeb()) && (
           <>
             <div className="flex items-center gap-3 text-xs text-muted" role="separator">
               <span className="h-px flex-1 bg-line" />
@@ -111,6 +115,29 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           </button>
         )}
       </form>
+    </AuthShell>
+  );
+}
+
+/** The Tauri app while Google sign-in is open in the system browser, and while its ticket is exchanged. */
+function SsoWaiting({ controller }: { controller: AppController }) {
+  const waiting = controller.ssoState === "waiting";
+  return (
+    <AuthShell>
+      <div className="space-y-4 text-center" role="status">
+        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-line bg-panel">
+          {waiting ? <GoogleMark /> : <Loader2 size={20} className="animate-spin text-muted" />}
+        </span>
+        <h1 className="text-lg font-bold tracking-tight">{waiting ? "ブラウザでログインを続けてください" : "ログイン中…"}</h1>
+        {waiting && (
+          <>
+            <p className="text-sm text-muted">Google でのログインが終わると、このアプリに戻ります。</p>
+            <Button type="button" variant="secondary" className="w-full" onClick={() => controller.cancelGoogleSignIn()}>
+              キャンセル
+            </Button>
+          </>
+        )}
+      </div>
     </AuthShell>
   );
 }

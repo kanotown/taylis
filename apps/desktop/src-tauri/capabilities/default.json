@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: dragging the window by its top bar (macOS overlay title bar), local SQLite store, OS notifications, the unread badge, external links in the system browser, saving a download where the user picked in the save dialog, and the credential-store commands.",
+  "description": "Main window: dragging the window by its top bar (macOS overlay title bar), local SQLite store, OS notifications, the unread badge, external links in the system browser, saving a download where the user picked in the save dialog, the credential-store commands, and the `chikuwachat://` link that launched the app (Google sign-in).",
   "windows": [
     "main"
   ],
@@ -16,6 +16,7 @@
     "notification:default",
     "dialog:default",
     "fs:allow-write-file",
+    "deep-link:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

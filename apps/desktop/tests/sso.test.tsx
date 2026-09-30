@@ -2,18 +2,36 @@
 /**
  * Google sign-in in the browser build (M48, docs/SSO.md §6): the login screen's button, the start URL and its S256
  * challenge, the return through the fragment (exchange, or the error text), and 「パスワードを変更」 hidden for an
- * account without a password.
+ * account without a password. The Tauri app (the deep-link plugin mocked): the start page in the system browser, the
+ * waiting screen and its キャンセル, and the `chikuwachat://sso` link (exchange as "desktop", error, ignored).
  */
 import { createHash } from "node:crypto";
 import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import { ERROR_MESSAGES } from "../src/api/errorMessages";
 import type { TokenResponse, UserMe } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { LoginScreen } from "../src/ui/LoginScreen";
-import { base64url, challengeFor, newVerifier, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
+import { base64url, challengeFor, newVerifier, parseSsoDeepLink, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
+
+// The Tauri app's side (tauri-plugin-deep-link, the credential-store commands), captured for the desktop tests.
+const tauri = vi.hoisted(() => ({
+  linkHandler: null as ((urls: string[]) => void) | null,
+  current: null as string[] | null,
+  invoke: vi.fn(async (_command: string, _args?: unknown): Promise<unknown> => null),
+}));
+vi.mock("@tauri-apps/plugin-deep-link", () => ({
+  onOpenUrl: async (handler: (urls: string[]) => void) => {
+    tauri.linkHandler = handler;
+    return () => {
+      tauri.linkHandler = null;
+    };
+  },
+  getCurrent: async () => tauri.current,
+}));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: tauri.invoke }));
 
 const s256 = (value: string) => createHash("sha256").update(value).digest("base64url");
 const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
@@ -59,6 +77,18 @@ describe("helpers", () => {
     expect(ssoErrorText("unheard_of")).toMatch(/Google/);
   });
 
+  it("reads the Tauri app's deep link, and only chikuwachat://sso", () => {
+    expect(parseSsoDeepLink("chikuwachat://sso?ticket=T-1_x")).toEqual({ kind: "ticket", ticket: "T-1_x" });
+    expect(parseSsoDeepLink("chikuwachat://sso/?ticket=T")).toEqual({ kind: "ticket", ticket: "T" });
+    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=cancelled")).toEqual({ kind: "error", code: "cancelled" });
+    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=%3Cb%3E")).toEqual({ kind: "error", code: "provider_error" });
+    expect(parseSsoDeepLink("chikuwachat://sso")).toBeNull();
+    expect(parseSsoDeepLink("chikuwachat://other?ticket=T")).toBeNull();
+    expect(parseSsoDeepLink("chikuwachat://ssox?ticket=T")).toBeNull();
+    expect(parseSsoDeepLink("https://sso?ticket=T")).toBeNull();
+    expect(parseSsoDeepLink("not a url")).toBeNull();
+  });
+
   it("keeps the pending sign-in for one exchange", () => {
     expect(saveSsoPending({ serverUrl: "http://localhost:3000", verifier: "v" })).toBe(true);
     expect(takeSsoPending()).toEqual({ serverUrl: "http://localhost:3000", verifier: "v" });
@@ -102,16 +132,6 @@ describe("login screen", () => {
       expect(screen.queryByRole("button", { name: "Google でログイン" })).toBeNull();
       cleanup();
     }
-  });
-
-  it("hides it in the Tauri app until the deep link exists", async () => {
-    (window as unknown as Record<string, unknown>)["__TAURI_INTERNALS__"] = {};
-    const controller = new AppController();
-    const methods = vi.spyOn(controller, "authMethods").mockResolvedValue({ password: true, google: { enabled: true } });
-    render(<Login controller={controller} />);
-    await flush();
-    expect(methods).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Google でログイン" })).toBeNull();
   });
 });
 
@@ -184,5 +204,172 @@ describe("return from Google", () => {
     expect(location.hash).toBe("");
     expect(controller.screen).toBe("login");
     expect(controller.error).toBe(ERROR_MESSAGES["domain_not_allowed"]);
+  });
+});
+
+describe("the Tauri app (deep link)", () => {
+  const SERVER = "http://127.0.0.1:8000"; // the login form's default server without a workspace
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  function tokens(): TokenResponse {
+    return {
+      access_token: "a", refresh_token: "r-token", token_type: "bearer", expires_in: 900, session_id: "s",
+      device: { id: "d", platform: "desktop", device_name: "Mac", app_version: "0.1.0", enabled: true, disabled_reason: null, push_provider: "none", push_environment: null, push_registered: false, last_seen_at: null, created_at: "", updated_at: "" },
+      user: ME,
+    };
+  }
+  /** The server: GET /server answers, the exchange as `exchange` says; every call recorded. */
+  function serve(exchange: () => Response = () => json(tokens())) {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.endsWith("/api/v1/auth/sso/exchange")) return exchange();
+      if (url.endsWith("/api/v1/server")) return json({ product: "chikuwachat", workspace_id: "w1", name: "研究室" });
+      return json({ error: { code: "not_found", message: "x", details: {} } }, 404);
+    }));
+    return calls;
+  }
+  const exchanges = <T extends { url: string }>(calls: T[]) => calls.filter((c) => c.url.endsWith("/api/v1/auth/sso/exchange"));
+  /** A controller listening for links, with the browser replaced. */
+  async function listening() {
+    const controller = new AppController();
+    const openBrowser = vi.fn(async (_url: string) => {});
+    controller.openBrowser = openBrowser;
+    const enter = vi.spyOn(controller as unknown as { enterNewSession: (...args: unknown[]) => Promise<void> }, "enterNewSession").mockResolvedValue(undefined);
+    handled = vi.spyOn(controller, "handleSsoLink");
+    await controller.watchSsoLinks();
+    expect(tauri.linkHandler).not.toBeNull();
+    return { controller, openBrowser, enter };
+  }
+  let handled: MockInstance<(url: string) => Promise<void>> | null = null;
+  /** A link through the plugin's listener, and the controller done with it. */
+  const link = async (url: string) => {
+    const before = handled!.mock.results.length;
+    tauri.linkHandler!([url]);
+    expect(handled!.mock.results).toHaveLength(before + 1);
+    await handled!.mock.results[before]!.value;
+  };
+
+  beforeEach(() => {
+    (window as unknown as Record<string, unknown>)["__TAURI_INTERNALS__"] = {};
+    tauri.linkHandler = null;
+    tauri.current = null;
+    tauri.invoke.mockClear();
+  });
+
+  it("offers the button for the typed server, opens the start page in the browser and waits (キャンセル)", async () => {
+    serve();
+    const controller = new AppController();
+    const openBrowser = vi.fn(async (_url: string) => {});
+    controller.openBrowser = openBrowser;
+    const methods = vi.spyOn(controller, "authMethods").mockResolvedValue({ password: true, google: { enabled: true } });
+    render(<Login controller={controller} />);
+    await flush();
+    expect(methods).toHaveBeenCalledWith(SERVER);
+    fireEvent.click(screen.getByRole("button", { name: "Google でログイン" }));
+    await vi.waitFor(() => expect(openBrowser).toHaveBeenCalledOnce());
+    await flush();
+
+    const url = new URL(openBrowser.mock.calls[0]![0]);
+    expect(`${url.origin}${url.pathname}`).toBe(`${SERVER}/api/v1/auth/sso/google/start`);
+    expect(url.searchParams.get("platform")).toBe("desktop");
+    expect(url.searchParams.get("challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(sessionStorage.getItem("chikuwa.sso")).toBeNull(); // the verifier stays in memory
+    expect(controller.ssoState).toBe("waiting");
+    expect(screen.getByText("ブラウザでログインを続けてください")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await flush();
+    expect(controller.ssoState).toBe("idle");
+    expect(screen.getByRole("button", { name: "Google でログイン" })).toBeTruthy();
+  });
+
+  it("asks the server again as its URL is typed", async () => {
+    const controller = new AppController();
+    const methods = vi.spyOn(controller, "authMethods").mockImplementation(async (server) => ({ password: true, google: { enabled: server.includes("univ") } }));
+    render(<Login controller={controller} />);
+    await flush();
+    expect(screen.queryByRole("button", { name: "Google でログイン" })).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("https://chat.example.com"), { target: { value: "chat.univ.example.ac.jp" } });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    expect(methods).toHaveBeenLastCalledWith("chat.univ.example.ac.jp");
+    expect(screen.getByRole("button", { name: "Google でログイン" })).toBeTruthy();
+  });
+
+  it("exchanges the returned ticket as \"desktop\" with the verifier and keeps the refresh token in the credential store", async () => {
+    const calls = serve();
+    const { controller, openBrowser, enter } = await listening();
+    await controller.startGoogleSignIn(SERVER);
+    const challenge = new URL(openBrowser.mock.calls[0]![0]).searchParams.get("challenge");
+
+    await link("chikuwachat://sso?ticket=TICKET_123");
+
+    const [exchange] = exchanges(calls);
+    expect(exchange!.url).toBe(`${SERVER}/api/v1/auth/sso/exchange`);
+    const body = JSON.parse(String(exchange!.init!.body)) as { ticket: string; verifier: string; device: { platform: string } };
+    expect(body.ticket).toBe("TICKET_123");
+    expect(s256(body.verifier)).toBe(challenge);
+    expect(body.device.platform).toBe("desktop");
+    expect(enter).toHaveBeenCalledOnce();
+    const [api, username] = enter.mock.calls[0]! as [{ baseUrl: string; accessToken: string | null; refreshToken: string | null }, string];
+    expect(username).toBe("taro-2");
+    expect(api.baseUrl).toBe(SERVER);
+    expect(api.accessToken).toBe("a");
+    expect(api.refreshToken).toBe("r-token"); // not the browser's cookie session
+    await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("secret_set", { account: `${SERVER}|taro-2`, value: "r-token" }));
+    expect(controller.ssoState).toBe("idle");
+
+    // The same link again (a second copy) finds nothing waiting.
+    await link("chikuwachat://sso?ticket=TICKET_123");
+    expect(exchanges(calls)).toHaveLength(1);
+  });
+
+  it("shows a returned sso_error, and the server's refusal of the ticket, on the login screen", async () => {
+    const calls = serve(() => json({ error: { code: "invalid_ticket", message: "x", details: {} } }, 401));
+    const { controller } = await listening();
+    await controller.startGoogleSignIn(SERVER);
+    await link("chikuwachat://sso?sso_error=domain_not_allowed");
+    expect(exchanges(calls)).toHaveLength(0);
+    expect(controller.ssoState).toBe("idle");
+    expect(controller.screen).toBe("login");
+    expect(controller.error).toBe(ERROR_MESSAGES["domain_not_allowed"]);
+
+    await controller.startGoogleSignIn(SERVER);
+    expect(controller.error).toBeNull();
+    await link("chikuwachat://sso?ticket=T");
+    expect(exchanges(calls)).toHaveLength(1);
+    expect(controller.ssoState).toBe("idle");
+    expect(controller.error).toBe(ERROR_MESSAGES["invalid_ticket"]);
+  });
+
+  it("ignores links when no sign-in waits: the one that launched the app, after キャンセル, and other links", async () => {
+    tauri.current = ["chikuwachat://sso?ticket=LAUNCH"];
+    const calls = serve();
+    const { controller, enter } = await listening();
+    await flush();
+    await link("chikuwachat://sso?ticket=STRAY");
+    expect(exchanges(calls)).toHaveLength(0);
+    expect(controller.error).toBeNull();
+
+    await controller.startGoogleSignIn(SERVER);
+    await link("chikuwachat://elsewhere?ticket=T"); // not a sign-in return: still waiting
+    expect(controller.ssoState).toBe("waiting");
+    controller.cancelGoogleSignIn();
+    await link("chikuwachat://sso?ticket=LATE");
+    expect(exchanges(calls)).toHaveLength(0);
+    expect(enter).not.toHaveBeenCalled();
+    expect(controller.ssoState).toBe("idle");
+  });
+
+  it("says so when the browser cannot be opened", async () => {
+    serve();
+    const { controller, openBrowser } = await listening();
+    openBrowser.mockRejectedValueOnce(new Error("no browser"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await controller.startGoogleSignIn(SERVER);
+    expect(controller.ssoState).toBe("idle");
+    expect(controller.error).toBe("ブラウザを開けませんでした。もう一度お試しください");
+    await link("chikuwachat://sso?ticket=T");
+    expect(controller.ssoState).toBe("idle");
   });
 });
