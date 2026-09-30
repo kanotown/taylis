@@ -770,7 +770,7 @@ struct SearchResultRow: View {
         let store = controller.store
         let channel = store.channel(message.channelId)
         let sender = store.users[message.senderId]?.displayName ?? "?"
-        let text = Timeline.excerpt(message.body, hasAttachments: false, users: store.users, groups: store.groups)
+        let text = Timeline.excerpt(message.body, attachments: [], users: store.users, groups: store.groups)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
                 Image(systemName: conversationImage(channel?.channel)).imageScale(.small).foregroundStyle(.secondary)

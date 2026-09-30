@@ -102,6 +102,6 @@ struct ThreadRowView: View {
 
     /// One-line preview: mentions as names, light markdown stripped (DATA_MODEL.md 本文の形式).
     private func excerpt(_ message: MessageOut) -> String {
-        Timeline.excerpt(message.body, hasAttachments: !message.attachments.isEmpty, users: store.users, groups: store.groups)
+        Timeline.excerpt(message.body, attachments: message.attachments, users: store.users, groups: store.groups)
     }
 }

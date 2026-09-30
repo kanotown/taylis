@@ -224,7 +224,7 @@ struct ActivityRowView: View {
         let message = item.message
         if message.deleted { return "(削除されたメッセージ)" }
         if message.body.isEmpty && !message.attachments.isEmpty { return message.attachments.map(\.filename).joined(separator: ", ") }
-        return Timeline.excerpt(message.body, hasAttachments: !message.attachments.isEmpty, users: store.users, groups: store.groups)
+        return Timeline.excerpt(message.body, attachments: message.attachments, users: store.users, groups: store.groups)
     }
 
     /// The first actor's picture, two overlapping for several, and the kind's small badge at the corner.
