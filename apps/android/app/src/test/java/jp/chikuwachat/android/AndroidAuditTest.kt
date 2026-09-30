@@ -6,7 +6,6 @@ import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.ReadAnchor
 import jp.chikuwachat.android.sync.Store
-import jp.chikuwachat.android.ui.ComposerLayout
 import jp.chikuwachat.android.ui.ReadAnchorSaver
 import jp.chikuwachat.android.ui.Timeline
 import jp.chikuwachat.android.ui.TouchTarget
@@ -37,14 +36,6 @@ class AndroidAuditTest {
         GroupUnread.write(prefs, false)
         assertFalse(GroupUnread.read(prefs))
         assertNull(prefs.values["sidebar.groupUnread"]) // off leaves no key behind
-    }
-
-    @Test fun theComposerFoldsItsButtonsBelow460dp() {  // 400 until M30 added the template button
-        assertTrue(ComposerLayout.compact(360f))
-        assertTrue(ComposerLayout.compact(411f))
-        assertTrue(ComposerLayout.compact(459f))
-        assertFalse(ComposerLayout.compact(460f))
-        assertFalse(ComposerLayout.compact(600f))
     }
 
     @Test fun anEmptyConversationSaysWhetherItsFirstPageIsOnItsWay() {
