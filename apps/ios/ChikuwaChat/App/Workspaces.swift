@@ -68,18 +68,24 @@ struct PushPayload: Equatable, Sendable {
     var parentId: String?
     /// `aps.badge`: that server's count for this account.
     var badge: Int?
-    /// "message" (also when absent), "reminder", "reaction" (M39) …
+    /// "message" (also when absent), "reminder", "reaction" (M39), "calendar" (M51) …
     var kind: String?
+    /// M52: a calendar alarm's event (`kind = calendar`; its `channel_id` is null for my own calendar).
+    var eventId: String?
 
     init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
-         kind: String? = nil) {
+         kind: String? = nil, eventId: String? = nil) {
         self.workspaceId = workspaceId
         self.channelId = channelId
         self.messageId = messageId
         self.parentId = parentId
         self.badge = badge
         self.kind = kind
+        self.eventId = eventId
     }
+
+    /// M52: a calendar alarm opens its event (in its channel's 「予定」 tab, or in the calendar for my own).
+    var opensEvent: Bool { kind == "calendar" && eventId != nil }
 
     /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
     /// message push opens its conversation (and a reply's thread) as before.
@@ -95,6 +101,7 @@ struct PushPayload: Equatable, Sendable {
         messageId = text("message_id")
         parentId = text("parent_id")
         kind = text("kind")
+        eventId = text("event_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }
@@ -211,7 +218,9 @@ enum Workspaces {
 
     /// willPresent (§7): a notification that arrives with the app on screen shows, except for the conversation open
     /// in the workspace on screen (its WebSocket delivered the message already).
+    /// A calendar alarm always shows: the open conversation says nothing of it.
     static func shouldPresent(_ payload: PushPayload, target: Workspace?, active: String?, openChannelId: String?) -> Bool {
+        if payload.kind == "calendar" { return true }
         guard let target, target.serverUrl == active, let channelId = payload.channelId, let openChannelId else { return true }
         return channelId != openChannelId
     }

@@ -145,6 +145,8 @@ final class SyncEngine {
     @ObservationIgnored private(set) var drafts: DraftSync!
     /// M45: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6).
     @ObservationIgnored private(set) var canvases: CanvasHub!
+    /// M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5).
+    @ObservationIgnored private(set) var calendar: CalendarHub!
 
     /// error frame codes that mean the auth frame was refused (a close 4001 follows).
     private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
@@ -165,6 +167,8 @@ final class SyncEngine {
         drafts = DraftSync(api: api as? DraftApi, store: store, isOnline: { [weak self] in self?.status == .online }, delay: options.draftSave)
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
         canvases = CanvasHub(api: api as? CanvasApi, store: store, clock: options.canvasClock, options: options.canvasSave)
+        calendar = CalendarHub(api: api as? CalendarApi, me: { [weak store] in store?.me?.id })
+        calendar.onAlarm = { [weak self] event in self?.onCalendarAlarm?(event) }
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
         store.onStalePreview = { [weak self] channelId in Task { await self?.refreshLastMessage(channelId) } }
     }
@@ -218,6 +222,7 @@ final class SyncEngine {
     func stop() {
         stopped = true
         canvases.stop()
+        calendar.stop()
         clearTimers()
         ws?.close()
         ws = nil
@@ -301,6 +306,7 @@ final class SyncEngine {
         Task { await resendReads() } // §10: marks that could not be sent before
         Task { await drafts.flush() } // edited while offline (M15d)
         canvases.online() // M45: canvas saves that failed, open canvases read again, edits kept from before a relaunch
+        calendar.online() // M52: the ranges on screen and the channels' counts read again (CALENDAR.md §5)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         if let current = currentChannelId { Task { await openChannel(current) } }
@@ -513,6 +519,7 @@ final class SyncEngine {
     private func channelRemoved(_ channelId: String) {
         if currentChannelId == channelId { currentChannelId = nil }
         canvases.removeChannel(channelId)
+        calendar.removeChannel(channelId)
         forgetThreads(of: channelId)
         unreadHold[channelId] = nil
         pendingReads[channelId]?.cancel()
@@ -619,6 +626,8 @@ final class SyncEngine {
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
             canvases.applyEvent(frame.event, frame.data)
+        case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
+            calendar.applyEvent(frame.event, frame.data)
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }
             store.replaceSidebar(try frame.data.decode(Payload.self).sections)
@@ -795,6 +804,8 @@ final class SyncEngine {
 
     /// M12e: a reminder just fired while the app is open (the push covers the background case).
     var onReminder: ((ReminderOut) -> Void)?
+    /// M52: one of my calendar alarms just fired while the app is open (likewise).
+    var onCalendarAlarm: ((CalendarEventOut) -> Void)?
 
     /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
     func loadScheduled() async {
@@ -916,6 +927,9 @@ final class SyncEngine {
         guard status == .online, store.channel(channelId)?.isMember == true else { return }
         Task { await loadLinks(channelId) }
         Task { await canvases.loadList(channelId) } // M45 (CANVAS.md §4.6)
+        if let type = store.channel(channelId)?.channel.type, type == "public" || type == "private" {
+            Task { await calendar.loadUpcoming(channelId) } // M52: the 「予定」 tab's count (DMs have no shared calendar)
+        }
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId), channel.isMember else { return }
             if channel.syncedSeq == nil || channel.oldestLoadedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }

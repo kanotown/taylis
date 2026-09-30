@@ -184,6 +184,13 @@ struct MainView: View {
                 }
             }
         }
+        .onChange(of: PushCenter.shared.pendingCalendar, initial: true) { _, pending in
+            // M52: a tapped alarm of my own calendar: the calendar, on the home tab, shows the event.
+            guard pending else { return }
+            PushCenter.shared.pendingCalendar = false
+            paths[.home] = [.list(CalendarView.selectionId)]
+            tab = .home
+        }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {
@@ -328,6 +335,8 @@ struct MainView: View {
             }
         case RemindersView.selectionId:
             RemindersView(controller: controller) { row in Task { await controller.openPermalink(row.messageId) } }
+        case CalendarView.selectionId:
+            CalendarView(controller: controller)  // M52
         case FilesView.selectionId:
             FilesView(controller: controller) { messageId, channelId, parentId in
                 Task {
@@ -346,7 +355,7 @@ private extension String {
     /// A selection naming one of the lists rather than a conversation.
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
-         SavedView.selectionId, ThreadsListView.selectionId].contains(self)
+         SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId].contains(self)
     }
 }
 

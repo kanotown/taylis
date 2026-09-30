@@ -15,6 +15,8 @@ final class PushCenter {
     var pendingChannelId: String?
     /// The tapped notification's thread, when it was a reply (M28d): opened with the channel.
     var pendingParentId: String?
+    /// M52: a tapped alarm of my own calendar: MainView opens the calendar (the event is AppController.calendarOpen).
+    var pendingCalendar = false
     @ObservationIgnored private weak var controller: AppController?
     /// A tap that arrived before the app finished starting; routed after startup.
     @ObservationIgnored private var pendingTap: PushPayload?
@@ -71,6 +73,7 @@ final class PushCenter {
     /// The last workspace signed out (SYNC_PROTOCOL.md §11): no badge, no delivered notification and no pending tap stay.
     func clearAll() {
         pendingChannelId = nil
+        pendingCalendar = false
         pendingTap = nil
         setBadge(0)
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()

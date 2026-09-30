@@ -902,6 +902,16 @@ final class FakeServer {
         }
     }
 
+    /// M52: the calendar's events as each user sees them (the calendar calls of the Api read them, CalendarTests.swift).
+    var calendarRows: [CalendarEventOut] = []
+
+    /// An event outside the channel seq (calendar.*, M52) to these users' sockets.
+    func emitEvent(_ userIds: Set<String>, _ event: String, channelId: String?, data: JSONValue) {
+        eventId += 1
+        emit(userIds, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string(event), "ts": .string(now()),
+                               "channel_id": channelId.map(JSONValue.string) ?? .null, "seq": .null, "data": data]))
+    }
+
     func disconnect(_ userId: String, code: Int = 1006) {
         for socket in sockets where socket.userId == userId { socket.closeRemote(code) }
     }
