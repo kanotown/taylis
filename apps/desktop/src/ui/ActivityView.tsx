@@ -126,14 +126,16 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unread]);
 
-  // Being on screen reads the activity up to the newest row shown (the rows' dots stay until the view is left).
+  // Being on screen reads the activity up to the newest row shown (the rows' dots stay until the view is left) — only
+  // under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the other kinds
+  // read (「すべて既読」 is there for that).
   const newest = newestActivityAt(list?.items ?? []);
   const readAt = summary?.read_at ?? null;
   useEffect(() => {
-    if (!onScreen || !movesActivityRead(newest, readAt)) return;
+    if (!onScreen || filter !== "all" || !movesActivityRead(newest, readAt)) return;
     const timer = setTimeout(() => void controller.markActivityRead(newest!), ACTIVITY_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [onScreen, newest, readAt, controller]);
+  }, [onScreen, filter, newest, readAt, controller]);
 
   const markAllRead = async () => {
     const at = Math.max(Date.now(), Date.parse(newestActivityAt(Object.values(lists).flatMap((l) => l?.items ?? [])) ?? "") || 0);

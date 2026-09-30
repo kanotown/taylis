@@ -208,11 +208,14 @@ fun ActivityScreen(
         feed.refresh(controller)
         if (atTop) listState.requestScrollToItem(0)
     }
-    // Looked at: the activity is read up to the newest row shown (the badge clears), not while the app is away.
+    // Looked at: the activity is read up to the newest row shown (the badge clears), not while the app is away, and
+    // only under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the
+    // other kinds read (「すべて既読」 is there for that).
     val newest = feed.items?.let { ActivityText.newestAt(it) }
     val foreground = controller.appForeground
-    LaunchedEffect(newest, foreground) {
-        if (!foreground || newest == null || !ActivityRules.isUnread(newest, store.activity?.readAt)) return@LaunchedEffect
+    val everything = segment.filter == "all"
+    LaunchedEffect(newest, foreground, everything) {
+        if (!everything || !foreground || newest == null || !ActivityRules.isUnread(newest, store.activity?.readAt)) return@LaunchedEffect
         delay(MARK_READ_DELAY_MS)
         controller.markActivityRead(newest, quiet = true)
     }
