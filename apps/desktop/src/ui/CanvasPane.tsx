@@ -4,7 +4,7 @@
  * (保存中… / 保存済み / オフライン / 競合), the conflict choice (自分の版 / 相手の版 / 両方残す), a new canvas from a template,
  * the settings (title, who edits, the tab) and the trash. The history, search, images and sharing come in M44.
  */
-import { Check, ChevronDown, CircleAlert, Cloud, CloudOff, Copy, FileText, ListTree, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Cloud, CloudOff, Copy, FileText, History, ListTree, Loader2, MessageSquare, MoreHorizontal, Pencil, Plus, RotateCcw, Share2, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { CanvasConflict, CanvasMeta, CanvasOut, CanvasTemplateOut } from "../api/types";
@@ -14,7 +14,8 @@ import type { CanvasSaver, CanvasSaveStatus } from "../sync/canvasSave";
 import type { ChannelState } from "../sync/types";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
 import { CanvasEditor } from "./CanvasEditor";
-import { canvasRights, type CanvasRights, isDmConversation } from "./canvasAccess";
+import { canvasRights, type CanvasRights, isDmConversation, NO_CANVAS_RIGHTS } from "./canvasAccess";
+import { CanvasHistoryDialog } from "./CanvasHistory";
 import { outline, taskProgress, toggleTaskLine } from "./canvasText";
 import { useCompact } from "./compact";
 import { sinceLabel } from "./format";
@@ -31,11 +32,13 @@ function actorOf(controller: AppController) {
 }
 
 /** The pane of the conversation's 「キャンバス」 tab. `canvasId` null: the default one (or the empty state). */
-export function CanvasPane({ controller, channel, canvasId, onSelect }: {
+export function CanvasPane({ controller, channel, canvasId, onSelect, onOpenThread }: {
   controller: AppController;
   channel: ChannelState;
   canvasId: string | null;
   onSelect: (canvasId: string | null) => void;
+  /** M44: 「コメント」 opens the shared message's thread (CANVAS.md §4.13). */
+  onOpenThread?: (channelId: string, messageId: string) => void;
 }) {
   const store = controller.store;
   const list = store.canvasesOf(channel.id);
@@ -95,6 +98,7 @@ export function CanvasPane({ controller, channel, canvasId, onSelect }: {
         onSelect={onSelect}
         onNew={createRights.create ? () => setDialog("new") : null}
         onTrash={() => setDialog("trash")}
+        onOpenThread={onOpenThread}
       />
       {dialogs}
     </>
@@ -122,6 +126,7 @@ interface OpenCanvasProps {
   onSelect: (canvasId: string | null) => void;
   onNew: (() => void) | null;
   onTrash: () => void;
+  onOpenThread?: (channelId: string, messageId: string) => void;
 }
 
 /** Holds the canvas's save loop while it is on screen; letting go saves what is typed (§4.4 「画面を閉じるとき」). */
@@ -138,7 +143,7 @@ function OpenCanvas(props: OpenCanvasProps) {
 }
 
 /** One canvas on screen: its bar, the document (and the editor), the choices a save may ask for. */
-function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTrash, saver }: OpenCanvasProps & { saver: CanvasSaver }) {
+function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTrash, onOpenThread, saver }: OpenCanvasProps & { saver: CanvasSaver }) {
   const compact = useCompact();
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.revision);
   // The window going to the background saves what is typed now (§4.4).
@@ -153,10 +158,26 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
   const listed = list.find((c) => c.id === canvasId);
   // The newer of the list's metadata (events) and the saver's (answers).
   const meta: CanvasMeta | null = listed && (!saver.canvas || listed.version >= saver.canvas.version) ? listed : saver.canvas;
-  const rights = meta ? canvasRights(channel, actorOf(controller), meta) : { create: false, edit: false, tick: false, manage: false, trash: false };
+  const rights = meta ? canvasRights(channel, actorOf(controller), meta) : NO_CANVAS_RIGHTS;
   const [mode, setMode] = useState<Mode>(() => (compact ? "view" : "edit"));
   const [renaming, setRenaming] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const shared = !!meta?.share_message_id;
+  // §4.13: the comments are the shared message's thread; a canvas never shared is shared first (a message is posted).
+  const openComments = async () => {
+    if (!meta || !onOpenThread || opening) return;
+    setOpening(true);
+    const messageId = await controller.canvasCommentsMessage(meta);
+    setOpening(false);
+    if (messageId) onOpenThread(meta.channel_id, messageId);
+  };
+  const share = async () => {
+    if (!meta) return;
+    const done = await controller.shareCanvas(meta.id);
+    if (done) controller.setNotice("会話に共有しました");
+  };
   const editing = rights.edit && mode === "edit" && saver.status !== "loading" && saver.status !== "gone";
   const onToggleTask = rights.tick && saver.status !== "gone" && saver.status !== "loading"
     ? (line: number, done: boolean) => {
@@ -181,6 +202,24 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         <CanvasPicker controller={controller} list={list} currentId={canvasId} title={title} onSelect={onSelect} onNew={onNew} onTrash={onTrash} />
         <div className="min-w-0 flex-1" />
         <SaveState saver={saver} onOpenConflict={() => setConflictOpen(true)} />
+        {meta && saver.status !== "gone" && onOpenThread && (shared || rights.share) && (
+          <button
+            type="button"
+            title={shared ? "コメント (共有したメッセージのスレッド)" : "コメント (会話に共有してスレッドを開きます)"}
+            aria-label="コメント"
+            disabled={opening}
+            onClick={() => void openComments()}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-ink transition-colors hover:bg-ink/6 disabled:opacity-50"
+          >
+            {opening ? <Loader2 size={15} className="animate-spin" /> : <MessageSquare size={15} />}
+            <span className="max-md:sr-only">コメント</span>
+          </button>
+        )}
+        {meta && saver.status !== "gone" && (
+          <button type="button" title="履歴" aria-label="履歴" onClick={() => setHistoryOpen(true)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6 max-md:hidden">
+            <History size={16} />
+          </button>
+        )}
         {rights.edit && saver.status !== "gone" && (
           <div role="tablist" aria-label="表示" className="flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
             {(["edit", "view"] as const).map((value) => (
@@ -197,8 +236,8 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             ))}
           </div>
         )}
-        {meta && (rights.manage || rights.trash || isDmConversation(channel)) && saver.status !== "gone" && (
-          <CanvasMenu controller={controller} channel={channel} canvas={meta} rights={rights} onRename={() => setRenaming(true)} onTrashed={() => onSelect(null)} />
+        {meta && saver.status !== "gone" && (
+          <CanvasMenu controller={controller} channel={channel} canvas={meta} rights={rights} onRename={() => setRenaming(true)} onTrashed={() => onSelect(null)} onShare={shared || !rights.share ? null : () => void share()} onHistory={() => setHistoryOpen(true)} />
         )}
       </div>
       {notice && <div className={cn("flex shrink-0 items-center gap-2 border-b border-line px-4 py-1.5 text-xs", notice.tone === "warn" ? "bg-warning/10 text-ink" : "bg-panel text-muted")}>{notice.text}{notice.action}</div>}
@@ -249,6 +288,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         </div>
       )}
       {renaming && meta && <RenameDialog controller={controller} canvas={meta} onClose={() => setRenaming(false)} />}
+      {historyOpen && meta && <CanvasHistoryDialog controller={controller} canvas={meta} rights={rights} onClose={() => setHistoryOpen(false)} />}
       {conflictOpen && saver.status === "conflict" && saver.conflict && (
         <ConflictDialog controller={controller} saver={saver} tickOnly={!rights.edit} conflicts={saver.conflict.details.conflicts ?? []} timedOut={saver.conflict.details.timed_out ?? false} onClose={() => setConflictOpen(false)} />
       )}
@@ -335,6 +375,7 @@ function CanvasPicker({ controller, list, currentId, title, onSelect, onNew, onT
   onSelect: (canvasId: string | null) => void;
   onNew: (() => void) | null;
   onTrash: () => void;
+  onOpenThread?: (channelId: string, messageId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const choose = (run: () => void) => {
@@ -388,13 +429,16 @@ function CanvasPicker({ controller, list, currentId, title, onSelect, onNew, onT
 }
 
 /** ⋯: title, who edits (not in a DM), the conversation's tab, the trash (CANVAS.md §4.7). */
-function CanvasMenu({ controller, channel, canvas, rights, onRename, onTrashed }: {
+function CanvasMenu({ controller, channel, canvas, rights, onRename, onTrashed, onShare, onHistory }: {
   controller: AppController;
   channel: ChannelState;
   canvas: CanvasMeta;
   rights: CanvasRights;
   onRename: () => void;
   onTrashed: () => void;
+  /** M44: 「会話に共有」 (null: shared already, or not allowed here). */
+  onShare: (() => void) | null;
+  onHistory: () => void;
 }) {
   const dm = isDmConversation(channel);
   const tabTaken = (controller.store.canvasesOf(channel.id) ?? []).some((c) => c.is_channel_tab && c.id !== canvas.id);
@@ -407,6 +451,12 @@ function CanvasMenu({ controller, channel, canvas, rights, onRename, onTrashed }
       </MenuTrigger>
       <MenuContent align="end">
         <MenuLabel>{canvas.title}</MenuLabel>
+        {onShare && <MenuItem onSelect={onShare}><Share2 size={14} /> 会話に共有</MenuItem>}
+        <MenuItem onSelect={() => void controller.copyCanvasLink(canvas.id)}>
+          <Copy size={14} /> リンクをコピー
+        </MenuItem>
+        <MenuItem onSelect={onHistory}><History size={14} /> 履歴…</MenuItem>
+        {rights.manage && <MenuSeparator />}
         {rights.manage && <MenuItem onSelect={onRename}>題名を変更…</MenuItem>}
         {rights.manage && !tabTaken && (
           <MenuItem onSelect={() => void controller.updateCanvas(canvas.id, { is_channel_tab: !canvas.is_channel_tab })}>

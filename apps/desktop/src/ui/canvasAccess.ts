@@ -22,9 +22,14 @@ export interface CanvasRights {
   manage: boolean;
   /** To the trash and back. */
   trash: boolean;
+  /** M44: erase a version's body (§4.7: owners and administrators; in a DM its creator). */
+  erase: boolean;
+  /** M44: 「会話に共有」 (posting the link is posting a message: not where only owners post, unless one). */
+  share: boolean;
 }
 
-const NONE: CanvasRights = { create: false, edit: false, tick: false, manage: false, trash: false };
+export const NO_CANVAS_RIGHTS: CanvasRights = { create: false, edit: false, tick: false, manage: false, trash: false, erase: false, share: false };
+const NONE = NO_CANVAS_RIGHTS;
 
 export function isDmConversation(channel: Pick<ChannelState, "type">): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
@@ -36,7 +41,7 @@ export function canvasRights(channel: ChannelState, actor: CanvasActor, canvas: 
   const dm = isDmConversation(channel);
   if (dm) {
     const creator = canvas !== null && canvas.created_by === actor.id;
-    return { create: true, edit: true, tick: true, manage: true, trash: canvas === null ? false : creator };
+    return { create: true, edit: true, tick: true, manage: true, trash: canvas === null ? false : creator, erase: creator, share: canvas !== null };
   }
   const manager = actor.isAdmin || channel.membership?.role === "owner";
   const create = !actor.isGuest && (channel.posting_policy !== "owners" || manager);
@@ -44,5 +49,7 @@ export function canvasRights(channel: ChannelState, actor: CanvasActor, canvas: 
   const creator = canvas.created_by === actor.id;
   const edit = canvas.edit_policy === "owners" ? !actor.isGuest && (creator || manager) : create;
   const manage = !actor.isGuest && (creator || manager);
-  return { create, edit, tick: edit || !actor.isGuest, manage, trash: manage };
+  // Sharing posts a message: whoever may post at the top level (a guest may post in a channel they are in).
+  const share = channel.posting_policy !== "owners" || manager;
+  return { create, edit, tick: edit || !actor.isGuest, manage, trash: manage, erase: manager, share };
 }

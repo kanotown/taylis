@@ -150,7 +150,12 @@ it("a member who may only tick (edit_policy owners): no editor, the reason, and 
   expect(screen.queryByRole("tab", { name: "編集" })).toBeNull();
   expect(editor()).toBeNull();
   expect(screen.getByText(/チェックだけ付けられます/)).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "キャンバスの操作" })).toBeNull(); // no title / settings / trash for bob
+  // M44: ⋯ is there for everyone (share, link, history), but no title / settings / trash for bob.
+  fireEvent.keyDown(screen.getByRole("button", { name: "キャンバスの操作" }), { key: "Enter" });
+  await settle();
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["会話に共有", "リンクをコピー", "履歴…"]);
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await settle();
 
   fireEvent.click(screen.getAllByRole("checkbox", { name: "完了にする" })[1]!);
   await settle(40);

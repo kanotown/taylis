@@ -4,7 +4,7 @@
  * edits not saved yet, has a CanvasSaver. Unsaved edits are kept in the store (SQLite in Tauri), so a restart sends them
  * with the same idempotency key.
  */
-import type { CanvasDeleted, CanvasMeta, CanvasUpdated } from "../api/types";
+import type { CanvasDeleted, CanvasMeta, CanvasSaveIn, CanvasUpdated } from "../api/types";
 import { CanvasSaver, type CanvasSaveApi, type CanvasSaverOptions } from "./canvasSave";
 import type { Store } from "./store";
 
@@ -115,6 +115,22 @@ export class CanvasHub {
   /** Save everything typed now (the window goes to the background, sign-out). */
   async flushAll(): Promise<void> {
     await Promise.all([...this.savers.values()].map((saver) => saver.flush()));
+  }
+
+  /**
+   * M44, the web page going away (pagehide): each canvas with something typed hands over its save for a keepalive
+   * request (the browser keeps no store of it, CANVAS.md §5).
+   */
+  unload(send: (canvasId: string, body: CanvasSaveIn) => void): void {
+    for (const saver of this.savers.values()) {
+      const body = saver.unloadSave();
+      if (body) send(saver.id, body);
+    }
+  }
+
+  /** M44, beforeunload: something typed that a keepalive request cannot carry (a choice open, refused, too long). */
+  get mustStay(): boolean {
+    return [...this.savers.values()].some((saver) => saver.mustStay);
   }
 
   /** I left the conversation (or it was removed): its canvases and their savers go (§4.6). */

@@ -183,7 +183,7 @@ function ViewerShell({ attachment, description, shape, controller, onClose, body
 }
 
 /** Slack-style photo preview: the full image on a dark backdrop, with download and close. */
-function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
+export function Lightbox({ attachment, controller, onClose }: { attachment: AttachmentOut; controller: AppController; onClose: () => void }) {
   const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "content");
   const [fit, setFit] = useState(true);
   const shape = attachment.width && attachment.height ? { width: attachment.width, height: attachment.height } : null;

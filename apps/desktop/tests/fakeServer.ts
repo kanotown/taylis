@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasSaveIn, CanvasSaveOut, CanvasTemplateOut, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -741,8 +741,11 @@ export class FakeServer {
 
   // --- canvases (M43, CANVAS.md §4.4–§4.7) -------------------------------------------------------
 
-  /** Canvases by id with their versions (revision id → body); `deleted` = in the trash. */
-  readonly canvases = new Map<string, { canvas: CanvasOut; deleted: boolean; revisions: Map<string, string> }>();
+  /**
+   * Canvases by id with their versions (revision id → body, side versions too); `deleted` = in the trash. M44: `history`
+   * the versions the history lists (no side ones), oldest first.
+   */
+  readonly canvases = new Map<string, { canvas: CanvasOut; deleted: boolean; revisions: Map<string, string>; history: CanvasRevisionMeta[] }>();
   /** (user, client_save_id) → the revision a save made (create: the canvas's first one), as the server's unique index. */
   private readonly canvasKeys = new Map<string, { canvasId: string; revisionId: string; side: boolean }>();
   /** Every PUT /content that reached the server (retries included). */
@@ -792,7 +795,8 @@ export class FakeServer {
       is_channel_tab: body.as_tab ?? false, edit_policy: "members", template_key: template?.key ?? null, share_message_id: null,
       ...countTasks(text), created_by: userId, updated_by: userId, created_at: at, updated_at: at, body: text,
     };
-    this.canvases.set(canvas.id, { canvas, deleted: false, revisions: new Map([[revisionId, text]]) });
+    this.canvases.set(canvas.id, { canvas, deleted: false, revisions: new Map([[revisionId, text]]), history: [] });
+    this.addRevision(canvas.id, { id: revisionId, kind: "create", author_id: userId, parent_rev_id: null, before: "", after: text, version: 1 });
     this.canvasKeys.set(`${userId}:${body.client_save_id}`, { canvasId: canvas.id, revisionId, side: false });
     this.emitCanvas(channelId, "canvas.created", { canvas: this.canvasMeta(canvas) });
     return { ...canvas };
@@ -832,6 +836,7 @@ export class FakeServer {
     const setHead = (body: string, key: string | null): string => {
       const revisionId = nextId();
       record.revisions.set(revisionId, body);
+      this.addRevision(canvasId, { id: revisionId, kind: key ? "save" : "merge", author_id: userId, parent_rev_id: canvas.head_rev_id, before: canvas.body, after: body, version: canvas.version + 1 });
       Object.assign(canvas, { body, head_rev_id: revisionId, version: canvas.version + 1, updated_by: userId, updated_at: now(), ...countTasks(body) });
       if (key) this.canvasKeys.set(`${userId}:${key}`, { canvasId, revisionId, side: false });
       this.emitCanvas(canvas.channel_id, "canvas.updated", { canvas: this.canvasMeta(canvas), change: "content" });
@@ -873,6 +878,149 @@ export class FakeServer {
     Object.assign(record.canvas, { version: record.canvas.version + 1, updated_at: now() });
     this.emitCanvas(record.canvas.channel_id, "canvas.created", { canvas: this.canvasMeta(record.canvas) });
     return { ...record.canvas };
+  }
+
+  // --- M44: history, sharing, search, images, the administrators' templates ------------------------
+
+  private revisionClock = 0;
+
+  private addRevision(canvasId: string, r: { id: string; kind: CanvasRevisionMeta["kind"]; author_id: string; parent_rev_id: string | null; before: string; after: string; version: number }): void {
+    const record = this.canvases.get(canvasId)!;
+    const lines = (text: string) => (text === "" ? [] : text.split("\n"));
+    const count = (a: string[], b: string[]) => {
+      const left = new Map<string, number>();
+      for (const line of a) left.set(line, (left.get(line) ?? 0) + 1);
+      let n = 0;
+      for (const line of b) {
+        const k = left.get(line) ?? 0;
+        if (k > 0) left.set(line, k - 1);
+        else n++;
+      }
+      return n;
+    };
+    // Distinct, increasing times (the history is newest first).
+    const at = new Date(Date.parse("2026-09-30T00:00:00Z") + ++this.revisionClock * 60_000).toISOString();
+    record.history.push({
+      id: r.id, canvas_id: canvasId, kind: r.kind, author_id: r.author_id, parent_rev_id: r.parent_rev_id, version: r.version,
+      title: record.canvas.title, label: null, created_at: at, lines_added: count(lines(r.before), lines(r.after)), lines_removed: count(lines(r.after), lines(r.before)),
+    });
+  }
+
+  canvasRevisions(userId: string, canvasId: string): CanvasRevisionPage {
+    const record = this.canvasRecord(canvasId, userId);
+    return { items: [...record.history].reverse().map((r) => ({ ...r })), next_cursor: null };
+  }
+
+  canvasRevision(userId: string, canvasId: string, revisionId: string): CanvasRevisionOut {
+    const record = this.canvasRecord(canvasId, userId);
+    const meta = record.history.find((r) => r.id === revisionId);
+    if (!meta) throw new ApiError(404, "canvas_revision_not_found", "Version not found");
+    return { ...meta, body: meta.kind === "erased" ? "" : record.revisions.get(revisionId) ?? "" };
+  }
+
+  /** Every POST …/revisions/{id}/restore that reached the server (retries included). */
+  readonly revisionRestores: Array<{ revisionId: string; clientSaveId: string }> = [];
+
+  restoreCanvasRevision(userId: string, canvasId: string, revisionId: string, clientSaveId: string): CanvasOut {
+    this.revisionRestores.push({ revisionId, clientSaveId });
+    const record = this.canvasRecord(canvasId, userId);
+    const canvas = record.canvas;
+    if (this.canvasKeys.has(`${userId}:${clientSaveId}`)) return { ...canvas }; // a retry
+    if (!this.mayEditCanvas(userId, canvas)) throw new ApiError(403, "canvas_edit_restricted", "restricted");
+    const meta = record.history.find((r) => r.id === revisionId);
+    if (!meta) throw new ApiError(404, "canvas_revision_not_found", "Version not found");
+    if (meta.kind === "erased") throw new ApiError(409, "canvas_revision_erased", "erased");
+    const body = record.revisions.get(revisionId) ?? "";
+    const id = nextId();
+    this.canvasKeys.set(`${userId}:${clientSaveId}`, { canvasId, revisionId: id, side: false });
+    if (body === canvas.body) return { ...canvas };
+    record.revisions.set(id, body);
+    this.addRevision(canvasId, { id, kind: "restore", author_id: userId, parent_rev_id: canvas.head_rev_id, before: canvas.body, after: body, version: canvas.version + 1 });
+    Object.assign(canvas, { body, head_rev_id: id, version: canvas.version + 1, updated_by: userId, updated_at: now(), ...countTasks(body) });
+    this.emitCanvas(canvas.channel_id, "canvas.updated", { canvas: this.canvasMeta(canvas), change: "restore" });
+    return { ...canvas };
+  }
+
+  labelCanvasRevision(userId: string, canvasId: string, revisionId: string, label: string | null): CanvasRevisionMeta {
+    const record = this.canvasRecord(canvasId, userId);
+    if (!this.mayEditCanvas(userId, record.canvas)) throw new ApiError(403, "canvas_edit_restricted", "restricted");
+    const meta = record.history.find((r) => r.id === revisionId);
+    if (!meta) throw new ApiError(404, "canvas_revision_not_found", "Version not found");
+    meta.label = (label ?? "").trim() || null;
+    return { ...meta };
+  }
+
+  /** DELETE …/revisions/{id}: the body erased (owners and administrators; in a DM its creator). */
+  eraseRevisionBody(userId: string, canvasId: string, revisionId: string): CanvasRevisionMeta {
+    const record = this.canvasRecord(canvasId, userId);
+    const channel = this.record(record.canvas.channel_id).channel;
+    const dm = channel.type === "dm" || channel.type === "group_dm";
+    const allowed = dm ? record.canvas.created_by === userId : this.roleOf(channel.id, userId) === "owner" || this.users.get(userId)?.role === "admin";
+    if (!allowed) throw new ApiError(403, "canvas_edit_restricted", "restricted");
+    if (revisionId === record.canvas.head_rev_id) throw new ApiError(409, "canvas_revision_is_head", "head");
+    const meta = record.history.find((r) => r.id === revisionId);
+    if (!meta) throw new ApiError(404, "canvas_revision_not_found", "Version not found");
+    meta.kind = "erased";
+    record.revisions.set(revisionId, "");
+    return { ...meta };
+  }
+
+  /** POST /canvases/{id}/share: `📄 title` and the link as an ordinary message; nothing new while it exists. */
+  shareCanvas(userId: string, canvasId: string, baseUrl = "http://server"): CanvasOut {
+    const canvas = this.canvasRecord(canvasId, userId).canvas;
+    const existing = canvas.share_message_id ? this.record(canvas.channel_id).messages.find((m) => m.id === canvas.share_message_id && !m.deleted) : undefined;
+    if (existing) return { ...canvas };
+    const { message } = this.post(canvas.channel_id, userId, `📄 ${canvas.title}\n${baseUrl}/c/${canvas.id}`);
+    Object.assign(canvas, { share_message_id: message.id, version: canvas.version + 1 });
+    this.emitCanvas(canvas.channel_id, "canvas.updated", { canvas: this.canvasMeta(canvas), change: "settings" });
+    return { ...canvas };
+  }
+
+  /** GET /search/canvases, simply: the words in the title or body of the member's canvases; an excerpt around them. */
+  searchCanvases(userId: string, query: { q: string; channel_id?: string | null; limit?: number; offset?: number }): CanvasSearchOut {
+    const q = query.q.trim();
+    const hits = [...this.canvases.values()]
+      .filter((r) => !r.deleted && this.channels.get(r.canvas.channel_id)?.members.has(userId))
+      .filter((r) => !query.channel_id || r.canvas.channel_id === query.channel_id)
+      .filter((r) => !q || r.canvas.title.includes(q) || r.canvas.body.includes(q))
+      .map((r) => {
+        const at = r.canvas.body.indexOf(q);
+        const snippet = at < 0 ? r.canvas.body.slice(0, 120) : r.canvas.body.slice(Math.max(0, at - 60), at + q.length + 60);
+        return { canvas: this.canvasMeta(r.canvas), score: 1, snippet: snippet.replace(/\s+/g, " ").trim() };
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 20;
+    return { hits: hits.slice(offset, offset + limit), keywords: q ? [q] : [], total: hits.length, total_capped: false, has_more: offset + limit < hits.length, limit, offset, filters: { unresolved: [] } as unknown as CanvasSearchOut["filters"] };
+  }
+
+  /** A conversation's messages as the server holds them (M44 tests: the shared message). */
+  channelMessages(channelId: string): MessageOut[] {
+    return this.record(channelId).messages;
+  }
+
+  /** Every GET /search/canvases that reached the server. */
+  readonly canvasSearches: Array<{ q: string; channel_id?: string | null }> = [];
+
+  /** Uploads (POST /attachments): pending until a save names them. */
+  readonly uploads = new Map<string, AttachmentOut & { uploader: string }>();
+
+  upload(userId: string, filename: string, contentType: string): AttachmentOut {
+    const attachment: AttachmentOut = { id: nextId(), filename, content_type: contentType, size_bytes: 10, width: 40, height: 30, has_thumbnail: contentType.startsWith("image/"), status: "pending", created_at: now() };
+    this.uploads.set(attachment.id, { ...attachment, uploader: userId });
+    return attachment;
+  }
+
+  attachment(userId: string, attachmentId: string): AttachmentOut {
+    const row = this.uploads.get(attachmentId);
+    if (!row) throw new ApiError(404, "attachment_not_found", "Attachment not found");
+    if (row.status === "pending" && row.uploader !== userId) throw new ApiError(403, "not_uploader", "pending");
+    const { uploader: _uploader, ...attachment } = row;
+    return attachment;
+  }
+
+  adminTemplates(userId: string): CanvasTemplateOut[] {
+    if (this.users.get(userId)?.role !== "admin") throw new ApiError(403, "admin_required", "admin");
+    return this.canvasTemplates.map((t) => ({ ...t }));
   }
 
   /** M15d: "user:channel:parent" → the saved draft. */
@@ -1124,7 +1272,86 @@ export class FakeServer {
       },
       canvasTemplates: async () => {
         maybeFail();
-        return [...this.canvasTemplates];
+        return this.canvasTemplates.filter((t) => !t.hidden).map((t) => ({ ...t }));
+      },
+      // M44
+      canvasRevisions: async (canvasId: string) => {
+        maybeFail();
+        return this.canvasRevisions(userId, canvasId);
+      },
+      canvasRevision: async (canvasId: string, revisionId: string) => {
+        maybeFail();
+        return this.canvasRevision(userId, canvasId, revisionId);
+      },
+      restoreCanvasRevision: async (canvasId: string, revisionId: string, clientSaveId: string) => {
+        maybeFail();
+        return this.restoreCanvasRevision(userId, canvasId, revisionId, clientSaveId);
+      },
+      labelCanvasRevision: async (canvasId: string, revisionId: string, label: string | null) => {
+        maybeFail();
+        return this.labelCanvasRevision(userId, canvasId, revisionId, label);
+      },
+      eraseCanvasRevision: async (canvasId: string, revisionId: string) => {
+        maybeFail();
+        return this.eraseRevisionBody(userId, canvasId, revisionId);
+      },
+      shareCanvas: async (canvasId: string) => {
+        maybeFail();
+        return this.shareCanvas(userId, canvasId);
+      },
+      myCanvases: async () => {
+        maybeFail();
+        const items = [...this.canvases.values()]
+          .filter((r) => !r.deleted && this.channels.get(r.canvas.channel_id)?.members.has(userId))
+          .map((r) => this.canvasMeta(r.canvas))
+          .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+        return { items, next_cursor: null };
+      },
+      searchCanvases: async (query: { q: string; channel_id?: string | null; limit?: number; offset?: number }) => {
+        maybeFail();
+        this.canvasSearches.push({ ...query });
+        return this.searchCanvases(userId, query);
+      },
+      uploadAttachment: async (file: Blob, filename: string) => {
+        maybeFail();
+        return this.upload(userId, filename, file.type || "application/octet-stream");
+      },
+      getAttachment: async (attachmentId: string) => {
+        maybeFail();
+        return this.attachment(userId, attachmentId);
+      },
+      fetchBlob: async (path: string) => {
+        maybeFail();
+        const id = /attachments\/([^/]+)\//.exec(path)?.[1] ?? "";
+        this.attachment(userId, id);
+        return new Blob(["img"], { type: "image/png" });
+      },
+      adminCanvasTemplates: async () => {
+        maybeFail();
+        return this.adminTemplates(userId);
+      },
+      adminCreateCanvasTemplate: async (body: CanvasTemplateCreate) => {
+        maybeFail();
+        this.adminTemplates(userId);
+        const row: CanvasTemplateOut = { id: nextId(), key: body.key ?? `custom_${nextId().slice(0, 8)}`, name: body.name, description: body.description ?? null, title: body.title, body: body.body, position: body.position ?? this.canvasTemplates.length, builtin: false, hidden: false, updated_at: now() };
+        this.canvasTemplates.push(row);
+        return { ...row };
+      },
+      adminUpdateCanvasTemplate: async (templateId: string, patch: CanvasTemplateUpdate) => {
+        maybeFail();
+        this.adminTemplates(userId);
+        const row = this.canvasTemplates.find((t) => t.id === templateId);
+        if (!row) throw new ApiError(404, "template_not_found", "Template not found");
+        Object.assign(row, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== null && v !== undefined)), { updated_at: now() });
+        return { ...row };
+      },
+      adminDeleteCanvasTemplate: async (templateId: string) => {
+        maybeFail();
+        this.adminTemplates(userId);
+        const index = this.canvasTemplates.findIndex((t) => t.id === templateId);
+        if (index < 0) throw new ApiError(404, "template_not_found", "Template not found");
+        if (this.canvasTemplates[index]!.builtin) throw new ApiError(409, "template_builtin", "builtin");
+        this.canvasTemplates.splice(index, 1);
       },
       channelLinks: async (channelId) => {
         maybeFail();
@@ -1230,6 +1457,22 @@ export interface FakeCanvasApi {
   deleteCanvas(canvasId: string): Promise<void>;
   restoreCanvas(canvasId: string): Promise<CanvasOut>;
   canvasTemplates(): Promise<CanvasTemplateOut[]>;
+  // M44
+  canvasRevisions(canvasId: string): Promise<CanvasRevisionPage>;
+  canvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionOut>;
+  restoreCanvasRevision(canvasId: string, revisionId: string, clientSaveId: string): Promise<CanvasOut>;
+  labelCanvasRevision(canvasId: string, revisionId: string, label: string | null): Promise<CanvasRevisionMeta>;
+  eraseCanvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionMeta>;
+  shareCanvas(canvasId: string): Promise<CanvasOut>;
+  myCanvases(): Promise<{ items: CanvasMeta[]; next_cursor: string | null }>;
+  searchCanvases(query: { q: string; channel_id?: string | null; limit?: number; offset?: number }): Promise<CanvasSearchOut>;
+  uploadAttachment(file: Blob, filename: string): Promise<AttachmentOut>;
+  getAttachment(attachmentId: string): Promise<AttachmentOut>;
+  fetchBlob(path: string): Promise<Blob>;
+  adminCanvasTemplates(): Promise<CanvasTemplateOut[]>;
+  adminCreateCanvasTemplate(body: CanvasTemplateCreate): Promise<CanvasTemplateOut>;
+  adminUpdateCanvasTemplate(templateId: string, patch: CanvasTemplateUpdate): Promise<CanvasTemplateOut>;
+  adminDeleteCanvasTemplate(templateId: string): Promise<void>;
 }
 
 const FAKE_TASK = /^([ \t]*[-*] \[)([ xX])(\](?: .*)?)$/;

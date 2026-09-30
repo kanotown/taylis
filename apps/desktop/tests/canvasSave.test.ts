@@ -327,3 +327,52 @@ describe("someone else's versions", () => {
     expect(h.api.calls).toHaveLength(2);
   });
 });
+
+describe("the web tab closing (M44)", () => {
+  it("hands over the typed text as a save for a keepalive request; if the page lives on, the loop sends the same key", async () => {
+    const h = await harness();
+    expect(h.saver.unloadSave()).toBeNull(); // nothing typed
+    h.saver.edit(BODY + "\n閉じる直前");
+    const request = h.saver.unloadSave()!;
+    expect(request).toMatchObject({ base_rev_id: h.canvas.head_rev_id, body: BODY + "\n閉じる直前", on_conflict: "fail" });
+    expect(h.persisted.at(-1)?.inFlight?.clientSaveId).toBe(request.client_save_id);
+    // The keepalive request lands (the browser sends it after the page is gone) …
+    await h.server.apiFor(h.bob.id).saveCanvas!(h.canvas.id, request);
+    // … and a page kept in the back-forward cache resumes with the same save: answered once, no second version.
+    await vi.advanceTimersByTimeAsync(0);
+    await h.saver.settled();
+    expect(h.api.calls.map((c) => c.client_save_id)).toEqual([request.client_save_id]);
+    expect(head(h).body).toBe(BODY + "\n閉じる直前");
+    expect(h.server.canvases.get(h.canvas.id)!.history).toHaveLength(2);
+    expect(h.saver.status).toBe("saved");
+  });
+
+  it("a save on the wire is handed over as it is; text typed after it goes on its base with a new key", async () => {
+    const h = await harness();
+    h.api.fail.push("down");
+    h.saver.edit(BODY + "\n1");
+    await h.saver.flush(); // failed on the network: kept, waiting to be sent again
+    const first = h.api.calls[0]!;
+    expect(h.saver.unloadSave()).toEqual(first);
+    h.saver.edit(BODY + "\n1\n2");
+    const next = h.saver.unloadSave()!;
+    expect(next).toMatchObject({ base_rev_id: first.base_rev_id, body: BODY + "\n1\n2" });
+    expect(next.client_save_id).not.toBe(first.client_save_id);
+  });
+
+  it("asks to stay only for what a keepalive request cannot carry", async () => {
+    const h = await harness();
+    h.saver.edit(BODY + "\n少し");
+    expect(h.saver.mustStay).toBe(false);
+    h.saver.edit(BODY + "\n" + "長い本文。".repeat(5_000)); // over the 64 KiB a keepalive request may carry
+    expect(h.saver.mustStay).toBe(true);
+    expect(h.saver.unloadSave()).toBeNull();
+    h.saver.edit(BODY + "\n少し");
+    await h.saver.flush();
+    expect(h.saver.mustStay).toBe(false); // saved
+    h.api.fail.push(new ApiError(403, "canvas_edit_restricted", "restricted"));
+    h.saver.edit(BODY + "\n拒否");
+    await h.saver.flush();
+    expect(h.saver.mustStay).toBe(true); // refused: only copying keeps it
+  });
+});

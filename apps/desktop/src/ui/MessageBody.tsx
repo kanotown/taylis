@@ -6,7 +6,8 @@ import { type Block, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
-import { parsePermalink } from "./permalink";
+import { CanvasLinkCard } from "./CanvasLinkCard";
+import { parseCanvasLink, parsePermalink } from "./permalink";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
 
@@ -163,6 +164,9 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
       case "codeblock":
         return <pre key={i}>{token.text}</pre>;
       case "link": {
+        // M44: a canvas link on this server is a card (title, conversation, progress) that opens the canvas.
+        const canvasId = internalBase && controller ? parseCanvasLink(internalBase, token.url) : null;
+        if (canvasId && controller) return <CanvasLinkCard key={i} controller={controller} canvasId={canvasId} url={token.url} />;
         const open = onOpenMessage;
         const internal = internalBase && open ? parsePermalink(internalBase, token.url) : null;
         if (internal && open) {

@@ -1,7 +1,8 @@
 import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Paperclip, Search, SearchX, User, X } from "lucide-react";
 import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import type { FileItem, MessageOut, SearchHit } from "../api/types";
+import type { CanvasMeta, FileItem, MessageOut, SearchHit } from "../api/types";
+import { CanvasResults } from "./CanvasSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
@@ -15,7 +16,7 @@ import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 
-export type SearchTab = "messages" | "files";
+export type SearchTab = "messages" | "files" | "canvases";
 
 /** What the results looked like, so 「検索結果に戻る」 shows them again without a new request. */
 export interface SearchSnapshot {
@@ -32,13 +33,15 @@ export interface SearchSnapshot {
 const PAGE = 30;
 
 /** M16b: search results in the centre column: count, tabs, filter chips, sort, endless list. */
-export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onClose, snapshot }: {
+export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onOpenCanvas, onClose, snapshot }: {
   controller: AppController;
   params: SearchParams;
   tab: SearchTab;
   onTabChange: (tab: SearchTab) => void;
   onChange: (params: SearchParams) => void;
   onOpen: (message: MessageOut) => void;
+  /** M44: a hit of the 「キャンバス」 tab: the canvas in its conversation. */
+  onOpenCanvas?: (canvas: CanvasMeta) => void;
   onClose: () => void;
   snapshot: { current: SearchSnapshot | null };
 }) {
@@ -133,7 +136,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           <strong className="text-[15px]">{words ? `「${words}」の検索結果` : "検索結果"}</strong>
           {tab === "messages" && loaded && <span className="ml-2 text-sm text-muted">{totalLabel(total, capped)}</span>}
         </div>
-        {tab === "messages" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
+        {tab !== "files" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
         {!back && (
           <IconButton label="検索を閉じる (Esc)" onClick={onClose}>
             <X size={18} />
@@ -143,10 +146,13 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
       <div className="flex shrink-0 items-center gap-4 border-b border-line px-4">
         <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>メッセージ</TabButton>
         <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>ファイル</TabButton>
+        {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>キャンバス</TabButton>}
       </div>
-      <FilterBar controller={controller} params={params} onChange={onChange} filesOnly={tab === "files"} />
+      <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />
       {tab === "files" ? (
         <FileResults controller={controller} params={params} onOpen={onOpen} />
+      ) : tab === "canvases" && onOpenCanvas ? (
+        <CanvasResults controller={controller} params={params} onOpen={onOpenCanvas} />
       ) : (
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
           {unresolved.length > 0 && (
@@ -208,8 +214,11 @@ function SortMenu({ sort, disabled, onChange }: { sort: SearchSort; disabled: bo
 
 // ---- filters ----
 
-function FilterBar({ controller, params, onChange, filesOnly }: { controller: AppController; params: SearchParams; onChange: (p: SearchParams) => void; filesOnly: boolean }) {
+function FilterBar({ controller, params, onChange, mode }: { controller: AppController; params: SearchParams; onChange: (p: SearchParams) => void; mode: SearchTab }) {
   const store = controller.store;
+  const filesOnly = mode === "files";
+  // M44: a canvas has a creator / last editor, a conversation and an update date; no kinds, no threads.
+  const canvases = mode === "canvases";
   const sender = params.fromUserId ? store.users.get(params.fromUserId) : undefined;
   const channel = params.channelId ? store.getChannel(params.channelId) : undefined;
   const date = dateLabel(params.date);
@@ -219,7 +228,7 @@ function FilterBar({ controller, params, onChange, filesOnly }: { controller: Ap
       {!filesOnly && (
         <PeoplePicker controller={controller} value={params.fromUserId} onChange={(id) => onChange({ ...params, fromUserId: id })}>
           <Chip active={!!sender} icon={<User size={13} />} onClear={sender ? () => onChange({ ...params, fromUserId: null }) : undefined}>
-            {sender ? `送信者: ${sender.display_name}` : "送信者"}
+            {sender ? `${canvases ? "作成・更新" : "送信者"}: ${sender.display_name}` : canvases ? "作成・更新した人" : "送信者"}
           </Chip>
         </PeoplePicker>
       )}
@@ -235,14 +244,18 @@ function FilterBar({ controller, params, onChange, filesOnly }: { controller: Ap
               {date ?? "期間"}
             </Chip>
           </DatePicker>
-          <KindPicker value={params.has} onChange={(has) => onChange({ ...params, has })}>
-            <Chip active={params.has.length > 0} icon={<Paperclip size={13} />} onClear={params.has.length ? () => onChange({ ...params, has: [] }) : undefined}>
-              {params.has.length ? params.has.map((f) => HAS_LABELS[f]).join("・") : "種類"}
-            </Chip>
-          </KindPicker>
-          <Chip toggle active={params.isThread} icon={<MessagesSquare size={13} />} onClick={() => onChange({ ...params, isThread: !params.isThread })}>
-            スレッド内
-          </Chip>
+          {!canvases && (
+            <>
+              <KindPicker value={params.has} onChange={(has) => onChange({ ...params, has })}>
+                <Chip active={params.has.length > 0} icon={<Paperclip size={13} />} onClear={params.has.length ? () => onChange({ ...params, has: [] }) : undefined}>
+                  {params.has.length ? params.has.map((f) => HAS_LABELS[f]).join("・") : "種類"}
+                </Chip>
+              </KindPicker>
+              <Chip toggle active={params.isThread} icon={<MessagesSquare size={13} />} onClick={() => onChange({ ...params, isThread: !params.isThread })}>
+                スレッド内
+              </Chip>
+            </>
+          )}
         </>
       )}
       {(filesOnly ? !!params.channelId : hasFilters(params)) && (

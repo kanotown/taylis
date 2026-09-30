@@ -52,7 +52,7 @@ export interface ParseOptions {
 
 /** A task line, as the server counts it (server/app/modules/canvases/service.py TASK_LINE). */
 export const TASK_LINE = /^([ \t]*)[-*] \[([ xX])\](?: (.*))?$/;
-const IMAGE_LINE = /^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$/;
+const IMAGE_LINE = /^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$/i; // M44: an upper-case id too (Swift writes one)
 const RULE_LINE = /^-{3,}\s*$/;
 
 /** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
@@ -191,7 +191,7 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     }
     if (isImage(i)) {
       const m = IMAGE_LINE.exec(line)!;
-      push({ kind: "image", alt: m[1] ?? "", attachmentId: m[2] ?? "", line: i });
+      push({ kind: "image", alt: m[1] ?? "", attachmentId: (m[2] ?? "").toLowerCase(), line: i });
       i++;
       continue;
     }
