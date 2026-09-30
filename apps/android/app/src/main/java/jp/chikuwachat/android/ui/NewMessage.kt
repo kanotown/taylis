@@ -189,10 +189,11 @@ private fun PickerHeader(title: String) {
     )
 }
 
+/** Rows tighter than the home list (tester, 2026-09-30): a list to pick from, read at a glance. */
 @Composable
 private fun PickerChannelRow(channel: ChannelState, enabled: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().heightIn(min = 40.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
@@ -212,7 +213,7 @@ private fun PickerPersonRow(user: UserPublic, subtitle: String, checked: Boolean
     val tap = if (checked == null) Modifier.clickable(enabled = enabled, onClick = onClick)
     else Modifier.toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).then(tap).padding(horizontal = 16.dp, vertical = 4.dp).alpha(if (enabled) 1f else 0.6f),
+        Modifier.fillMaxWidth().heightIn(min = 44.dp).then(tap).padding(horizontal = 16.dp, vertical = 2.dp).alpha(if (enabled) 1f else 0.6f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(user.id, user.displayName, size = 32.dp)

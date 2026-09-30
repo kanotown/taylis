@@ -302,4 +302,15 @@ final class TimesSnapshotTests: XCTestCase {
         let image = try render(list(), size: CGSize(width: 393, height: 1100), name: "times-mine.png")
         XCTAssertGreaterThan(image.size.width, 0)
     }
+
+    /// 「新しいメッセージ」 (the ✏️ button): rows tighter than the home's (tester, 2026-09-30).
+    func testNewMessageListRenders() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.setMe(UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                           email: nil, mustChangePassword: false))
+        for name in ["general", "random", "m2-進捗", "輪講", "times-kano", "design-review"] { add(store, name, owner: nil) }
+        let image = try render(NewMessageView(controller: controller) { _, _ in }, size: CGSize(width: 393, height: 700), name: "new-message.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
 }
