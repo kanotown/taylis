@@ -2,7 +2,7 @@ import { ArrowLeft, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphon
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
-import type { ChannelLinkOut, MessageOut } from "../api/types";
+import type { ActivityItem, ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
@@ -53,7 +53,8 @@ import { MobileTabBar } from "./MobileTabBar";
 import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
 import { YouView } from "./YouView";
 
-type CentreView = "channel" | "threads" | "saved" | "mentions" | "drafts" | "files" | "reminders" | "search";
+// "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search";
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -327,6 +328,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   useEffect(() => {
     const focus = controller.messageFocus;
     if (!focus || (compact && revealing.current === focus.messageId) || (focus.channelId === currentId && view === "channel" && (!compact || pane === "main"))) return;
+    // M39: a reply opened from the activity tab: its thread is over that tab's root, and shows the reply itself.
+    if (compact && mobileTab === "activity" && view === "threads" && pane === "main" && focus.parentId !== null && focus.parentId === threadId) return;
     if (compact) {
       land(focus.channelId, focus.parentId);
       return;
@@ -486,7 +489,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "mentions" | "drafts" | "reminders") => {
+  const openView = (next: "activity" | "drafts" | "reminders") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -528,6 +531,34 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadChannelId(entry.state.channel_id);
     setThreadId(entry.parent.id);
     setPane("main");
+  };
+
+  /**
+   * M39, a row of the activity: its message, revealed in its conversation (a reply: in its thread). On a phone a reply's
+   * thread goes over the activity tab's root, as a thread row of stage A did; anything else opens its conversation on
+   * that tab's screens.
+   */
+  const openActivityItem = (item: ActivityItem) => {
+    const message = item.message;
+    if (!compactRef.current || !message.parent_id) {
+      revealFromList(message);
+      return;
+    }
+    const parentId = message.parent_id;
+    revealing.current = message.id;
+    void controller.revealMessage(message).then((ok) => {
+      revealing.current = null;
+      if (!ok) return;
+      controller.setEditing(null);
+      resetConversation();
+      setPinsOpen(false);
+      setBackToSearch(false);
+      setSearchOpen(false);
+      setView("threads");
+      setThreadChannelId(message.channel_id);
+      setThreadId(parentId);
+      setPane("main");
+    });
   };
 
   /** The thread's ← / ✕ / Esc: back to what is under it (on a phone's activity tab, its root). */
@@ -692,8 +723,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       savedActive={view === "saved"}
       onAdmin={() => setDialog("admin")}
       onBrowse={() => setDialog("browse")}
-      onMentions={compact ? undefined : () => openView("mentions")}
-      mentionsActive={view === "mentions"}
+      onActivity={compact ? undefined : () => openView("activity")}
+      activityActive={view === "activity"}
       onDrafts={() => openView("drafts")}
       draftsActive={view === "drafts"}
       onFiles={() => (view === "files" && !compact ? setView("channel") : openFiles(null))}
@@ -779,8 +810,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
       ) : view === "saved" ? (
         <SavedView controller={controller} onOpen={revealFromList} />
-      ) : view === "mentions" ? (
-        <MentionsView controller={controller} onOpen={revealFromList} />
+      ) : view === "activity" ? (
+        store.activity ? (
+          <ActivityView controller={controller} active onOpen={openActivityItem} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
+        ) : (
+          <MentionsView controller={controller} onOpen={revealFromList} />
+        )
       ) : view === "reminders" ? (
         <RemindersView controller={controller} onOpen={(row) => void controller.openPermalink(row.message_id)} />
       ) : view === "files" ? (
@@ -1089,7 +1124,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : value === "dm" ? (
         <DmListView controller={controller} onOpen={open} onNew={() => setDialog("dm")} />
       ) : value === "activity" ? (
-        <ActivityView controller={controller} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
+        <ActivityView controller={controller} active={atRoot && mobileTab === "activity"} onOpen={openActivityItem} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
       ) : (
         <YouView controller={controller} onStatus={() => setDialog("status")} onAdmin={() => setDialog("admin")} />
       );

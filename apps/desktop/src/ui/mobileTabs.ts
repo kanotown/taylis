@@ -3,6 +3,7 @@
  * the tab badges (on top of the unread rules in ./channels, unchanged), the DM list's order and time labels, where a
  * notification / permalink / search result lands, and the per-tab screen stacks.
  */
+import type { ActivitySummaryOut } from "../api/types";
 import type { ChannelState, ThreadSummary } from "../sync/types";
 import { hasUnread, isDmChannel, isSelfNotes } from "./channels";
 
@@ -22,10 +23,12 @@ export function dmBadge(channels: Iterable<ChannelState>, meId: string | null, n
 }
 
 /**
- * Activity tab (stage A): the followed threads' unread count plus the channels (not DMs) of mine with a mention;
- * red when any of those channels or threads mentions me.
+ * Activity tab and the wide sidebar's 「アクティビティ」. Stage B (M39, the server has `activity`): its unread items, red
+ * with a mention among them. Stage A (a server before M39): the followed threads' unread count plus the channels (not
+ * DMs) of mine with a mention; red when any of those channels or threads mentions me.
  */
-export function activityBadge(channels: Iterable<ChannelState>, threads: ThreadSummary): { count: number; mention: boolean } {
+export function activityBadge(channels: Iterable<ChannelState>, threads: ThreadSummary, activity: ActivitySummaryOut | null = null): { count: number; mention: boolean } {
+  if (activity) return { count: activity.unread_count, mention: activity.unread_count > 0 && activity.mention_unread };
   let mentioned = 0;
   for (const channel of channels) if (channel.isMember && !isDmChannel(channel) && channel.mentionCount > 0) mentioned += 1;
   return { count: threads.unread_count + mentioned, mention: mentioned > 0 || threads.mention_count > 0 };

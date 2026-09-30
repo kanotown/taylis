@@ -1,5 +1,5 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import type { ActivitySummaryOut, LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
 import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
 
@@ -57,6 +57,11 @@ export class Store {
   /** Followed threads (THREADS.md §5): fetched when the view opens, replaced by thread.updated; not persisted. */
   readonly threads = new Map<string, ThreadEntry>();
   threadSummary: ThreadSummary = { unread_count: 0, mention_count: 0 };
+  /**
+   * M39: the activity badge and read position; null while the server has sent none (before M39). Kept with `me`, so an
+   * offline start shows the last badge; bootstrap replaces it.
+   */
+  activity: ActivitySummaryOut | null = null;
   threadsFilter: ThreadFilter = "all";
   threadsLoaded = false;
   threadsCursor: string | null = null;
@@ -222,6 +227,12 @@ export class Store {
       this.me = me ? (JSON.parse(me) as UserMe) : null;
     } catch {
       this.me = null; // corrupt: the next sign-in writes it again
+    }
+    try {
+      const activity = snapshot.meta["activity"];
+      this.activity = activity ? (JSON.parse(activity) as ActivitySummaryOut) : null;
+    } catch {
+      this.activity = null; // corrupt: the next bootstrap brings it
     }
     for (const user of snapshot.users) this.users.set(user.id, user);
     for (const channel of snapshot.channels) this.channels.set(channel.id, restoredChannel(channel));
@@ -452,6 +463,22 @@ export class Store {
   }
 
   // --- threads (THREADS.md §5) -----------------------------------------------------------
+
+  // --- activity (M39, MOBILE_UI.md §7.2) -----------------------------------------------------
+
+  /**
+   * The server's activity summary (bootstrap `activity`, GET /activity/summary, PUT /activity/read). A summary behind the
+   * read position held (a GET answered after a newer PUT) is stale and dropped: the position only moves forward. Null
+   * (a server before M39, or bootstrap without it) leaves the badge to the stage-A rule (ui/mobileTabs.ts).
+   */
+  setActivity(summary: ActivitySummaryOut | null): void {
+    const current = this.activity;
+    if (summary && current && Date.parse(summary.read_at) < Date.parse(current.read_at)) return;
+    if (summary && current && summary.read_at === current.read_at && summary.unread_count === current.unread_count && summary.mention_unread === current.mention_unread) return;
+    this.activity = summary;
+    this.persist((p) => p.saveMeta("activity", summary ? JSON.stringify(summary) : null));
+    this.emit();
+  }
 
   setThreadSummary(summary: ThreadSummary): void {
     if (summary.unread_count === this.threadSummary.unread_count && summary.mention_count === this.threadSummary.mention_count) return;
@@ -834,7 +861,7 @@ export class Store {
   /** Persisted state for tests / diagnostics. */
   snapshot(): Snapshot {
     return {
-      meta: { ...Object.fromEntries([...this.drafts].map(([key, value]) => [key, JSON.stringify(value)])), ...(this.me ? { me: JSON.stringify(this.me) } : {}) },
+      meta: { ...Object.fromEntries([...this.drafts].map(([key, value]) => [key, JSON.stringify(value)])), ...(this.me ? { me: JSON.stringify(this.me) } : {}), ...(this.activity ? { activity: JSON.stringify(this.activity) } : {}) },
       users: [...this.users.values()],
       channels: [...this.channels.values()],
       messages: [...this.messagesByChannel.values()].flatMap((b) => [...b.values()]),

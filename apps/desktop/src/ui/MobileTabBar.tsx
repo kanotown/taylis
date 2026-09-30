@@ -9,15 +9,15 @@ const ICONS: Record<MobileTab, LucideIcon> = { home: House, dm: MessageCircle, a
 
 /**
  * M34: the phone's bottom tabs (MOBILE_UI.md §5), on the tabs' root screens only. The badges follow §8: DM = unread
- * DMs, activity = unread followed threads + channels with a mention (red with a mention), home = a dot for an unread
- * channel.
+ * DMs, activity = its unread items (M39; before M39 unread followed threads + channels with a mention), red with a
+ * mention, home = a dot for an unread channel.
  */
 export function MobileTabBar({ controller, tab, onTab }: { controller: AppController; tab: MobileTab; onTab: (tab: MobileTab) => void }) {
   const store = controller.store;
   const meId = store.me?.id ?? controller.me?.id ?? null;
   const channels = [...store.channels.values()];
   const dms = dmBadge(channels, meId);
-  const activity = activityBadge(channels, store.threadSummary);
+  const activity = activityBadge(channels, store.threadSummary, store.activity);
   const dot = homeDot(channels, meId);
   return (
     <nav aria-label="タブ" className="flex shrink-0 border-t border-line bg-canvas pb-[env(safe-area-inset-bottom)]">

@@ -77,8 +77,10 @@ function layRowsOut() {
  * (unless `notes` is false: then `createDm` makes them, after `createDm.gate` when one is set), and a thread under m1
  * that bob follows with one unread reply. Bob is on this device, at the home tab's root.
  */
-async function setup(options: { posts?: number; notes?: boolean } = {}) {
+async function setup(options: { posts?: number; notes?: boolean; activity?: boolean } = {}) {
   const w = world({ posts: options.posts ?? 5, lastRead: options.posts ?? 5 });
+  // M39: false = a server before it (no bootstrap `activity`): the activity tab is stage A.
+  w.server.activityEnabled = options.activity ?? true;
   const first = w.server.channels.get(w.channelId)!.messages[0]!;
   w.server.post(w.channelId, w.bob.id, "my reply", undefined, first.id); // bob follows the thread
   w.server.post(w.channelId, w.alice.id, "alice's reply", undefined, first.id);
@@ -191,12 +193,15 @@ it("the bar shows on the tabs' roots and pushed lists, not in a conversation; th
   act(() => controller.setEditing(null));
   expect(bar()).toBeNull();
   expect(document.querySelector("[data-tab-root]")).toBeNull();
-  expect(screen.getByRole("button", { name: "メンション" })).toBeTruthy(); // the wide sidebar keeps it
+  expect(screen.getByRole("button", { name: /^アクティビティ/ })).toBeTruthy(); // the wide sidebar's entry (M39)
   w.engine.stop();
 });
 
-it("badges: DM counts unread DMs, activity the unread threads (+ channels with a mention), home a dot for unread channels", async () => {
-  const { w, dmId } = await setup();
+// Stage B (M39): the server's unread items (the followed thread's reply, then the mention); stage A (a server before
+// it): the unread threads plus the channels with a mention. Both come to the same numbers here.
+it.each([true, false])("badges (activity from the server: %s): DM counts unread DMs, activity the unread items, home a dot for unread channels", async (activity) => {
+  const { w, dmId } = await setup({ activity });
+  expect(w.store.activity === null).toBe(!activity);
   expect(tabButton("dm").getAttribute("aria-label")).toBe("DM (未読 1)");
   expect(tabButton("dm").querySelector("[data-badge]")?.textContent).toBe("1");
   expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ (未読 1)");
@@ -342,8 +347,9 @@ it("the home list's 「ダイレクトメッセージ」: my own DM first; until
   w.engine.stop();
 });
 
-it("the activity tab: [メンション | スレッド]; a mention opens its conversation and a thread row its thread on the activity tab, ← back to its root", async () => {
-  const { w } = await setup();
+it("a server before M39: the activity tab is stage A, [メンション | スレッド]; a mention opens its conversation and a thread row its thread on the activity tab, ← back to its root", async () => {
+  const { w } = await setup({ activity: false });
+  expect(w.store.activity).toBeNull();
   await tap("activity");
   const activity = within(root("activity")!);
   expect(activity.getByRole("radio", { name: "メンション" }).getAttribute("aria-checked")).toBe("true");

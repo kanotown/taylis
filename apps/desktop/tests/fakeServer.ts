@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -115,6 +115,8 @@ export class FakeServer {
   private byClientKey = new Map<string, MessageOut>();
   /** M12g notification keywords per user; like the server, hits never appear in mentioned_user_ids. */
   readonly keywords = new Map<string, string[]>();
+  /** M39: users.notify_reactions (initially off). */
+  readonly notifyReactions = new Set<string>();
   /** M35: users.notification_default (missing = the server's initial "mentions"). */
   readonly notificationDefaults = new Map<string, NotificationLevel>();
   /** notification_preferences rows by "channel:user" (level null = follows the overall setting). */
@@ -163,6 +165,7 @@ export class FakeServer {
       status_expires_at: null,
     };
     this.users.set(user.id, user);
+    this.activityReadAt.set(user.id, user.created_at); // users.activity_read_at defaults to now()
     return user;
   }
 
@@ -316,6 +319,68 @@ export class FakeServer {
     this.threadFollows.set(key, row);
     if (changed) this.emitThread(parent.id, [userId], "follow");
     return this.threadState(userId, parent.id);
+  }
+
+  // --- activity (M39, MOBILE_UI.md §7.2) ----------------------------------------------------
+
+  /** A server before M39: no `activity` in bootstrap, no reaction.added (the clients fall back to stage A). */
+  activityEnabled = true;
+  /** users.activity_read_at. */
+  readonly activityReadAt = new Map<string, string>();
+  /** "message:user:emoji" → when the reaction was made (reactions.created_at). */
+  readonly reactionTimes = new Map<string, string>();
+  /** GET /activity requests (filter and cursor) by user. */
+  readonly activityRequests: Array<{ userId: string; filter: ActivityFilter; cursor: string | null }> = [];
+
+  private mentions(message: MessageOut, userId: string): boolean {
+    return message.mention_all === true || (message.mentioned_user_ids ?? []).includes(userId);
+  }
+
+  /** Everything, newest first: the server's three queries merged (members only, deleted rows left out). */
+  activityItems(userId: string, filter: ActivityFilter = "all"): ActivityItem[] {
+    const items: ActivityItem[] = [];
+    for (const record of this.channels.values()) {
+      if (!record.members.has(userId)) continue;
+      for (const message of record.messages) {
+        if (message.deleted) continue;
+        const view = this.viewAs(message, userId);
+        if (message.sender_id !== userId && this.mentions(message, userId)) {
+          if (filter === "all" || filter === "mentions") items.push({ kind: "mention", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
+        } else if (message.sender_id !== userId && message.parent_id && this.threadFollows.get(`${message.parent_id}:${userId}`)?.following) {
+          if (filter === "all" || filter === "threads") items.push({ kind: "thread_reply", at: message.created_at, message: view, actor_ids: [message.sender_id], emojis: [] });
+        }
+        if (message.sender_id === userId && (filter === "all" || filter === "reactions")) {
+          const others = (message.reactions ?? []).flatMap((r) => r.user_ids.filter((id) => id !== userId).map((id) => ({ id, emoji: r.emoji, at: this.reactionTimes.get(`${message.id}:${id}:${r.emoji}`) ?? message.created_at })));
+          if (others.length === 0) continue;
+          const at = others.map((o) => o.at).sort().at(-1)!;
+          items.push({ kind: "reaction", at, message: view, actor_ids: [...new Set(others.map((o) => o.id))], emojis: [...new Set(others.map((o) => o.emoji))].sort() });
+        }
+      }
+    }
+    return items.sort((a, b) => b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || b.message.id.localeCompare(a.message.id));
+  }
+
+  listActivity(userId: string, filter: ActivityFilter, cursor: string | null, limit: number): ActivityListOut {
+    this.activityRequests.push({ userId, filter, cursor });
+    const all = this.activityItems(userId, filter).filter((item) => !cursor || item.at < cursor);
+    const page = all.slice(0, limit);
+    return { items: page, next_cursor: all.length > limit ? page[page.length - 1]!.at : null, read_at: this.activityReadAt.get(userId)! };
+  }
+
+  activitySummary(userId: string): ActivitySummaryOut {
+    const readAt = this.activityReadAt.get(userId)!;
+    const unread = this.activityItems(userId).filter((item) => item.at > readAt);
+    return { read_at: readAt, unread_count: Math.min(unread.length, 99), mention_unread: unread.some((item) => item.kind === "mention") };
+  }
+
+  /** PUT /activity/read: forward only, never past now; activity.read to the user's devices when it moved. */
+  markActivityRead(userId: string, readAt: string): ActivitySummaryOut {
+    const target = readAt < now() ? readAt : now();
+    if (target > this.activityReadAt.get(userId)!) {
+      this.activityReadAt.set(userId, target);
+      this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "activity.read", ts: now(), channel_id: null, seq: null, data: { read_at: target } });
+    }
+    return this.activitySummary(userId);
   }
 
   /** PUT /channels/{id}/read: clamp, never regress, read.updated to the user's own sockets on change. */
@@ -542,6 +607,13 @@ export class FakeServer {
     const seq = ++record.channel.last_seq;
     const updated: MessageOut = { ...message, updated_seq: seq, reactions: [...groups].map(([e, ids]) => ({ emoji: e, count: ids.length, user_ids: ids })) };
     this.replace(record, updated, "message.updated", "reactions");
+    const at = now();
+    if (present) this.reactionTimes.set(`${messageId}:${userId}:${emoji}`, at);
+    else this.reactionTimes.delete(`${messageId}:${userId}:${emoji}`);
+    // M39: news to the author (not for their own reaction, nor a reaction taken back).
+    if (present && this.activityEnabled && message.sender_id !== userId) {
+      this.emit(new Set([message.sender_id]), { type: "event", id: ++this.eventId, event: "reaction.added", ts: at, channel_id: channelId, seq: null, data: { channel_id: channelId, message_id: messageId, user_id: userId, emoji, at } });
+    }
     return { message: updated, changed: true };
   }
 
@@ -786,7 +858,7 @@ export class FakeServer {
 
   // --- the API as seen by one user ------------------------------------------------------
 
-  apiFor(userId: string): SyncApi & { failNext: (error: Error) => void } {
+  apiFor(userId: string): SyncApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
       if (pendingFailure) {
@@ -802,7 +874,7 @@ export class FakeServer {
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
         const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: false };
+        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId) };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({
@@ -828,8 +900,29 @@ export class FakeServer {
           roster: [...this.roster.values()],
           sidebar_sections: [],
           drafts: this.draftsOf(userId),
+          ...(this.activityEnabled ? { activity: this.activitySummary(userId) } : {}),
         };
       },
+      ...(this.activityEnabled
+        ? {
+            listActivity: async ({ filter = "all", cursor = null, limit = 50 }: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => {
+              maybeFail();
+              return this.listActivity(userId, filter, cursor, limit);
+            },
+            activitySummary: async () => {
+              maybeFail();
+              return this.activitySummary(userId);
+            },
+            markActivityRead: async (readAt: string) => {
+              maybeFail();
+              return this.markActivityRead(userId, readAt);
+            },
+          }
+        : {
+            listActivity: async () => {
+              throw new ApiError(404, "not_found", "Not Found");
+            },
+          }),
       channelLinks: async (channelId) => {
         maybeFail();
         this.requireMember(channelId, userId);

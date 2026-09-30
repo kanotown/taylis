@@ -889,6 +889,27 @@ export class AppController {
     return this.updateProfile({ notification_default: level });
   }
 
+  /** M39: 「リアクションのバナー」 (users.notify_reactions); the activity lists reactions either way. */
+  setNotifyReactions(on: boolean): Promise<boolean> {
+    return this.updateProfile({ notify_reactions: on });
+  }
+
+  /**
+   * M39: the activity is read up to `readAt` (「すべて既読」: now; the view on screen: its newest item). The badge takes
+   * the server's answer; my other devices follow through activity.read.
+   */
+  async markActivityRead(readAt: string): Promise<boolean> {
+    const engine = this.engine;
+    if (!engine) return false;
+    try {
+      await engine.markActivityRead(readAt);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
   /** M11d: profile card fields (title, custom status). Null clears; omitted fields keep their value. */
   async updateProfile(patch: UserUpdate): Promise<boolean> {
     if (!this.api) return false;
@@ -1271,6 +1292,16 @@ export class AppController {
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
         if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text);
         else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);
+      },
+      // M39: a reaction to my message, only when I asked for reaction banners (the engine checks that and the
+      // conversation's level and mute; the activity lists it either way). Titled like the server's push.
+      onReaction: (reaction, channel) => {
+        if (this.quiet(session)) return;
+        const actor = store.users.get(reaction.user_id)?.display_name ?? "メンバー";
+        const message = store.getMessage(channel.id, reaction.message_id);
+        const excerpt = message && !message.deleted ? plainText(mentionsToNames(message.body, store.users, store.groups), 80) : "";
+        const where = channel.type === "dm" ? "" : ` · ${conversationTitle(channel, store.users, store.me?.id ?? null)}`;
+        void notify(this.notificationTitle(session, `${actor} がリアクションしました${where}`), excerpt ? `${reaction.emoji} 「${excerpt}」` : reaction.emoji);
       },
       // A workspace in the background is not being looked at: its server may push to the phone (§6).
       // In use: the open workspace, its window focused, and touched within the last minutes (platform/idle.ts).
