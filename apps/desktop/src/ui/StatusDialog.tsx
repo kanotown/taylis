@@ -1,7 +1,10 @@
+import { SmilePlus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { AppController } from "../state/app";
-import { Button, cn, Field, Input, Modal } from "./primitives";
+import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
+import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { SectionIcon } from "./SectionDialog";
 import { activeStatus, EXPIRY_OPTIONS, expiryAt, expiryLabel, STATUS_PRESETS, type StatusExpiry } from "./users";
 
 /**
@@ -24,6 +27,8 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
   const me = controller.store.me;
   const current = activeStatus(me ? controller.store.users.get(me.id) ?? me : null);
   const [emoji, setEmoji] = useState(current?.emoji ?? "");
+  // The emoji comes from the picker: a text field there only brought up the keyboard (testers, 2026-09-30).
+  const [picking, setPicking] = useState(false);
   const [text, setText] = useState(current?.text ?? "");
   const [expiry, setExpiry] = useState<StatusExpiry>("never");
   const [busy, setBusy] = useState(false);
@@ -53,7 +58,30 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
   return (
     <form className={cn("space-y-4", className)} onSubmit={save}>
       <div className="flex gap-2">
-        <Input value={emoji} maxLength={8} placeholder="絵文字" aria-label="絵文字" className="w-20 text-center text-lg" onChange={(e) => { setEmoji(e.target.value); setSaved(false); }} />
+        <PopoverRoot open={picking} onOpenChange={setPicking}>
+          <PopoverTrigger asChild>
+            <button type="button" aria-label={emoji ? "絵文字を変更" : "絵文字を選ぶ"} title="絵文字" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
+              {emoji ? <SectionIcon controller={controller} emoji={emoji} size={18} /> : <SmilePlus size={16} />}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-3">
+            <EmojiPicker
+              recent={readRecentEmoji()}
+              custom={[...controller.store.customEmoji.values()]}
+              controller={controller}
+              onPick={(entry) => {
+                setEmoji(entry.glyph);
+                setSaved(false);
+                setPicking(false);
+              }}
+            />
+            {emoji && (
+              <div className="mt-2 border-t border-line pt-2 text-right">
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(""); setSaved(false); setPicking(false); }}>絵文字を外す</Button>
+              </div>
+            )}
+          </PopoverContent>
+        </PopoverRoot>
         <Input value={text} maxLength={100} placeholder="今なにしてる？" aria-label="ステータス" className="flex-1" onChange={(e) => { setText(e.target.value); setSaved(false); }} autoFocus={!!onCancel} />
       </div>
       <div className="flex flex-wrap gap-1.5">
