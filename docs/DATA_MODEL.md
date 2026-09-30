@@ -88,6 +88,8 @@ CREATE TABLE users (
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
   presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える
   notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
+  activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (項目ごとの既読行は作らない。進むだけ)
+  notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   created_at            timestamptz NOT NULL DEFAULT now(),

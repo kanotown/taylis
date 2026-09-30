@@ -29,7 +29,7 @@ const flush = () => act(async () => { await new Promise((resolve) => setTimeout(
 function controllerFor(me: UserPublic, api: Record<string, unknown>): AppController {
   const controller = new AppController();
   controller.api = { baseUrl: "http://server", ...api } as unknown as ApiClient;
-  controller.store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions" } as UserMe);
+  controller.store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false } as UserMe);
   controller.store.upsertUser(me);
   return controller;
 }

@@ -86,6 +86,7 @@
   read-all の応答、`read.updated`) はすべてこの値を含む。
 - `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
 - `presence` は今つながっているユーザー (§5.2)。載っていないユーザーは offline。以後の変化は `presence` フレームで届く。
+- `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しいものの数 (99 まで)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read` で `GET /activity/summary` を取り直す。
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
 
@@ -220,6 +221,8 @@
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
+| `activity.read` | user | — | `{ read_at }` (M39)。アクティビティの既読位置が進んだ (自分の他端末から)。クライアントはバッジを取り直す |
+| `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える |

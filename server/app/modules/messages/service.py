@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.activity.events import REACTION_ADDED
+from app.modules.activity.rules import reaction_audience
+from app.modules.activity.schemas import ReactionAddedData
 from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
 from app.modules.channels import repository as channel_repo
@@ -580,6 +583,23 @@ async def set_reaction(
         seq=seq,
         payload=MessageUpdatedData(message=out, change="reactions").model_dump(mode="json"),
     )
+    # M39: news to the author (the activity badge, and a push if they asked for reaction banners).
+    author = reaction_audience(message.sender_id, actor.id)
+    if present and author is not None:
+        await write_outbox(
+            db,
+            event_type=REACTION_ADDED,
+            audience_type="user",
+            audience_id=author,
+            channel_id=message.channel_id,
+            payload=ReactionAddedData(
+                channel_id=message.channel_id,
+                message_id=message.id,
+                user_id=actor.id,
+                emoji=emoji,
+                at=utcnow(),
+            ).model_dump(mode="json"),
+        )
     await db.commit()
     return out, True
 

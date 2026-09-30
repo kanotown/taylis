@@ -35,6 +35,12 @@ class User(Base):
     notify_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     # L4 (M31): others always see this person as offline (the hub announces nothing else).
     presence_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # M39: the activity read position, and whether a reaction to my message pushes (the activity
+    # lists it anyway).
+    activity_read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    notify_reactions: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # M35: what a channel without a level of its own notifies of: all | mentions | none.
     notification_default: Mapped[str] = mapped_column(
         String(16), default="mentions", server_default="mentions"

@@ -4,6 +4,67 @@
  */
 
 export interface paths {
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description Mentions of me, reactions to my messages and replies in threads I follow, newest first
+         *     (M39).
+         */
+        get: operations["list_activity_api_v1_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark Activity Read
+         * @description Everything up to `read_at` is read (it only moves forward).
+         */
+        put: operations["mark_activity_read_api_v1_activity_read_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Summary
+         * @description The activity tab's badge: items after my read position.
+         */
+        get: operations["activity_summary_api_v1_activity_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/groups": {
         parameters: {
             query?: never;
@@ -2027,6 +2088,59 @@ export interface components {
             /** Reminded */
             reminded: number;
         };
+        /** ActivityItem */
+        ActivityItem: {
+            /** Actor Ids */
+            actor_ids: string[];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Emojis
+             * @default []
+             */
+            emojis: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mention" | "reaction" | "thread_reply";
+            message: components["schemas"]["MessageOut"];
+        };
+        /** ActivityListOut */
+        ActivityListOut: {
+            /** Items */
+            items: components["schemas"]["ActivityItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /**
+             * Read At
+             * Format: date-time
+             */
+            read_at: string;
+        };
+        /** ActivityReadIn */
+        ActivityReadIn: {
+            /**
+             * Read At
+             * Format: date-time
+             */
+            read_at: string;
+        };
+        /** ActivitySummaryOut */
+        ActivitySummaryOut: {
+            /** Mention Unread */
+            mention_unread: boolean;
+            /**
+             * Read At
+             * Format: date-time
+             */
+            read_at: string;
+            /** Unread Count */
+            unread_count: number;
+        };
         /** AdminUserCreate */
         AdminUserCreate: {
             /** Display Name */
@@ -2162,6 +2276,7 @@ export interface components {
         };
         /** BootstrapOut */
         BootstrapOut: {
+            activity?: components["schemas"]["ActivitySummaryOut"] | null;
             /**
              * Bookmarks
              * @default []
@@ -3843,6 +3958,11 @@ export interface components {
              */
             notify_keywords: string[];
             /**
+             * Notify Reactions
+             * @default false
+             */
+            notify_reactions: boolean;
+            /**
              * Presence Hidden
              * @default false
              */
@@ -3917,6 +4037,8 @@ export interface components {
             notification_default?: ("all" | "mentions" | "none") | null;
             /** Notify Keywords */
             notify_keywords?: string[] | null;
+            /** Notify Reactions */
+            notify_reactions?: boolean | null;
             /** Presence Hidden */
             presence_hidden?: boolean | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
@@ -4031,6 +4153,92 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_activity_api_v1_activity_get: {
+        parameters: {
+            query?: {
+                filter?: "all" | "mentions" | "reactions" | "threads";
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_activity_read_api_v1_activity_read_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_summary_api_v1_activity_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+        };
+    };
     create_group_api_v1_admin_groups_post: {
         parameters: {
             query?: never;

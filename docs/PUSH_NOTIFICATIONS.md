@@ -100,6 +100,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | `type = system` のメッセージ | 除外 | M5 |
 | `level = none`、`muted` (M35、解除するまで)、または `muted_until > now()` | 除外 | M5 / M35 |
 | 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `messages.keyword_user_ids` に入り、`level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる。この列はクライアントに送らない (他のメンバーに本人のキーワードが分かってしまうため。M16a)。PushPlanner は行から読む | M12g / M16a |
+| `reaction.added` (M39、自分の投稿へのリアクション) | 本人が `notify_reactions` をオンにしているときだけ `kind = reaction` (タイトル「〇〇 がリアクションしました」、サブタイトルはチャンネル、本文は絵文字と投稿の抜粋、`channel_id` / `message_id` でその投稿を開く)。その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない。既読の再判定はしない (seq が無い) | M39 |
 | `reminder.updated` (status=fired、M12e) | 本人の端末へ `kind = reminder` (タイトル「リマインダー」、本文はメモ + 設定時の本文、`channel_id` / `message_id` で該当メッセージを開く)。DND 中は出さない | M12e |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` | 対象 | M5 |
