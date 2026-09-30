@@ -35,7 +35,9 @@ export class CanvasHub {
       this.deps.store.setCanvases(channelId, await api.listCanvases(channelId));
     } catch (err) {
       console.warn("could not load the canvases", err);
-      this.deps.store.setCanvasListFailure(channelId, err instanceof ApiError && err.status === 404 ? "unsupported" : "failed");
+      // A server from before M41 has no such route (404 not_found); a conversation I cannot see is 404 channel_not_found.
+      const unsupported = err instanceof ApiError && err.status === 404 && err.code !== "channel_not_found";
+      this.deps.store.setCanvasListFailure(channelId, unsupported ? "unsupported" : "failed");
     }
   }
 
