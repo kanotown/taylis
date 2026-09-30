@@ -13,8 +13,13 @@ struct LoginView: View {
     var mode: Mode = .initial
     /// add: close the sheet (cancelled, or signed in).
     var onClose: () -> Void = {}
+    /// Tests: whether a server offers Google sign-in, without asking it (else GET /auth/methods).
+    var offersGoogle: ((String) async -> Bool)? = nil
 
     @State private var server = ""
+    /// M48: whether each server asked offers 「Google でログイン」 (GET /auth/methods).
+    @State private var googleByServer: [String: Bool] = [:]
+    @State private var googleBusy = false
     @State private var username = ""
     @State private var password = ""
     @State private var totpCode = ""
@@ -91,8 +96,11 @@ struct LoginView: View {
                     } label: {
                         if busy { ProgressView() } else { Text(needsCode ? "コードを確認してログイン" : "ログイン") }
                     }
-                    .disabled(busy || (relogin == nil && server.trimmingCharacters(in: .whitespaces).isEmpty) || username.isEmpty || password.isEmpty
+                    .disabled(busy || googleBusy || (relogin == nil && server.trimmingCharacters(in: .whitespaces).isEmpty) || username.isEmpty || password.isEmpty
                               || (needsCode && totpCode.trimmingCharacters(in: .whitespaces).isEmpty))
+                }
+                if google {
+                    Section { googleSection }
                 }
                 if relogin == nil {
                     Section {
@@ -122,6 +130,7 @@ struct LoginView: View {
                 if isAdding { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { onClose() } } }
             }
             .onAppear(perform: prepare)
+            .task(id: methodsServer) { await loadMethods() }
             .sheet(isPresented: $adding) { LoginView(controller: controller, mode: .add) { adding = false } }
             .alert("このワークスペースを一覧から外しますか？", isPresented: $forgetting) {
                 Button("一覧から外す", role: .destructive) {
@@ -131,6 +140,67 @@ struct LoginView: View {
             } message: {
                 Text("この端末からこのワークスペースの記録を消します。サーバ上のデータは消えません。")
             }
+        }
+    }
+
+    /// 「または」 and the Google button under the password form (M48, SSO.md §6).
+    private var googleSection: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                VStack { Divider() }
+                Text("または").font(.footnote).foregroundStyle(.secondary)
+                VStack { Divider() }
+            }
+            .accessibilityHidden(true)
+            Button {
+                Task { await signInWithGoogle() }
+            } label: {
+                HStack(spacing: 8) {
+                    if googleBusy { ProgressView() }
+                    Text("Google でログイン")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(busy || googleBusy || methodsServer.isEmpty)
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
+    }
+
+    /// The server whose sign-in methods the form shows: the one signed back in to, else the one typed.
+    private var methodsServer: String { relogin?.serverUrl ?? server.trimmingCharacters(in: .whitespaces) }
+
+    private var google: Bool { googleByServer[methodsServer] == true }
+
+    /// GET /auth/methods of the server in the form, again when the address changes (after a pause in typing). A server
+    /// without the endpoint (before M48), or no answer, leaves the button out.
+    private func loadMethods() async {
+        let target = methodsServer
+        guard !target.isEmpty, googleByServer[target] == nil else { return }
+        if !googleByServer.isEmpty { // typed after the first answer
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            if Task.isCancelled { return }
+        }
+        let offered = await (offersGoogle ?? controller.offersGoogle(server:))(target)
+        googleByServer[target] = offered
+    }
+
+    private func signInWithGoogle() async {
+        googleBusy = true
+        defer { googleBusy = false }
+        let outcome = await controller.signInWithGoogle(server: methodsServer, adding: isAdding)
+        switch outcome {
+        case nil:
+            break // the sheet was closed: nothing to say
+        case .signedIn, .switched:
+            error = nil
+            onClose()
+        case .needsCode:
+            break // not asked after Google sign-in (SSO.md §4)
+        case .failed(let text):
+            error = text
         }
     }
 

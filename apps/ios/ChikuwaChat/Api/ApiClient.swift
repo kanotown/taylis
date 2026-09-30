@@ -93,6 +93,32 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return tokens
     }
 
+    /// GET /auth/methods (M48, no login).
+    func authMethods() async throws -> AuthMethodsOut { try await request("GET", "/api/v1/auth/methods", auth: false, timeout: 15) }
+
+    /// Whether the login screen offers 「Google でログイン」: only when the server says so. Any failure (a server before
+    /// M48 answers 404, no answer, another product) just leaves the button out.
+    func offersGoogle() async -> Bool {
+        (try? await authMethods())?.googleEnabled == true
+    }
+
+    /// POST /auth/sso/exchange (M48): the ticket from the sign-in sheet and the verifier this app made for it → the same
+    /// tokens as a login.
+    func ssoExchange(ticket: String, verifier: String, device: DeviceInfo) async throws -> TokenResponse {
+        let body: JSONValue = .object([
+            "ticket": .string(ticket),
+            "verifier": .string(verifier),
+            "device": .object([
+                "platform": .string(device.platform),
+                "device_name": device.deviceName.map(JSONValue.string) ?? .null,
+                "app_version": device.appVersion.map(JSONValue.string) ?? .null,
+            ]),
+        ])
+        let tokens: TokenResponse = try await request("POST", "/api/v1/auth/sso/exchange", body: body, auth: false)
+        apply(tokens)
+        return tokens
+    }
+
     /// §7.2: connect with the access token we have unless it is missing or expires within `margin` seconds.
     /// Every refresh rotates the refresh token, so refreshing only when needed keeps a lost response rare.
     func needsRefresh(margin: TimeInterval = 60) -> Bool {
