@@ -11,6 +11,13 @@ final class TabsTests: XCTestCase {
         return ChannelState(channel: out, isMember: true, syncedSeq: nil, lastSeq: 0, lastReadSeq: 0, unreadCount: unread, mentionCount: mentions, hasOlder: true)
     }
 
+    func testArchivedChannelsLightNoHomeDot() {
+        var old = channel("old", unread: 2)
+        old.channel.archived = true
+        XCTAssertFalse(TabBadges.homeDot([old], meId: "me")) // not on the home list (M37)
+        XCTAssertTrue(TabBadges.homeDot([channel("general", unread: 2)], meId: "me"))
+    }
+
     func testBadges() {
         let rows = [
             channel("general", unread: 3),

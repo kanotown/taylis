@@ -33,7 +33,8 @@ export function activityBadge(channels: Iterable<ChannelState>, threads: ThreadS
 
 /** Home tab: a dot while any channel (not a DM) of mine is unread by the sidebar's rule. */
 export function homeDot(channels: Iterable<ChannelState>, meId: string | null, now?: Date): boolean {
-  for (const channel of channels) if (channel.isMember && !isDmChannel(channel) && hasUnread(channel, meId, now)) return true;
+  // Not an archived channel: the home list does not show it, so its dot would point at nothing.
+  for (const channel of channels) if (channel.isMember && !channel.archived && !isDmChannel(channel) && hasUnread(channel, meId, now)) return true;
   return false;
 }
 

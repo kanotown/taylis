@@ -126,6 +126,8 @@ export function homeSections(
   const self = allDms.filter((c) => isSelfNotes(c, meId));
   const others = allDms.filter((c) => !isSelfNotes(c, meId));
   const dms = [...self, ...others.filter((c, index) => index < HOME_DM_LIMIT || hasUnread(c, meId, options.now))];
+  // Newest first, as on iOS and Android (M37): the conversation that just moved is on top.
+  unread.sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
   return { unread, favorites, custom, channels, times, dms, moreDms: others.length > HOME_DM_LIMIT };
 }
 
