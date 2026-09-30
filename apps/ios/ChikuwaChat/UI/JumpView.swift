@@ -159,6 +159,7 @@ struct JumpView: View {
                     Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(ChannelListView.rowInsets)
                 }
             } header: { header("最近の会話") }
         }
@@ -176,6 +177,7 @@ struct JumpView: View {
                     }
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
+                    .listRowInsets(ChannelListView.rowInsets)
                     .accessibilityLabel("最近の検索: \(describe(params))")
                 }
             } header: { header("最近の検索") }
@@ -199,6 +201,7 @@ struct JumpView: View {
                     Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(ChannelListView.rowInsets)
                 }
             } header: { header("会話") }
         }
@@ -208,6 +211,7 @@ struct JumpView: View {
                     Button { openDm(user.id) } label: { PersonLabel(controller: controller, user: user) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(ChannelListView.rowInsets)
                         .disabled(opening)
                         .accessibilityHint("ダイレクトメッセージを開きます")
                 }
@@ -225,6 +229,7 @@ struct JumpView: View {
             }
             .buttonStyle(.plain)
             .listRowSeparator(.hidden)
+            .listRowInsets(ChannelListView.rowInsets)
             .accessibilityLabel("「\(query)」をメッセージ検索")
         }
     }
@@ -323,6 +328,7 @@ struct NewMessageView: View {
                     }
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
+                    .listRowInsets(ChannelListView.rowInsets)
                 }
             } header: { header("チャンネル") }
         }
@@ -350,6 +356,7 @@ struct NewMessageView: View {
                     }
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
+                    .listRowInsets(ChannelListView.rowInsets)
                     .disabled(busy)
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                     .accessibilityHint(isMe ? "自分だけの DM を開きます" : isSelected ? "宛先から外します" : "宛先に加えます")
