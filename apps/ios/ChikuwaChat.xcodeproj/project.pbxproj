@@ -25,6 +25,7 @@
 		1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6130C50876B86E11534F6 /* LiveBackendTests.swift */; };
 		1C05C00854F6286A034963BE /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3912A5148D5775ED304A0125 /* ImageViewerTests.swift */; };
 		1C8D809901927C185631CCC1 /* Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B404F9D56E0D4FC24A30F35 /* Schedule.swift */; };
+		1EFC86F754C971D184B62E46 /* SsoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33F1DBF33E0FF6DC5A31FAD /* SsoTests.swift */; };
 		214B994514BE464424A29889 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */; };
 		21B7288F1CFA4D0BE7A342FD /* UnreadBannerSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43373D2E141F21E4C78457CF /* UnreadBannerSnapshotTests.swift */; };
 		23EC6CA8D0C736B5EED88D0F /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2F59D2D7208CD22462EB0C /* JSON.swift */; };
@@ -84,6 +85,7 @@
 		870A22BBBA909116002B711D /* FakeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048A41BC92EAD6644AFA7294 /* FakeServer.swift */; };
 		8751CB0E1C8B0E9FD3B4698F /* ChangePasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DABA1B9B54042F38909BC6B /* ChangePasswordView.swift */; };
 		8921EC124C7C0861FC70408B /* CustomEmojiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E58245D5480A2E09DFF4DC8 /* CustomEmojiTests.swift */; };
+		898C1A5E7E2277BAB3861CAE /* Sso.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB3F2CADCA41FD225E3FA9DF /* Sso.swift */; };
 		8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB071937EF97C9E53923BC8 /* InviteTests.swift */; };
 		8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8952935F7E755BB8B341C5 /* SearchView.swift */; };
 		90F6A6D17DBE28C9A8F6B9A9 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8EAE5A6ED788AD8AC1252 /* ThreadView.swift */; };
@@ -298,6 +300,7 @@
 		BC121C06BFAA7AB89AC54106 /* DNDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNDTests.swift; sourceTree = "<group>"; };
 		BF9B09A8597E4C56E7828D8D /* CanvasBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasBodyView.swift; sourceTree = "<group>"; };
 		C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChikuwaChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C33F1DBF33E0FF6DC5A31FAD /* SsoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SsoTests.swift; sourceTree = "<group>"; };
 		C4ACA1B40FD905B20357FE4C /* AvatarCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarCache.swift; sourceTree = "<group>"; };
 		C5B17C0044CEFA7773C29BDC /* Permalink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permalink.swift; sourceTree = "<group>"; };
 		C9393E38B1CAB5781D5AF359 /* CanvasSave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSave.swift; sourceTree = "<group>"; };
@@ -324,6 +327,7 @@
 		F4B2BB586E878AEEC2A31668 /* Share.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Share.swift; sourceTree = "<group>"; };
 		F6C06F2A75D6F2989EA46716 /* UpsideDownList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsideDownList.swift; sourceTree = "<group>"; };
 		F84E35A41634A00627A22BB0 /* HomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeTests.swift; sourceTree = "<group>"; };
+		FB3F2CADCA41FD225E3FA9DF /* Sso.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sso.swift; sourceTree = "<group>"; };
 		FDB0793555FA5BCB926C99F4 /* TabsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabsTests.swift; sourceTree = "<group>"; };
 		FF56C1D17673E9A46D280F6D /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -462,6 +466,7 @@
 				58E69EFE1A7FE36AF129AFCD /* SearchLogicTests.swift */,
 				E07AA1D9EDE0DEABBA2BA87B /* SearchWorkspaceSnapshotTests.swift */,
 				9FA240682AC06B184CE133E2 /* ShareTests.swift */,
+				C33F1DBF33E0FF6DC5A31FAD /* SsoTests.swift */,
 				B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */,
 				FDB0793555FA5BCB926C99F4 /* TabsTests.swift */,
 				B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */,
@@ -542,6 +547,7 @@
 				F4B2BB586E878AEEC2A31668 /* Share.swift */,
 				DA8BC6184A0BE68459D89563 /* ShareMessageSheet.swift */,
 				B6BACB32869D36BC76BFACD3 /* Sheets.swift */,
+				FB3F2CADCA41FD225E3FA9DF /* Sso.swift */,
 				5B6D699AA727C35F14365333 /* Tabs.swift */,
 				B747AFDE44257CFE5ACB9705 /* Templates.swift */,
 				6B46E6619531606984F31D78 /* ThreadsListView.swift */,
@@ -731,6 +737,7 @@
 				D1360F215A5C4911ED74BB2F /* SearchLogicTests.swift in Sources */,
 				E200EC6ED147DF3669158C04 /* SearchWorkspaceSnapshotTests.swift in Sources */,
 				F98DDD6607EB0D904F1E37C4 /* ShareTests.swift in Sources */,
+				1EFC86F754C971D184B62E46 /* SsoTests.swift in Sources */,
 				BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */,
 				7659EB83F6CE2DB2E96D0F61 /* TabsTests.swift in Sources */,
 				18705BA325204C3824490358 /* TemplatesTests.swift in Sources */,
@@ -829,6 +836,7 @@
 				072F46A639D7FAE65117A223 /* Share.swift in Sources */,
 				4F2C96CF6E06B8753F4011DD /* ShareMessageSheet.swift in Sources */,
 				A891B9120FA22239813BEACD /* Sheets.swift in Sources */,
+				898C1A5E7E2277BAB3861CAE /* Sso.swift in Sources */,
 				4A9E21A99D56EE5C0FA4FC0D /* Store.swift in Sources */,
 				CBD65280B7792F5C68583C5D /* SyncEngine.swift in Sources */,
 				D861E62CE15DE4B36D429F67 /* Tabs.swift in Sources */,

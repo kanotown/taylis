@@ -592,27 +592,12 @@ struct AccountView: View {
     @State private var sessionsError: String?
     @State private var ending: SessionOut?
 
+    /// M48: an account made by Google sign-in has no password, so neither its change nor 2FA (SSO.md §4).
+    private var hasPassword: Bool { controller.me?.passwordSet ?? true }
+
     var body: some View {
         Form {
-            Section {
-                NavigationLink(value: YouRoute.password) { Label("パスワードを変更", systemImage: "key") }
-            }
-            Section("2 要素認証") {
-                if let totp {
-                    HStack {
-                        Image(systemName: totp.enabled ? "checkmark.shield.fill" : "shield").foregroundStyle(totp.enabled ? Color.green : Color.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(totp.enabled ? "有効" : "無効").font(.body)
-                            Text(totp.enabled ? "ログイン時に認証アプリのコードが必要です · 回復コード残り \(totp.recoveryCodesLeft)" : "パスワードだけでログインできます").font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button(totp.enabled ? "無効にする" : "有効にする") { totpSheet = totp.enabled ? .disable : .setup }
-                            .buttonStyle(.borderless)
-                    }
-                } else {
-                    Text("確認中…").foregroundStyle(.secondary)
-                }
-            }
+            if hasPassword { passwordSections }
             sessionsSection
         }
         .navigationTitle("アカウント")
@@ -634,10 +619,33 @@ struct AccountView: View {
             Text("その端末では、もう一度ログインするまでメッセージを読めず、通知も届かなくなります。")
         }
         .task {
-            totp = await controller.totpStatus()
+            if hasPassword { totp = await controller.totpStatus() }
             await loadSessions()
         }
         .refreshable { await loadSessions() }
+    }
+
+    @ViewBuilder
+    private var passwordSections: some View {
+        Section {
+            NavigationLink(value: YouRoute.password) { Label("パスワードを変更", systemImage: "key") }
+        }
+        Section("2 要素認証") {
+            if let totp {
+                HStack {
+                    Image(systemName: totp.enabled ? "checkmark.shield.fill" : "shield").foregroundStyle(totp.enabled ? Color.green : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(totp.enabled ? "有効" : "無効").font(.body)
+                        Text(totp.enabled ? "ログイン時に認証アプリのコードが必要です · 回復コード残り \(totp.recoveryCodesLeft)" : "パスワードだけでログインできます").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(totp.enabled ? "無効にする" : "有効にする") { totpSheet = totp.enabled ? .disable : .setup }
+                        .buttonStyle(.borderless)
+                }
+            } else {
+                Text("確認中…").foregroundStyle(.secondary)
+            }
+        }
     }
 
     @ViewBuilder

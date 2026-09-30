@@ -59,6 +59,10 @@ struct UserMe: Codable, Equatable {
     /// switch is hidden); off when absent.
     var notifyReactions: Bool? = nil
     var reactionBanners: Bool { notifyReactions ?? false }
+    /// M48: false for an account made by Google sign-in (no password to change, no 2FA). nil from a server before M48,
+    /// where every account has one.
+    var hasPassword: Bool? = nil
+    var passwordSet: Bool { hasPassword ?? true }
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
@@ -98,6 +102,17 @@ struct SessionOut: Codable, Equatable, Identifiable {
     let createdAt: String
     let lastUsedAt: String
     let expiresAt: String
+}
+
+/// GET /auth/methods (M48): which sign-in buttons the login screen shows.
+struct AuthMethodsOut: Decodable, Equatable {
+    struct Provider: Decodable, Equatable {
+        let enabled: Bool
+    }
+
+    var password: Bool? = nil
+    var google: Provider? = nil
+    var googleEnabled: Bool { google?.enabled == true }
 }
 
 struct TokenResponse: Codable, Equatable {

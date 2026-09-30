@@ -101,14 +101,19 @@ final class AppController {
 
     /// Rotated refresh tokens go to the Keychain; a session the server ended signs out that workspace only.
     private func makeClient(serverUrl: String, username: String) -> ApiClient {
-        let account = "\(serverUrl)|\(username)"
         let api = ApiClient(baseUrl: URL(string: serverUrl) ?? URL(string: "https://invalid.invalid")!)
+        wire(api, serverUrl: serverUrl, username: username)
+        return api
+    }
+
+    /// The callbacks of a workspace's client (M48: a Google sign-in learns the username only from the exchange).
+    private func wire(_ api: ApiClient, serverUrl: String, username: String) {
+        let account = "\(serverUrl)|\(username)"
         api.onTokens = { tokens in Keychain.set(account: account, value: tokens.refreshToken) }
         api.onSignedOut = { [weak self, weak api] in Task { @MainActor in
             guard let self, let api, self.clients[serverUrl] === api else { return }
             self.sessionEnded(serverUrl)
         } }
-        return api
     }
 
     private func persistWorkspaces() {
@@ -233,35 +238,14 @@ final class AppController {
     /// answer, and a workspace registered already (same workspace_id or address) is opened instead: one account per
     /// server. The new session joins the list (or renews its entry) and comes on screen.
     func signIn(server input: String, username: String, password: String, totpCode: String? = nil, adding: Bool = false) async -> SignInOutcome {
-        guard let normalized = Workspaces.normalize(input) else { return .failed("サーバ URL が正しくありません") }
-        // A registered address keeps its spelling: it names the Keychain item and the local store.
-        var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
-        guard let url = URL(string: serverUrl) else { return .failed("サーバ URL が正しくありません") }
-        var info: ServerInfoOut?
-        do {
-            let answer = try await ApiClient(baseUrl: url).serverInfo()
-            info = answer.product == "chikuwachat" ? answer : nil
-        } catch let error as ApiError where error.isRetryable {
-            return .failed(describe(error)) // no answer, or a server error: not a verdict on the address
-        } catch {
-            info = nil
-        }
-        if adding {
-            guard let info else { return .failed("ChikuwaChat のサーバーではありません") }
-            if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
-                if known.isSignedIn {
-                    await switchTo(known.serverUrl)
-                    notice = "\(known.name) は登録済みです"
-                    return .switched
-                }
-                serverUrl = known.serverUrl // registered but signed out: sign in to it again
-            }
+        let serverUrl: String, info: ServerInfoOut?
+        switch await signInTarget(input, adding: adding) {
+        case .server(let url, let answer): (serverUrl, info) = (url, answer)
+        case .done(let outcome): return outcome
         }
         let api = makeClient(serverUrl: serverUrl, username: username)
         do {
-            let tokens = try await api.login(username: username, password: password,
-                                             device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion),
-                                             totpCode: totpCode.map(Totp.normalize))
+            let tokens = try await api.login(username: username, password: password, device: Self.deviceInfo, totpCode: totpCode.map(Totp.normalize))
             await adopt(api, serverUrl: serverUrl, username: username, me: tokens.user, info: info)
             return .signedIn
         } catch {
@@ -269,6 +253,81 @@ final class AppController {
             if case ApiError.api(_, let code, _) = error, code == "invalid_totp" { return .needsCode(Totp.errorText(error)) }
             return .failed(describe(error))
         }
+    }
+
+    /// M48 (SSO.md §6): 「Google でログイン」. The sign-in sheet opens on the server the form names and its ticket is
+    /// exchanged with that same server (the verifier never leaves this call); the account's username comes with the
+    /// tokens. nil: the person closed the sheet, and the form says nothing.
+    func signInWithGoogle(server input: String, adding: Bool = false, authenticator: WebAuthenticator? = nil) async -> SignInOutcome? {
+        let serverUrl: String, info: ServerInfoOut?
+        switch await signInTarget(input, adding: adding) {
+        case .server(let url, let answer): (serverUrl, info) = (url, answer)
+        case .done(let outcome): return outcome
+        }
+        guard let url = URL(string: serverUrl) else { return .failed("サーバ URL が正しくありません") }
+        let ticket: String, verifier: String
+        switch await Sso.run(server: url, authenticator: authenticator ?? SystemWebAuthenticator()) {
+        case .ticket(let t, let v): (ticket, verifier) = (t, v)
+        case .cancelled: return nil
+        case .failed(let text): return .failed(text)
+        }
+        let api = ApiClient(baseUrl: url)
+        do {
+            let tokens = try await api.ssoExchange(ticket: ticket, verifier: verifier, device: Self.deviceInfo)
+            let username = tokens.user.username
+            wire(api, serverUrl: serverUrl, username: username)
+            api.onTokens?(tokens) // the refresh token goes to the Keychain as a login's does
+            await adopt(api, serverUrl: serverUrl, username: username, me: tokens.user, info: info)
+            return .signedIn
+        } catch {
+            return .failed(describe(error))
+        }
+    }
+
+    /// GET /auth/methods of the server the form names: whether it offers Google sign-in (false on any failure).
+    func offersGoogle(server input: String) async -> Bool {
+        guard let normalized = Workspaces.normalize(input) else { return false }
+        let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        guard let url = URL(string: serverUrl) else { return false }
+        return await ApiClient(baseUrl: url).offersGoogle()
+    }
+
+    private static var deviceInfo: DeviceInfo { .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: appVersion) }
+
+    private enum SignInTarget {
+        /// Sign in to this address (a registered one keeps its spelling); the GET /server answer when it is ChikuwaChat.
+        case server(String, ServerInfoOut?)
+        case done(SignInOutcome)
+    }
+
+    /// The form's address, normalized and asked for GET /server. Adding a workspace needs a ChikuwaChat answer, and a
+    /// workspace registered already (same workspace_id or address) is opened instead: one account per server.
+    private func signInTarget(_ input: String, adding: Bool) async -> SignInTarget {
+        guard let normalized = Workspaces.normalize(input) else { return .done(.failed("サーバ URL が正しくありません")) }
+        // A registered address keeps its spelling: it names the Keychain item and the local store.
+        var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        guard let url = URL(string: serverUrl) else { return .done(.failed("サーバ URL が正しくありません")) }
+        var info: ServerInfoOut?
+        do {
+            let answer = try await ApiClient(baseUrl: url).serverInfo()
+            info = answer.product == "chikuwachat" ? answer : nil
+        } catch let error as ApiError where error.isRetryable {
+            return .done(.failed(describe(error))) // no answer, or a server error: not a verdict on the address
+        } catch {
+            info = nil
+        }
+        if adding {
+            guard let info else { return .done(.failed("ChikuwaChat のサーバーではありません")) }
+            if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
+                if known.isSignedIn {
+                    await switchTo(known.serverUrl)
+                    notice = "\(known.name) は登録済みです"
+                    return .done(.switched)
+                }
+                serverUrl = known.serverUrl // registered but signed out: sign in to it again
+            }
+        }
+        return .server(serverUrl, info)
     }
 
     /// A new sign-in (login form or invite link): the workspace joins the list, or its entry is renewed, and opens.
@@ -335,7 +394,7 @@ final class AppController {
         let api = makeClient(serverUrl: serverUrl, username: username)
         do {
             let tokens = try await api.acceptInvite(token: token, username: username, displayName: displayName, password: password,
-                                                    device: .init(platform: "ios", deviceName: UIDevice.current.name, appVersion: Self.appVersion))
+                                                    device: Self.deviceInfo)
             await adopt(api, serverUrl: serverUrl, username: username, me: tokens.user, info: info)
             return nil
         } catch {
