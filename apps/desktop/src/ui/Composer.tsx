@@ -512,8 +512,9 @@ export function Composer({
             e.target.value = "";
           }}
         />
+        {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
         {preview && (
-          <div className="min-h-14 px-3 pb-1 pt-3" aria-label="プレビュー">
+          <div className="max-h-[280px] min-h-14 overflow-y-auto px-3 pb-1 pt-3" aria-label="プレビュー">
             {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
           </div>
         )}

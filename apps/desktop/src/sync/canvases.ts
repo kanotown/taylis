@@ -4,6 +4,7 @@
  * edits not saved yet, has a CanvasSaver. Unsaved edits are kept in the store (SQLite in Tauri), so a restart sends them
  * with the same idempotency key.
  */
+import { ApiError } from "../api/errors";
 import type { CanvasDeleted, CanvasMeta, CanvasSaveIn, CanvasUpdated } from "../api/types";
 import { CanvasSaver, type CanvasSaveApi, type CanvasSaverOptions } from "./canvasSave";
 import type { Store } from "./store";
@@ -29,10 +30,12 @@ export class CanvasHub {
   async loadList(channelId: string): Promise<void> {
     const api = this.deps.api;
     if (!api) return;
+    this.deps.store.setCanvasListFailure(channelId, null); // 「読み込み中…」 again while it asks
     try {
       this.deps.store.setCanvases(channelId, await api.listCanvases(channelId));
     } catch (err) {
       console.warn("could not load the canvases", err);
+      this.deps.store.setCanvasListFailure(channelId, err instanceof ApiError && err.status === 404 ? "unsupported" : "failed");
     }
   }
 
