@@ -19,7 +19,7 @@ from app.modules.groups import service as groups
 from app.modules.messages import repository as messages_repo
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
-from app.modules.messages.mentions import extract_group_mentions, notification_text
+from app.modules.messages.mentions import attachment_text, extract_group_mentions, notification_text
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import is_muted, push_level
@@ -336,8 +336,10 @@ class PushPlanner:
             title, subtitle = "グループ DM", sender_name
         else:
             title, subtitle = f"#{channel.name}", sender_name
+        attachments = message.get("attachments")
         body = (
             notification_text(str(message.get("body", "")), names or {})
+            or attachment_text(attachments if isinstance(attachments, list) else [])
             if self.settings.push_include_content
             else "新しいメッセージ"
         )
