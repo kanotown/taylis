@@ -207,10 +207,12 @@ it("the thread's header has ← (戻る) on a phone and ✕ in the wide layout",
   expect(threadPane()).toBeNull();
   expect(screen.getByRole("tablist")).toBeTruthy();
 
-  // The window widened: no tab row, the links bar and the header icons as before, and the thread keeps its ✕.
+  // The window widened: no tab row (only the header's 「メッセージ | キャンバス」, M43), the links bar and the header icons
+  // as before, and the thread keeps its ✕.
   compact = false;
   act(() => controller.setEditing(null));
-  expect(screen.queryByRole("tablist")).toBeNull();
+  expect(screen.queryByRole("tab", { name: "ピン留め" })).toBeNull();
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス"]);
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy();
   fireEvent.click(screen.getByText(/1 件の返信/));
   await flush();

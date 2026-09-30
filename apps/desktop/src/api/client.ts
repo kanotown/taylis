@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasSaveIn, CanvasSaveOut, CanvasTemplateOut, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -339,6 +339,56 @@ export class ApiClient {
 
   deleteChannelLink(channelId: string, linkId: string): Promise<ChannelLinkOut[]> {
     return this.request("DELETE", `/api/v1/channels/${channelId}/links/${linkId}`);
+  }
+
+  // --- canvases (CANVAS.md §4.5, M43) ---------------------------------------------------------
+
+  /** The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead). */
+  listCanvases(channelId: string, trashed = false): Promise<CanvasMeta[]> {
+    return this.request("GET", `/api/v1/channels/${channelId}/canvases${trashed ? "?trashed=true" : ""}`);
+  }
+
+  /** A new canvas (a retry with the same client_save_id returns the first one). */
+  createCanvas(channelId: string, body: CanvasCreate): Promise<CanvasOut> {
+    return this.request("POST", `/api/v1/channels/${channelId}/canvases`, body);
+  }
+
+  /** The canvases of all my conversations (keyset pages). */
+  myCanvases(cursor: string | null = null, limit = 50): Promise<CanvasPage> {
+    const params = new URLSearchParams({ limit: String(limit), ...(cursor ? { cursor } : {}) });
+    return this.request("GET", `/api/v1/canvases?${params}`);
+  }
+
+  /** Metadata and body; null when `knownVersion` is still the current one (If-None-Match → 304). */
+  async getCanvas(canvasId: string, knownVersion: number | null = null): Promise<CanvasOut | null> {
+    try {
+      return await this.request<CanvasOut>("GET", `/api/v1/canvases/${canvasId}`, undefined, knownVersion === null ? {} : { headers: { "If-None-Match": `"v${knownVersion}"` } });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 304) return null;
+      throw err;
+    }
+  }
+
+  /** §4.4: the whole body written on `base_rev_id`; 409 canvas_conflict / canvas_base_expired carry the head in `details`. */
+  saveCanvas(canvasId: string, body: CanvasSaveIn): Promise<CanvasSaveOut> {
+    return this.request("PUT", `/api/v1/canvases/${canvasId}/content`, body);
+  }
+
+  updateCanvas(canvasId: string, patch: CanvasUpdate): Promise<CanvasOut> {
+    return this.request("PATCH", `/api/v1/canvases/${canvasId}`, patch);
+  }
+
+  /** To the trash. */
+  deleteCanvas(canvasId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/canvases/${canvasId}`);
+  }
+
+  restoreCanvas(canvasId: string): Promise<CanvasOut> {
+    return this.request("POST", `/api/v1/canvases/${canvasId}/restore`);
+  }
+
+  canvasTemplates(): Promise<CanvasTemplateOut[]> {
+    return this.request("GET", "/api/v1/canvas-templates");
   }
 
   // --- drafts (M15d) ------------------------------------------------------------------------

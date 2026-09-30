@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasSaveIn, CanvasSaveOut, CanvasTemplateOut, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -739,6 +739,142 @@ export class FakeServer {
     this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.links_updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, links } });
   }
 
+  // --- canvases (M43, CANVAS.md §4.4–§4.7) -------------------------------------------------------
+
+  /** Canvases by id with their versions (revision id → body); `deleted` = in the trash. */
+  readonly canvases = new Map<string, { canvas: CanvasOut; deleted: boolean; revisions: Map<string, string> }>();
+  /** (user, client_save_id) → the revision a save made (create: the canvas's first one), as the server's unique index. */
+  private readonly canvasKeys = new Map<string, { canvasId: string; revisionId: string; side: boolean }>();
+  /** Every PUT /content that reached the server (retries included). */
+  readonly canvasSaveRequests: CanvasSaveIn[] = [];
+  readonly canvasTemplates: CanvasTemplateOut[] = [
+    { id: nextId(), key: "minutes", name: "議事録", description: "出席・議題・決定事項・TODO", title: "議事録 {{date}}", body: "# 議事録 {{date}}\n## 決定事項\n\n## TODO\n- [ ] 担当 @ / 期限 📅\n", position: 1, builtin: true, hidden: false, updated_at: now() },
+  ];
+
+  private canvasRecord(canvasId: string, userId: string, trashed = false) {
+    const record = this.canvases.get(canvasId);
+    if (!record || record.deleted !== trashed) throw new ApiError(404, "canvas_not_found", "Canvas not found");
+    this.requireMember(record.canvas.channel_id, userId);
+    return record;
+  }
+
+  private emitCanvas(channelId: string, event: string, data: unknown): void {
+    this.emit(this.record(channelId).members, { type: "event", id: ++this.eventId, event, ts: now(), channel_id: channelId, seq: null, data } as EventFrame);
+  }
+
+  private canvasMeta(canvas: CanvasOut): CanvasMeta {
+    const { body: _body, ...meta } = canvas;
+    return meta;
+  }
+
+  /** CANVAS.md §4.7, the parts the tests use: owners-only canvases take ticks from the other members. */
+  private mayEditCanvas(userId: string, canvas: CanvasOut): boolean {
+    const channel = this.record(canvas.channel_id).channel;
+    if (channel.type === "dm" || channel.type === "group_dm") return true;
+    if (this.users.get(userId)?.role === "guest") return false;
+    if (canvas.edit_policy === "members") return true;
+    return canvas.created_by === userId || this.roleOf(canvas.channel_id, userId) === "owner" || this.users.get(userId)?.role === "admin";
+  }
+
+  createCanvas(userId: string, channelId: string, body: CanvasCreate): CanvasOut {
+    this.requireMember(channelId, userId);
+    const key = this.canvasKeys.get(`${userId}:${body.client_save_id}`);
+    if (key) return { ...this.canvases.get(key.canvasId)!.canvas };
+    const template = body.template_key ? this.canvasTemplates.find((t) => t.key === body.template_key) : undefined;
+    if (body.template_key && !template) throw new ApiError(404, "template_not_found", "Template not found");
+    const expand = (text: string) => text.replaceAll("{{date}}", "2026-10-01 (木)");
+    if (body.as_tab && [...this.canvases.values()].some((r) => !r.deleted && r.canvas.channel_id === channelId && r.canvas.is_channel_tab)) throw new ApiError(409, "canvas_tab_taken", "taken");
+    const text = body.body ?? (template ? expand(template.body) : "");
+    const revisionId = nextId();
+    const at = now();
+    const canvas: CanvasOut = {
+      id: nextId(), channel_id: channelId, title: body.title ?? (template ? expand(template.title) : "無題のキャンバス"), version: 1, head_rev_id: revisionId,
+      is_channel_tab: body.as_tab ?? false, edit_policy: "members", template_key: template?.key ?? null, share_message_id: null,
+      ...countTasks(text), created_by: userId, updated_by: userId, created_at: at, updated_at: at, body: text,
+    };
+    this.canvases.set(canvas.id, { canvas, deleted: false, revisions: new Map([[revisionId, text]]) });
+    this.canvasKeys.set(`${userId}:${body.client_save_id}`, { canvasId: canvas.id, revisionId, side: false });
+    this.emitCanvas(channelId, "canvas.created", { canvas: this.canvasMeta(canvas) });
+    return { ...canvas };
+  }
+
+  listCanvases(userId: string, channelId: string, trashed = false): CanvasMeta[] {
+    this.requireMember(channelId, userId);
+    return [...this.canvases.values()]
+      .filter((r) => r.canvas.channel_id === channelId && r.deleted === trashed)
+      .map((r) => ({ ...this.canvasMeta(r.canvas), ...(trashed ? { deleted_at: r.canvas.updated_at } : {}) }))
+      .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  }
+
+  getCanvas(userId: string, canvasId: string): CanvasOut {
+    return { ...this.canvasRecord(canvasId, userId).canvas };
+  }
+
+  /** Forget a version (as the pruning after 24 hours does): a save on it gets canvas_base_expired. */
+  eraseCanvasRevision(canvasId: string, revisionId: string): void {
+    this.canvases.get(canvasId)!.revisions.delete(revisionId);
+  }
+
+  /** PUT /canvases/{id}/content (§4.4) with the fake's line merge (merge3 below). */
+  saveCanvas(userId: string, canvasId: string, req: CanvasSaveIn): CanvasSaveOut {
+    this.canvasSaveRequests.push({ ...req });
+    const record = this.canvasRecord(canvasId, userId);
+    const canvas = record.canvas;
+    const done = this.canvasKeys.get(`${userId}:${req.client_save_id}`);
+    if (done) return { canvas: { ...canvas }, submitted_rev_id: done.revisionId, merged: done.side };
+    const baseBody = record.revisions.get(req.base_rev_id);
+    if (baseBody === undefined) throw new ApiError(409, "canvas_base_expired", "gone", { head: { ...canvas }, conflicts: [], timed_out: false });
+    if (!this.mayEditCanvas(userId, canvas)) {
+      const onlyTicks = onlyTasksToggled(baseBody, req.body);
+      if (!onlyTicks || this.users.get(userId)?.role === "guest") throw new ApiError(403, "canvas_edit_restricted", "restricted");
+      if (req.on_conflict === "ours" || req.on_conflict === "both") throw new ApiError(403, "canvas_edit_restricted", "ticks only");
+    }
+    const setHead = (body: string, key: string | null): string => {
+      const revisionId = nextId();
+      record.revisions.set(revisionId, body);
+      Object.assign(canvas, { body, head_rev_id: revisionId, version: canvas.version + 1, updated_by: userId, updated_at: now(), ...countTasks(body) });
+      if (key) this.canvasKeys.set(`${userId}:${key}`, { canvasId, revisionId, side: false });
+      this.emitCanvas(canvas.channel_id, "canvas.updated", { canvas: this.canvasMeta(canvas), change: "content" });
+      return revisionId;
+    };
+    if (req.base_rev_id === canvas.head_rev_id || req.body === canvas.body) {
+      if (req.body === canvas.body) return { canvas: { ...canvas }, submitted_rev_id: canvas.head_rev_id, merged: false };
+      const revisionId = setHead(req.body, req.client_save_id);
+      return { canvas: { ...canvas }, submitted_rev_id: revisionId, merged: false };
+    }
+    const result = merge3(baseBody, req.body, canvas.body, req.on_conflict);
+    if (result.conflicts.length > 0 && req.on_conflict === "fail") {
+      throw new ApiError(409, "canvas_conflict", "Someone changed the same words", { head: { ...canvas }, conflicts: result.conflicts, timed_out: false });
+    }
+    const sideId = nextId();
+    record.revisions.set(sideId, req.body);
+    this.canvasKeys.set(`${userId}:${req.client_save_id}`, { canvasId, revisionId: sideId, side: true });
+    if (result.text !== canvas.body) setHead(result.text, null);
+    return { canvas: { ...canvas }, submitted_rev_id: sideId, merged: true };
+  }
+
+  updateCanvas(userId: string, canvasId: string, patch: CanvasUpdate): CanvasOut {
+    const canvas = this.canvasRecord(canvasId, userId).canvas;
+    Object.assign(canvas, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== null && v !== undefined)), { version: canvas.version + 1, updated_by: userId, updated_at: now() });
+    this.emitCanvas(canvas.channel_id, "canvas.updated", { canvas: this.canvasMeta(canvas), change: patch.title ? "title" : "settings" });
+    return { ...canvas };
+  }
+
+  deleteCanvas(userId: string, canvasId: string): void {
+    const record = this.canvasRecord(canvasId, userId);
+    record.deleted = true;
+    Object.assign(record.canvas, { version: record.canvas.version + 1, updated_at: now() });
+    this.emitCanvas(record.canvas.channel_id, "canvas.deleted", { canvas_id: canvasId, channel_id: record.canvas.channel_id });
+  }
+
+  restoreCanvas(userId: string, canvasId: string): CanvasOut {
+    const record = this.canvasRecord(canvasId, userId, true);
+    record.deleted = false;
+    Object.assign(record.canvas, { version: record.canvas.version + 1, updated_at: now() });
+    this.emitCanvas(record.canvas.channel_id, "canvas.created", { canvas: this.canvasMeta(record.canvas) });
+    return { ...record.canvas };
+  }
+
   /** M15d: "user:channel:parent" → the saved draft. */
   readonly drafts = new Map<string, DraftOut>();
   draftSaves = 0;
@@ -883,7 +1019,7 @@ export class FakeServer {
 
   // --- the API as seen by one user ------------------------------------------------------
 
-  apiFor(userId: string): SyncApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
+  apiFor(userId: string): SyncApi & FakeCanvasApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
       if (pendingFailure) {
@@ -955,6 +1091,40 @@ export class FakeServer {
       revokeSession: async (sessionId: string): Promise<void> => {
         maybeFail();
         this.revokeSessionById(userId, sessionId);
+      },
+      // M43: canvases, named as ApiClient names them (the screen reaches them through controller.api).
+      listCanvases: async (channelId: string, trashed = false) => {
+        maybeFail();
+        return this.listCanvases(userId, channelId, trashed);
+      },
+      getCanvas: async (canvasId: string, knownVersion: number | null) => {
+        maybeFail();
+        const canvas = this.getCanvas(userId, canvasId);
+        return knownVersion !== null && knownVersion === canvas.version ? null : canvas;
+      },
+      saveCanvas: async (canvasId: string, body: CanvasSaveIn) => {
+        maybeFail();
+        return this.saveCanvas(userId, canvasId, body);
+      },
+      createCanvas: async (channelId: string, body: CanvasCreate) => {
+        maybeFail();
+        return this.createCanvas(userId, channelId, body);
+      },
+      updateCanvas: async (canvasId: string, patch: CanvasUpdate) => {
+        maybeFail();
+        return this.updateCanvas(userId, canvasId, patch);
+      },
+      deleteCanvas: async (canvasId: string) => {
+        maybeFail();
+        this.deleteCanvas(userId, canvasId);
+      },
+      restoreCanvas: async (canvasId: string) => {
+        maybeFail();
+        return this.restoreCanvas(userId, canvasId);
+      },
+      canvasTemplates: async () => {
+        maybeFail();
+        return [...this.canvasTemplates];
       },
       channelLinks: async (channelId) => {
         maybeFail();
@@ -1051,6 +1221,107 @@ export class FakeServer {
       return socket;
     };
   }
+}
+
+/** The canvas calls the screen makes through controller.api besides the engine's (SyncApi) ones. */
+export interface FakeCanvasApi {
+  createCanvas(channelId: string, body: CanvasCreate): Promise<CanvasOut>;
+  updateCanvas(canvasId: string, patch: CanvasUpdate): Promise<CanvasOut>;
+  deleteCanvas(canvasId: string): Promise<void>;
+  restoreCanvas(canvasId: string): Promise<CanvasOut>;
+  canvasTemplates(): Promise<CanvasTemplateOut[]>;
+}
+
+const FAKE_TASK = /^([ \t]*[-*] \[)([ xX])(\](?: .*)?)$/;
+
+function countTasks(body: string): { task_total: number; task_done: number } {
+  let total = 0;
+  let done = 0;
+  for (const line of body.split("\n")) {
+    const m = FAKE_TASK.exec(line);
+    if (m) {
+      total += 1;
+      if (m[2] !== " ") done += 1;
+    }
+  }
+  return { task_total: total, task_done: done };
+}
+
+function onlyTasksToggled(before: string, after: string): boolean {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  if (a.length !== b.length) return false;
+  return a.every((line, i) => {
+    const other = b[i]!;
+    if (line === other) return true;
+    const ma = FAKE_TASK.exec(line);
+    const mb = FAKE_TASK.exec(other);
+    return !!ma && !!mb && ma[1] === mb[1] && ma[3] === mb[3];
+  });
+}
+
+/** base index → other index of a longest common subsequence of lines (monotonic). */
+function lineMatches(a: string[], b: string[]): Map<number, number> {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+  const matches = new Map<number, number>();
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) matches.set(i++, j++);
+    else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++;
+    else j++;
+  }
+  return matches;
+}
+
+/**
+ * The fake's merge (diff3 on lines): a region only one side changed takes that side, insertions at the same place keep
+ * both (theirs, then ours), a line both changed is a conflict. The real one (server/app/modules/canvases/merge.py) also
+ * merges words within a line.
+ */
+export function merge3(base: string, ours: string, theirs: string, resolve: CanvasOnConflict): { text: string; conflicts: CanvasConflict[] } {
+  if (ours === base) return { text: theirs, conflicts: [] };
+  if (theirs === base || ours === theirs) return { text: ours, conflicts: [] };
+  const B = base.split("\n");
+  const O = ours.split("\n");
+  const T = theirs.split("\n");
+  const mo = lineMatches(B, O);
+  const mt = lineMatches(B, T);
+  const conflicts: CanvasConflict[] = [];
+  const out: string[] = [];
+  const same = (x: string[], y: string[]) => x.length === y.length && x.every((line, k) => line === y[k]);
+  const region = (b: string[], o: string[], t: string[], oLine: number, tLine: number) => {
+    if (same(o, b)) out.push(...t);
+    else if (same(t, b) || same(o, t)) out.push(...o);
+    else if (b.length === 0) out.push(...t, ...o);
+    else if (resolve === "ours") out.push(...o);
+    else if (resolve === "theirs") out.push(...t);
+    else if (resolve === "both") out.push(...t, ...o.map((l) => `> ${l}`));
+    else {
+      conflicts.push({ base: b.join("\n"), ours: o.join("\n"), theirs: t.join("\n"), ours_line: oLine, theirs_line: tLine });
+      out.push(...t);
+    }
+  };
+  let iB = 0;
+  let iO = 0;
+  let iT = 0;
+  for (;;) {
+    let j = iB;
+    while (j < B.length && !(mo.has(j) && mt.has(j))) j++;
+    if (j >= B.length) {
+      region(B.slice(iB), O.slice(iO), T.slice(iT), iO, iT);
+      break;
+    }
+    const oj = mo.get(j)!;
+    const tj = mt.get(j)!;
+    if (j > iB || oj > iO || tj > iT) region(B.slice(iB, j), O.slice(iO, oj), T.slice(iT, tj), iO, iT);
+    out.push(B[j]!);
+    iB = j + 1;
+    iO = oj + 1;
+    iT = tj + 1;
+  }
+  return { text: out.join("\n"), conflicts };
 }
 
 /** The SQLite store's stand-in (src/platform/sqlite.ts): rows kept as JSON text, like its tables. */

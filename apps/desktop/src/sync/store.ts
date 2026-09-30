@@ -1,5 +1,6 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import type { CanvasPendingState } from "./canvasSave";
 import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
 
@@ -94,6 +95,63 @@ export class Store {
   }
   linksOf(channelId: string): ChannelLinkOut[] {
     return this.channelLinks.get(channelId) ?? [];
+  }
+  /**
+   * M43 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
+   * Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger version wins).
+   * Not persisted.
+   */
+  private readonly canvasLists = new Map<string, CanvasMeta[]>();
+  /** null: not loaded yet. */
+  canvasesOf(channelId: string): CanvasMeta[] | null {
+    return this.canvasLists.get(channelId) ?? null;
+  }
+  canvasMeta(canvasId: string): CanvasMeta | undefined {
+    for (const list of this.canvasLists.values()) {
+      const found = list.find((c) => c.id === canvasId);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  setCanvases(channelId: string, list: CanvasMeta[]): void {
+    const known = this.canvasLists.get(channelId) ?? [];
+    // A newer version from an event that overtook the list keeps its place.
+    const merged = list.map((meta) => {
+      const mine = known.find((c) => c.id === meta.id);
+      return mine && mine.version > meta.version ? mine : meta;
+    });
+    this.canvasLists.set(channelId, sortCanvases(merged));
+    this.emit();
+  }
+  /** canvas.created / canvas.updated, or an answer of mine: the larger version wins. */
+  applyCanvasMeta(meta: CanvasMeta): void {
+    const list = this.canvasLists.get(meta.channel_id);
+    if (!list) return; // loaded with the list when the conversation opens
+    const existing = list.find((c) => c.id === meta.id);
+    if (existing && existing.version >= meta.version) return;
+    // Answers carry the body too (CanvasOut): the list keeps the metadata only.
+    const { deleted_at: _trashed, body: _body, ...live } = meta as CanvasMeta & { body?: string };
+    this.canvasLists.set(meta.channel_id, sortCanvases([...list.filter((c) => c.id !== meta.id), live]));
+    this.emit();
+  }
+  removeCanvas(channelId: string, canvasId: string): void {
+    const list = this.canvasLists.get(channelId);
+    if (!list || !list.some((c) => c.id === canvasId)) return;
+    this.canvasLists.set(channelId, list.filter((c) => c.id !== canvasId));
+    this.emit();
+  }
+  /** Unsaved canvas edits (M43): kept in SQLite under "canvas:<id>" in Tauri, so a restart sends them (same key). */
+  private readonly canvasPending = new Map<string, CanvasPendingState>();
+  pendingCanvas(canvasId: string): CanvasPendingState | null {
+    return this.canvasPending.get(canvasId) ?? null;
+  }
+  pendingCanvases(): Array<[string, CanvasPendingState]> {
+    return [...this.canvasPending.entries()];
+  }
+  setPendingCanvas(canvasId: string, state: CanvasPendingState | null): void {
+    if (state) this.canvasPending.set(canvasId, state);
+    else if (!this.canvasPending.delete(canvasId)) return;
+    this.persist((p) => p.saveMeta(`canvas:${canvasId}`, state ? JSON.stringify(state) : null));
   }
   /**
    * L4 (M31): bumped per conversation when its members change (added, removed, an owner made or taken back), so an open
@@ -201,6 +259,8 @@ export class Store {
   private loadDrafts(meta: Record<string, string>): void {
     for (const [key, value] of Object.entries(meta)) if (key.startsWith("draft:")) {
       try { this.drafts.set(key, JSON.parse(value) as Draft); } catch { /* Ignore a corrupt local draft. */ }
+    } else if (key.startsWith("canvas:")) {
+      try { this.canvasPending.set(key.slice("canvas:".length), JSON.parse(value) as CanvasPendingState); } catch { /* Ignore a corrupt row. */ }
     }
   }
   flushPersistence(): Promise<void> { return this.writeQueue; }
@@ -390,6 +450,9 @@ export class Store {
     this.channels.delete(id);
     this.messagesByChannel.delete(id);
     this.timelines.delete(id);
+    // CANVAS.md §4.6: its canvases and their unsaved edits leave this device too.
+    this.canvasLists.delete(id);
+    for (const [canvasId, pending] of [...this.canvasPending]) if (pending.channelId === id) this.setPendingCanvas(canvasId, null);
     this.persist(async (p) => {
       await p.clearMessages(id);
       await p.deleteChannel(id);
@@ -874,6 +937,11 @@ export class Store {
     store.restore(snapshot);
     return store;
   }
+}
+
+/** A conversation's canvases, most recently updated first (as GET /channels/{id}/canvases lists them). */
+function sortCanvases(list: CanvasMeta[]): CanvasMeta[] {
+  return [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : a.id < b.id ? 1 : -1));
 }
 
 /** A channel row as persisted; rows from older versions lack the §7.3 range, the §10 unsent mark and the §10.1 time. */

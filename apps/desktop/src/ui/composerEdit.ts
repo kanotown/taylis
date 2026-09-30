@@ -67,6 +67,7 @@ export function insideFence(text: string, caret: number): boolean {
 }
 
 const LIST_LINE = /^(\s*)(?:([-*•])|(\d{1,3})\.)\s(.*)$/;
+const TASK_ITEM = /^(\s*)([-*]) \[[ xX]\](?: (.*))?$/;
 const QUOTE_LINE = /^(>\s?)(.*)$/;
 
 /**
@@ -77,6 +78,14 @@ export function continueStructure(state: EditState): EditState | null {
   const { text, start } = state;
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const line = text.slice(lineStart, start);
+  // A task (the canvas dialect, CANVAS.md §5) goes on with a new open box.
+  const task = TASK_ITEM.exec(line);
+  if (task) {
+    const [, indent = "", bullet = "-", rest = ""] = task;
+    if (rest.trim() === "") return { text: text.slice(0, lineStart) + text.slice(start), start: lineStart, end: lineStart };
+    const inserted = `\n${indent}${bullet} [ ] `;
+    return { text: text.slice(0, start) + inserted + text.slice(start), start: start + inserted.length, end: start + inserted.length };
+  }
   const list = LIST_LINE.exec(line);
   if (list) {
     const [, indent = "", bullet, number, rest = ""] = list;

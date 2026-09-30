@@ -35,13 +35,29 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
   );
 }
 
-function BlockView({ block, users, options }: { block: Block; users: Map<string, UserPublic>; options?: InlineOptions }) {
+export function BlockView({ block, users, options }: { block: Block; users: Map<string, UserPublic>; options?: InlineOptions }) {
   switch (block.kind) {
     case "heading": {
       // Larger than they were (testers, 2026-09-29); custom emoji in them grow with the text (em).
       const size = block.level === 1 ? "text-2xl font-bold" : block.level === 2 ? "text-xl font-bold" : "text-lg font-bold";
       return <div className={cn("mt-1 leading-tight", size)}>{inline(block.tokens, users, options)}</div>;
     }
+    // The canvas dialect (only parsed with `canvas: true`; ui/CanvasBody.tsx renders them with working boxes).
+    case "task":
+      return (
+        <ul className="my-0.5 list-none pl-1">
+          {block.items.map((item, i) => (
+            <li key={i} className={cn("flex items-start gap-2", item.level > 0 && "ml-6")}>
+              <input type="checkbox" checked={item.done} disabled readOnly className="mt-1.5" />
+              <span className={cn(item.done && "text-muted line-through")}>{inline(item.tokens, users, options)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    case "image":
+      return <div className="my-1 text-muted">[画像{block.alt ? `: ${block.alt}` : ""}]</div>;
+    case "hr":
+      return <hr className="my-3 border-line" />;
     case "paragraph":
       return <p className="m-0">{lines(block.lines, users, options)}</p>;
     case "quote":
