@@ -47,6 +47,29 @@ class Settings(BaseSettings):
 
     run_background_tasks: bool = True
 
+    # Google sign-in (M48, docs/SSO.md §2). Enabled only when the client id, the secret (inline or
+    # in a file), at least one allowed domain and PUBLIC_BASE_URL are all set.
+    sso_google_client_id: str = ""
+    sso_google_client_secret: str = ""
+    sso_google_client_secret_file: str = ""
+    sso_google_allowed_domains: str = ""  # comma separated Workspace domains
+    # Option B: a verified address of an allowed domain without an account gets a member account.
+    sso_auto_provision: bool = False
+    # Public channels (names, comma separated) such an account joins; unknown names are skipped.
+    sso_default_channels: str = ""
+    # The start, callback and exchange requests per client IP per minute (one sign-in is three).
+    sso_rate_limit_per_ip: int = 30
+    # This server's public URL (https://chat.example.ac.jp): the callback and the web return page.
+    public_base_url: str = ""
+
+    @property
+    def sso_allowed_domains(self) -> list[str]:
+        return [d.strip().lower() for d in self.sso_google_allowed_domains.split(",") if d.strip()]
+
+    @property
+    def sso_default_channel_names(self) -> list[str]:
+        return [n.strip() for n in self.sso_default_channels.split(",") if n.strip()]
+
     # Browser-like clients (the Tauri WebView and the Vite dev server) need CORS. Comma separated.
     # Tokens travel in the Authorization header, never in cookies, so credentials stay disabled.
     cors_allow_origins: str = (

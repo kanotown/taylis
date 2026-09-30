@@ -318,7 +318,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 
 | 領域 | エンドポイント |
 | --- | --- |
-| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `PUT /devices/current` (プッシュトークン等の登録・更新) |
+| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `PUT /devices/current` (プッシュトークン等の登録・更新)。M48: `GET /auth/methods`、`GET /auth/sso/google/start`・`callback`、`POST /auth/sso/exchange` (docs/SSO.md) |
 | Users | `GET /users`, `GET /users/{id}`, `GET/PATCH /users/me`, `PUT /users/me/password` |
 | Admin | `POST/GET /admin/users`, `PATCH /admin/users/{id}` (role / deactivate), `POST /admin/users/{id}/reset-password`, `DELETE /admin/users/{id}/sessions`, `GET /admin/audit-logs` |
 | Channels | `GET /channels` (自分の所属 + `?include=public`), `POST /channels`, `GET/PATCH /channels/{id}`, `POST /channels/{id}/archive`, `POST /channels/{id}/join`, `POST /channels/{id}/leave`, `GET/POST /channels/{id}/members`, `DELETE /channels/{id}/members/{user_id}` |

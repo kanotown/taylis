@@ -1,5 +1,5 @@
 import { Loader2, MessageCircle, ShieldCheck } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
@@ -15,6 +15,28 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
   // M16c: adding another workspace (cancel returns), or signing back in to a registered one.
   const adding = controller.addingWorkspace;
   const entry = adding ? null : controller.activeEntry;
+  // M48: 「Google でログイン」 when the server offers it. Browser build only for now: the Tauri app needs the
+  // `chikuwachat://sso` deep link (docs/SSO.md §6), which comes with the desktop step.
+  const [google, setGoogle] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    if (!isWeb()) return;
+    let current = true;
+    void controller.authMethods(server).then((methods) => {
+      if (current) setGoogle(methods?.google.enabled === true);
+    });
+    return () => {
+      current = false;
+    };
+    // The browser's server is the page's own origin: asked once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller]);
+
+  const signInWithGoogle = async () => {
+    setLeaving(true);
+    await controller.startGoogleSignIn(server);
+    setLeaving(false); // still here: the start failed and the form shows why
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -62,6 +84,19 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           {busy && <Loader2 size={16} className="animate-spin" />}
           {busy ? "ログイン中…" : needsCode ? "コードを確認してログイン" : "ログイン"}
         </Button>
+        {google && !adding && (
+          <>
+            <div className="flex items-center gap-3 text-xs text-muted" role="separator">
+              <span className="h-px flex-1 bg-line" />
+              または
+              <span className="h-px flex-1 bg-line" />
+            </div>
+            <Button type="button" variant="secondary" className="w-full" disabled={leaving || busy} onClick={() => void signInWithGoogle()}>
+              {leaving ? <Loader2 size={16} className="animate-spin" /> : <GoogleMark />}
+              Google でログイン
+            </Button>
+          </>
+        )}
         {adding && (
           <Button type="button" variant="secondary" className="w-full" onClick={() => controller.cancelAddWorkspace()}>
             キャンセル
@@ -77,6 +112,18 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
         )}
       </form>
     </AuthShell>
+  );
+}
+
+/** Google's "G" as its sign-in button guidelines show it. */
+function GoogleMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
   );
 }
 

@@ -90,6 +90,8 @@ class UserMe(UserPublic):
     # M39: a push when someone reacts to my message (banner); the activity lists reactions either
     # way.
     notify_reactions: bool = False
+    # M48: false for an account made by Google sign-in; clients hide 「パスワードを変更」.
+    has_password: bool = True
 
 
 class UserUpdate(BaseModel):
@@ -181,4 +183,5 @@ def to_user_me(user: User) -> UserMe:
         presence_hidden=user.presence_hidden,
         notification_default=user.notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
+        has_password=user.password_hash is not None,
     )

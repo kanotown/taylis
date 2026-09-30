@@ -45,6 +45,9 @@ async def status(db: AsyncSession, user_id: uuid.UUID) -> TotpStatusOut:
 
 async def begin_setup(db: AsyncSession, user: User, password: str, issuer: str) -> TotpSetupOut:
     """A fresh secret in the pending state; the user confirms it with `enable`."""
+    if user.password_hash is None:
+        # M48: Google sign-in never asks for the code, and there is no password to protect.
+        raise conflict("password_not_set", "This account signs in with Google and has no password")
     if not await verify_password(user.password_hash, password):
         raise _invalid_password()
     now = utcnow()

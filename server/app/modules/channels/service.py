@@ -240,6 +240,11 @@ async def find_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | Non
     return await repo.get_channel(db, channel_id)
 
 
+async def find_channel_by_name(db: AsyncSession, name: str) -> Channel | None:
+    """A public or private channel by name, for M48's default channels of new SSO accounts."""
+    return await repo.get_channel_by_name(db, name)
+
+
 async def require_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel:
     channel = await repo.get_channel(db, channel_id)
     if channel is None:

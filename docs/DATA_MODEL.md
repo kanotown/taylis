@@ -14,6 +14,7 @@ NotificationPreference → `notification_preferences`、OutboxEvent → `outbox_
 
 ```
 users 1---* devices 1---* sessions
+users 1---* user_identities   (M48 Google でログイン。sso_requests / sso_tickets は短命)
 users 1---* channel_members *---1 channels
 users 1---* read_states *---1 channels
 users 1---* notification_preferences *---1 channels
@@ -73,7 +74,7 @@ CREATE TABLE users (
   username              citext NOT NULL UNIQUE,           -- 3..32 文字, [a-z0-9._-]
   display_name          text NOT NULL,
   email                 citext UNIQUE,                    -- 任意
-  password_hash         text NOT NULL,                    -- argon2id
+  password_hash         text,                             -- argon2id。NULL = Google でログインする人 (M48、パスワードでは入れない)
   must_change_password  boolean NOT NULL DEFAULT true,    -- 管理者が設定した仮パスワードの間は true
   role                  text NOT NULL DEFAULT 'member',   -- 'admin' | 'member'
   timezone              text,
@@ -471,6 +472,49 @@ CREATE TABLE user_totp (
 - 秘密は平文で置く (DB を読める人はパスワードハッシュも読める前提。SECURITY.md §2.7)。
 - `users` には列を足さない。有効かどうかは `GET /auth/totp` と admin のユーザー一覧 (`totp_enabled`) で見る。
 - 無効化 / admin のリセットは行を消す。
+
+### user_identities / sso_requests / sso_tickets (Google でログイン、M48)
+
+仕様は docs/SSO.md。
+
+```sql
+CREATE TABLE user_identities (          -- 外部のアカウント (Google の sub) → ユーザー
+  id             uuid PRIMARY KEY,
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider       varchar(16) NOT NULL,  -- 'google'
+  subject        varchar(255) NOT NULL, -- ID トークンの sub (メールアドレスが変わっても同じ)
+  email          citext,                -- 結び付けたときのアドレス (記録用)
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  last_login_at  timestamptz
+);
+CREATE UNIQUE INDEX user_identities_provider_subject_uniq ON user_identities (provider, subject);
+CREATE INDEX user_identities_user_idx ON user_identities (user_id);
+
+CREATE TABLE sso_requests (             -- 始めたサインイン (10 分、1 回だけ)
+  state          text PRIMARY KEY,      -- Cookie chikuwa_sso と同じ値
+  nonce          text NOT NULL,
+  code_verifier  text NOT NULL,         -- Google との PKCE
+  challenge      text NOT NULL,         -- アプリの base64url(SHA-256(verifier))。チケットに写す
+  platform       varchar(16) NOT NULL,  -- web | desktop | ios | android (戻り先を決める)
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  expires_at     timestamptz NOT NULL,
+  used_at        timestamptz
+);
+
+CREATE TABLE sso_tickets (              -- アプリがトークンに交換するチケット (2 分、1 回だけ)
+  ticket_hash    bytea PRIMARY KEY,     -- SHA-256 だけ。チケットそのものは戻りの URL にしか無い
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  challenge      text NOT NULL,
+  platform       varchar(16) NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  expires_at     timestamptz NOT NULL,
+  used_at        timestamptz
+);
+```
+
+- `sso_requests` と `sso_tickets` は、使った時点 (失敗でも) で `used_at` を入れて commit してから検査する。
+  期限から 1 時間過ぎた行は 1 時間ごとの掃除が消す。
+- 匿名化 (admin) は `user_identities` と未使用のチケットを消す (Google でその人として入れなくなる)。
 
 ### user_groups / user_group_members (ユーザーグループ、M12k)
 

@@ -644,9 +644,11 @@ function AccountSection({ controller }: { controller: AppController }) {
   const [totp, setTotp] = useState<TotpStatusOut | null>(null);
   const [totpDialog, setTotpDialog] = useState<"setup" | "disable" | null>(null);
   const [sessionsVersion, setSessionsVersion] = useState(0);
+  // M48: an account made by Google sign-in has no password (nothing to change, and 2FA is Google's).
+  const hasPassword = (controller.store.me ?? controller.me)?.has_password !== false;
   useEffect(() => {
-    void controller.totpStatus().then(setTotp);
-  }, [controller]);
+    if (hasPassword) void controller.totpStatus().then(setTotp);
+  }, [controller, hasPassword]);
 
   const savePassword = async (event: FormEvent) => {
     event.preventDefault();
@@ -668,44 +670,51 @@ function AccountSection({ controller }: { controller: AppController }) {
 
   return (
     <div className="space-y-6">
-      <form className="space-y-3" onSubmit={savePassword}>
-        <h3 className="text-sm font-semibold">パスワードの変更</h3>
-        <Field label="現在のパスワード">
-          <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
-        </Field>
-        <Field label="新しいパスワード (8 文字以上)">
-          <Input type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
-        </Field>
-        <Field label="新しいパスワード (確認)">
-          <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
-        </Field>
-        {passwordMessage && <p className={cn("text-sm", passwordMessage.includes("しました") ? "text-muted" : "text-danger")}>{passwordMessage}</p>}
-        <Button type="submit" size="sm" disabled={busy}>
-          変更する
-        </Button>
-      </form>
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">2 要素認証</h3>
-        <div className={CARD}>
-          <ShieldCheck size={18} className={totp?.enabled ? "text-success" : "text-muted"} />
-          <div className="min-w-0 flex-1 text-sm">
-            {totp === null ? (
-              <span className="text-muted">確認中…</span>
-            ) : totp.enabled ? (
-              <span>
-                有効 <span className="ml-1 text-xs text-muted">ログイン時に認証アプリのコードが必要です · 回復コード残り {totp.recovery_codes_left}</span>
-              </span>
-            ) : (
-              <span className="text-muted">無効 (パスワードだけでログインできます)</span>
-            )}
-          </div>
-          {totp && (
-            <Button size="sm" variant="secondary" onClick={() => setTotpDialog(totp.enabled ? "disable" : "setup")}>
-              {totp.enabled ? "無効にする" : "有効にする"}
+      {!hasPassword && (
+        <p className="text-sm text-muted">このアカウントは Google でログインします (パスワードはありません。2 段階認証は Google のアカウントで設定します)</p>
+      )}
+      {hasPassword && (
+        <>
+          <form className="space-y-3" onSubmit={savePassword}>
+            <h3 className="text-sm font-semibold">パスワードの変更</h3>
+            <Field label="現在のパスワード">
+              <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
+            </Field>
+            <Field label="新しいパスワード (8 文字以上)">
+              <Input type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
+            </Field>
+            <Field label="新しいパスワード (確認)">
+              <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
+            </Field>
+            {passwordMessage && <p className={cn("text-sm", passwordMessage.includes("しました") ? "text-muted" : "text-danger")}>{passwordMessage}</p>}
+            <Button type="submit" size="sm" disabled={busy}>
+              変更する
             </Button>
-          )}
-        </div>
-      </section>
+          </form>
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">2 要素認証</h3>
+            <div className={CARD}>
+              <ShieldCheck size={18} className={totp?.enabled ? "text-success" : "text-muted"} />
+              <div className="min-w-0 flex-1 text-sm">
+                {totp === null ? (
+                  <span className="text-muted">確認中…</span>
+                ) : totp.enabled ? (
+                  <span>
+                    有効 <span className="ml-1 text-xs text-muted">ログイン時に認証アプリのコードが必要です · 回復コード残り {totp.recovery_codes_left}</span>
+                  </span>
+                ) : (
+                  <span className="text-muted">無効 (パスワードだけでログインできます)</span>
+                )}
+              </div>
+              {totp && (
+                <Button size="sm" variant="secondary" onClick={() => setTotpDialog(totp.enabled ? "disable" : "setup")}>
+                  {totp.enabled ? "無効にする" : "有効にする"}
+                </Button>
+              )}
+            </div>
+          </section>
+        </>
+      )}
       <SessionsList controller={controller} version={sessionsVersion} />
       {totpDialog === "setup" && <TotpSetupDialog controller={controller} onClose={() => setTotpDialog(null)} onEnabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
       {totpDialog === "disable" && <TotpDisableDialog controller={controller} onClose={() => setTotpDialog(null)} onDisabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}

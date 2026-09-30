@@ -433,6 +433,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Methods
+         * @description Which sign-in buttons the login screen shows.
+         */
+        get: operations["auth_methods_api_v1_auth_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -479,6 +499,69 @@ export interface paths {
         post?: never;
         /** Auth:Revoke Session */
         delete: operations["auth_revoke_session_api_v1_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sso Exchange
+         * @description The ticket and the app's verifier → the same tokens as POST /auth/login (web: the refresh
+         *     token moves into the cookie). 401 invalid_ticket; a ticket is spent by its first use.
+         */
+        post: operations["sso_exchange_api_v1_auth_sso_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sso Google Callback
+         * @description Google's redirect. Web: `<PUBLIC_BASE_URL>/#sso_ticket=…` (or `#sso_error=`); the apps:
+         *     `chikuwachat://sso?ticket=…` (or `?sso_error=`).
+         */
+        get: operations["sso_google_callback_api_v1_auth_sso_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/google/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sso Google Start
+         * @description Opened in a browser by the app: `challenge` = base64url(SHA-256(verifier)) of a secret the
+         *     app keeps until it exchanges the ticket. 404 sso_disabled when Google sign-in is off.
+         */
+        get: operations["sso_google_start_api_v1_auth_sso_google_start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2518,6 +2601,18 @@ export interface components {
             /** Width */
             width: number | null;
         };
+        /**
+         * AuthMethodsOut
+         * @description Which sign-in buttons the login screen shows (M48).
+         */
+        AuthMethodsOut: {
+            google: components["schemas"]["ProviderMethod"];
+            /**
+             * Password
+             * @default true
+             */
+            password: boolean;
+        };
         /** Body_add_emoji_api_v1_emoji_post */
         Body_add_emoji_api_v1_emoji_post: {
             /** File */
@@ -3899,6 +3994,11 @@ export interface components {
              */
             user_id: string;
         };
+        /** ProviderMethod */
+        ProviderMethod: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /**
          * QuietHours
          * @description A daily window (in the user's zone) during which pushes are held back (M12c).
@@ -4440,6 +4540,14 @@ export interface components {
             /** Position */
             position: number;
         };
+        /** SsoExchange */
+        SsoExchange: {
+            device: components["schemas"]["DeviceCreate"];
+            /** Ticket */
+            ticket: string;
+            /** Verifier */
+            verifier: string;
+        };
         /** TemplateCreate */
         TemplateCreate: {
             /** Body */
@@ -4667,6 +4775,11 @@ export interface components {
             dnd_until?: string | null;
             /** Email */
             email: string | null;
+            /**
+             * Has Password
+             * @default true
+             */
+            has_password: boolean;
             /**
              * Id
              * Format: uuid
@@ -5767,6 +5880,26 @@ export interface operations {
             };
         };
     };
+    auth_methods_api_v1_auth_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthMethodsOut"];
+                };
+            };
+        };
+    };
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
@@ -5833,6 +5966,100 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sso_exchange_api_v1_auth_sso_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoExchange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sso_google_callback_api_v1_auth_sso_google_callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to the app with a ticket or sso_error */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sso_google_start_api_v1_auth_sso_google_start_get: {
+        parameters: {
+            query: {
+                platform: "web" | "desktop" | "ios" | "android";
+                challenge: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To Google's sign-in page */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };

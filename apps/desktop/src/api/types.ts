@@ -100,6 +100,9 @@ export type InviteCreated = components["schemas"]["InviteCreated"];
 export type InvitePreviewOut = components["schemas"]["InvitePreviewOut"];
 export type InviteAccept = components["schemas"]["InviteAccept"];
 
+/** Sign-in methods and Google sign-in (M48, docs/SSO.md). */
+export type AuthMethodsOut = components["schemas"]["AuthMethodsOut"];
+
 /** Two-factor authentication (M12i). */
 export type TotpStatusOut = components["schemas"]["TotpStatusOut"];
 export type TotpSetupOut = components["schemas"]["TotpSetupOut"];

@@ -13,7 +13,7 @@ function fixture() {
   const me = server.addUser("me");
   const member = server.addUser("existing");
   const other = server.addUser("new-user");
-  store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false });
+  store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false, has_password: true });
   [me, member, other].forEach((user) => store.upsertUser(user));
   const members = vi.fn();
   const addMember = vi.fn(async () => {});

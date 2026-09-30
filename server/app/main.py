@@ -56,6 +56,9 @@ from app.modules.scheduled import service as scheduled
 from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
 from app.modules.sidebar.router import router as sidebar_router
+from app.modules.sso import service as sso_service
+from app.modules.sso.oidc import build_google
+from app.modules.sso.router import router as sso_router
 from app.modules.sync.router import router as sync_router
 from app.modules.templates.router import router as templates_router
 from app.modules.threads.router import router as threads_router
@@ -129,6 +132,12 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     purged_canvases,
                     released,
                 )
+            async with app.state.db.session_factory() as session:
+                # M48: sign-ins that were started or ticketed and never finished.
+                purged_sso = await sso_service.purge_expired(session, utcnow())
+                await session.commit()
+            if purged_sso:
+                log.info("purged %d expired sign-in requests and tickets", purged_sso)
         except Exception:
             log.exception("outbox purge failed")
         try:
@@ -227,6 +236,7 @@ def build_api_router() -> APIRouter:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(workspace_router)
     api.include_router(auth_router)
+    api.include_router(sso_router)
     api.include_router(totp_router)
     api.include_router(
         avatars_router
@@ -290,6 +300,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
         "invite": RateLimiter(settings.invite_rate_limit_per_ip),
+        "sso": RateLimiter(settings.sso_rate_limit_per_ip),
         "webhook": RateLimiter(settings.webhook_rate_limit_per_hook),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
         "search": RateLimiter(settings.search_rate_limit_per_user),
@@ -298,6 +309,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "canvas_save": RateLimiter(settings.canvas_save_rate_limit_per_user),
         "ws_connect": RateLimiter(settings.ws_connect_rate_limit_per_ip),
     }
+    # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
+    app.state.sso_google = build_google(settings)
     app.state.blobs = build_blobstore(settings)
     app.state.link_fetcher = build_fetcher(
         timeout_seconds=settings.link_preview_timeout_seconds,
