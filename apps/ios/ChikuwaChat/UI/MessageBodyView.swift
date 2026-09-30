@@ -263,6 +263,12 @@ struct MessageBodyView: View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(BodyTokenizer.parseBlocks(text).enumerated()), id: \.offset) { _, block in
                 blockView(block)
+                    // M38: every block as wide as the row and as tall as its wrapped text at that width. A quote's
+                    // text beside its bar was measured at one width and drawn at another: lines ran past the right
+                    // edge or were cut short with 「…」 while the next block had room to spare (testers,
+                    // 2026-09-30; worst in the thread and with larger text).
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         // Not selectable: a long press on a message opens its actions (Slack), which copy the text; iOS's text selection
@@ -279,10 +285,16 @@ struct MessageBodyView: View {
         case .paragraph(let lines):
             joined(lines)
         case .quote(let lines):
-            HStack(alignment: .top, spacing: 8) {
-                RoundedRectangle(cornerRadius: 1.5).fill(Color.secondary.opacity(0.35)).frame(width: 3)
-                joined(lines).foregroundStyle(.secondary)
-            }
+            // The bar is drawn beside the text rather than laid out with it: in an HStack the bar (a shape, as tall as
+            // it is offered) took part in sharing the width, and the text was measured for one width and drawn in
+            // another (M38).
+            joined(lines).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, Self.quoteIndent)
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 1.5).fill(Color.secondary.opacity(0.35)).frame(width: 3)
+                }
         case .list(let ordered, let start, let items):
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
@@ -291,6 +303,8 @@ struct MessageBodyView: View {
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 18, alignment: .trailing)
                         inlineText(item.tokens)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.leading, CGFloat(item.level) * 16)
                 }
@@ -300,14 +314,22 @@ struct MessageBodyView: View {
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {
                 if let lang { Text(lang.uppercased()).font(.caption2).foregroundStyle(.secondary) }
-                Text(code).font(.system(.body, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(code).font(.system(.body, design: .monospaced))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(8)
             .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 
-    /// M15g: a bordered grid; wide tables scroll sideways.
+    /// The text of a quote starts this far right of the row's text (its bar and the gap after it).
+    static let quoteIndent: CGFloat = 11
+    /// M38: a table cell wraps at this width, so a long cell makes its row taller rather than the table wider.
+    static let tableCellMaxWidth: CGFloat = 200
+
+    /// M15g: a bordered grid; a table with more columns than fit scrolls sideways, each cell wrapping at
+    /// `tableCellMaxWidth` (M38: a long cell ran the table off the screen).
     private func tableView(align: [BodyTableAlign], header: [[BodyToken]], rows: [[[BodyToken]]]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
@@ -331,8 +353,9 @@ struct MessageBodyView: View {
 
     private func tableCell(_ tokens: [BodyToken], align: BodyTableAlign, header: Bool) -> some View {
         let alignment: Alignment = align == .center ? .center : align == .right ? .trailing : .leading
-        return inlineText(tokens)
-            .font(header ? .subheadline.bold() : .subheadline)
+        return CappedWidth(max: Self.tableCellMaxWidth) {
+            inlineText(tokens).font(header ? .subheadline.bold() : .subheadline)
+        }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment) // every cell fills its row
@@ -388,6 +411,31 @@ struct MessageBodyView: View {
         case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? "グループ")).foregroundStyle(.blue)
         case .mentionAll(let target): return Text("@" + target).foregroundStyle(.blue)
         case .newline: return Text("\n")
+        }
+    }
+}
+
+
+/// M38: its content at most `max` wide, wrapping there, also where it is offered any width (a sideways scroll view):
+/// `.frame(maxWidth:)` let a Text take its one-line width there and was then only as wide as `max`, the text beyond it.
+struct CappedWidth: Layout {
+    let max: CGFloat
+
+    /// The width the content is laid out in: what is offered, at most `max`.
+    static func width(offered: CGFloat?, max: CGFloat) -> CGFloat {
+        guard let offered, offered.isFinite else { return max }
+        return Swift.min(Swift.max(offered, 0), max)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = Self.width(offered: proposal.width, max: max)
+        let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)) }
+        return CGSize(width: sizes.map(\.width).max() ?? 0, height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
         }
     }
 }

@@ -109,11 +109,9 @@ struct ThreadView: View {
             if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                 TypingLine(controller: controller, channelId: channelId, parentId: parentId)
                 let canShare = channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin")
-                if canShare {
-                    Toggle(channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信", isOn: $alsoInChannel)
-                        .font(.footnote).padding(.horizontal, 16)
-                }
-                ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller) { body, attachmentIds, _ in
+                ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller,
+                             accessory: canShare ? AnyView(AlsoSendRow(title: channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信",
+                                                                       isOn: $alsoInChannel)) : nil) { body, attachmentIds, _ in
                     let shared = canShare && alsoInChannel
                     alsoInChannel = false
                     Task { await controller.engine?.send(channelId, body: body, parentId: parentId, attachmentIds: attachmentIds,
@@ -330,6 +328,34 @@ private struct ToolbarPill: ViewModifier {
         } else {
             content.buttonStyle(.bordered).controlSize(.small)
         }
+    }
+}
+
+/// M15c / M38: 「#… にも送信」 as Slack has it, a checkbox inside the composer above the input. It was a switch between
+/// the replies and the composer, on the composer's top line (testers, 2026-09-30).
+private struct AlsoSendRow: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 18))
+                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                Text(title).font(.footnote).foregroundStyle(.primary).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 }
 

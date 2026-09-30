@@ -94,7 +94,7 @@ struct AttachmentsView: View {
                 if attachment.isImage {
                     if photos.count == 1 { ThumbnailView(attachment: attachment, controller: controller) }
                 } else if attachment.isVideo {
-                    VideoTile(attachment: attachment, controller: controller, present: present)
+                    VideoTile(attachment: attachment, controller: controller)
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: attachment.isVideo ? "film" : "doc").foregroundStyle(.secondary)
@@ -194,18 +194,28 @@ struct AttachmentFileButton: View {
 }
 
 /// A video in a message (testers, 2026-09-29): a dark tile with a play button, the name and the size; a tap downloads
-/// it and plays it with Quick Look, whose share button saves it to Photos.
+/// it and plays it full screen (VideoViewer, M38; it was Quick Look's sheet), whose share button saves it to Photos.
+/// M38: the tile has the video's shape (VideoFit): the size the server recorded, else its poster's, else the
+/// downloaded file's once there is one; a landscape box until then.
 struct VideoTile: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
-    var present: ((URL) -> Void)? = nil
     @State private var loader = AttachmentFileLoader()
-    @State private var previewURL: URL?
+    @State private var playing: URL?
+    @State private var poster: UIImage?
+    @State private var found: CGSize?
+
+    private var shape: CGSize? { VideoFit.recorded(attachment) ?? found }
 
     var body: some View {
+        let box = VideoFit.box(for: shape)
         Button(action: tapped) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.85))
+                if let poster {
+                    Image(uiImage: poster).resizable().scaledToFill().frame(width: box.width, height: box.height).clipped()
+                        .overlay(Color.black.opacity(0.15))
+                }
                 if loader.loading {
                     ProgressView().tint(.white)
                 } else {
@@ -218,31 +228,50 @@ struct VideoTile: View {
                         Image(systemName: "film")
                         Text(attachment.filename).lineLimit(1)
                         Spacer(minLength: 4)
-                        Text(formatSize(attachment.sizeBytes))
+                        Text(formatSize(attachment.sizeBytes)).lineLimit(1).fixedSize() // a narrow (portrait) tile cuts the name, not the size
                     }
                     .font(.caption2).foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 10).padding(.bottom, 8)
                 }
             }
-            .frame(width: 240, height: 135)
+            .frame(width: box.width, height: box.height)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(loader.loading)
         .accessibilityLabel("動画 \(attachment.filename) を\(loader.failed ? "再試行" : "再生")")
-        .sheet(item: $previewURL) { url in FilePreviewSheet(url: url, onDismiss: { previewURL = nil }) }
+        .fullScreenCover(item: $playing) { url in VideoViewer(attachment: attachment, url: url) }
+        .task(id: attachment.id) { await findShape() }
+    }
+
+    /// The poster (a server thumbnail, when it makes one) and the video's shape where the server did not record it.
+    private func findShape() async {
+        if found == nil, let known = VideoSizes.size(attachment.id) { found = known }
+        if attachment.hasThumbnail, poster == nil, let api = controller.api,
+           let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail"), let image = UIImage(data: data) {
+            poster = image
+            if found == nil { remember(image.size) }
+        }
+        guard VideoFit.recorded(attachment) == nil, found == nil else { return }
+        // Downloaded before (this launch or an earlier one): its header says.
+        let file = AttachmentFileCache.destination(for: attachment, in: FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true))
+        if FileManager.default.fileExists(atPath: file.path), let size = await VideoFit.naturalSize(of: file) { remember(size) }
+    }
+
+    private func remember(_ size: CGSize) {
+        VideoSizes.note(attachment.id, size)
+        withAnimation(.easeOut(duration: 0.2)) { found = size }
     }
 
     private func tapped() {
-        if let url = loader.url { show(url); return }
+        if let url = loader.url { playing = url; return }
         Task {
             await loader.load { await controller.downloadAttachment(attachment) }
-            if let url = loader.url { show(url) }
+            guard let url = loader.url else { return }
+            if VideoFit.recorded(attachment) == nil, found == nil, let size = await VideoFit.naturalSize(of: url) { remember(size) }
+            playing = url
         }
-    }
-
-    private func show(_ url: URL) {
-        if let present { present(url) } else { previewURL = url }
     }
 }
 

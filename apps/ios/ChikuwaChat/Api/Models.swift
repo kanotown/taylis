@@ -287,7 +287,8 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     let status: String
     let createdAt: String
 
-    var isImage: Bool { hasThumbnail }
+    /// A picture: it has a thumbnail. A video with one (its poster) stays a video (M38).
+    var isImage: Bool { hasThumbnail && !isVideo }
     var isVideo: Bool { contentType.hasPrefix("video/") }
 }
 

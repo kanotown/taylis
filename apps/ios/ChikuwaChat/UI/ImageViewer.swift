@@ -40,6 +40,11 @@ enum ViewerDismiss {
         return nil
     }
 
+    /// M38: a video closes up or down only; sideways the player keeps the drag (its timeline).
+    static func videoAxis(motion: CGPoint) -> Axis? {
+        axis(motion: motion, zoomed: false, settled: true, index: 0, count: 1) == .vertical ? .vertical : nil
+    }
+
     /// The one way a sideways close may go: either for a lone photo (nil), else off the edge it began at.
     static func horizontalSign(motion: CGPoint, count: Int) -> CGFloat? { count <= 1 ? nil : (motion.x > 0 ? 1 : -1) }
 
