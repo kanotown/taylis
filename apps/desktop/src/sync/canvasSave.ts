@@ -435,6 +435,45 @@ export class CanvasSaver {
     return this.save();
   }
 
+  // --- the web page going away (M44) -------------------------------------------------------------
+
+  /**
+   * The browser tab is closing (pagehide): the save that keeps what is typed, to be sent on a `keepalive` request the
+   * browser finishes after the page is gone; null when nothing needs one, or when it cannot be sent that way (a choice
+   * open, refused, or larger than a keepalive request may carry — `mustStay` says so for beforeunload). The save is kept
+   * as this loop's own (same key), so if the page lives on (the back-forward cache) the loop sends it again and the
+   * server answers the repeat once. Typed while a save was on the wire: the text on that save's base, a new key; the
+   * server merges it with whichever of the two lands first.
+   */
+  unloadSave(): CanvasSaveIn | null {
+    if (this.disposed || !this.loaded || this.baseRevId === null || this.mustStay) return null;
+    const flight = this.inFlight;
+    if (flight) {
+      if (this.text === flight.sent) return { base_rev_id: flight.baseRevId, body: flight.sent, client_save_id: flight.clientSaveId, on_conflict: flight.onConflict };
+      return fitsKeepalive(this.text) ? { base_rev_id: flight.baseRevId, body: this.text, client_save_id: this.opts.newId(), on_conflict: "fail" } : null;
+    }
+    if (!this.dirty || !fitsKeepalive(this.text)) return null;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    const next: InFlight = { clientSaveId: this.opts.newId(), sent: this.text, baseRevId: this.baseRevId, onConflict: "fail" };
+    this.inFlight = next;
+    this.persist();
+    // Runs only if the page lives on (timers stop with it): the same save, the same key.
+    setTimeout(() => {
+      if (this.inFlight === next) this.track(this.send());
+    }, 0);
+    return { base_rev_id: next.baseRevId, body: next.sent, client_save_id: next.clientSaveId, on_conflict: "fail" };
+  }
+
+  /** Something typed here that closing the page would lose (beforeunload asks to stay). */
+  get mustStay(): boolean {
+    if (this.disposed || !this.unsaved) return false;
+    if (this.conflict || this.expired || (this.status === "blocked" && this.error !== null)) return true;
+    return !fitsKeepalive(this.text);
+  }
+
   // --- the rest ----------------------------------------------------------------------------------
 
   /** canvas.deleted: nothing more is saved; the text stays on screen to be copied. */
@@ -489,6 +528,18 @@ export class CanvasSaver {
     this.revision += 1;
     for (const listener of this.listeners) listener();
   }
+}
+
+/**
+ * Browsers carry at most 64 KiB of keepalive request bodies at a time: a canvas body (with the request's JSON around
+ * it) past this goes out only on an ordinary request, so closing the tab must ask first.
+ */
+export const KEEPALIVE_BODY_BYTES = 60_000;
+
+export function fitsKeepalive(body: string): boolean {
+  // UTF-8 is at most 3 bytes per UTF-16 unit; count exactly only when that bound is over the limit.
+  if (body.length * 3 + 512 <= KEEPALIVE_BODY_BYTES) return true;
+  return new TextEncoder().encode(JSON.stringify(body)).length + 512 <= KEEPALIVE_BODY_BYTES;
 }
 
 /** 429's details carry `retry_after_seconds` (server/app/core/errors.py rate_limited). */

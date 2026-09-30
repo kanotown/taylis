@@ -21,6 +21,7 @@ import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
 import { ChannelFiles, FilesView } from "./FilesView";
+import { CanvasesView } from "./CanvasesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
 import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
@@ -31,7 +32,7 @@ import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
-import { pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
+import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
 import { JumpView } from "./JumpView";
 import { NewMessageView } from "./NewMessageView";
@@ -56,7 +57,8 @@ import { SettingsDialog } from "./Settings";
 import { YouView } from "./YouView";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search";
+// "canvases" (M44): the canvases of all my conversations.
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases";
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -362,6 +364,35 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.openChannelRequest]);
 
+  // M44, the web: the browser keeps no store of unsaved canvas edits (CANVAS.md §5). Closing the tab sends them on a
+  // keepalive request (pagehide); what such a request cannot carry (a conflict open, refused, too long) asks to stay.
+  useEffect(() => {
+    const hub = engine?.canvases;
+    const api = controller.api;
+    if (!isWeb() || !hub || !api) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hub.mustStay) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const pageHide = () => hub.unload((canvasId, body) => api.saveCanvasKeepalive(canvasId, body));
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("pagehide", pageHide);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("pagehide", pageHide);
+    };
+  }, [engine, controller.api]);
+
+  // M44: a canvas asked for from elsewhere (a /c/ link in a message or the browser's URL).
+  useEffect(() => {
+    const request = controller.openCanvasRequest;
+    if (!request) return;
+    controller.openCanvasRequest = null;
+    openCanvas(request.channelId, request.canvasId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openCanvasRequest]);
+
   // A channel of mine opens through the member path; one I have not joined as its preview. Joining flips `previewing`,
   // and the conversation then loads like any other of mine. On a phone the engine's open conversation is the one on
   // the selected tab's screen, none at a tab's root (M34 (8), MOBILE_UI.md §10 1.).
@@ -401,6 +432,33 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSwitcher(false);
     setBackToSearch(false);
     setPane("main");
+  };
+
+  /**
+   * M44: a canvas in its conversation's 「キャンバス」 tab (a search hit, ⌘K, a /c/ link, the 「キャンバス」 list). On a
+   * phone it lands on the conversation's tab as a notification does; from the search the way back stays.
+   */
+  const openCanvas = (channelId: string, canvasId: string, options: { fromSearch?: boolean } = {}) => {
+    setCanvasChoice((choice) => ({ ...choice, [channelId]: canvasId }));
+    if (compactRef.current) {
+      controller.clearMessageFocus();
+      controller.setEditing(null);
+      setHomeOverlay(null);
+      setSwitcher(false);
+      land(channelId, null, { tab: "canvas", ...(options.fromSearch ? { backToSearch: true, search, searchTab, results: searchSnapshot.current } : {}) });
+      return;
+    }
+    open(channelId);
+    setTab("canvas");
+    if (options.fromSearch) setBackToSearch(true);
+  };
+
+  /** M44: the comments of a canvas are its shared message's thread, beside the canvas (over it on a phone). */
+  const openCanvasThread = (channelId: string, messageId: string) => {
+    controller.clearMessageFocus();
+    setPinsOpen(false);
+    setThreadChannelId(channelId);
+    setThreadId(messageId);
   };
 
   /**
@@ -497,7 +555,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -737,6 +795,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       draftsActive={view === "drafts"}
       onFiles={() => (view === "files" && !compact ? setView("channel") : openFiles(null))}
       filesActive={view === "files"}
+      onCanvases={() => openView("canvases")}
+      canvasesActive={view === "canvases"}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -807,6 +867,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onTabChange={setSearchTab}
           onChange={setSearch}
           onOpen={openSearchResult}
+          onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id, { fromSearch: true })}
           onClose={() => {
             setView("channel");
             if (compact) setPane("list");
@@ -830,6 +891,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <RemindersView controller={controller} onOpen={(row) => void controller.openPermalink(row.message_id)} />
       ) : view === "files" ? (
         <FilesView controller={controller} channelId={filesChannelId} onChannelChange={setFilesChannelId} onOpen={revealFromList} />
+      ) : view === "canvases" ? (
+        <CanvasesView
+          controller={controller}
+          onOpen={(canvas) => openCanvas(canvas.channel_id, canvas.id)}
+          onSearch={(q) => {
+            runSearch({ ...EMPTY_SEARCH, q });
+            setSearchTab("canvases");
+          }}
+        />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -1045,6 +1115,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   channel={current}
                   canvasId={canvasChoice[current.id] ?? null}
                   onSelect={(id) => setCanvasChoice((choice) => ({ ...choice, [current.id]: id }))}
+                  onOpenThread={openCanvasThread}
                 />
               </div>
             )}
@@ -1075,7 +1146,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     <>
       <Toast controller={controller} />
       <NoticeToast controller={controller} />
-      {switcher && <QuickSwitcher controller={controller} onOpen={open} onClose={() => setSwitcher(false)} />}
+      {switcher && <QuickSwitcher controller={controller} onOpen={open} onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id)} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "directory" && <DirectoryDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
       {dialog === "channel" && <NewChannelDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}
@@ -1152,6 +1223,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onSaved={openSaved}
           onReminders={() => openView("reminders")}
           onFiles={() => openFiles(null)}
+          onCanvases={() => openView("canvases")}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

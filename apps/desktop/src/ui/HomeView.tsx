@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, Check, ChevronDown, ChevronRight, FileText, Files, Hash, Lock, MessagesSquare, MoreHorizontal, Plus, Search, SquarePen } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, Check, ChevronDown, ChevronRight, FileText, Files, Hash, Lock, MessagesSquare, MoreHorizontal, NotebookText, Plus, Search, SquarePen } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -30,6 +30,8 @@ export interface HomeViewProps {
   onSaved: () => void;
   onReminders: () => void;
   onFiles: () => void;
+  /** M44: the canvases of all my conversations (a tile, MOBILE_UI.md §6.1 / §10 9.). Optional (older callers). */
+  onCanvases?: () => void;
   onBrowse: () => void;
   onNewChannel: () => void;
   onDirectory: () => void;
@@ -246,7 +248,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles }: HomeViewProps) {
+function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles, onCanvases }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -257,6 +259,7 @@ function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles 
     { key: "saved", label: "保存", icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
     { key: "reminders", label: "リマインダー", icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
     { key: "files", label: "ファイル", icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
+    ...(onCanvases ? [{ key: "canvases", label: "キャンバス", icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
   ];
   return (
     <div className="flex gap-2 overflow-x-auto px-3 pb-2 pt-1 [scrollbar-width:none]">

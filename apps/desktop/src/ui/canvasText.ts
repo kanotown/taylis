@@ -142,6 +142,30 @@ export function insertRule(state: Selection): Selection {
   return { text: before + inserted + rest, start: caret, end: caret };
 }
 
+/** M44 (§4.10): the canvas's own limit of images and files (the server says too_many_canvas_images past it). */
+export const MAX_CANVAS_IMAGES = 100;
+
+/** The distinct attachments a body names (`attachment:<id>`, as the server counts them when it binds). */
+export function attachmentRefs(body: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of body.matchAll(/\(attachment:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi)) ids.add((match[1] ?? "").toLowerCase());
+  return ids;
+}
+
+/** M44: an image `![alt](attachment:<id>)` on a line of its own at the caret (replacing a selection); the caret goes after it. */
+export function insertImageLine(state: Selection, attachmentId: string, alt = ""): Selection {
+  const { text, start, end } = state;
+  const before = text.slice(0, start);
+  const after = text.slice(end);
+  const lead = before === "" || before.endsWith("\n") ? "" : "\n";
+  const trail = after.startsWith("\n") ? "" : "\n";
+  const line = `![${alt.replace(/[\]\n]/g, " ")}](attachment:${attachmentId})`;
+  const next = before + lead + line + trail + after;
+  // After the image's line break: on the line below it.
+  const caret = before.length + lead.length + line.length + 1;
+  return { text: next, start: caret, end: caret };
+}
+
 /** Task counts as the server makes them for a list (the "3/8" beside a canvas). */
 export function taskProgress(total: number, done: number): string | null {
   return total > 0 ? `${done}/${total}` : null;

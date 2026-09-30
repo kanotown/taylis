@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasSaveIn, CanvasSaveOut, CanvasTemplateOut, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -389,6 +389,98 @@ export class ApiClient {
 
   canvasTemplates(): Promise<CanvasTemplateOut[]> {
     return this.request("GET", "/api/v1/canvas-templates");
+  }
+
+  /**
+   * M44 (web, the tab closing): the same save as `saveCanvas` on a `keepalive` fetch, which the browser finishes after the
+   * page is gone. Nothing is read back; the key makes a repeat harmless.
+   */
+  saveCanvasKeepalive(canvasId: string, body: CanvasSaveIn): void {
+    if (!this.accessToken) return;
+    try {
+      void this.fetchImpl(`${this.baseUrl}/api/v1/canvases/${canvasId}/content`, {
+        method: "PUT",
+        keepalive: true,
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` },
+        body: JSON.stringify(body),
+      }).catch(() => {});
+    } catch {
+      /* the page is going away: nothing more can be done */
+    }
+  }
+
+  /** M44: post the canvas's link to its conversation (nothing new while that message exists); its thread holds the comments. */
+  shareCanvas(canvasId: string): Promise<CanvasOut> {
+    return this.request("POST", `/api/v1/canvases/${canvasId}/share`);
+  }
+
+  /** M44 (§4.9): the history without bodies, newest first (side versions left out). */
+  canvasRevisions(canvasId: string, cursor: string | null = null, limit = 50): Promise<CanvasRevisionPage> {
+    const params = new URLSearchParams({ limit: String(limit), ...(cursor ? { cursor } : {}) });
+    return this.request("GET", `/api/v1/canvases/${canvasId}/revisions?${params}`);
+  }
+
+  canvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionOut> {
+    return this.request("GET", `/api/v1/canvases/${canvasId}/revisions/${revisionId}`);
+  }
+
+  /** That version's body as a new version (idempotent on `client_save_id`). */
+  restoreCanvasRevision(canvasId: string, revisionId: string, clientSaveId: string): Promise<CanvasOut> {
+    return this.request("POST", `/api/v1/canvases/${canvasId}/revisions/${revisionId}/restore`, { client_save_id: clientSaveId });
+  }
+
+  /** A name for the version (「提出版」); null removes it. */
+  labelCanvasRevision(canvasId: string, revisionId: string, label: string | null): Promise<CanvasRevisionMeta> {
+    return this.request("PATCH", `/api/v1/canvases/${canvasId}/revisions/${revisionId}`, { label });
+  }
+
+  /** Erase the version's body (owners and administrators; in a DM its creator). */
+  eraseCanvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionMeta> {
+    return this.request("DELETE", `/api/v1/canvases/${canvasId}/revisions/${revisionId}`);
+  }
+
+  /** M44 (§4.8): canvases of my conversations; typed modifiers (in:# from:@ before: after: on:) stay in `q`. */
+  searchCanvases(query: {
+    q: string;
+    channel_id?: string | null;
+    from_user_id?: string | null;
+    after?: string | null;
+    before?: string | null;
+    sort?: "relevance" | "newest";
+    limit?: number;
+    offset?: number;
+  }): Promise<CanvasSearchOut> {
+    const params = new URLSearchParams({ q: query.q, limit: String(query.limit ?? 20), offset: String(query.offset ?? 0) });
+    if (query.channel_id) params.set("channel_id", query.channel_id);
+    if (query.from_user_id) params.set("from_user_id", query.from_user_id);
+    if (query.after) params.set("after", query.after);
+    if (query.before) params.set("before", query.before);
+    if (query.sort) params.set("sort", query.sort);
+    params.set("tz_offset_minutes", String(-new Date().getTimezoneOffset()));
+    return this.request("GET", `/api/v1/search/canvases?${params}`);
+  }
+
+  /** M44 (§4.12): every template, hidden ones too (administrators). */
+  adminCanvasTemplates(): Promise<CanvasTemplateOut[]> {
+    return this.request("GET", "/api/v1/admin/canvas-templates");
+  }
+
+  adminCreateCanvasTemplate(body: CanvasTemplateCreate): Promise<CanvasTemplateOut> {
+    return this.request("POST", "/api/v1/admin/canvas-templates", body);
+  }
+
+  /** Edit, reorder or hide (built-in ones are hidden, not deleted). */
+  adminUpdateCanvasTemplate(templateId: string, patch: CanvasTemplateUpdate): Promise<CanvasTemplateOut> {
+    return this.request("PATCH", `/api/v1/admin/canvas-templates/${templateId}`, patch);
+  }
+
+  adminDeleteCanvasTemplate(templateId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/canvas-templates/${templateId}`);
+  }
+
+  /** M44: an attachment's metadata (a canvas's image: its name, type and shape). */
+  getAttachment(attachmentId: string): Promise<AttachmentOut> {
+    return this.request("GET", `/api/v1/attachments/${attachmentId}`);
   }
 
   // --- drafts (M15d) ------------------------------------------------------------------------

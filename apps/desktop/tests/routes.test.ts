@@ -9,6 +9,8 @@ describe("browser entry routes (M12j)", () => {
   it("recognises permalinks and invite links", () => {
     expect(parseEntryPath(`/m/${id.toUpperCase()}`)).toEqual({ kind: "message", id });
     expect(parseEntryPath(`/invite/${token}/`)).toEqual({ kind: "invite", token });
+    expect(parseEntryPath(`/c/${id}`)).toEqual({ kind: "canvas", id }); // M44
+    expect(parseEntryPath("/c/not-an-id")).toBeNull();
   });
 
   it("ignores the root and anything else", () => {

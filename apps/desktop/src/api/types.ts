@@ -206,6 +206,14 @@ export type CanvasConflictDetails = components["schemas"]["CanvasConflictDetails
 export type CanvasTemplateOut = components["schemas"]["CanvasTemplateOut"];
 export type CanvasEditPolicy = CanvasMeta["edit_policy"];
 export type CanvasOnConflict = "fail" | "ours" | "theirs" | "both";
+/** M44: the history (§4.9), search (§4.8) and the administrators' templates (§4.12). */
+export type CanvasRevisionMeta = components["schemas"]["RevisionMeta"];
+export type CanvasRevisionOut = components["schemas"]["RevisionOut"];
+export type CanvasRevisionPage = components["schemas"]["RevisionPage"];
+export type CanvasSearchHit = components["schemas"]["CanvasSearchHit"];
+export type CanvasSearchOut = components["schemas"]["CanvasSearchOut"];
+export type CanvasTemplateCreate = components["schemas"]["CanvasTemplateCreate"];
+export type CanvasTemplateUpdate = components["schemas"]["CanvasTemplateUpdate"];
 /** canvas.updated: the new metadata and what changed ("content" | "title" | "settings" | "restore"). */
 export interface CanvasUpdated {
   canvas: CanvasMeta;

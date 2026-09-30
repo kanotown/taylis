@@ -158,7 +158,7 @@ it("the tiles replace the chips: スレッド with its unread count, a zero dimm
   const { w } = await setup();
   expect(within(home()).queryByRole("button", { name: "未読" })).toBeNull(); // the old unread-only chip
   const tile = (key: string) => home().querySelector<HTMLButtonElement>(`[data-tile="${key}"]`)!;
-  expect([...home().querySelectorAll("[data-tile]")].map((t) => t.getAttribute("data-tile"))).toEqual(["threads", "drafts", "saved", "reminders", "files"]);
+  expect([...home().querySelectorAll("[data-tile]")].map((t) => t.getAttribute("data-tile"))).toEqual(["threads", "drafts", "saved", "reminders", "files", "canvases"]);
   expect(tile("threads").getAttribute("aria-label")).toBe("スレッド (1)");
   expect(tile("threads").hasAttribute("data-empty")).toBe(false);
   expect(tile("drafts").hasAttribute("data-empty")).toBe(true);
@@ -316,7 +316,7 @@ it("⌘K (wide layout) filters and orders by the jump-match rule", async () => {
   expect(bar()).toBeNull();
   fireEvent.keyDown(window, { key: "k", metaKey: true });
   await flush();
-  const input = screen.getByPlaceholderText("チャンネルや相手の名前で移動…");
+  const input = screen.getByPlaceholderText("チャンネル・相手・キャンバスの名前で移動…");
   const items = () => [...document.querySelectorAll("[cmdk-item]")].map((item) => item.querySelector("span.flex-1")?.textContent);
   expect(items()).toEqual(["Alice", "c", "general", "Bob"]); // empty: unread first, then by name (as before)
   fireEvent.change(input, { target: { value: "al" } });

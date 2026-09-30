@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
+import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
 import { InvitesTab } from "./InvitesTab";
@@ -13,7 +14,7 @@ import { RosterTab } from "./RosterTab";
 import { WebhooksTab } from "./WebhooksTab";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 
-type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" | "emoji";
+type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" | "emoji" | "canvas-templates";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -43,6 +44,7 @@ export function AdminBody({ controller, className }: { controller: AppController
             ["webhooks", "Webhook"],
             ["channels", "チャンネル"],
             ["emoji", "絵文字"],
+            ["canvas-templates", "キャンバス"],
           ] as Array<[Tab, string]>
         ).map(([value, label]) => (
           <button
@@ -58,7 +60,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : tab === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );

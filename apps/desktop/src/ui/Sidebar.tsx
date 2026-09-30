@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -47,6 +47,9 @@ interface Props {
   /** M11i: files in my channels. */
   onFiles?: () => void;
   filesActive?: boolean;
+  /** M44: the canvases of all my conversations. */
+  onCanvases?: () => void;
+  canvasesActive?: boolean;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
   /** M12e: reminders; listed while any is open. */
@@ -55,7 +58,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -282,6 +285,23 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               >
                 <Files size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">ファイル</span>
+              </button>
+            </li>
+          )}
+          {onCanvases && (
+            <li>
+              <button
+                type="button"
+                onClick={onCanvases}
+                aria-current={canvasesActive ? "page" : undefined}
+                title="自分の会話のキャンバス"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  canvasesActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <NotebookText size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">キャンバス</span>
               </button>
             </li>
           )}

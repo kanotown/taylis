@@ -1,7 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
-import { messagePermalink } from "../ui/permalink";
+import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
@@ -14,7 +14,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CanvasMeta, CanvasOut, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -32,6 +32,13 @@ import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
+
+/** M44: what a `/c/<id>` link stands for (its card, CANVAS.md §4.13). */
+export type CanvasLinkState =
+  | { state: "ok"; canvas: CanvasMeta }
+  | { state: "forbidden" }
+  | { state: "missing" }
+  | { state: "error" };
 
 /** The browser build before workspaces (M16c) remembered only the user name. */
 const USERNAME_KEY = "chikuwa.username";
@@ -146,16 +153,22 @@ export class AppController {
   /** M12j: what the browser URL asked for, consumed once (an invite link, or a message to reveal). */
   entryInvite: string | null = null;
   private entryMessage: string | null = null;
+  /** M44: a `/c/<id>` canvas link opened in the browser. */
+  private entryCanvas: string | null = null;
 
   private takeEntryPath(): void {
     const entry = parseEntryPath(location.pathname);
     if (!entry) return;
     if (entry.kind === "invite") this.entryInvite = entry.token;
+    else if (entry.kind === "canvas") this.entryCanvas = entry.id;
     else this.entryMessage = entry.id;
     history.replaceState(null, "", "/");
   }
 
   private async revealEntry(): Promise<void> {
+    const canvasId = this.entryCanvas;
+    this.entryCanvas = null;
+    if (canvasId) await this.openCanvasLink(canvasId);
     const id = this.entryMessage;
     if (!id) return;
     this.entryMessage = null;
@@ -578,6 +591,18 @@ export class AppController {
     if (!url) return;
     try {
       await copyText(url);
+      this.setNotice("リンクをコピーしました");
+    } catch (error) {
+      console.warn("copy failed", error);
+      this.setError("クリップボードに書き込めませんでした");
+    }
+  }
+
+  /** M44: `<server>/c/<id>` of a canvas (CANVAS.md §4.13). */
+  async copyCanvasLink(canvasId: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      await copyText(canvasLink(this.api.baseUrl, canvasId));
       this.setNotice("リンクをコピーしました");
     } catch (error) {
       console.warn("copy failed", error);
@@ -1509,6 +1534,193 @@ export class AppController {
       const canvas = await this.api.restoreCanvas(canvasId);
       this.store.applyCanvasMeta(canvas);
       return canvas;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  // --- canvases: history, sharing, links, images (M44, CANVAS.md §4.9 / §4.10 / §4.13) ------------
+
+  /** A canvas the main screen should open in its conversation (a search hit, ⌘K, a /c/ link, 「キャンバス」). */
+  openCanvasRequest: { channelId: string; canvasId: string } | null = null;
+
+  requestOpenCanvas(channelId: string, canvasId: string): void {
+    this.openCanvasRequest = { channelId, canvasId };
+    this.emit();
+  }
+
+  private readonly canvasLinks = new Map<string, Promise<CanvasLinkState>>();
+
+  /**
+   * What a `/c/<id>` link stands for, for its card (§4.13): the canvas's metadata, or why it cannot be shown — not a
+   * member of its conversation (403) or no such canvas / in the trash (404). Asked once per canvas and session; a canvas
+   * this device already lists is answered from the store (kept current by events).
+   */
+  canvasLink(canvasId: string): Promise<CanvasLinkState> {
+    const known = this.store.canvasMeta(canvasId);
+    if (known) return Promise.resolve({ state: "ok", canvas: known });
+    const api = this.api;
+    if (!api) return Promise.resolve({ state: "error" });
+    let pending = this.canvasLinks.get(canvasId);
+    if (!pending) {
+      pending = api.getCanvas(canvasId).then(
+        (canvas): CanvasLinkState => {
+          if (!canvas) return { state: "error" };
+          const { body: _body, ...meta } = canvas;
+          return { state: "ok", canvas: meta };
+        },
+        (error: unknown): CanvasLinkState => {
+          this.canvasLinks.delete(canvasId); // a network failure is asked again next time
+          if (error instanceof ApiError && error.status === 403) return { state: "forbidden" };
+          if (error instanceof ApiError && error.status === 404) return { state: "missing" };
+          return { state: "error" };
+        },
+      );
+      this.canvasLinks.set(canvasId, pending);
+    }
+    return pending;
+  }
+
+  /** A `/c/<id>` link tapped (or a browser URL): open it in its conversation, or say why not. */
+  async openCanvasLink(canvasId: string): Promise<boolean> {
+    this.canvasLinks.delete(canvasId); // a tap asks again (joined since, restored from the trash)
+    const link = await this.canvasLink(canvasId);
+    if (link.state === "ok") {
+      this.requestOpenCanvas(link.canvas.channel_id, canvasId);
+      return true;
+    }
+    this.setError(link.state === "forbidden" ? "このキャンバスの会話のメンバーではありません" : link.state === "missing" ? "キャンバスが見つかりません (ゴミ箱に移されたか、削除されました)" : "キャンバスを開けませんでした");
+    return false;
+  }
+
+  /** The canvases of all my conversations (the sidebar's 「キャンバス」, ⌘K), most recently updated first. */
+  async myCanvases(cursor: string | null = null, limit = 50): Promise<CanvasPage | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.myCanvases(cursor, limit);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /**
+   * 「会話に共有」 (§4.13): the canvas's link posted to its conversation as an ordinary message (nothing new while that
+   * message exists). The answer names the message, whose thread holds the comments.
+   */
+  async shareCanvas(canvasId: string): Promise<CanvasOut | null> {
+    if (!this.api) return null;
+    try {
+      const canvas = await this.api.shareCanvas(canvasId);
+      this.store.applyCanvasMeta(canvas);
+      this.engine?.canvases.current(canvasId)?.applyMeta(canvas);
+      return canvas;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /** 「コメント」: the shared message's thread, sharing the canvas first when it never was (or its message is gone). */
+  async canvasCommentsMessage(canvas: CanvasMeta): Promise<string | null> {
+    if (canvas.share_message_id) {
+      const known = this.store.messages(canvas.channel_id).find((m) => m.id === canvas.share_message_id);
+      if (known && !known.deleted) return known.id;
+    }
+    const shared = await this.shareCanvas(canvas.id);
+    return shared?.share_message_id ?? null;
+  }
+
+  async canvasRevisions(canvasId: string, cursor: string | null = null): Promise<CanvasRevisionPage | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.canvasRevisions(canvasId, cursor);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async canvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionOut | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.canvasRevision(canvasId, revisionId);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /**
+   * That version's body as a new version (§4.9). What is typed here is saved first, so it stays in the history; a failure
+   * on the network is sent again with the same key, so a retry never makes a second version.
+   */
+  async restoreCanvasRevision(canvasId: string, revisionId: string): Promise<CanvasOut | null> {
+    const api = this.api;
+    if (!api) return null;
+    const saver = this.engine?.canvases.current(canvasId);
+    await saver?.flush();
+    const key = crypto.randomUUID();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const canvas = await api.restoreCanvasRevision(canvasId, revisionId, key);
+        this.store.applyCanvasMeta(canvas);
+        saver?.remoteVersion(canvas.version);
+        return canvas;
+      } catch (error) {
+        if (attempt < 2 && error instanceof NetworkError) continue;
+        this.setError(error);
+        return null;
+      }
+    }
+  }
+
+  async labelCanvasRevision(canvasId: string, revisionId: string, label: string | null): Promise<CanvasRevisionMeta | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.labelCanvasRevision(canvasId, revisionId, label);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /** Erase a version's body (§4.7: owners and administrators; in a DM its creator). The server audits it. */
+  async eraseCanvasRevision(canvasId: string, revisionId: string): Promise<CanvasRevisionMeta | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.eraseCanvasRevision(canvasId, revisionId);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  private readonly attachmentMetas = new Map<string, Promise<AttachmentOut | null>>();
+
+  /** A canvas image's metadata (name, type, shape), asked once per session; null when it cannot be read. */
+  attachmentMeta(attachmentId: string): Promise<AttachmentOut | null> {
+    const api = this.api;
+    if (!api) return Promise.resolve(null);
+    let pending = this.attachmentMetas.get(attachmentId);
+    if (!pending) {
+      pending = api.getAttachment(attachmentId).catch((error: unknown) => {
+        if (!(error instanceof ApiError)) this.attachmentMetas.delete(attachmentId); // network: ask again later
+        return null;
+      });
+      this.attachmentMetas.set(attachmentId, pending);
+    }
+    return pending;
+  }
+
+  /** An image pasted or dropped into a canvas: uploaded as pending; the save that names it binds it (§4.10). */
+  async uploadCanvasImage(file: File): Promise<AttachmentOut | null> {
+    if (!this.api) return null;
+    try {
+      const uploaded = await this.api.uploadAttachment(file, file.name || "image.png");
+      this.attachmentMetas.set(uploaded.id, Promise.resolve(uploaded));
+      return uploaded;
     } catch (error) {
       this.setError(error);
       return null;

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { insertRule, outline, preserveCaret, setHeading, toggleTaskLine, toggleTasks } from "../src/ui/canvasText";
+import { attachmentRefs, insertImageLine, insertRule, outline, preserveCaret, setHeading, toggleTaskLine, toggleTasks } from "../src/ui/canvasText";
 import { continueStructure } from "../src/ui/composerEdit";
 import { type Block, parseBlocks, type Token } from "../src/ui/markdown";
 
@@ -92,5 +92,26 @@ describe("the editor's edits", () => {
       { level: 2, text: "B", line: 5 },
       { level: 3, text: "C", line: 6 },
     ]);
+  });
+});
+
+describe("images (M44)", () => {
+  const id = "0190a2b4-0000-7000-8000-000000000001";
+
+  it("an image goes in on a line of its own at the caret, the caret below it", () => {
+    expect(insertImageLine({ text: "", start: 0, end: 0 }, id)).toEqual({ text: `![](attachment:${id})\n`, start: 53, end: 53 });
+    const mid = insertImageLine({ text: "前の文後の文", start: 3, end: 3 }, id);
+    expect(mid.text).toBe(`前の文\n![](attachment:${id})\n後の文`);
+    expect(mid.text.slice(mid.start)).toBe("後の文");
+    const atLineStart = insertImageLine({ text: "a\nb", start: 2, end: 2 }, id, "図 1");
+    expect(atLineStart.text).toBe(`a\n![図 1](attachment:${id})\nb`);
+    const replacing = insertImageLine({ text: "a\nselected\n", start: 2, end: 10 }, id);
+    expect(replacing.text).toBe(`a\n![](attachment:${id})\n`);
+  });
+
+  it("counts the distinct attachments a body names (upper-case ids too, as Swift writes them)", () => {
+    const body = `![](attachment:${id})\n![x](attachment:${id.toUpperCase()})\n[資料](attachment:0190a2b4-0000-7000-8000-000000000002)`;
+    expect([...attachmentRefs(body)]).toEqual([id, "0190a2b4-0000-7000-8000-000000000002"]);
+    expect(parseBlocks(`![](attachment:${id.toUpperCase()})`, { canvas: true })).toEqual([{ kind: "image", alt: "", attachmentId: id, line: 0 }]);
   });
 });

@@ -4,12 +4,13 @@
  * as `@username` and are stored as `<@uuid>` (§4.2). Every change goes to the save loop (sync/canvasSave.ts); a body the
  * loop replaces (someone else's merged edits, a box ticked in the preview) comes back here with the caret kept.
  */
-import { AtSign, Bold, Code, Heading1, Heading2, Heading3, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Minus, Strikethrough, TextQuote } from "lucide-react";
+import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, TextQuote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { ApiError } from "../api/errors";
 import type { CanvasSaver } from "../sync/canvasSave";
 import type { AppController } from "../state/app";
-import { insertRule, preserveCaret, setHeading, toggleTasks } from "./canvasText";
+import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
@@ -69,10 +70,51 @@ export function CanvasEditor({ controller, saver, className, autoFocus = false }
 
   const change = (next: string) => {
     setText(next);
+    textRef.current = next;
     const stored = encode(next);
     wire.current = stored;
     saver.edit(stored);
   };
+
+  // M44 (§4.10): images pasted, dropped or picked are uploaded (pending) and put in as `![](attachment:<id>)` lines at
+  // the caret; the save that carries them binds them to the canvas. Only images: other files are not drawn in a canvas.
+  const textRef = useRef(text);
+  textRef.current = text;
+  const [uploading, setUploading] = useState(0);
+  const picker = useRef<HTMLInputElement>(null);
+  const insertImages = async (list: readonly File[]) => {
+    const images = list.filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) {
+      if (list.length > 0) controller.setError("キャンバスに入れられるのは画像だけです");
+      return;
+    }
+    if (attachmentRefs(saver.text).size + images.length > MAX_CANVAS_IMAGES) {
+      controller.setError(new ApiError(400, "too_many_canvas_images", "Too many images"));
+      return;
+    }
+    setUploading((n) => n + images.length);
+    for (const file of images) {
+      const uploaded = await controller.uploadCanvasImage(file);
+      setUploading((n) => n - 1);
+      if (!uploaded) continue;
+      const el = area.current;
+      const current = textRef.current;
+      const focused = !!el && document.activeElement === el;
+      const start = focused ? (el.selectionStart ?? current.length) : (lastCaret.current ?? current.length);
+      const end = focused ? (el.selectionEnd ?? start) : start;
+      const next = insertImageLine({ text: current, start: Math.min(start, current.length), end: Math.min(end, current.length) }, uploaded.id);
+      change(next.text);
+      lastCaret.current = next.start;
+      setCaret(next.start);
+      if (focused) {
+        const restore = () => el.setSelectionRange(next.start, next.end);
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
+        else setTimeout(restore, 0);
+      }
+    }
+  };
+  /** Where the caret was when the text area lost the focus (a toolbar's file picker takes it). */
+  const lastCaret = useRef<number | null>(null);
 
   /** A formatting edit on the current selection; focus and selection come back afterwards. */
   const edit = (transform: (state: EditState) => EditState | null): boolean => {
@@ -129,6 +171,7 @@ export function CanvasEditor({ controller, saver, className, autoFocus = false }
       return { text: s.text.slice(0, s.start) + lead + s.text.slice(s.end), start: s.start + lead.length, end: s.start + lead.length };
     }) },
     { icon: <Minus size={16} />, label: "区切り線", run: () => edit(insertRule) },
+    { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => picker.current?.click() },
   ];
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -211,8 +254,45 @@ export function CanvasEditor({ controller, saver, className, autoFocus = false }
         onCompositionEnd={() => {
           composing.current = false;
         }}
-        onBlur={() => void saver.flush()}
+        onBlur={(event) => {
+          lastCaret.current = event.currentTarget.selectionStart ?? null;
+          void saver.flush();
+        }}
+        onPaste={(event) => {
+          const files = [...event.clipboardData.files];
+          if (files.some((file) => file.type.startsWith("image/"))) {
+            event.preventDefault();
+            void insertImages(files);
+          }
+        }}
+        onDragOver={(event) => {
+          if ([...event.dataTransfer.types].includes("Files")) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (event.dataTransfer.files.length === 0) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          void insertImages([...event.dataTransfer.files]);
+        }}
       />
+      <input
+        ref={picker}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        aria-label="キャンバスに入れる画像"
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          event.target.value = "";
+          void insertImages(files);
+        }}
+      />
+      {uploading > 0 && (
+        <div role="status" className="pointer-events-none absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-muted shadow">
+          <Loader2 size={12} className="animate-spin" /> 画像をアップロード中… ({uploading})
+        </div>
+      )}
       {candidates.length > 0 && (
         <ul className="absolute bottom-3 left-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="メンションの候補">
           {candidates.map((candidate, index) => (

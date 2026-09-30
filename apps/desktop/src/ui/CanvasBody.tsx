@@ -1,10 +1,9 @@
 /**
  * A canvas rendered (CANVAS.md §4.2): the message renderer's blocks plus tasks with boxes that tick (§4.4 「チェックの
- * 切り替え」), images of the canvas (M44 draws them; a placeholder until then) and rules. Headings get anchors for the
- * outline.
+ * 切り替え」), images of the canvas (M44: ui/CanvasImage.tsx) and rules. Headings get anchors for the outline.
  */
-import { ImageIcon } from "lucide-react";
 import type { AppController } from "../state/app";
+import { CanvasImage } from "./CanvasImage";
 import { parseBlocks } from "./markdown";
 import { BlockView, inline, type InlineOptions } from "./MessageBody";
 import { cn } from "./primitives";
@@ -27,6 +26,13 @@ export function CanvasBody({ body, controller, onToggleTask, className }: {
     groups: store.groups,
   };
   const blocks = parseBlocks(body, { canvas: true });
+  // An image keeps its element (and its fetched picture) while text above it changes: keyed by its id, not its place.
+  const seen = new Map<string, number>();
+  const imageKey = (id: string) => {
+    const n = (seen.get(id) ?? 0) + 1;
+    seen.set(id, n);
+    return `img:${id}:${n}`;
+  };
   return (
     <div className={cn("body canvas-body text-[15px] leading-7", className)}>
       {blocks.map((block, index) => {
@@ -50,12 +56,8 @@ export function CanvasBody({ body, controller, onToggleTask, className }: {
           );
         }
         if (block.kind === "image") {
-          // M44 draws the canvas's images (attachments bound to it); the reference is kept as it is.
-          return (
-            <div key={index} className="my-2 inline-flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm text-muted" data-attachment-id={block.attachmentId}>
-              <ImageIcon size={16} /> 画像{block.alt ? `: ${block.alt}` : ""}
-            </div>
-          );
+          // M44: the canvas's images (attachments bound to it), fetched with the token like a message's photos.
+          return <CanvasImage key={imageKey(block.attachmentId)} controller={controller} attachmentId={block.attachmentId} alt={block.alt} />;
         }
         if (block.kind === "heading" && block.line !== undefined) {
           const size = block.level === 1 ? "text-2xl" : block.level === 2 ? "text-xl" : "text-lg";
