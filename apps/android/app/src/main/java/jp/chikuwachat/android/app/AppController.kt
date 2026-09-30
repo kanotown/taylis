@@ -1257,27 +1257,6 @@ class AppController(private val app: Application) {
     private val emojiLoads = HashSet<String>()
 
     /** Fetches an emoji image once into the store's cache. */
-    /** C3: parents asked for their repliers this run (one GET each at most). */
-    private val replierLoads = HashSet<String>()
-
-    /**
-     * C3: a thread parent stored before the server had `reply_user_ids` (migration 0049 filled it without moving
-     * updated_seq, so the delta never brings it) shows without avatars; fetch it once when its line is on screen.
-     * An older server sends no list, and the row is not asked for again until the next start.
-     */
-    fun loadRepliers(message: MessageState) {
-        if (message.replyCount <= 0 || message.replyUserIds.isNotEmpty() || message.pending || message.seq == null) return
-        if (!replierLoads.add(message.id)) return
-        val api = api ?: return
-        scope.launch {
-            try {
-                store.upsertMessage(api.message(message.id))
-            } catch (_: Exception) {
-                // the speech bubble stays in place of the avatars
-            }
-        }
-    }
-
     fun loadEmojiImage(emoji: CustomEmojiOut) {
         if (store.emojiImages.containsKey(emoji.id) || !emojiLoads.add(emoji.id)) return
         scope.launch {

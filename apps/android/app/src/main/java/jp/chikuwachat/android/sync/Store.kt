@@ -997,12 +997,7 @@ class Store(private val persistence: Persistence? = null) {
         }
         val local = bucket[message.id]
         if (local != null && message.updatedSeq <= local.updatedSeq) {
-            // C3: the server filled reply_user_ids for existing parents without moving updated_seq (migration 0049), so
-            // a row stored before has none; the same version from the server brings the list.
-            val filled = if (message.updatedSeq == local.updatedSeq && message.replyUserIds != local.replyUserIds && message.replyUserIds.isNotEmpty()) {
-                local.copy(replyUserIds = message.replyUserIds)
-            } else null
-            val merged = withMyVotes(filled ?: local, message) ?: filled ?: return false
+            val merged = withMyVotes(local, message) ?: return false
             bucket[message.id] = merged
             persist { it.saveMessage(merged) }
             emit()

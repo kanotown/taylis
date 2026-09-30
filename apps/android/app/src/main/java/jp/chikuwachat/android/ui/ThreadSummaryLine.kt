@@ -17,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,8 +41,7 @@ private val REPLIER_STEP = 17.dp
  * Without repliers (an older server, or a stored row from before) the speech bubble stands in for the avatars.
  */
 @Composable
-fun ThreadSummaryLine(message: MessageState, store: Store, onOpen: () -> Unit, onNeedRepliers: (MessageState) -> Unit = {}) {
-    LaunchedEffect(message.id, message.replyUserIds.isEmpty()) { if (message.replyUserIds.isEmpty()) onNeedRepliers(message) }
+fun ThreadSummaryLine(message: MessageState, store: Store, onOpen: () -> Unit) {
     val repliers = Timeline.replierAvatars(message.replyUserIds)
     val last = message.lastReplyAt?.let { Timeline.lastReplyLabel(it) } ?: ""
     val count = "${message.replyCount} 件の返信"

@@ -85,6 +85,8 @@ ThreadState
 - 同時の返信: 返信は親を読んだ後にチャンネルの行ロック (seq の採番) を取るので、ロックの後に親を読み直してから
   `reply_count` と `reply_user_ids` を進める (読み直さないと、間に確定した返信の分が失われる)。
 - Mattermost の取り込み (M18) はバッチごとに対象の親を返信から数え直す。移行 0049 は既存の親を同じ規則で埋める。
+  埋めた親はチャンネルごとに seq を 1 つ取り (編集と同じ)、その値を `updated_seq` にする。これで既に親を持っている端末にも
+  差分同期 (SYNC_PROTOCOL.md §7.3) で一覧が届く (updated_seq を動かさないと、次の返信まで一覧が空のままだった)。
 - イベント: 返信の作成 / 削除の `parent_thread` にも `reply_user_ids` を入れる (SYNC_PROTOCOL.md §6)。親への
   それ以外の変更 (`message.updated`) は `MessageOut` ごと届くのでそのまま入っている。
 

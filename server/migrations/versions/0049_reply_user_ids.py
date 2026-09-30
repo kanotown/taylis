@@ -7,7 +7,10 @@ Create Date: 2026-09-30
 - messages.reply_user_ids uuid[]: the distinct authors of a parent's live replies, most recent
   reply first, at most 5. Kept with reply_count / last_reply_at in the reply's transaction.
 - Backfill: every parent that has replies, from its rows (the same rule as the app's
-  messages repository `refresh_reply_user_ids`).
+  messages repository `refresh_reply_user_ids`). Each channel with such parents takes one seq, as an
+  edit does, and the parents take it as their updated_seq, so a device that already holds them gets
+  the lists through the delta (SYNC_PROTOCOL.md §7.3); without it they stayed empty there until the
+  next reply.
 """
 
 from collections.abc import Sequence
@@ -42,6 +45,18 @@ def upgrade() -> None:
             LIMIT 5
         )
         WHERE p.id IN (SELECT DISTINCT parent_id FROM messages WHERE parent_id IS NOT NULL)
+        """
+    )
+    op.execute(
+        """
+        WITH bumped AS (
+            UPDATE channels AS c SET last_seq = c.last_seq + 1
+            WHERE c.id IN (SELECT DISTINCT channel_id FROM messages WHERE reply_user_ids <> '{}')
+            RETURNING c.id, c.last_seq
+        )
+        UPDATE messages AS m SET updated_seq = b.last_seq
+        FROM bumped AS b
+        WHERE m.channel_id = b.id AND m.reply_user_ids <> '{}'
         """
     )
 
