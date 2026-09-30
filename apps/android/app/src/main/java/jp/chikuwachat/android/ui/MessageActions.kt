@@ -87,6 +87,30 @@ object QuickReactions {
     }
 
     fun pick(recent: List<String>, count: Int = 6): List<String> = (recent.filterNot { custom.matches(it) } + REACTION_PALETTE).distinct().take(count)
+
+    /**
+     * M50: the sheet's row. What I chose in 自分 → 表示 (UserMe.quick_reactions, the same on all my devices) is the row,
+     * exactly those in that order; not chosen (null, or a server before M50), [pick] of this device's recent ones.
+     */
+    fun row(chosen: List<String>?, recent: List<String>, count: Int = COUNT): List<String> =
+        chosen?.filter { it.isNotEmpty() }?.distinct()?.takeIf { it.isNotEmpty() }?.take(count) ?: pick(recent, count)
+
+    /** The slots 自分 → 表示 edits. */
+    const val COUNT = 6
+
+    /**
+     * M50: slot `index` becomes `glyph`. The server takes each emoji once, so one already in another slot swaps places
+     * with this slot's; an empty slot (past the end) adds it at the end, unless it is already there.
+     */
+    fun replace(current: List<String>, index: Int, glyph: String): List<String> {
+        val at = current.indexOf(glyph)
+        if (index !in current.indices) return if (at >= 0 || current.size >= COUNT) current else current + glyph
+        if (at == index) return current
+        return current.toMutableList().apply {
+            if (at >= 0) this[at] = this[index]
+            this[index] = glyph
+        }
+    }
 }
 
 /**
@@ -151,8 +175,9 @@ fun MessageMenu(
             @Composable
             fun item(label: String, icon: ImageVector, danger: Boolean = false, action: () -> Unit) {
                 val color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                // M50: 48 dp rows (were 52: 14 dp above and below a 24 sp line), the touch target Material asks for.
                 Row(
-                    Modifier.fillMaxWidth().clickable { close(action) }.padding(horizontal = 24.dp, vertical = 14.dp),
+                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable { close(action) }.padding(horizontal = 24.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))

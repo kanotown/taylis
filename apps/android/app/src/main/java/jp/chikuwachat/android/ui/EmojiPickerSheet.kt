@@ -125,9 +125,11 @@ fun EmojiPickerSheet(
      */
     store: Store,
     onNeedImage: ((CustomEmojiOut) -> Unit)? = null,
+    /** M50: standard emoji only (no 「カスタム」, none in 「よく使う」 or the results), for the quick reactions' slots. */
+    plainOnly: Boolean = false,
 ) {
     val version by store.version.collectAsState()
-    val custom = remember(version) { store.customEmoji.values.toList() }
+    val custom = remember(version, plainOnly) { if (plainOnly) emptyList() else store.customEmoji.values.toList() }
     val images = store.emojiImages
     val animations = store.emojiAnimations
     val sheet = rememberModalBottomSheetState()

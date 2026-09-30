@@ -664,7 +664,7 @@ fun MessageRow(
             onCopyText = if (message.body.isNotEmpty()) ({ controller.copyText(message) }) else null,
             onRemind = { reminding = true },
             onShare = { sharing = true },
-            quick = QuickReactions.pick(QuickReactions.read(controller.prefs)),
+            quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs)),  // M50
             onMoreReactions = { pickingReaction = true },
             onShowReactors = if (message.reactions.isEmpty()) null else ({ showingReactors = true }),
             reacted = store.me?.id?.let { me -> message.reactions.filter { me in it.userIds }.map { it.emoji }.toSet() } ?: emptySet(),

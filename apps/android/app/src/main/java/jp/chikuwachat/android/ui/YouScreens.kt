@@ -5,6 +5,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -156,7 +162,7 @@ private fun SettingsScreen(controller: AppController, version: Int, page: Settin
         SettingsPage.STATUS -> StatusScreen(controller, version, onDone = onClose)
         SettingsPage.QUIET_HOURS -> QuietHoursScreen(controller, version, onDone = onClose)
         SettingsPage.NOTIFICATIONS -> NotificationSettingsScreen(controller, version)
-        SettingsPage.APPEARANCE -> AppearanceScreen(controller)
+        SettingsPage.APPEARANCE -> AppearanceScreen(controller, version)
         SettingsPage.PROFILE -> ProfileEditScreen(controller, version)
         SettingsPage.ACCOUNT -> AccountScreen(controller, onOpen)
         SettingsPage.PASSWORD -> PasswordScreen(controller)
@@ -551,9 +557,13 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
     }
 }
 
-/** 「表示」: 端末に合わせる / ライト / ダーク and 「連続した投稿をまとめる」 (M47), kept on this device. */
+/**
+ * 「表示」: 端末に合わせる / ライト / ダーク and 「連続した投稿をまとめる」 (M47), kept on this device; M50 「リアクションの候補」,
+ * on my account.
+ */
 @Composable
-private fun AppearanceScreen(controller: AppController) {
+private fun AppearanceScreen(controller: AppController, version: Int) {
+    val me = remember(version) { meOf(controller) }
     ScreenColumn {
         SectionTitle("テーマ")
         Column(Modifier.selectableGroup()) {
@@ -568,6 +578,61 @@ private fun AppearanceScreen(controller: AppController) {
             checked = controller.groupPosts,
         ) { controller.changeGroupPosts(it) }
         Hint("この端末だけの設定です", Modifier.padding(top = 4.dp))
+        // Only against a server that sends the field (null or a list): an older one would drop what is saved here.
+        if (me != null && me.knowsQuickReactions) QuickReactionsSection(controller, me)
+    }
+}
+
+/**
+ * M50 (tester request, 2026-10-01): the long-press sheet's six reactions. A slot opens the picker (standard emoji only,
+ * as the server takes); the pick replaces the slot, or swaps with the slot that has it already. Each change saves at once.
+ * Not chosen yet, the slots show today's row (recent first, then the defaults), and the first change keeps it.
+ */
+@Composable
+private fun QuickReactionsSection(controller: AppController, me: UserMe) {
+    val scope = rememberCoroutineScope()
+    val chosen = me.quickReactions
+    val slots = chosen ?: QuickReactions.pick(QuickReactions.read(controller.prefs))
+    var saving by remember { mutableStateOf(false) }
+    var picking by rememberSaveable { mutableStateOf<Int?>(null) }
+    fun save(value: List<String>?) {
+        scope.launch {
+            saving = true
+            controller.setQuickReactions(value)  // a failure shows the app's error, the slots stay as they were
+            saving = false
+        }
+    }
+    SectionTitle("リアクションの候補")
+    Row(Modifier.fillMaxWidth().widthIn(max = 376.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        repeat(QuickReactions.COUNT) { index ->
+            val glyph = slots.getOrNull(index)
+            val shape = RoundedCornerShape(12.dp)
+            Box(
+                Modifier.weight(1f).height(52.dp).clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                    .clickable(enabled = !saving, role = Role.Button, onClickLabel = "変更") { picking = index }
+                    .semantics { contentDescription = "候補 ${index + 1}: ${glyph ?: "空き"}" },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (glyph != null) Text(glyph, fontSize = 24.sp, modifier = Modifier.clearAndSetSemantics {})
+                else Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    Hint("長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。", Modifier.padding(top = 6.dp))
+    if (chosen == null) Hint("いまは最近使った絵文字から並んでいます。", Modifier.padding(top = 2.dp))
+    TextButton(enabled = !saving && chosen != null, onClick = { save(null) }) { Text("元に戻す") }
+    picking?.let { index ->
+        EmojiPickerSheet(
+            recent = QuickReactions.read(controller.prefs), store = controller.store, plainOnly = true,
+            onDismiss = { picking = null },
+            onPick = { glyph ->
+                picking = null
+                val next = QuickReactions.replace(slots, index, glyph)
+                if (next != chosen) save(next)
+            },
+        )
     }
 }
 

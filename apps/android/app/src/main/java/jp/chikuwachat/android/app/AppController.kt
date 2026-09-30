@@ -13,6 +13,7 @@ import java.util.UUID
 import java.time.ZonedDateTime
 import jp.chikuwachat.android.ui.Schedule
 import jp.chikuwachat.android.api.ScheduledOut
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import jp.chikuwachat.android.ui.Permalink
 import android.content.ClipboardManager
@@ -1681,6 +1682,14 @@ class AppController(private val app: Application) {
 
     /** M39: 「リアクションのバナー」, a push when someone reacts to my message (the activity lists it either way). */
     suspend fun setNotifyReactions(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_reactions", on) })
+
+    /**
+     * M50: the long-press sheet's reactions (1–6 plain emoji, in order; the server checks), or null for 「元に戻す」 (recent
+     * first, then the defaults). On my account: my other devices take it with UserMe, as they do notify_reactions.
+     */
+    suspend fun setQuickReactions(emoji: List<String>?): Boolean = updateProfileJson(buildJsonObject {
+        if (emoji == null) put("quick_reactions", JsonNull) else put("quick_reactions", JsonArray(emoji.map { JsonPrimitive(it) }))
+    })
 
     /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
     suspend fun updateProfile(fields: Map<String, String?>): Boolean =
