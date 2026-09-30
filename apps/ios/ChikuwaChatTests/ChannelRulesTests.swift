@@ -368,6 +368,33 @@ final class TimesSnapshotTests: XCTestCase {
         let emoji = behind.sheet(isPresented: .constant(true)) { EmojiPickerView { _ in } }
         let image = try render(emoji, size: CGSize(width: 393, height: 852), name: "sheet-emoji.png", settle: 1.2)
         XCTAssertGreaterThan(image.size.width, 0)
+        // M50: my chosen quick reactions, exactly (three here), with the thinner rows. Writes sheet-actions-chosen.png.
+        var chosen = try XCTUnwrap(store.me)
+        chosen.quickReactions = .chosen(["🍤", "🙏", "💯"])
+        store.setMe(chosen)
+        let mine = behind.sheet(isPresented: .constant(true)) {
+            MessageActionsSheet(message: message, controller: controller, canThread: true, canMarkUnread: true, onMarkUnread: {}, followUp: { _ in })
+        }
+        _ = try render(mine, size: CGSize(width: 393, height: 852), name: "sheet-actions-chosen.png", settle: 1.2)
+    }
+
+    /// M50: 自分 → 表示's 「リアクションの候補」 — chosen (three slots and three empty), not chosen (the recent-first six,
+    /// 元に戻す disabled), and hidden for a server that does not know the field. Writes appearance-quick-*.png.
+    func testQuickReactionSettingsRender() throws {
+        let controller = AppController()
+        let store = controller.store
+        var me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                        email: nil, mustChangePassword: false)
+        let view = { NavigationStack { AppearanceView(controller: controller) } }
+        for (setting, name) in [(QuickReactionsSetting.chosen(["🍤", "🙏", "💯"]), "chosen"), (.unset, "unset"), (.unsupported, "older-server")] {
+            me.quickReactions = setting
+            store.setMe(me)
+            _ = try render(view(), size: CGSize(width: 393, height: 1000), name: "appearance-quick-\(name).png")
+        }
+        me.quickReactions = .chosen(["🍤", "🙏", "💯"])
+        store.setMe(me)
+        let dark = try render(view().environment(\.colorScheme, .dark), size: CGSize(width: 393, height: 1000), name: "appearance-quick-chosen-dark.png")
+        XCTAssertGreaterThan(dark.size.width, 0)
     }
 
     /// 「新しいメッセージ」 (the ✏️ button): rows tighter than the home's (tester, 2026-09-30).

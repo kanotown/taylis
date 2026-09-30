@@ -114,7 +114,7 @@ struct YouView: View {
         case .pause: PauseNotificationsView(controller: controller)
         case .quietHours: QuietHoursView(controller: controller)
         case .notifications: NotificationSettingsView(controller: controller)
-        case .appearance: AppearanceView()
+        case .appearance: AppearanceView(controller: controller)
         case .profile: ProfileEditView(controller: controller)
         case .account: AccountView(controller: controller)
         case .password: PasswordChangeView(controller: controller)
@@ -400,35 +400,88 @@ struct NotificationSettingsView: View {
 
 // MARK: - 表示
 
-/// 端末に合わせる / ライト / ダーク, on this device only; the whole app follows it (RootView).
+/// 端末に合わせる / ライト / ダーク, on this device only; the whole app follows it (RootView). M50: the long-press quick
+/// reactions, for all my devices.
 struct AppearanceView: View {
+    @Bindable var controller: AppController
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @AppStorage(Timeline.groupingKey) private var grouping = false
+    @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
+    /// The slot whose emoji the picker is choosing.
+    @State private var slot: Int?
+
+    private var me: UserMe? { controller.store.me ?? controller.me }
+    /// What the long-press sheet shows now: my choice, or the recent-first rule's six.
+    private var quickRow: [String] { QuickReactions.row(chosen: me?.quickReactions.chosen, recent: recentRaw) }
 
     var body: some View {
         Form {
-            Section {
-                Picker("テーマ", selection: $theme) {
-                    ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text("テーマ")
-            } footer: {
-                Text("この端末だけの設定です。")
-            }
-            // M47: this device only, off by default; open conversations and threads follow at once (they read it too).
-            Section {
-                Toggle("連続した投稿をまとめる", isOn: $grouping)
-            } header: {
-                Text("メッセージ")
-            } footer: {
-                Text("オフ: 投稿ごとにアイコンと名前を表示します。オン: 同じ人の続けての投稿をまとめます (チャンネル・DM・スレッド)。この端末だけの設定です。")
-            }
+            // M50: a server before M50 leaves `quick_reactions` out of UserMe; it could not keep the choice, so no section.
+            themeAndMessages
+            if let setting = me?.quickReactions, setting.isSupported { quickReactionsSection(setting) }
         }
         .navigationTitle("表示")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: Binding(get: { slot != nil }, set: { if !$0 { slot = nil } })) {
+            // Standard emoji only (no custom list; 「よく使う」 then leaves custom ones out), and choosing is not using.
+            EmojiPickerView(countsUse: false) { glyph in
+                guard let index = slot, CustomEmoji.name(of: glyph) == nil else { return }
+                let row = QuickReactions.replacing(quickRow, slot: index, with: glyph)
+                Task { _ = await controller.setQuickReactions(row) }
+            }
+        }
+    }
+
+    private func quickReactionsSection(_ setting: QuickReactionsSetting) -> some View {
+        let row = quickRow
+        return Section {
+            HStack(spacing: 0) {
+                ForEach(0..<QuickReactions.count, id: \.self) { index in
+                    let glyph = index < row.count ? row[index] : nil
+                    Button { slot = index } label: {
+                        Group {
+                            if let glyph { Text(glyph).font(.system(size: 26)) } else { Image(systemName: "plus").font(.system(size: 18)).foregroundStyle(.secondary) }
+                        }
+                        .frame(width: 44, height: 44)
+                        .background(Color(.tertiarySystemFill), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel(glyph.map { "候補 \(index + 1): \($0)" } ?? "候補 \(index + 1): 空き")
+                    .accessibilityHint("タップして絵文字を選びます")
+                }
+            }
+            .padding(.vertical, 4)
+            Button("元に戻す") { Task { _ = await controller.setQuickReactions(nil) } }
+                .disabled(setting == .unset)
+        } header: {
+            Text("リアクションの候補")
+        } footer: {
+            Text("長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。" + (setting == .unset ? "選ぶまでは最近使った絵文字が先に並びます。" : ""))
+        }
+    }
+
+    @ViewBuilder
+    private var themeAndMessages: some View {
+        Section {
+            Picker("テーマ", selection: $theme) {
+                ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } header: {
+            Text("テーマ")
+        } footer: {
+            Text("この端末だけの設定です。")
+        }
+        // M47: this device only, off by default; open conversations and threads follow at once (they read it too).
+        Section {
+            Toggle("連続した投稿をまとめる", isOn: $grouping)
+        } header: {
+            Text("メッセージ")
+        } footer: {
+            Text("オフ: 投稿ごとにアイコンと名前を表示します。オン: 同じ人の続けての投稿をまとめます (チャンネル・DM・スレッド)。この端末だけの設定です。")
+        }
     }
 }
 

@@ -63,11 +63,62 @@ struct UserMe: Codable, Equatable {
     /// where every account has one.
     var hasPassword: Bool? = nil
     var passwordSet: Bool { hasPassword ?? true }
+    /// M50: the long-press quick reactions I chose, the same on every device. A server before M50 leaves the key out
+    /// (`.unsupported`: the setting is hidden); null is `.unset` (the recent-first rule).
+    var quickReactions: QuickReactionsSetting = .unsupported
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
                    title: title, statusText: statusText, statusEmoji: statusEmoji, statusExpiresAt: statusExpiresAt,
                    dndUntil: dndUntil, quietHours: quietHours, avatarUpdatedAt: avatarUpdatedAt)
+    }
+}
+
+/// M50: `UserMe.quick_reactions`, where a missing key (a server that does not know the field) differs from null (not
+/// chosen). The overloads below let UserMe's synthesized coding tell the two apart, from the server and from the cache.
+enum QuickReactionsSetting: Codable, Equatable {
+    case unsupported
+    case unset
+    case chosen([String])
+
+    /// The emoji I chose, in order; nil when none are (or the server has no such setting).
+    var chosen: [String]? {
+        if case .chosen(let list) = self { return list }
+        return nil
+    }
+
+    var isSupported: Bool { self != .unsupported }
+
+    /// Only reached as a bare value; inside UserMe the keyed overloads decide.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = container.decodeNil() ? .unset : .chosen(try container.decode([String].self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .unsupported, .unset: try container.encodeNil()
+        case .chosen(let list): try container.encode(list)
+        }
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode(_ type: QuickReactionsSetting.Type, forKey key: Key) throws -> QuickReactionsSetting {
+        guard contains(key) else { return .unsupported }
+        if try decodeNil(forKey: key) { return .unset }
+        return .chosen(try decode([String].self, forKey: key))
+    }
+}
+
+extension KeyedEncodingContainer {
+    mutating func encode(_ value: QuickReactionsSetting, forKey key: Key) throws {
+        switch value {
+        case .unsupported: break  // left out, as the older server did
+        case .unset: try encodeNil(forKey: key)
+        case .chosen(let list): try encode(list, forKey: key)
+        }
     }
 }
 
