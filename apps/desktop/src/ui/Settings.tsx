@@ -1,4 +1,4 @@
-import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Keyboard, Laptop, Lock, LogOut, Monitor, Moon, Palette, Plus, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Keyboard, Laptop, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -239,7 +239,7 @@ export function SettingsSectionBody({ controller, section, onDone }: { controlle
     case "notifications":
       return <NotificationsSection controller={controller} />;
     case "appearance":
-      return <AppearanceSection />;
+      return <AppearanceSection controller={controller} />;
     case "input":
       return <InputSection controller={controller} />;
     case "profile":
@@ -469,20 +469,31 @@ function NotificationsSection({ controller }: { controller: AppController }) {
   );
 }
 
-/** 「表示」: 端末に合わせる / ライト / ダーク, on this device only. */
-function AppearanceSection() {
+/** 「表示」: 端末に合わせる / ライト / ダーク and 「連続した投稿をまとめる」 (M47), on this device only. */
+function AppearanceSection({ controller }: { controller: AppController }) {
   const theme = useTheme();
   return (
-    <div className="space-y-2">
-      <div role="radiogroup" aria-label="表示" className="rounded-xl border border-line p-1">
-        {THEME_OPTIONS.map(([value, label]) => (
-          <label key={value} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
-            <input type="radio" name="theme" className="h-4 w-4 accent-[var(--accent)]" checked={theme === value} onChange={() => { writeTheme(value); }} />
-            {label}
-          </label>
-        ))}
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div role="radiogroup" aria-label="表示" className="rounded-xl border border-line p-1">
+          {THEME_OPTIONS.map(([value, label]) => (
+            <label key={value} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
+              <input type="radio" name="theme" className="h-4 w-4 accent-[var(--accent)]" checked={theme === value} onChange={() => { writeTheme(value); }} />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted">この端末だけの設定です。「端末に合わせる」は OS のライト / ダークに従います。</p>
       </div>
-      <p className="text-xs text-muted">この端末だけの設定です。「端末に合わせる」は OS のライト / ダークに従います。</p>
+      {/* M47: the open timelines and threads follow a change at once (AppController.groupPosts). */}
+      <label className={cn(CARD, "cursor-pointer")}>
+        <Rows3 size={18} className="text-muted" />
+        <span className="min-w-0 flex-1 text-sm">
+          連続した投稿をまとめる
+          <span className="block text-xs text-muted">オフ: 投稿ごとにアイコンと名前を表示 / オン: 同じ人の続けての投稿をまとめる (チャンネル・DM・スレッド)</span>
+        </span>
+        <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
+      </label>
     </div>
   );
 }
