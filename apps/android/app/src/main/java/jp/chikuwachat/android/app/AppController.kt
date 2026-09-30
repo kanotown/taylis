@@ -212,6 +212,14 @@ class AppController(private val app: Application) {
         jp.chikuwachat.android.ui.Appearance.write(prefs, value)
         appearance = value
     }
+    /** M47: 「連続した投稿をまとめる」 (off by default), kept on this device; the open conversation redraws at once. */
+    var groupPosts by mutableStateOf(jp.chikuwachat.android.ui.PostGrouping.read(prefs))
+        private set
+
+    fun changeGroupPosts(on: Boolean) {
+        jp.chikuwachat.android.ui.PostGrouping.write(prefs, on)
+        groupPosts = on
+    }
     /** FCM token registration with every signed-in workspace (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
     val push = PushCenter(scope, { fetchFcmToken(app) }, { pushTargets() }, { deleteFcmToken(app) })
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()

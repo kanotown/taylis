@@ -148,7 +148,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     val shownChannelId by rememberUpdatedState(channelId)
     // Drawn only where the loaded range reaches (§10.1 rule 3): above the oldest loaded row it would be a lie.
     val mark = if (focus != null) null else ReadGate.dividerMark(heldUnread, capturedMark, shown.oldestLoadedSeq)
-    val items = remember(messages, channelId, mark) { Timeline.build(messages, mark, me).asReversed() }
+    // M47: switching 「連続した投稿をまとめる」 only changes rows' headers, never which rows there are or their keys.
+    val grouping = controller.groupPosts
+    val items = remember(messages, channelId, mark, grouping) { Timeline.build(messages, mark, me, grouping = grouping).asReversed() }
     // What the latest composition shows, for the coroutines that wait for it (positioning after a catch-up, the jump).
     val currentItems by rememberUpdatedState(items)
     val currentMessages by rememberUpdatedState(messages)

@@ -9,6 +9,7 @@ import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.MainTab
 import jp.chikuwachat.android.ui.MainTabs
 import jp.chikuwachat.android.ui.PauseChoice
+import jp.chikuwachat.android.ui.PostGrouping
 import jp.chikuwachat.android.ui.Route
 import jp.chikuwachat.android.ui.SettingsPage
 import jp.chikuwachat.android.ui.YouSettings
@@ -220,6 +221,16 @@ class YouTest {
         assertTrue(Appearance.SYSTEM.isDark(systemDark = true))
         assertFalse(Appearance.LIGHT.isDark(systemDark = true))
         assertTrue(Appearance.DARK.isDark(systemDark = false))
+    }
+
+    @Test fun groupingPostsIsKeptOnTheDeviceAndOffByDefault() {
+        val prefs = MemoryStore()
+        assertFalse(PostGrouping.read(prefs))
+        PostGrouping.write(prefs, true)
+        assertTrue(PostGrouping.read(prefs))
+        PostGrouping.write(prefs, false)
+        assertFalse(PostGrouping.read(prefs))
+        assertNull(prefs.values["group_posts"]) // off leaves no key behind
     }
 
     @Test fun theBrandIsThePrimaryColourInLight() {

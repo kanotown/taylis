@@ -36,6 +36,7 @@ import jp.chikuwachat.android.sync.ReadGate
 import jp.chikuwachat.android.sync.toOut
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 /** Thread list rows (SYNC_PROTOCOL.md §10.2, §10.3): the parent and the reply count line come before the replies. */
 object ThreadRows {
@@ -53,6 +54,20 @@ object ThreadRows {
         if (focus >= 0) return OpenPosition.Center(focus + header)
         val first = lastReadSeq?.let { ReadGate.firstUnreadRow(replies, it, meId) } ?: return OpenPosition.Bottom
         return OpenPosition.Top(replies.indexOf(first) + header)
+    }
+
+    /**
+     * M47: the replies drawn without their picture and name (by rowKey), with the channel's rule (Timeline.continues);
+     * 「新しい返信」 before `firstUnreadId` starts a new group. None when the device does not group; the parent is never among them.
+     */
+    fun compactKeys(replies: List<MessageState>, firstUnreadId: String?, grouping: Boolean, zone: ZoneId = ZoneId.systemDefault()): Set<String> {
+        if (!grouping) return emptySet()
+        val keys = HashSet<String>()
+        replies.forEachIndexed { index, reply ->
+            val previous = replies.getOrNull(index - 1)?.takeIf { reply.id != firstUnreadId }
+            if (Timeline.continues(previous, reply, zone, inThread = true)) keys.add(reply.rowKey)
+        }
+        return keys
     }
 }
 
@@ -82,6 +97,8 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     // 「新しい返信」 sits before the first reply from someone else past my read position.
     val me = store.me?.id
     val firstUnreadId = shown.lastReadSeq?.let { ReadGate.firstUnreadRow(replies, it, me)?.id }
+    val grouping = controller.groupPosts
+    val compactKeys = remember(replies, firstUnreadId, grouping) { ThreadRows.compactKeys(replies, firstUnreadId, grouping) }
     val focusId = controller.messageFocus?.takeIf { it.parentId == parentId }?.messageId
     // §10.2: the whole thread was fetched in this open (the engine drops it with the channel's rows) and my read
     // position is known; before that the held replies may be only the new ones that arrived live.
@@ -177,7 +194,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             items(replies, key = { it.rowKey }) { reply ->
                 Column {
                     if (reply.id == firstUnreadId) NewRepliesDivider()
-                    ThreadMessage(reply, store, controller, version)
+                    ThreadMessage(reply, store, controller, version, compact = reply.rowKey in compactKeys)
                 }
             }
         }
@@ -207,9 +224,9 @@ private fun NewRepliesDivider() {
 }
 
 @Composable
-private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController, version: Int) {
+private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.sync.Store, controller: AppController, version: Int, compact: Boolean = false) {
     MessageRow(
-        message, store, controller, version,
+        message, store, controller, version, compact = compact,
         canEdit = !message.pending && message.senderId == store.me?.id,
         canDelete = !message.pending && (message.senderId == store.me?.id || controller.isAdmin),
         onRetry = { message.clientMsgId?.let { key -> controller.scope.launch { controller.engine?.retryFailed(key) } } },

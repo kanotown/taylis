@@ -77,12 +77,31 @@ object Timeline {
         return (hash % 360).toInt()
     }
 
+    /**
+     * M47 「連続した投稿をまとめる」: whether `message` goes under `previous` without its picture and name. The same
+     * sender, people's posts (a system row keeps its own header), the same day and less than GROUP_WINDOW_SECONDS apart.
+     * In the channel a reply also sent to it (M15c) keeps its own header; in a thread every row is a reply. Callers
+     * pass a null `previous` after a separator (a day, 「新着メッセージ」, 「新しい返信」).
+     * Pending messages group like sent ones: my second message must not show the header until the server confirms it
+     * and then drop it (the jolt when sending several in a row).
+     */
+    fun continues(previous: MessageState?, message: MessageState, zone: ZoneId = ZoneId.systemDefault(), inThread: Boolean = false): Boolean {
+        if (previous == null || previous.senderId != message.senderId) return false
+        if (previous.type != "user" || message.type != "user") return false
+        if (!inThread && (previous.isReply || message.isReply)) return false
+        val at = parse(message.createdAt, zone) ?: return false
+        val before = parse(previous.createdAt, zone) ?: return false
+        return at.toLocalDate() == before.toLocalDate() && kotlin.math.abs(at.toEpochSecond() - before.toEpochSecond()) < GROUP_WINDOW_SECONDS
+    }
+
+    /** `grouping` is this device's 「連続した投稿をまとめる」 (M47, off by default): off, every message has its own header. */
     fun build(
         messages: List<MessageState>,
         firstUnreadAfterSeq: Int?,
         meId: String?,
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
+        grouping: Boolean = false,
     ): List<TimelineItem> {
         val items = ArrayList<TimelineItem>(messages.size + 8)
         var previous: MessageState? = null
@@ -102,13 +121,7 @@ object Timeline {
                 unreadPlaced = true
                 previous = null
             }
-            val prev = previous
-            // A reply also sent to the channel (M15c) keeps its own header.
-            // Pending messages group like sent ones: my second message must not show the header until the server
-            // confirms it and then drop it (the jolt when sending several in a row).
-            val compact = prev != null && prev.senderId == message.senderId && !prev.isReply && !message.isReply &&
-                (parse(prev.createdAt, zone)?.let { kotlin.math.abs(at.toEpochSecond() - it.toEpochSecond()) < GROUP_WINDOW_SECONDS } ?: false)
-            items.add(TimelineItem.Message(message, compact))
+            items.add(TimelineItem.Message(message, grouping && continues(previous, message, zone)))
             previous = message
         }
         return items

@@ -551,7 +551,7 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
     }
 }
 
-/** 「表示」: 端末に合わせる / ライト / ダーク, kept on this device. */
+/** 「表示」: 端末に合わせる / ライト / ダーク and 「連続した投稿をまとめる」 (M47), kept on this device. */
 @Composable
 private fun AppearanceScreen(controller: AppController) {
     ScreenColumn {
@@ -561,6 +561,12 @@ private fun AppearanceScreen(controller: AppController) {
                 RadioRow(value.label, selected = controller.appearance == value) { controller.changeAppearance(value) }
             }
         }
+        SectionTitle("メッセージ")
+        SwitchRow(
+            "連続した投稿をまとめる",
+            "オフ: 投稿ごとにアイコンと名前を表示\nオン: 同じ人の続けての投稿をまとめる (チャンネル・DM・スレッド)",
+            checked = controller.groupPosts,
+        ) { controller.changeGroupPosts(it) }
         Hint("この端末だけの設定です", Modifier.padding(top = 4.dp))
     }
 }
