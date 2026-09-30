@@ -137,6 +137,12 @@ struct ThreadView: View {
         .navigationTitle("スレッド")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // MOBILE_POLISH.md C7: which conversation, under the title (Slack; Android's two-line title).
+            if let channel = controller.store.channel(channelId) {
+                ToolbarItem(placement: .principal) {
+                    ThreadTitle(conversation: channelTitle(channel, store: controller.store))
+                }
+            }
             if let state = entry?.state, controller.store.channel(channelId)?.isMember == true {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -336,6 +342,22 @@ private struct EndMarker: View {
         Color.clear.frame(height: 1)
             .onGeometryChange(for: Bool.self) { $0.frame(in: .named("threadViewport")).minY <= viewportHeight + 1 } action: { onScreen($0) }
             .onDisappear { onScreen(false) } // a lazy thread let go of it
+    }
+}
+
+/// 「スレッド」 over the conversation it is in (「#general」, a DM's names), as the channel's own title and subtitle.
+struct ThreadTitle: View {
+    let conversation: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("スレッド").font(.headline).lineLimit(1)
+            if !conversation.isEmpty {
+                Text(conversation).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 

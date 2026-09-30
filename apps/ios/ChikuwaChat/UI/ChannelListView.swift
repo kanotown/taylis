@@ -60,43 +60,51 @@ struct ChannelListView: View {
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+            // MOBILE_POLISH.md H1: a section's title is its first row, not the List's header. A plain List pins its
+            // headers, and scrolled down 「チャンネル」 stuck under the translucent navigation bar over the rows going
+            // behind it. As rows they go up with the list, as Slack's do.
             if !layout.unread.isEmpty {
                 Section {
+                    headerRow(plainHeader("未読"))
                     ForEach(layout.unread) { row($0) }
-                } header: { plainHeader("未読") }
+                }
             }
             // M26: a folded section keeps its unread rows; its hints and actions go.
             if !layout.favorites.isEmpty {
                 let fold = folded.contains("favorites")
                 Section {
+                    headerRow(foldHeader("お気に入り", folded: fold) { toggleFold("favorites") })
                     ForEach(layout.favorites.rows) { row($0) }
-                } header: { foldHeader("お気に入り", folded: fold) { toggleFold("favorites") } }
+                }
             }
             customSections(layout.custom)
             let channelsFolded = folded.contains("channels")
             Section {
+                headerRow(foldHeader("チャンネル", folded: channelsFolded) { toggleFold("channels") })
                 ForEach(layout.channels.rows) { row($0) }
                 if !channelsFolded {
                     if layout.channels.isEmpty && !groupUnread { hint("参加中のチャンネルはありません。") }
                     if !controller.isGuest { addChannelRow }
                 }
-            } header: { foldHeader("チャンネル", folded: channelsFolded) { toggleFold("channels") } }
+            }
             if !layout.times.isEmpty || canMakeTimes {
                 let timesFolded = folded.contains("times")
                 Section {
+                    headerRow(foldHeader("Times", folded: timesFolded) { toggleFold("times") })
                     ForEach(layout.times.rows) { row($0) }
                     if canMakeTimes && !timesFolded { makeTimesRow }
-                } header: { foldHeader("Times", folded: timesFolded) { toggleFold("times") } }
+                }
             }
             let dmsFolded = folded.contains("dms")
             Section {
+                headerRow(foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") })
                 if layout.notesRow { notesRow }
                 ForEach(layout.dms.rows) { row($0) }
                 if !dmsFolded {
                     if layout.dms.isEmpty && !layout.notesRow && !groupUnread { hint("右下の ✏️ から相手を選べます。") }
                     if layout.moreDms { allDmsRow }
                 }
-            } header: { foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") } }
+            }
             // Room under the last row for the ✏️ button.
             Color.clear.frame(height: 64)
                 .listRowSeparator(.hidden)
@@ -176,6 +184,14 @@ struct ChannelListView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// A section's title as the section's first row (H1): it scrolls with the rows and has the list's own background.
+    private func headerRow(_ title: some View) -> some View {
+        title
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+    }
+
     // MARK: 移動・検索 and the tiles (M37)
 
     /// Opens the full-screen jump view (MOBILE_UI.md §6.2).
@@ -245,10 +261,9 @@ struct ChannelListView: View {
     private func customSections(_ sections: [HomeSections.Custom]) -> some View {
         ForEach(Array(sections.enumerated()), id: \.element.section.id) { index, entry in
             Section {
+                headerRow(sectionHeader(entry.section, index: index, count: sections.count))
                 ForEach(entry.rows.rows) { row($0) }
                 if entry.rows.isEmpty && !groupUnread && !entry.section.collapsed { hint("会話を長押し →「セクションに移動」で追加できます。") }
-            } header: {
-                sectionHeader(entry.section, index: index, count: sections.count)
             }
         }
     }

@@ -100,6 +100,14 @@ enum ActivityRules {
         return item.kind == "reaction" ? "\(who)\(what) \(item.emojis.joined())" : who + what
     }
 
+    /// The row's message line (MOBILE_POLISH.md X1): Timeline.excerpt — no markdown, one line, mentions as display
+    /// names, 「画像を送信しました」 without text — the same for every kind (a reaction's no longer in 「」), as
+    /// Android's activity and the search results say it.
+    static func excerpt(_ message: MessageOut, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        if message.deleted { return "(削除されたメッセージ)" }
+        return Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups)
+    }
+
     /// The row's second line: the conversation, 「#c のスレッド」 for a reply.
     static func whereText(_ item: ActivityItem, conversation: String) -> String {
         item.kind == "thread_reply" ? "\(conversation) のスレッド" : conversation

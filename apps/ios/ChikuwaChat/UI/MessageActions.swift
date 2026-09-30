@@ -226,6 +226,9 @@ struct MessageActionsSheet: View {
         // actions scroll.
         .presentationDetents(fitted.map { [.height($0), .large] } ?? [.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
+        // MOBILE_POLISH.md C4: iOS 26's sheet below full height is glass, and the photos and text behind showed through
+        // the actions. A solid ground as Slack's (the elevated background in dark mode).
+        .presentationBackground(Color(.systemBackground))
     }
 
     private func rowLabel(_ title: String, _ icon: String) -> some View {

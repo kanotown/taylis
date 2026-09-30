@@ -252,7 +252,7 @@ final class ChannelRulesTests: XCTestCase {
 /// (`TEST_RUNNER_SNAPSHOT_DIR=/path xcodebuild test …`).
 @MainActor
 final class TimesSnapshotTests: XCTestCase {
-    private func render<V: View>(_ view: V, size: CGSize, name: String) throws -> UIImage {
+    private func render<V: View>(_ view: V, size: CGSize, name: String, scrollBy offset: CGFloat = 0, settle: TimeInterval = 0.6) throws -> UIImage {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(origin: .zero, size: size))
         window.frame = CGRect(origin: .zero, size: size)
@@ -262,7 +262,17 @@ final class TimesSnapshotTests: XCTestCase {
         window.makeKeyAndVisible()
         host.view.frame = window.bounds
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        RunLoop.current.run(until: Date().addingTimeInterval(settle))
+        if offset != 0 {
+            // The list's own scroll view (the tallest vertical one; the tiles scroll sideways).
+            func scrollViews(_ view: UIView) -> [UIScrollView] {
+                let own: [UIScrollView] = (view as? UIScrollView).map { [$0] } ?? []
+                return own + view.subviews.flatMap(scrollViews)
+            }
+            let list = try XCTUnwrap(scrollViews(window).filter { $0.contentSize.height > $0.bounds.height }.max { $0.contentSize.height < $1.contentSize.height })
+            list.setContentOffset(CGPoint(x: 0, y: -list.adjustedContentInset.top + offset), animated: false)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        }
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
             if !window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) { window.layer.render(in: context.cgContext) }
         }
@@ -300,6 +310,54 @@ final class TimesSnapshotTests: XCTestCase {
         _ = try render(list(), size: CGSize(width: 393, height: 1100), name: "times-others.png")
         add(store, "times-kano", owner: "me", unread: 1)
         let image = try render(list(), size: CGSize(width: 393, height: 1100), name: "times-mine.png")
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
+    /// MOBILE_POLISH.md H1: scrolled down, the section titles go up with their rows (Slack) instead of sticking under
+    /// the translucent navigation bar over the rows above. Writes home-top.png and home-scrolled.png (light and dark).
+    func testHomeSectionTitlesScrollWithTheRows() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.setMe(UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                           email: nil, mustChangePassword: false))
+        for index in 0..<24 { add(store, String(format: "ch-%02d", index), owner: nil, unread: index == 3 ? 2 : 0) }
+        store.favorites = ["ch-00", "ch-01"]
+        for scheme in [ColorScheme.light, .dark] {
+            let home = NavigationStack {
+                ChannelListView(controller: controller, selection: .constant(nil))
+                    .navigationTitle("ChikuwaChat")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .environment(\.colorScheme, scheme)
+            let suffix = scheme == .dark ? "-dark" : ""
+            _ = try render(home, size: CGSize(width: 393, height: 852), name: "home-top\(suffix).png")
+            // Far enough that 「チャンネル」 would have stuck at the top with rows scrolling behind it.
+            let image = try render(home, size: CGSize(width: 393, height: 852), name: "home-scrolled\(suffix).png", scrollBy: 420)
+            XCTAssertGreaterThan(image.size.width, 0)
+        }
+    }
+
+    /// MOBILE_POLISH.md C4: the long-press sheet and the emoji picker are solid; the text behind does not show through.
+    /// Writes sheet-actions.png and sheet-emoji.png.
+    func testMessageSheetsAreOpaque() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.setMe(UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                           email: nil, mustChangePassword: false))
+        let message = MessageState(MessageOut(id: "m1", channelId: "c1", senderId: "me", seq: 1, updatedSeq: 1, clientMsgId: nil, body: "本文",
+                                              createdAt: "2026-09-30T00:00:00Z", editedAt: nil, deleted: false))
+        let behind = VStack(alignment: .leading, spacing: 4) {
+            ForEach(0..<40, id: \.self) { index in
+                Text("後ろの会話 \(index) — 透けて見えてはいけない文字").font(.title3.bold()).foregroundStyle(index % 2 == 0 ? .red : .blue)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        let actions = behind.sheet(isPresented: .constant(true)) {
+            MessageActionsSheet(message: message, controller: controller, canThread: true, canMarkUnread: true, onMarkUnread: {}, followUp: { _ in })
+        }
+        _ = try render(actions, size: CGSize(width: 393, height: 852), name: "sheet-actions.png", settle: 1.2)
+        let emoji = behind.sheet(isPresented: .constant(true)) { EmojiPickerView { _ in } }
+        let image = try render(emoji, size: CGSize(width: 393, height: 852), name: "sheet-emoji.png", settle: 1.2)
         XCTAssertGreaterThan(image.size.width, 0)
     }
 

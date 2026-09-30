@@ -822,10 +822,13 @@ struct SearchResultRow: View {
         return channel.isDm ? (channel.type == "group_dm" ? "person.2" : "person") : channel.type == "private" ? "lock" : "number"
     }
 
-    /// 「今日 15:30」「9月26日 (金) 14:00」
-    static func stamp(_ iso: String, now: Date = Date()) -> String {
+    /// 「今日 15:30」「昨日 9:05」「9月26日 (金) 14:00」「2025年12月31日 (水) 14:00」 (MOBILE_POLISH.md S1: the rule
+    /// Android's results follow too). The day is the conversation's date separator (Timeline.dayLabel), the time 24-hour
+    /// as in the activity and the DM list, whatever the region's clock.
+    static func stamp(_ iso: String, now: Date = Date(), calendar: Calendar = .current) -> String {
         guard let date = parseIsoDate(iso) else { return "" }
-        return "\(Timeline.dayLabel(date, now: now)) \(date.formatted(date: .omitted, time: .shortened))"
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return "\(Timeline.dayLabel(date, now: now, calendar: calendar)) " + String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 }
 

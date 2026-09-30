@@ -66,7 +66,7 @@ final class ThreadsSnapshotTests: XCTestCase {
         let image = try render(list, size: CGSize(width: 393, height: 760), name: "threads-list.png")
         XCTAssertGreaterThan(image.size.width, 0)
         _ = try render(NavigationStack { ChannelListView(controller: controller, selection: .constant(nil)) }, size: CGSize(width: 393, height: 500), name: "threads-sidebar.png")
-        _ = try render(ThreadView(controller: controller, channelId: "c1", parentId: "m1"), size: CGSize(width: 393, height: 760), name: "thread-open.png")
+        _ = try render(NavigationStack { ThreadView(controller: controller, channelId: "c1", parentId: "m1") }, size: CGSize(width: 393, height: 760), name: "thread-open.png")
 
         // Presence + typing (M11b): a 1:1 DM header shows the other person's status; the typing line sits above the composer.
         let dm = ChannelOut(id: "d1", type: "dm", name: nil, topic: nil, purpose: nil, archived: false, createdBy: "me", lastSeq: 1,

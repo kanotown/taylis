@@ -206,7 +206,7 @@ struct ActivityRowView: View {
                 if !place.isEmpty {
                     Text(place).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Text(item.kind == "reaction" ? "「\(excerpt)」" : excerpt)
+                Text(excerpt)
                     .font(.subheadline)
                     .foregroundStyle(unread ? .primary : .secondary)
                     .lineLimit(2)
@@ -220,12 +220,7 @@ struct ActivityRowView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private var excerpt: String {
-        let message = item.message
-        if message.deleted { return "(削除されたメッセージ)" }
-        if message.body.isEmpty && !message.attachments.isEmpty { return message.attachments.map(\.filename).joined(separator: ", ") }
-        return Timeline.excerpt(message.body, attachments: message.attachments, users: store.users, groups: store.groups)
-    }
+    private var excerpt: String { ActivityRules.excerpt(item.message, users: store.users, groups: store.groups) }
 
     /// The first actor's picture, two overlapping for several, and the kind's small badge at the corner.
     private func avatars(_ nameOf: (String) -> String) -> some View {
