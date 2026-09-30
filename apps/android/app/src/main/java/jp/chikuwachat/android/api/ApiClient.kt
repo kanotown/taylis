@@ -170,6 +170,14 @@ class ApiClient(
         requestRaw("PUT", "/api/v1/users/me/password", buildJsonObject { put("current_password", current); put("new_password", new) }, auth = true, retry401 = true)
     }
 
+    /** M40: my signed-in sessions, this one marked `current`. */
+    suspend fun sessions(): List<SessionOut> = request("GET", "/api/v1/auth/sessions")
+
+    /** M40: signs another of my sessions out (its refresh token stops working; 204). */
+    suspend fun revokeSession(id: String) {
+        requestRaw("DELETE", "/api/v1/auth/sessions/$id", null, auth = true, retry401 = true)
+    }
+
     suspend fun users(): List<UserPublic> = request("GET", "/api/v1/users")
 
     override suspend fun bootstrap(): BootstrapOut = request("GET", "/api/v1/sync/bootstrap")

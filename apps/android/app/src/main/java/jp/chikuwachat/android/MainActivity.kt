@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
         val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
         if (savedInstanceState == null && !fromHistory) takeConversation(intent)
         // The notification permission is asked once the main screen is up (MainScreen, M28c), not at every start.
-        setContent { ChikuwaTheme { AppRoot(controller) } }
+        setContent { ChikuwaTheme(controller.appearance) { AppRoot(controller) } }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -128,6 +128,18 @@ data class DeviceOut(
     val updatedAt: String,
 )
 
+/** M40: a signed-in session of mine (GET /auth/sessions): its device, whether it is this one, when it was last used. */
+@Serializable
+data class SessionOut(
+    val id: String,
+    val device: DeviceOut,
+    val current: Boolean,
+    val lastIp: String? = null,
+    val createdAt: String,
+    val lastUsedAt: String,
+    val expiresAt: String,
+)
+
 @Serializable
 data class TokenResponse(
     val accessToken: String,

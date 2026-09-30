@@ -33,6 +33,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
+import androidx.core.net.toUri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.ErrorMessages
@@ -138,6 +139,8 @@ class AppController(private val app: Application) {
      * in the push): it is fetched and revealed like a permalink. Null for a message's notification.
      */
     var pendingRevealId by mutableStateOf<String?>(null)
+    /** M40: a 自分 screen to open (the own profile card's 「ステータスを設定」): the main screen opens it on the 自分 tab. */
+    var pendingSettings by mutableStateOf<jp.chikuwachat.android.ui.SettingsPage?>(null)
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -199,6 +202,14 @@ class AppController(private val app: Application) {
     private val notifier = Notifier(app)
     /** Plain settings on this device: the workspace list (M16c) and recent searches (M16b). */
     val prefs: KeyValueStore = SharedPrefsStore(app)
+    /** M40: 「表示」 (端末に合わせる / ライト / ダーク), kept on this device for every workspace. */
+    var appearance by mutableStateOf(jp.chikuwachat.android.ui.Appearance.read(prefs))
+        private set
+
+    fun changeAppearance(value: jp.chikuwachat.android.ui.Appearance) {
+        jp.chikuwachat.android.ui.Appearance.write(prefs, value)
+        appearance = value
+    }
     /** FCM token registration with every signed-in workspace (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
     val push = PushCenter(scope, { fetchFcmToken(app) }, { pushTargets() }, { deleteFcmToken(app) })
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
@@ -1682,6 +1693,19 @@ class AppController(private val app: Application) {
             }
             else -> false
         }
+    }
+
+    /** M40: my signed-in devices (GET /auth/sessions); the failure is for the screen to show. */
+    suspend fun sessions(): Result<List<jp.chikuwachat.android.api.SessionOut>> = attempt { api!!.sessions() }
+
+    /** M40: signs another device out (DELETE /auth/sessions/{id}); false with the error shown. */
+    suspend fun revokeSession(id: String): Boolean = attempt { api!!.revokeSession(id); true }.getOrElse { error = describe(it); false }
+
+    /** M40: the web client of the workspace on screen in the browser (the administration lives there). */
+    fun openWebClient() {
+        val base = serverBase ?: return
+        val intent = Intent(Intent.ACTION_VIEW, base.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { app.startActivity(intent) }.onFailure { error = ErrorMessages.UNKNOWN }
     }
 
     suspend fun changePasswordInSession(current: String, new: String): String? =
