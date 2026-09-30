@@ -28,6 +28,14 @@ struct CanvasPane: View {
                 CanvasScreen(controller: controller, channel: channel, canvasId: selectedId,
                              onOpenList: { dialog = .list }, onTrashed: { self.selectedId = nil })
                     .id(selectedId)
+            } else if list == nil, let failure = controller.store.canvasListFailure(channel.id) {
+                switch failure {
+                case .unsupported:
+                    ContentUnavailableView("このサーバはまだキャンバスに対応していません", systemImage: "doc.text",
+                                           description: Text("サーバの更新後に使えるようになります。"))
+                case .failed:
+                    CanvasLoadFailed { await hub?.loadList(channel.id) }
+                }
             } else if list == nil {
                 ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -73,6 +81,22 @@ struct CanvasPane: View {
                     dialog = nil
                 }
             }
+        }
+    }
+}
+
+/// A list or a canvas that could not be read: 再読み込み (the failure is cleared while it asks: the spinner shows).
+private struct CanvasLoadFailed: View {
+    var detail: String?
+    let retry: () async -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("キャンバスを読み込めませんでした", systemImage: "exclamationmark.triangle")
+        } description: {
+            if let detail { Text(detail) }
+        } actions: {
+            Button("再読み込み") { Task { await retry() } }.buttonStyle(.bordered)
         }
     }
 }
@@ -164,6 +188,8 @@ private struct CanvasDocument: View {
             }
             if status == .loading {
                 ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if saver.loadFailed {
+                CanvasLoadFailed(detail: saver.error.map { controller.describe($0) }) { await saver.reload() }
             } else if editing {
                 CanvasEditor(controller: controller, saver: saver)
             } else {
@@ -293,6 +319,7 @@ private struct CanvasDocument: View {
 
     /// A line under the bar: why this canvas cannot be changed here, or what happened to it.
     private func notice(rights: CanvasRights) -> (text: String, warn: Bool, copy: Bool)? {
+        if saver.loadFailed { return nil } // the screen says it
         switch saver.status {
         case .gone: return ("このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。", true, true)
         case .blocked: return ("保存できませんでした: " + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)

@@ -107,6 +107,8 @@ final class CanvasSaver {
     @ObservationIgnored private(set) var error: Error?
     /// Bumped when the saver itself changed `text` (a merge, someone else's version, a tick): the editor takes it.
     private(set) var textRevision = 0
+    /// The first read failed (not a 404: that is .gone): the screen offers 再読み込み instead of an empty canvas.
+    private(set) var loadFailed = false
     /// Whether the editor can take a new text now (not while an IME composition is open). When it cannot, the merged
     /// body waits: the next save carries this text on the version that holds it, and the server merges again.
     @ObservationIgnored var canReplace: () -> Bool = { true }
@@ -171,6 +173,16 @@ final class CanvasSaver {
         track { await self.read(knownVersion: nil, first: true) }
     }
 
+    /// 再読み込み after the first read failed.
+    func reload() async {
+        guard !disposed, !loaded else { return }
+        loadFailed = false
+        error = nil
+        setStatus(.loading)
+        load()
+        await settled()
+    }
+
     /// A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4).
     func remoteVersion(_ newVersion: Int) {
         guard !disposed, newVersion > version else { return }
@@ -226,6 +238,7 @@ final class CanvasSaver {
             answer = try await api.getCanvas(id: id, knownVersion: knownVersion)
         } catch {
             if disposed { return }
+            if first && !loaded, !Self.isNotFound(error) { loadFailed = true }
             if Self.retryable(error) {
                 if first { setStatus(.offline) } // online() loads again
                 return
@@ -237,6 +250,7 @@ final class CanvasSaver {
         canvas = fresh
         if first && !loaded {
             loaded = true
+            loadFailed = false
             version = max(version, fresh.version)
             guard baseRevId != nil else {
                 adopt(fresh)
@@ -432,7 +446,12 @@ final class CanvasSaver {
     /// Refused for good: nothing more is sent until the text changes (403, 422) or at all (404: in the trash).
     private func stop(_ failure: Error) {
         error = failure
-        if case ApiError.api(let status, _, _) = failure, status == 404 { setStatus(.gone) } else { setStatus(.blocked) }
+        setStatus(Self.isNotFound(failure) ? .gone : .blocked)
+    }
+
+    private static func isNotFound(_ error: Error) -> Bool {
+        if case ApiError.api(let status, _, _) = error { return status == 404 }
+        return false
     }
 
     // MARK: choices

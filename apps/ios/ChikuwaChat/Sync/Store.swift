@@ -384,7 +384,15 @@ final class Store {
         return nil
     }
 
+    /// Why the conversation's list could not be loaded (cleared when it loads): the tab shows it instead of a spinner.
+    private(set) var canvasListFailures: [String: CanvasListFailure] = [:]
+    func canvasListFailure(_ channelId: String) -> CanvasListFailure? { canvasListFailures[channelId] }
+    func setCanvasListFailure(_ channelId: String, _ failure: CanvasListFailure?) {
+        if canvasListFailures[channelId] != failure { canvasListFailures[channelId] = failure }
+    }
+
     func setCanvases(_ channelId: String, _ list: [CanvasMeta]) {
+        setCanvasListFailure(channelId, nil)
         let known = canvasLists[channelId] ?? []
         // A newer version from an event that overtook the list keeps its place.
         let merged = list.map { meta in known.first(where: { $0.id == meta.id }).flatMap { $0.version > meta.version ? $0 : nil } ?? meta }
@@ -859,6 +867,7 @@ final class Store {
         buckets[id]?.byId = [:]
         // §4.6: its canvases and their unsaved edits leave this device too.
         canvasLists[id] = nil
+        canvasListFailures[id] = nil
         for (canvasId, state) in canvasPending where state.channelId == id { setPendingCanvas(canvasId, nil) }
         persist {
             try $0.clearMessages(channelId: id)
