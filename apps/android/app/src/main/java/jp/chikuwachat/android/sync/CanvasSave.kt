@@ -109,6 +109,9 @@ class CanvasSaver(
     /** Why saving stopped (BLOCKED / GONE). */
     var error: Throwable? = null
         private set
+    /** Why the first read failed (cleared when [load] tries again): the screen offers 再読み込み, not an empty canvas. */
+    var loadError: Throwable? = null
+        private set
     private val _revision = MutableStateFlow(0)
     /** Bumped on every change (Compose collects it). */
     val revision: StateFlow<Int> = _revision
@@ -163,8 +166,16 @@ class CanvasSaver(
 
     // --- loading and reading again ---------------------------------------------------------
 
-    /** The first read. A restored unsaved state keeps its text and goes on saving. */
-    fun load() = track { read(null, first = true) }
+    /** The first read (again after it failed). A restored unsaved state keeps its text and goes on saving. */
+    fun load() {
+        if (disposed || loaded) return
+        if (loadError != null) {
+            loadError = null
+            error = null
+            setStatus(CanvasSaveStatus.LOADING)
+        }
+        track { read(null, first = true) }
+    }
 
     /** A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4). */
     fun remoteVersion(version: Long) {
@@ -212,6 +223,7 @@ class CanvasSaver(
             throw e
         } catch (e: Throwable) {
             if (disposed) return
+            if (first && !loaded) loadError = e
             if (temporary(e)) {
                 if (first) setStatus(CanvasSaveStatus.OFFLINE) // online() loads again
                 return

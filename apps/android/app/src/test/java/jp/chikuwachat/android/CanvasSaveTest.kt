@@ -311,9 +311,33 @@ class CanvasSaveTest {
         val timers = ManualTimers()
         val saver = saver(server, timers)
         assertEquals(CanvasSaveStatus.OFFLINE, saver.status)
+        assertTrue(saver.loadError is ApiException.Network) // the screen offers 再読み込み, not an empty canvas
         saver.online()
         assertEquals(CanvasSaveStatus.SAVED, saver.status)
+        assertNull(saver.loadError)
         assertEquals("a", saver.text)
+    }
+
+    @Test
+    fun aFailedFirstReadIsKeptAndReadingAgainLoadsTheCanvas() {
+        val server = FakeCanvasServer("a")
+        server.failures.add(ApiException.Api(403, "forbidden", "Forbidden"))
+        val timers = ManualTimers()
+        val saver = saver(server, timers)
+        assertEquals(CanvasSaveStatus.BLOCKED, saver.status)
+        assertEquals(403, (saver.loadError as ApiException.Api).status)
+        // 再読み込み: the spinner while it asks (the fake holds the answer), then the canvas.
+        server.gate = CompletableDeferred()
+        saver.load()
+        assertEquals(CanvasSaveStatus.LOADING, saver.status)
+        assertNull(saver.loadError)
+        assertNull(saver.error)
+        server.gate!!.complete(Unit)
+        assertEquals(CanvasSaveStatus.SAVED, saver.status)
+        assertEquals("a", saver.text)
+        // Loaded: asking again reads nothing more.
+        saver.load()
+        assertEquals(listOf<Long?>(null), server.reads)
     }
 
     @Test
@@ -489,5 +513,38 @@ class CanvasSaveTest {
         assertEquals(listOf("k1", "k1"), server.saves.map { it.clientSaveId })
         assertNull(second.pendingCanvas("c1"))
         assertNull(restarted.current("c1")) // nobody shows it: dropped once saved
+    }
+
+    @Test
+    fun aListThatCannotBeLoadedIsKeptForThePaneUntilItLoads() = runBlocking {
+        val server = FakeCanvasServer("a")
+        val store = Store()
+        store.upsertChannel(channel().channel, isMember = true)
+        val hub = CanvasHub(server.api, store, scope, CanvasSaverOptions(timers = ManualTimers()))
+        // A server older than canvases: no such endpoint (tester report 2026-09-30: 「読み込み中…」 forever).
+        server.failures.add(ApiException.Api(404, "not_found", "Not Found"))
+        val before = store.version.value
+        hub.loadList("ch1")
+        assertNull(store.canvasesOf("ch1"))
+        val missing = store.canvasListError("ch1")
+        assertNotNull(missing)
+        assertTrue(CanvasHub.serverLacksCanvases(missing!!))
+        assertTrue(store.version.value > before) // the pane redraws
+        // Anything else can be tried again (再読み込み); a later load (a reconnect, the server updated) clears it.
+        server.failures.add(ApiException.Api(503, "http_503", "Unavailable"))
+        hub.loadList("ch1")
+        assertFalse(CanvasHub.serverLacksCanvases(store.canvasListError("ch1")!!))
+        hub.loadList("ch1")
+        assertNull(store.canvasListError("ch1"))
+        assertEquals(listOf("c1"), store.canvasesOf("ch1")!!.map { it.id })
+        // A 404 about the conversation is not an old server; leaving it forgets the failure.
+        assertFalse(CanvasHub.serverLacksCanvases(ApiException.Api(404, "channel_not_found", "Channel not found")))
+        assertFalse(CanvasHub.serverLacksCanvases(ApiException.Network(java.io.IOException("down"))))
+        server.failures.add(ApiException.Network(java.io.IOException("down")))
+        hub.loadList("ch1")
+        assertNotNull(store.canvasListError("ch1"))
+        assertEquals(listOf("c1"), store.canvasesOf("ch1")!!.map { it.id }) // the list it had stays
+        store.removeChannel("ch1")
+        assertNull(store.canvasListError("ch1"))
     }
 }

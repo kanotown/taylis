@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Title
@@ -62,6 +63,7 @@ import jp.chikuwachat.android.api.CanvasRevisionMeta
 import jp.chikuwachat.android.api.CanvasRevisionOut
 import jp.chikuwachat.android.api.CanvasTemplateOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.CanvasHub
 import jp.chikuwachat.android.sync.CanvasSaveStatus
 import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.ChannelState
@@ -88,6 +90,7 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
     val store = controller.store
     val hub = controller.engine?.canvases
     val list = remember(version, channel.id) { store.canvasesOf(channel.id) }
+    val listError = remember(version, channel.id) { store.canvasListError(channel.id) }
     // The list arrives with the conversation (engine.openChannel); a pane shown before that asks once more.
     LaunchedEffect(hub, channel.id, list == null) { if (list == null) hub?.loadList(channel.id) }
     var dialog by rememberSaveable(channel.id) { mutableStateOf<String?>(null) }
@@ -116,6 +119,7 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
 
     when {
         hub == null || !hub.available -> CanvasEmpty("キャンバスを使えません", "サーバがキャンバスに対応していません。")
+        list == null && selectedId == null && listError != null -> CanvasLoadFailed(controller, listError) { scope.launch { hub.loadList(channel.id) } }
         list == null && selectedId == null -> CanvasEmpty("読み込み中…", null, loading = true)
         selectedId == null -> CanvasEmpty(
             "この会話にはまだキャンバスがありません",
@@ -147,6 +151,27 @@ private fun CanvasEmpty(title: String, text: String?, loading: Boolean = false, 
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         if (text != null) Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp).widthIn(max = 360.dp))
         if (action != null) Box(Modifier.padding(top = 14.dp)) { action() }
+    }
+}
+
+/** The list or a canvas could not be read: a server older than canvases waits for its update; anything else retries. */
+@Composable
+private fun CanvasLoadFailed(controller: AppController, error: Throwable, onRetry: () -> Unit) {
+    if (CanvasHub.serverLacksCanvases(error)) {
+        CanvasEmpty("このサーバはまだキャンバスに対応していません", "サーバの更新後に使えるようになります。")
+        return
+    }
+    CanvasEmpty("キャンバスを読み込めませんでした", controller.describe(error)) {
+        Button(onClick = onRetry) { Icon(Icons.Outlined.Refresh, null); Text(" 再読み込み") }
+    }
+}
+
+/** A dialog's list that could not be read (the snackbar said why). */
+@Composable
+private fun LoadFailedLine(onRetry: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("読み込めませんでした。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onRetry) { Text("再読み込み") }
     }
 }
 
@@ -191,7 +216,9 @@ private fun CanvasView(
     var renaming by remember(canvasId) { mutableStateOf(false) }
     var history by remember(canvasId) { mutableStateOf(false) }
     LaunchedEffect(status) { if (status == CanvasSaveStatus.CONFLICT || status == CanvasSaveStatus.EXPIRED) conflictOpen = true }
-    val usable = status != CanvasSaveStatus.LOADING && status != CanvasSaveStatus.GONE
+    // The first read failed (offline, 5xx, 403 …): 再読み込み rather than an empty canvas. In the trash (404) it says so.
+    val loadError = saver.loadError?.takeIf { status != CanvasSaveStatus.GONE }
+    val usable = status != CanvasSaveStatus.LOADING && status != CanvasSaveStatus.GONE && loadError == null
     val editing = rights.edit && mode == CanvasMode.EDIT && usable
     val onToggle: ((Int, Boolean) -> Unit)? = if (rights.tick && usable) { line, done ->
         CanvasText.toggleTaskLine(saver.text, line, done)?.let { next ->
@@ -223,7 +250,7 @@ private fun CanvasView(
                 if (oneRow) {
                     SaveState(saver, onOpenConflict = { conflictOpen = true })
                     if (!wide && !editing && headings.size >= 3) OutlineMenu(headings) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
-                    if (rights.edit && status != CanvasSaveStatus.GONE) ModeSwitch(mode) { mode = it }
+                    if (rights.edit && status != CanvasSaveStatus.GONE && loadError == null) ModeSwitch(mode) { mode = it }
                 }
                 if (meta != null) CanvasMenu(controller, channel, meta, rights, saver, status, onRename = { renaming = true }, onHistory = { history = true }, onTrashed = onTrashed)
             }
@@ -232,12 +259,13 @@ private fun CanvasView(
                     SaveState(saver, onOpenConflict = { conflictOpen = true })
                     Spacer(Modifier.weight(1f))
                     if (!editing && headings.size >= 3) OutlineMenu(headings) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
-                    if (rights.edit && status != CanvasSaveStatus.GONE) ModeSwitch(mode) { mode = it }
+                    if (rights.edit && status != CanvasSaveStatus.GONE && loadError == null) ModeSwitch(mode) { mode = it }
                 }
             }
             HorizontalDivider()
-            CanvasNotice(controller, channel, rights, saver, status)
+            if (loadError == null) CanvasNotice(controller, channel, rights, saver, status)
             when {
+                loadError != null -> CanvasLoadFailed(controller, loadError) { saver.load() }
                 status == CanvasSaveStatus.LOADING -> CanvasEmpty("読み込み中…", null, loading = true)
                 editing && wide -> Row(Modifier.fillMaxSize()) {
                     CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight())
@@ -305,7 +333,8 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
     // Collected here too: the section sheet shows it outside the screen that collects the saver's changes.
     val revision by saver.revision.collectAsState()
     val status = remember(revision) { saver.status }
-    val (label, tone) = when (status) {
+    val unread = remember(revision) { saver.loadError != null && status != CanvasSaveStatus.GONE }
+    val (label, tone) = if (unread) "読み込めません" to MaterialTheme.colorScheme.error else when (status) {
         CanvasSaveStatus.LOADING -> "読み込み中…" to MaterialTheme.colorScheme.onSurfaceVariant
         CanvasSaveStatus.SAVED -> "保存済み" to MaterialTheme.colorScheme.onSurfaceVariant
         CanvasSaveStatus.EDITING -> "編集中" to MaterialTheme.colorScheme.onSurfaceVariant
@@ -316,7 +345,7 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
         CanvasSaveStatus.BLOCKED -> "保存できません" to MaterialTheme.colorScheme.error
         CanvasSaveStatus.GONE -> "ゴミ箱" to MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val icon = when (status) {
+    val icon = if (unread) Icons.Outlined.ErrorOutline else when (status) {
         CanvasSaveStatus.OFFLINE -> Icons.Outlined.CloudOff
         CanvasSaveStatus.SAVING, CanvasSaveStatus.RETRYING, CanvasSaveStatus.LOADING -> Icons.Outlined.Sync
         CanvasSaveStatus.EDITING -> Icons.Outlined.Edit
@@ -325,7 +354,7 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
         CanvasSaveStatus.SAVED -> Icons.Outlined.CloudDone
     }
     val choice = status == CanvasSaveStatus.CONFLICT || status == CanvasSaveStatus.EXPIRED
-    val hint = when (status) {
+    val hint = if (unread) label else when (status) {
         CanvasSaveStatus.OFFLINE -> "オフラインです。つながったら保存します"
         CanvasSaveStatus.RETRYING -> "サーバが混み合っています。自動で保存し直します"
         else -> label
@@ -860,8 +889,15 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
 @Composable
 private fun TrashDialog(controller: AppController, channel: ChannelState, onDismiss: () -> Unit, onRestored: (CanvasOut) -> Unit) {
     var rows by remember { mutableStateOf<List<CanvasMeta>?>(null) }
+    // Null rows after a try: it failed (not an empty trash).
+    var tries by remember { mutableIntStateOf(0) }
+    var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(channel.id) { rows = controller.trashedCanvases(channel.id) ?: emptyList() }
+    LaunchedEffect(channel.id, tries) {
+        failed = false
+        rows = controller.trashedCanvases(channel.id)
+        failed = rows == null
+    }
     val me = controller.store.me
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -872,6 +908,7 @@ private fun TrashDialog(controller: AppController, channel: ChannelState, onDism
                 Spacer(Modifier.height(8.dp))
                 val loaded = rows
                 when {
+                    failed -> LoadFailedLine { tries += 1 }
                     loaded == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium)
                     loaded.isEmpty() -> Text("ゴミ箱は空です。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else -> loaded.forEach { canvas ->
@@ -987,9 +1024,15 @@ private fun revisionKind(kind: String): String = when (kind) {
 private fun HistoryDialog(controller: AppController, canvas: CanvasMeta, onDismiss: () -> Unit) {
     var rows by remember { mutableStateOf<List<CanvasRevisionMeta>?>(null) }
     var shown by remember { mutableStateOf<CanvasRevisionOut?>(null) }
+    var tries by remember { mutableIntStateOf(0) }
+    var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val store = controller.store
-    LaunchedEffect(canvas.id) { rows = controller.canvasRevisions(canvas.id) ?: emptyList() }
+    LaunchedEffect(canvas.id, tries) {
+        failed = false
+        rows = controller.canvasRevisions(canvas.id)
+        failed = rows == null
+    }
     val revision = shown
     if (revision != null) {
         val version by store.version.collectAsState()
@@ -1019,6 +1062,7 @@ private fun HistoryDialog(controller: AppController, canvas: CanvasMeta, onDismi
         text = {
             val loaded = rows
             when {
+                failed -> LoadFailedLine { tries += 1 }
                 loaded == null -> Text("読み込み中…")
                 loaded.isEmpty() -> Text("版はありません。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> LazyColumn(Modifier.heightIn(max = 460.dp)) {

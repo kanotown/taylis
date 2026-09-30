@@ -328,7 +328,22 @@ class Store(private val persistence: Persistence? = null) {
 
     fun canvasMeta(canvasId: String): CanvasMeta? = canvasLists.values.firstNotNullOfOrNull { list -> list.firstOrNull { it.id == canvasId } }
 
+    /**
+     * Why a conversation's list could not be loaded (the last try; cleared when it loads): the pane shows it instead of
+     * 「読み込み中…」 (a server older than canvases answers 404). Not persisted.
+     */
+    private val canvasListErrors = HashMap<String, Throwable>()
+
+    fun canvasListError(channelId: String): Throwable? = canvasListErrors[channelId]
+
+    fun setCanvasListError(channelId: String, error: Throwable?) {
+        if (error != null) canvasListErrors[channelId] = error
+        else if (canvasListErrors.remove(channelId) == null) return
+        emit()
+    }
+
     fun setCanvases(channelId: String, list: List<CanvasMeta>) {
+        canvasListErrors.remove(channelId)
         val known = canvasLists[channelId] ?: emptyList()
         // A newer version from an event that overtook the list keeps its place.
         val merged = list.map { meta -> known.firstOrNull { it.id == meta.id }?.takeIf { it.version > meta.version } ?: meta }
@@ -618,6 +633,7 @@ class Store(private val persistence: Persistence? = null) {
         messagesByChannel.remove(id)
         // M46 (CANVAS.md §4.6): its canvases and their unsaved edits go with it.
         canvasLists.remove(id)
+        canvasListErrors.remove(id)
         canvasPending.filterValues { it.channelId == id }.keys.toList().forEach { setPendingCanvas(it, null) }
         if (preview?.channelId == id) preview = null // made private, or no longer listed: its preview goes too
         persist { it.clearMessages(id); it.deleteChannel(id) }

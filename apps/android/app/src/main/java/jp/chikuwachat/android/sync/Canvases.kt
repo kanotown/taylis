@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.sync
 
 import android.util.Log
+import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.CanvasMeta
 import jp.chikuwachat.android.api.Codec
 import kotlinx.coroutines.CancellationException
@@ -27,15 +28,20 @@ class CanvasHub(
 
     val available: Boolean get() = api != null
 
-    /** The conversation's canvases (when it opens, after reconnecting). */
+    /**
+     * The conversation's canvases (when it opens, after reconnecting, 再読み込み). A failure is kept in the store for the
+     * pane, which would otherwise wait for a list that never comes; the next try clears it while it runs.
+     */
     suspend fun loadList(channelId: String) {
         val api = api ?: return
+        store.setCanvasListError(channelId, null)
         try {
             store.setCanvases(channelId, api.listCanvases(channelId))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w("CanvasHub", "could not load the canvases", e)
+            store.setCanvasListError(channelId, e)
         }
     }
 
@@ -145,5 +151,13 @@ class CanvasHub(
         savers.values.forEach { it.dispose() }
         savers.clear()
         holds.clear()
+    }
+
+    companion object {
+        /**
+         * A 404 that is not about the conversation: the server predates canvases (no such endpoint, `not_found`), so
+         * trying again cannot help until it is updated.
+         */
+        fun serverLacksCanvases(e: Throwable): Boolean = e is ApiException.Api && e.status == 404 && e.code != "channel_not_found"
     }
 }
