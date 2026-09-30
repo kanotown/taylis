@@ -39,18 +39,24 @@ it("ignores late failures from an old session", async () => {
   expect(screen.getByRole("img")).toBeTruthy();
 });
 
-it("puts two or more photos in a two-column grid of squares, one photo and files as before (M28b)", async () => {
+it("puts two or more photos in one wrapping row of equal squares, one photo and files as before (M28b, M38)", async () => {
   const second = { ...attachment, id: "b", filename: "second.png" };
+  const third = { ...attachment, id: "c", filename: "third.png" };
   const file = { ...attachment, id: "f", filename: "notes.pdf", content_type: "application/pdf", has_thumbnail: false, width: null, height: null };
-  const view = render(<AttachmentList attachments={[attachment, second, file]} controller={controller(async () => new Blob())} />);
+  const view = render(<AttachmentList attachments={[attachment, second, third, file]} controller={controller(async () => new Blob())} />);
   const grid = document.querySelector("[data-photo-grid]")!;
-  expect(grid.className).toContain("grid-cols-2");
-  expect(grid.querySelectorAll("button")).toHaveLength(2);
-  expect(grid.querySelector("button")!.className).toContain("aspect-square");
+  // A row that wraps only when full: no two-column grid, which broke the line after the second photo (2026-09-30).
+  expect(grid.className).toContain("flex-wrap");
+  expect(grid.className).not.toContain("grid-cols-2");
+  expect(grid.querySelectorAll("button")).toHaveLength(3);
+  for (const tile of grid.querySelectorAll("button")) expect(tile.className).toContain("photo-tile aspect-square");
   expect(screen.getByText("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
   view.rerender(<AttachmentList attachments={[attachment, file]} controller={controller(async () => new Blob())} />);
   expect(document.querySelector("[data-photo-grid]")).toBeNull();
   expect((await screen.findByRole("img", { name: "result.png" })).className).toContain("max-w-72");
+  // One photo: the column does not stretch its button across the message (clicks beside it did open the photo).
+  expect(document.querySelector("[data-attachments]")!.className).toContain("items-start");
+  expect(screen.getByRole("img", { name: "result.png" }).closest("button")!.classList.contains("w-full")).toBe(false);
 });
 
 it("keeps the full image viewer open while retrying a failed original", async () => {

@@ -52,7 +52,7 @@ export function LinkPreviewCard({ controller, url }: { controller: AppController
 }
 
 /** The nearest scrolling ancestor: the observer's root, so its margin reaches rows just outside the scroller's view. */
-function scrollParent(element: HTMLElement): HTMLElement | null {
+export function scrollParent(element: HTMLElement): HTMLElement | null {
   for (let node = element.parentElement; node; node = node.parentElement) {
     const overflow = getComputedStyle(node).overflowY;
     if (overflow === "auto" || overflow === "scroll") return node;
