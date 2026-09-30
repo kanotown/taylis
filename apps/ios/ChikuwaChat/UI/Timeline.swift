@@ -239,6 +239,14 @@ enum ReadGate {
     /// context (§10.1 4.); nil when nothing is unread.
     static func openMark(_ channel: ChannelState) -> Int? { channel.unreadCount > 0 ? channel.lastReadSeq : nil }
 
+    /// Where 「新しい返信」 goes for this open of a thread, like the channel's divider: my read position when the thread
+    /// became ready, only when a reply from someone else was unread then; nil = no divider. Taken from the live position
+    /// instead, the divider showed and went at once as the replies were read (tester, 2026-09-30; Android and the
+    /// desktop take it the same way).
+    static func threadDividerMark(_ replies: [MessageState], lastReadSeq: Int, meId: String?) -> Int? {
+        replies.contains { ($0.seq ?? 0) > lastReadSeq && $0.senderId != meId } ? lastReadSeq : nil
+    }
+
     /// §10.1 4.: a channel opened while its catch-up is on its way (connecting or online, the window short of last_seq)
     /// is placed once the catch-up is in, as the first unread row may be in it. Not when offline (nothing comes), once
     /// the reader has scrolled, or after the wait (3 s) is over.

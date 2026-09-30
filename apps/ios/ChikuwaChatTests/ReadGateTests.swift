@@ -327,6 +327,16 @@ final class ReadGateTests: XCTestCase {
         XCTAssertEqual(ReadGate.threadTarget(replies, focusId: nil, lastReadSeq: 0, meId: "bob"), .top("cmid-502"))
     }
 
+    /// 「新しい返信」 is placed once per open (tester, 2026-09-30: it showed and went at once as the replies were read):
+    /// my position when the thread became ready, only with a reply from someone else unread then.
+    func testThreadDividerMarkIsTakenOnlyWithSomeoneElsesUnreadReply() {
+        let replies = (501...530).map { row($0) }
+        XCTAssertEqual(ReadGate.threadDividerMark(replies, lastReadSeq: 510, meId: "bob"), 510)
+        XCTAssertNil(ReadGate.threadDividerMark(replies, lastReadSeq: 530, meId: "bob")) // all read: none, nor for later arrivals
+        let mine = (531...533).map { row($0, sender: "bob") }
+        XCTAssertNil(ReadGate.threadDividerMark(replies + mine, lastReadSeq: 530, meId: "bob")) // only my own after it
+    }
+
     /// §10.2 / V24 / V26: a ready thread opens at its first unread reply, or at the bottom.
     func testThreadTargetV24V26() {
         let replies = (501...530).map { row($0) }

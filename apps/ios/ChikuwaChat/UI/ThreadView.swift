@@ -12,6 +12,8 @@ struct ThreadView: View {
 
     /// Placed once the whole thread and my read position are known (§10.2); `provisional` until then.
     @State private var positioned = false
+    @State private var dividerMark: Int?
+    @State private var dividerTaken = false
     @State private var provisional = false
     /// The reader scrolled away from the provisional bottom before the thread was ready: it is not moved again.
     @State private var userScrolled = false
@@ -47,10 +49,18 @@ struct ThreadView: View {
             ?? controller.messageFocus?.context.first { $0.id == parentId }
     }
     private var replies: [MessageState] { controller.store.replies(channelId, parentId: parentId) }
-    /// 「新しい返信」 sits before the first reply from someone else past my read position.
+    /// 「新しい返信」 sits before the first reply from someone else past my read position when the thread became ready
+    /// (`dividerMark`), and stays there while it is open.
     private var firstUnreadId: String? {
-        guard let state = entry?.state, let me = controller.store.me?.id else { return nil }
-        return replies.first { ($0.seq ?? 0) > state.lastReadSeq && $0.senderId != me }?.id
+        guard let mark = dividerMark, let me = controller.store.me?.id else { return nil }
+        return replies.first { ($0.seq ?? 0) > mark && $0.senderId != me }?.id
+    }
+
+    /// Taken once, before the first read mark moves the position (ReadGate.threadDividerMark).
+    private func takeDividerMark() {
+        guard !dividerTaken, threadReady, let state = entry?.state else { return }
+        dividerTaken = true
+        dividerMark = ReadGate.threadDividerMark(replies, lastReadSeq: state.lastReadSeq, meId: controller.store.me?.id)
     }
 
     var body: some View {
@@ -100,7 +110,10 @@ struct ThreadView: View {
                 }
                 .onChange(of: scenePhase) { _, _ in markRead() }
                 .onChange(of: controller.engine?.status) { _, _ in markRead() }
-                .onChange(of: threadReady) { _, _ in markRead() }
+                .onChange(of: threadReady) { _, _ in
+                    takeDividerMark()
+                    markRead()
+                }
                 .task(id: "\(replies.count):\(threadReady)") {
                     await Task.yield()
                     position(proxy)
@@ -241,6 +254,7 @@ struct ThreadView: View {
     /// in the middle when held; once ready it is placed once, like a channel: the focus, else the first unread reply at the
     /// top, else the bottom. A reader who scrolled meanwhile is left where they are.
     private func position(_ proxy: ScrollViewProxy) {
+        takeDividerMark()
         guard !positioned else { return }
         let rows = replies
         guard threadReady, let state = entry?.state else {
@@ -297,6 +311,7 @@ struct ThreadView: View {
     /// the thread complete and its first unread reply seen (or none), so no unread reply above the screen is skipped.
     /// A thread's unread count says nothing about the rows held before it is complete, so it is not used here.
     private func markRead() {
+        takeDividerMark() // before my position moves
         let rows = replies
         let looking = scenePhase == .active && viewportHeight > 0 && !cover.covered // not under a message's menu sheets
         let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
