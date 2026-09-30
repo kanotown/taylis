@@ -1,0 +1,106 @@
+{
+  "_comment": "CANVAS.md §4.2 / §5: the canvas dialect the three clients share (markdown.ts parseBlocks(body, {canvas: true}), MessageBodyView.swift, BodyTokenizer.kt), ticking a task line, and keeping the caret when the body is replaced. Block descriptors: heading {level, text}, paragraph {lines}, list {ordered, items}, task {items: [{level, done, text, line}]}, image {alt, attachment_id, line}, hr, codeblock {text}. `text` is what the reader sees of the inline tokens (a link shows its label; emphasis markers are gone). Lines are 0-based.",
+  "blocks": [
+    {
+      "name": "tasks: open and done boxes, * and X, two spaces nest",
+      "body": "- [ ] 資料を集める\n- [x] 発表練習\n* [X] 予稿\n  - [ ] 入れ子",
+      "blocks": [
+        { "kind": "task", "items": [
+          { "level": 0, "done": false, "text": "資料を集める", "line": 0 },
+          { "level": 0, "done": true, "text": "発表練習", "line": 1 },
+          { "level": 0, "done": true, "text": "予稿", "line": 2 },
+          { "level": 1, "done": false, "text": "入れ子", "line": 3 }
+        ] }
+      ]
+    },
+    {
+      "name": "a bullet list stops where tasks start",
+      "body": "- 出席: alice\n- [ ] 担当を決める",
+      "blocks": [
+        { "kind": "list", "ordered": false, "items": ["出席: alice"] },
+        { "kind": "task", "items": [{ "level": 0, "done": false, "text": "担当を決める", "line": 1 }] }
+      ]
+    },
+    {
+      "name": "an empty task (a template's) is a task",
+      "body": "## TODO\n- [ ] \n- [ ]",
+      "blocks": [
+        { "kind": "heading", "level": 2, "text": "TODO" },
+        { "kind": "task", "items": [
+          { "level": 0, "done": false, "text": "", "line": 1 },
+          { "level": 0, "done": false, "text": "", "line": 2 }
+        ] }
+      ]
+    },
+    {
+      "name": "not tasks: no space inside the box, no space after the bullet",
+      "body": "- [] 箱ではない\n-[ ] これも",
+      "blocks": [
+        { "kind": "list", "ordered": false, "items": ["[] 箱ではない"] },
+        { "kind": "paragraph", "lines": ["-[ ] これも"] }
+      ]
+    },
+    {
+      "name": "an image of the canvas on a line of its own; an outside image stays text",
+      "body": "![図 1](attachment:0190a2b4-0000-7000-8000-000000000001)\n![外部](https://example.com/a.png)",
+      "blocks": [
+        { "kind": "image", "alt": "図 1", "attachment_id": "0190a2b4-0000-7000-8000-000000000001", "line": 0 },
+        { "kind": "paragraph", "lines": ["!外部"] }
+      ]
+    },
+    {
+      "name": "a rule between blank lines",
+      "body": "前\n\n---\n\n後",
+      "blocks": [
+        { "kind": "paragraph", "lines": ["前", ""] },
+        { "kind": "hr" },
+        { "kind": "paragraph", "lines": ["", "後"] }
+      ]
+    },
+    {
+      "name": "--- without blank lines around it is text",
+      "body": "前\n---\n後",
+      "blocks": [
+        { "kind": "paragraph", "lines": ["前", "---", "後"] }
+      ]
+    },
+    {
+      "name": "a rule at the start of the body",
+      "body": "---\n\n本文",
+      "blocks": [
+        { "kind": "hr" },
+        { "kind": "paragraph", "lines": ["", "本文"] }
+      ]
+    },
+    {
+      "name": "tasks inside a code fence stay code",
+      "body": "```\n- [ ] コード\n```",
+      "blocks": [
+        { "kind": "codeblock", "text": "- [ ] コード" }
+      ]
+    },
+    {
+      "name": "messages (canvas: false) keep tasks as bullets",
+      "canvas": false,
+      "body": "- [ ] 資料",
+      "blocks": [
+        { "kind": "list", "ordered": false, "items": ["[ ] 資料"] }
+      ]
+    }
+  ],
+  "toggle": [
+    { "body": "- [ ] a\n- [x] b", "line": 0, "expected": "- [x] a\n- [x] b" },
+    { "body": "- [ ] a\n- [x] b", "line": 1, "expected": "- [ ] a\n- [ ] b" },
+    { "body": "  * [X] 入れ子", "line": 0, "expected": "  * [ ] 入れ子" },
+    { "body": "- [ ]", "line": 0, "expected": "- [x]" },
+    { "body": "- 箇条書き", "line": 0, "expected": null },
+    { "body": "- [ ] a", "line": 3, "expected": null }
+  ],
+  "caret": [
+    { "name": "a change after the caret leaves it", "before": "abc\ndef", "after": "abc\ndefg", "caret": 2, "expected": 2 },
+    { "name": "a change before the caret moves it with the text", "before": "abc\ndef", "after": "xabc\ndef", "caret": 5, "expected": 6 },
+    { "name": "a line inserted above", "before": "a\nb\nc", "after": "a\nNEW\nb\nc", "caret": 4, "expected": 8 },
+    { "name": "changes above and below: the caret's line is found again", "before": "L1\nL2\nL3\nL4", "after": "X1\nL2\nL3\nX4", "caret": 7, "expected": 7 },
+    { "name": "the caret's line itself changed: the end of the change", "before": "one\ntwo\nthree", "after": "one\nTWO!\nthree", "caret": 5, "expected": 8 }
+  ]
+}

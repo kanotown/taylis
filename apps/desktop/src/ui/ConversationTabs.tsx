@@ -4,11 +4,15 @@ import type { ChannelState } from "../sync/types";
 import { canEditLinks, ChannelLinkChips } from "./ChannelLinks";
 import { cn } from "./primitives";
 
-/** M29: what a conversation shows on a phone, switched by the tab row under its header. */
-export type ConversationTab = "messages" | "pins" | "files";
+/**
+ * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
+ * §4.1), which the wide layout has too (in the header).
+ */
+export type ConversationTab = "messages" | "canvas" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   ["messages", "メッセージ"],
+  ["canvas", "キャンバス"],
   ["pins", "ピン留め"],
   ["files", "ファイル"],
 ];

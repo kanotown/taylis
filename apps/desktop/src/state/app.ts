@@ -14,7 +14,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, CanvasMeta, CanvasOut, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1425,6 +1425,95 @@ export class AppController {
     }
   }
 
+  // --- canvases (M43, CANVAS.md §4.5) ---------------------------------------------------------
+
+  /** The templates to start a canvas from (read each time the picker opens: they send no events, §11). */
+  async canvasTemplates(): Promise<CanvasTemplateOut[] | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.canvasTemplates();
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /**
+   * A new canvas in the conversation, empty or from a template (the server puts in {{date}} and the rest in my zone). A
+   * failure on the network is retried with the same key, so a retry never makes a second canvas.
+   */
+  async createCanvas(channelId: string, options: { templateKey?: string | null; title?: string | null; asTab?: boolean }): Promise<CanvasOut | null> {
+    const api = this.api;
+    if (!api) return null;
+    const body = {
+      client_save_id: crypto.randomUUID(),
+      as_tab: options.asTab ?? false,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+      ...(options.templateKey ? { template_key: options.templateKey } : {}),
+      ...(options.title ? { title: options.title } : {}),
+    };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const canvas = await api.createCanvas(channelId, body);
+        this.store.applyCanvasMeta(canvas);
+        return canvas;
+      } catch (error) {
+        if (attempt < 2 && error instanceof NetworkError) continue;
+        this.setError(error);
+        return null;
+      }
+    }
+  }
+
+  /** Title, who may edit, the conversation's tab (§4.7: the creator, owners and administrators; anyone in a DM). */
+  async updateCanvas(canvasId: string, patch: { title?: string; edit_policy?: "members" | "owners"; is_channel_tab?: boolean }): Promise<CanvasOut | null> {
+    if (!this.api) return null;
+    try {
+      const canvas = await this.api.updateCanvas(canvasId, patch);
+      this.store.applyCanvasMeta(canvas);
+      this.engine?.canvases.current(canvasId)?.applyMeta(canvas);
+      return canvas;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /** To the trash (restorable from the conversation's canvas list). */
+  async trashCanvas(canvasId: string, channelId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.deleteCanvas(canvasId);
+      this.engine?.canvases.applyEvent("canvas.deleted", { canvas_id: canvasId, channel_id: channelId });
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async trashedCanvases(channelId: string): Promise<CanvasMeta[] | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.listCanvases(channelId, true);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async restoreCanvas(canvasId: string): Promise<CanvasOut | null> {
+    if (!this.api) return null;
+    try {
+      const canvas = await this.api.restoreCanvas(canvasId);
+      this.store.applyCanvasMeta(canvas);
+      return canvas;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
   // --- acknowledgements (M15e) ----------------------------------------------------------------
 
   async toggleAck(message: MessageState): Promise<void> {
@@ -1731,6 +1820,7 @@ export class AppController {
       // A draft typed in the last second (before its save after the typing pause, M15d) reaches my other devices
       // before the connection goes; the local copy is erased below.
       await session.engine?.flushDrafts();
+      await session.engine?.canvases.flushAll().catch(() => {}); // M43: a canvas typed in the last seconds too
       session.engine?.stop();
       await session.api.logout(); // → onSignedOut → handleSignedOut
       await this.handleSignedOut(session);

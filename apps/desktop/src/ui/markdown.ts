@@ -7,6 +7,11 @@
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
  * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level),
  * and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
+ *
+ * The canvas dialect (CANVAS.md §4.2, `{ canvas: true }`) adds tasks ("- [ ] item" / "- [x] item", "*" too, two leading
+ * spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image URLs stay text) and
+ * rules ("---" between blank lines). Messages keep showing all of these as text. apps/shared/canvas_markdown.json holds
+ * the cases the three clients share.
  */
 export type Token =
   | { kind: "text"; text: string }
@@ -22,12 +27,33 @@ export type Token =
   | { kind: "newline" };
 
 export type Block =
-  | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[] }
+  | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[]; /** canvas: its line in the body */ line?: number }
   | { kind: "paragraph"; lines: Token[][] }
   | { kind: "quote"; lines: Token[][] }
   | { kind: "list"; ordered: boolean; start: number; items: Array<{ level: number; tokens: Token[] }> }
   | { kind: "codeblock"; text: string; lang: string | null }
-  | { kind: "table"; align: TableAlign[]; header: Token[][]; rows: Token[][][] };
+  | { kind: "table"; align: TableAlign[]; header: Token[][]; rows: Token[][][] }
+  // The canvas dialect (CANVAS.md §4.2): `line` is the item's line in the body (0-based), which a tick changes.
+  | { kind: "task"; items: TaskItem[] }
+  | { kind: "image"; alt: string; attachmentId: string; line: number }
+  | { kind: "hr" };
+
+export interface TaskItem {
+  level: number;
+  done: boolean;
+  tokens: Token[];
+  line: number;
+}
+
+export interface ParseOptions {
+  /** The canvas dialect: tasks, images and rules. */
+  canvas?: boolean;
+}
+
+/** A task line, as the server counts it (server/app/modules/canvases/service.py TASK_LINE). */
+export const TASK_LINE = /^([ \t]*)[-*] \[([ xX])\](?: (.*))?$/;
+const IMAGE_LINE = /^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$/;
+const RULE_LINE = /^-{3,}\s*$/;
 
 /** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
 export type TableAlign = "left" | "center" | "right" | null;
@@ -117,11 +143,16 @@ function tableAlign(cell: string): TableAlign {
 const HEADING = /^(#{1,3})\s+(\S.*)$/;
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
-export function parseBlocks(body: string): Block[] {
+export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
   const blocks: Block[] = [];
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   let i = 0;
   const push = (block: Block) => blocks.push(block);
+  const canvas = options.canvas === true;
+  const blank = (index: number) => index < 0 || index >= lines.length || (lines[index] ?? "").trim() === "";
+  const isTask = (index: number) => canvas && TASK_LINE.test(lines[index] ?? "");
+  const isImage = (index: number) => canvas && IMAGE_LINE.test(lines[index] ?? "");
+  const isRule = (index: number) => canvas && RULE_LINE.test(lines[index] ?? "") && blank(index - 1) && blank(index + 1);
   const FENCE = /^```([A-Za-z0-9_+#.-]{0,20})\s*$/;
   // A fence opens a code block only when a closing ``` line follows; otherwise it is ordinary text.
   const fenceCloseAfter = (index: number) => lines.findIndex((l, k) => k > index && /^```\s*$/.test(l));
@@ -143,7 +174,29 @@ export function parseBlocks(body: string): Block[] {
     }
     const heading = HEADING.exec(line);
     if (heading) {
-      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? "") });
+      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? ""), ...(canvas ? { line: i } : {}) });
+      i++;
+      continue;
+    }
+    if (isTask(i)) {
+      const items: TaskItem[] = [];
+      while (i < lines.length && isTask(i)) {
+        const m = TASK_LINE.exec(lines[i] ?? "")!;
+        const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
+        items.push({ level: indent >= 2 ? 1 : 0, done: m[2] !== " ", tokens: tokenizeInline(m[3] ?? ""), line: i });
+        i++;
+      }
+      push({ kind: "task", items });
+      continue;
+    }
+    if (isImage(i)) {
+      const m = IMAGE_LINE.exec(line)!;
+      push({ kind: "image", alt: m[1] ?? "", attachmentId: m[2] ?? "", line: i });
+      i++;
+      continue;
+    }
+    if (isRule(i)) {
+      push({ kind: "hr" });
       i++;
       continue;
     }
@@ -181,7 +234,7 @@ export function parseBlocks(body: string): Block[] {
       while (i < lines.length) {
         const current = lines[i] ?? "";
         const m = ordered ? NUMBERED.exec(current) : BULLET.exec(current);
-        if (!m) break;
+        if (!m || isTask(i)) break;
         const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
         const text = ordered ? (m[3] ?? "") : (m[2] ?? "");
         items.push({ level: indent >= 2 ? 1 : 0, tokens: tokenizeInline(text) });
@@ -194,7 +247,7 @@ export function parseBlocks(body: string): Block[] {
     const paragraph: Token[][] = [];
     while (i < lines.length) {
       const current = lines[i] ?? "";
-      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current))) break;
+      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isRule(i))) break;
       paragraph.push(tokenizeInline(current));
       i++;
     }

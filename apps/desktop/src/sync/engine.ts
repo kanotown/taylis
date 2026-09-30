@@ -5,7 +5,9 @@
  */
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
-import type { ActivitySummaryOut, BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic, ReactionAdded } from "../api/types";
+import { CanvasHub } from "./canvases";
+import type { CanvasSaverOptions } from "./canvasSave";
+import type { ActivitySummaryOut, BootstrapOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -53,6 +55,10 @@ export interface SyncApi {
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
   /** M15f: a conversation's link bar. Optional (older fakes). */
   channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
+  /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
+  listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
+  getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
+  saveCanvas?(canvasId: string, body: CanvasSaveIn): Promise<CanvasSaveOut>;
   /** M15d: drafts shared by my devices. Optional (older fakes). */
   saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
   deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
@@ -144,6 +150,8 @@ export interface EngineOptions {
   /** §9: a temporary send failure is retried after this long, doubling up to sendRetryMaxMs. */
   sendRetryMinMs?: number;
   sendRetryMaxMs?: number;
+  /** M43: the canvas save loop's pauses (CANVAS.md §4.4). */
+  canvasSave?: CanvasSaverOptions;
 }
 
 export class SyncEngine {
@@ -218,8 +226,16 @@ export class SyncEngine {
       draftSaveMs: options.draftSaveMs ?? 1_000,
       sendRetryMinMs: options.sendRetryMinMs ?? 2_000,
       sendRetryMaxMs: options.sendRetryMaxMs ?? 30_000,
+      canvasSave: options.canvasSave ?? {},
     };
     const api = deps.api;
+    this.canvases = new CanvasHub({
+      api: api.listCanvases && api.getCanvas && api.saveCanvas
+        ? { listCanvases: (c, t) => api.listCanvases!(c, t), getCanvas: (id, v) => api.getCanvas!(id, v), saveCanvas: (id, body) => api.saveCanvas!(id, body) }
+        : null,
+      store: deps.store,
+      options: this.opts.canvasSave,
+    });
     this.drafts = new DraftSync({
       api: api.saveDraft && api.deleteDraft ? { saveDraft: (c, p, b) => api.saveDraft!(c, p, b), deleteDraft: (c, p) => api.deleteDraft!(c, p) } : null,
       store: deps.store,
@@ -231,6 +247,8 @@ export class SyncEngine {
 
   /** M15d: my drafts across devices. */
   readonly drafts: DraftSync;
+  /** M43: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
+  readonly canvases: CanvasHub;
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -360,6 +378,7 @@ export class SyncEngine {
     if (this.status === "online" && live()) {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
+      this.canvases.online(); // M43: canvas saves that failed, open canvases read again
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -414,6 +433,7 @@ export class SyncEngine {
     this.connection += 1;
     this.completeThreads.clear();
     this.cancelSendRetry();
+    this.canvases.stop();
     this.dropSocket();
     this.setStatus("signed_out");
     this.deps.onSignedOut?.();
@@ -713,6 +733,11 @@ export class SyncEngine {
       case "draft.updated":
         this.drafts.applyEvent(frame.data as unknown as DraftUpdated);
         return;
+      case "canvas.created":
+      case "canvas.updated":
+      case "canvas.deleted":
+        this.canvases.applyEvent(frame.event, frame.data);
+        return;
       case "sidebar.updated": {
         const data = frame.data as { sections: SidebarSectionOut[] };
         store.replaceSidebar(data.sections);
@@ -843,6 +868,7 @@ export class SyncEngine {
     // notifications should I be added again.
     if (this.currentChannelId === channelId) this.currentChannelId = null;
     if (this.preview?.channelId === channelId) this.closePreview();
+    this.canvases.removeChannel(channelId);
     this.deps.store.removeChannel(channelId);
   }
 
@@ -1000,6 +1026,7 @@ export class SyncEngine {
     this.closePreview(); // another conversation, or the previewed one just joined (§7.6.1)
     if (this.status !== "online") return Promise.resolve();
     void this.loadLinks(channelId);
+    if (this.deps.store.getChannel(channelId)?.isMember) void this.canvases.loadList(channelId); // M43 (CANVAS.md §4.6)
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);
       // Only a channel of mine: one I have not joined is read through openPreview, never into the store.

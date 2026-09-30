@@ -189,3 +189,30 @@ export interface ReactionAdded {
   emoji: string;
   at: string;
 }
+
+/**
+ * Canvases (CANVAS.md; the server in M41, this client in M43): Markdown documents of a conversation, saved whole with the
+ * version they were written on and merged on the server (§4.4). The canvas.* events carry the metadata only (§4.6).
+ */
+export type CanvasMeta = components["schemas"]["CanvasMeta"];
+export type CanvasOut = components["schemas"]["CanvasOut"];
+export type CanvasPage = components["schemas"]["CanvasPage"];
+export type CanvasCreate = components["schemas"]["CanvasCreate"];
+export type CanvasUpdate = components["schemas"]["CanvasUpdate"];
+export type CanvasSaveIn = components["schemas"]["ContentSave"];
+export type CanvasSaveOut = components["schemas"]["SaveOut"];
+export type CanvasConflict = components["schemas"]["ConflictOut"];
+export type CanvasConflictDetails = components["schemas"]["CanvasConflictDetails"];
+export type CanvasTemplateOut = components["schemas"]["CanvasTemplateOut"];
+export type CanvasEditPolicy = CanvasMeta["edit_policy"];
+export type CanvasOnConflict = "fail" | "ours" | "theirs" | "both";
+/** canvas.updated: the new metadata and what changed ("content" | "title" | "settings" | "restore"). */
+export interface CanvasUpdated {
+  canvas: CanvasMeta;
+  change: string;
+}
+/** canvas.deleted: moved to the trash. */
+export interface CanvasDeleted {
+  canvas_id: string;
+  channel_id: string;
+}

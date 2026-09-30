@@ -15,6 +15,7 @@ import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, Men
 import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
+import { CanvasPane } from "./CanvasPane";
 import { type ConversationTab, ConversationTabs } from "./ConversationTabs";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
@@ -144,7 +145,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
   // M29, phones only: the conversation's tab (the timeline stays mounted under the others) and its details page.
+  // M43: 「キャンバス」 is a tab on the wide layout too.
   const [tab, setTab] = useState<ConversationTab>("messages");
+  /** M43: the canvas picked in each conversation this session (none: its tab canvas, else the newest). */
+  const [canvasChoice, setCanvasChoice] = useState<Record<string, string | null>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [membersVersion, setMembersVersion] = useState(0);
   // M34, phones only: the bottom tab, and the other tabs' screens as they were left (the selected tab's are live above).
@@ -771,9 +775,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // M29, phones: the conversation's tab row and details page (joined conversations, not a preview).
   const tabbed = compact && !!current && current.isMember && !previewing;
   const showDetails = tabbed && detailsOpen && view === "channel";
-  const shownTab: ConversationTab = tabbed ? tab : "messages";
+  // M43: the wide layout has 「メッセージ | キャンバス」 in the header (its pins and files stay a pane and a view).
+  const canvasTab = !!current && current.isMember && !previewing;
+  const shownTab: ConversationTab = tabbed ? tab : canvasTab && tab === "canvas" ? "canvas" : "messages";
   // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
-  const conversationOnScreen = !compact || (shownTab === "messages" && !showDetails && !sidePane);
+  const conversationOnScreen = shownTab === "messages" && (!compact || (!showDetails && !sidePane));
   const openDetails = () => {
     controller.setEditing(null);
     setDetailsOpen(true);
@@ -869,6 +875,22 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </>
               )}
               {current.archived && <Badge>アーカイブ済み</Badge>}
+              {canvasTab && !compact && (
+                <div role="tablist" aria-label="会話の表示" className="ml-1 flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
+                  {([["messages", "メッセージ"], ["canvas", "キャンバス"]] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={shownTab === value}
+                      onClick={() => setTab(value)}
+                      className={cn("rounded-md px-2.5 py-1 transition-colors", shownTab === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {isChannel && current.posting_policy === "owners" && (
                 <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
                   <Megaphone size={15} />
@@ -993,8 +1015,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
           )}
           {/* M29: on a phone the pins and files tabs cover the conversation, which stays mounted (its scroll position,
               read anchor and draft survive) but hidden, out of reach, and not looked at (the timeline's `active`). */}
-          <div className={compact ? "relative flex min-h-0 flex-1 flex-col" : "contents"}>
-            <div className={cn(compact ? "flex min-h-0 flex-1 flex-col" : "contents", shownTab !== "messages" && "invisible")} inert={shownTab !== "messages" || undefined}>
+          {/* M43: the wide layout's canvas tab covers the conversation the same way. */}
+          <div className={compact || canvasTab ? "relative flex min-h-0 flex-1 flex-col" : "contents"}>
+            <div className={cn(compact || canvasTab ? "flex min-h-0 flex-1 flex-col" : "contents", shownTab !== "messages" && "invisible")} inert={shownTab !== "messages" || undefined}>
               {previewing ? (
                 <>
                   <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
@@ -1015,6 +1038,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
               {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
             </div>
+            {shownTab === "canvas" && (
+              <div role="tabpanel" aria-label="キャンバス" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <CanvasPane
+                  controller={controller}
+                  channel={current}
+                  canvasId={canvasChoice[current.id] ?? null}
+                  onSelect={(id) => setCanvasChoice((choice) => ({ ...choice, [current.id]: id }))}
+                />
+              </div>
+            )}
             {shownTab === "pins" && (
               <div role="tabpanel" aria-label="ピン留め" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelPins controller={controller} channel={current} onOpen={revealFromList} />
