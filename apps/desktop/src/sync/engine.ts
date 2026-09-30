@@ -41,6 +41,8 @@ export interface SyncApi {
   getMessage?(messageId: string): Promise<MessageOut>;
   /** Public channels the user has not joined (for the browse list). Optional. */
   publicChannels?(): Promise<ChannelOut[]>;
+  /** M49: one channel as its member sees it (GET /channels/{id}, with `last_message`). Optional (older fakes). */
+  channel?(channelId: string): Promise<ChannelOut>;
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
   /** M12a: every channel read to its end; returns the new states. */
   readAll(): Promise<ChannelReadStateOut[]>;
@@ -243,6 +245,22 @@ export class SyncEngine {
       delayMs: this.opts.draftSaveMs,
     });
     deps.store.onDraftEdited = (channelId, parentId) => this.drafts.edited(channelId, parentId);
+    deps.store.onStalePreview = (channelId) => void this.refreshLastMessage(channelId);
+  }
+
+  /**
+   * M49 (SYNC_PROTOCOL.md §7.8): the preview's message was deleted and the rows held do not say which one is last now:
+   * the server's answer (GET /channels/{id}). A failure leaves it empty until the next bootstrap.
+   */
+  async refreshLastMessage(channelId: string): Promise<void> {
+    const api = this.deps.api;
+    if (!api.channel) return;
+    try {
+      const channel = await api.channel(channelId);
+      this.deps.store.setFetchedLastMessage(channelId, channel.last_message ?? null);
+    } catch (err) {
+      console.warn("could not refresh the conversation's last message", err);
+    }
   }
 
   /** M15d: my drafts across devices. */
@@ -561,7 +579,9 @@ export class SyncEngine {
       seen.add(channel.id);
       // §10: the server's read position is authoritative here (no max merge); marks this device could
       // not send are applied again below and sent once online.
-      store.upsertChannel(channel, channel.read_state ? { isMember: true, lastReadSeq: channel.read_state.last_read_seq } : { isMember: true });
+      // M49: the preview too (null here does mean "no message yet", unlike other responses').
+      const last_message = channel.last_message ?? null;
+      store.upsertChannel(channel, channel.read_state ? { isMember: true, lastReadSeq: channel.read_state.last_read_seq, last_message } : { isMember: true, last_message });
     }
     for (const channel of [...store.channels.values()]) {
       if (channel.isMember && !seen.has(channel.id)) this.removeChannel(channel.id); // no longer a member
@@ -826,6 +846,7 @@ export class SyncEngine {
       // No timeline here: the channel list moves, and rows this device already holds take the event
       // (a thread opened from the threads view shows its new replies, §7.4).
       if (this.holds(channel.id, message)) store.upsertMessage(message);
+      else store.applyLastMessage(message); // M49: the DM list's preview moves without a timeline too (§7.8)
       if (thread) store.applyParentThread(channel.id, thread); // only when the parent is held
       store.updateChannel(channel.id, { lastSeq: Math.max(channel.lastSeq, seq) });
       if (isNew) {

@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from collections.abc import Callable, Sequence
 
 MENTION_USER = re.compile(r"<@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>")
 MENTION_ALL = re.compile(r"<!(channel|here)>")
@@ -63,15 +64,19 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
     names (never raw ids; `names` maps user and group ids), light markdown markers are dropped,
     newlines collapse."""
 
-    def user_name(match: re.Match[str]) -> str:
-        try:
-            name = names.get(uuid.UUID(match.group(1)))
-        except ValueError:
-            name = None
-        return "@" + (name or "メンバー")
+    def named(fallback: str) -> Callable[[re.Match[str]], str]:
+        def name_of(match: re.Match[str]) -> str:
+            try:
+                name = names.get(uuid.UUID(match.group(1)))
+            except ValueError:
+                name = None
+            return "@" + (name or fallback)
 
-    text = MENTION_USER.sub(user_name, body)
-    text = MENTION_GROUP.sub(user_name, text)  # group ids share the names map (M12k)
+        return name_of
+
+    text = MENTION_USER.sub(named("メンバー"), body)
+    # Group ids share the names map (M12k); an unknown one reads 「@グループ」 as on the clients.
+    text = MENTION_GROUP.sub(named("グループ"), text)
     text = MENTION_ALL.sub(lambda m: "@" + m.group(1), text)
     text = _TABLE_SEPARATOR.sub("", text)
     text = _TABLE_ROW.sub(_table_cells, text)
@@ -85,7 +90,7 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
     return text[: max_length - 1] + "…" if len(text) > max_length else text
 
 
-def attachment_text(attachments: list[dict[str, object]] | list[object]) -> str:
+def attachment_text(attachments: Sequence[object]) -> str:
     """What a message without text sent, for notifications and one-line previews
     (tester, 2026-09-30: 「画像を送信」 rather than 「新しいメッセージ」). The clients use the
     same words: all images, all videos, or files; one, or how many. "" without attachments."""

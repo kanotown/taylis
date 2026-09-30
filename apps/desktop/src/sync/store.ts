@@ -1,5 +1,7 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+// M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
+import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import type { CanvasPendingState } from "./canvasSave";
 import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
@@ -285,6 +287,8 @@ export class Store {
   private readonly listeners = new Set<() => void>();
   /** Set by wipe(): nothing is written any more. */
   private closed = false;
+  /** M49: a preview emptied by a deletion the rows held could not replace; the engine fetches the server's. */
+  onStalePreview: ((channelId: string) => void) | null = null;
 
   constructor(private readonly persistence: Persistence | null = null) {}
 
@@ -415,6 +419,9 @@ export class Store {
       membership: channel.membership ?? existing?.membership ?? null,
       // Not every response counts members (M11h): keep the last known count.
       member_count: channel.member_count ?? existing?.member_count ?? null,
+      // M49: only answers to a member carry the preview; null elsewhere means "not said", so the one held stays. Bootstrap
+      // passes it in `patch`, where null does mean "no message" (SYNC_PROTOCOL.md §7.8).
+      last_message: channel.last_message ?? existing?.last_message ?? null,
       isMember: existing?.isMember ?? channel.membership !== null,
       syncedSeq: existing?.syncedSeq ?? null,
       lastSeq: Math.max(existing?.lastSeq ?? 0, channel.last_seq),
@@ -459,6 +466,46 @@ export class Store {
     this.persist((p) => p.saveChannel(merged));
     this.emit();
     return merged;
+  }
+
+  /**
+   * M49 (SYNC_PROTOCOL.md §7.8): a timeline message of one of my conversations moves its preview. A newer one takes its
+   * place; the one shown, edited, brings its new text; the one shown, deleted, falls back to the newest row held below it.
+   * When the rows held cannot say (no contiguous timeline down to it), the preview empties and `onStalePreview` asks the
+   * server (GET /channels/{id}). Thread-only replies, pending sends and older rows (history pages, search hits) leave it.
+   */
+  applyLastMessage(message: PreviewSource & { channel_id: string; parent_id?: string | null; also_in_channel?: boolean; deleted?: boolean }): void {
+    const seq = message.seq;
+    if (seq === null || (message.parent_id && message.also_in_channel !== true)) return;
+    const channel = this.channels.get(message.channel_id);
+    if (!channel || !channel.isMember) return;
+    const current = channel.last_message ?? null;
+    if (message.deleted) {
+      if (current?.id !== message.id) return;
+      // The loaded range is contiguous up to syncedSeq (§7.3): its newest live row below is the newest there is.
+      const timeline = channel.syncedSeq === null ? [] : this.messages(channel.id);
+      let below: MessageState | undefined;
+      for (let i = timeline.length - 1; i >= 0 && !below; i--) {
+        const row = timeline[i]!;
+        if (row.seq !== null && row.seq < seq && !row.deleted) below = row;
+      }
+      this.updateChannel(channel.id, { last_message: below ? lastMessageOf(below, this.users, this.groups) : null });
+      if (!below && (channel.syncedSeq === null || channel.hasOlder)) this.onStalePreview?.(channel.id);
+      return;
+    }
+    if (current && current.id !== message.id && current.seq >= seq) return;
+    const next = lastMessageOf(message, this.users, this.groups);
+    if (!sameLastMessage(current, next)) this.updateChannel(channel.id, { last_message: next });
+  }
+
+  /**
+   * M49: the server's preview fetched after a deletion the rows held could not replace (GET /channels/{id}). A newer one
+   * that came in the meantime (an event after the answer was made) stays.
+   */
+  setFetchedLastMessage(channelId: string, last: LastMessageOut | null): void {
+    const current = this.channels.get(channelId)?.last_message ?? null;
+    if (current && (!last || current.seq > last.seq)) return;
+    if (!sameLastMessage(current, last)) this.updateChannel(channelId, { last_message: last });
   }
 
   removeChannel(id: string): void {
@@ -855,6 +902,7 @@ export class Store {
       bucket.set(stored.id, stored);
       this.persist((p) => p.saveMessage(stored));
     }
+    this.applyLastMessage(stored); // M49: events, catch-up pages and my own edits / deletes alike
     this.emit();
     return true;
   }

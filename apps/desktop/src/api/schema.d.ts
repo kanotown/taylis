@@ -3067,6 +3067,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            last_message?: components["schemas"]["LastMessageOut"] | null;
             /** Last Message At */
             last_message_at: string | null;
             /** Last Seq */
@@ -3628,6 +3629,37 @@ export interface components {
             research_topic?: string | null;
             /** Supervisor Id */
             supervisor_id?: string | null;
+        };
+        /**
+         * LastMessageOut
+         * @description M49: a conversation's newest message as one line (MOBILE_UI.md §7.1, the DM list's
+         *     preview). Only top-level messages and replies also sent to the channel count; deleted ones
+         *     do not. The clients put the prefix (あなた: / the sender's name) in front.
+         */
+        LastMessageOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Has Attachments */
+            has_attachments: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Sender Id
+             * Format: uuid
+             */
+            sender_id: string;
+            /** Seq */
+            seq: number;
+            /** Type */
+            type: string;
         };
         /** Limits */
         Limits: {

@@ -84,6 +84,8 @@
 - `read_state.first_unread_at` は未読に数えたメッセージ (`unread_count` と同じ条件) のうち最も古い `created_at`。
   未読が無ければ null (M17)。未読バナーの「… 以降」に使う (§10.1)。`read_state` を返す所 (§4.5 の応答、
   read-all の応答、`read.updated`) はすべてこの値を含む。
+- `channels[].last_message` (M49) は会話の最後のメッセージを 1 行にしたもの (DM 一覧のプレビュー、§7.8)。
+  メッセージがまだ無ければ null。
 - `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
 - `presence` は今つながっているユーザー (§5.2)。載っていないユーザーは offline。以後の変化は `presence` フレームで届く。
 - `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しいものの数 (99 まで)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read` で `GET /activity/summary` を取り直す。
@@ -330,6 +332,7 @@ else:
 - `synced_seq` が null のチャンネルでも、すでにローカルにある行 (開いているスレッドの返信・その親) に関わる
   イベントは upsert する (スレッド一覧から開いたスレッドに新しい返信が出るように)。
 - トップレベルの `message.created` で `channel.last_message_at` を進める (DM 一覧の並び順)。
+- `message.*` は DM 一覧のプレビュー (`last_message`) も動かす。`synced_seq` が null の会話でも (§7.8)。
 - 「自分宛て」(mention_count を足す、`level = mentions` でも通知する) は `mention_all`、`mentioned_user_ids` に
   自分がいる、または本文に自分の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致) 場合。
   サーバはキーワードの一致を他のメンバーに見せないため `messages.keyword_user_ids` に分けて持ち、イベントには
@@ -397,6 +400,44 @@ else:
 - 削ったチャンネルのスレッドは「全部の返信を持っている」(§10.2) 扱いをやめる。次に開いたときに返信を取り直す。
 - 上へ遡ると `before_seq = oldest_loaded_seq` でサーバから取り直す (1 ページ約 10 ms)。オフラインで読めるのは各
   チャンネルの最新 500 件。
+
+### 7.8 会話の最後のメッセージ (M49、DM 一覧のプレビュー)
+
+`ChannelOut.last_message = {id, sender_id, type, seq, excerpt, has_attachments, created_at} | null`。
+新しいイベントの種類は足さない。サーバの値を起点に、クライアントが既存の `message.*` から保つ。
+
+- **サーバが入れる所**: 会員への応答だけ。bootstrap、`GET /channels` (自分の行)、`GET /channels/{id}` (会員のとき)、
+  既存の DM を返す `POST /dms`。ここでの null は「メッセージが無い」。
+- **入れない所**: それ以外の応答 (PATCH・join・archive …)、`channel.*` イベント (非会員にも届く、M15b)、非会員への
+  公開チャンネル (参加前のプレビュー M27 でも)。ここでは常に null で、「何も言っていない」の意味。クライアントは
+  持っている値を残す。
+- **対象**: トップレベルと `also_in_channel` の返信。スレッドだけの返信と削除済みは数えない。
+- **excerpt**: プッシュの本文と同じ規則。本文を 1 行にし (メンションは表示名、知らない人は「@メンバー」、
+  知らないグループは「@グループ」。軽い Markdown を外し、改行をつなぐ)、140 文字まで (140 文字目を「…」)。本文が
+  無ければ添付の言い方 (「画像を送信しました」「ファイルを 2 件送信しました」…)。guest には見えない人の名前は
+  「@メンバー」(M13e)。検証ケースは `apps/shared/dm-preview.json`。
+- **先頭 (クライアント)**: 無い・excerpt が空なら何も出さない。system メッセージはそのまま。自分のものは「あなた: 」
+  (自分だけの DM では付けない)。1:1 DM の相手のものはそのまま (行に名前があるため。Slack と同じ)。グループ DM と
+  チャンネルは「<表示名>: 」(知らない人は「メンバー: 」)。
+
+クライアントでの更新 (3 端末共通):
+
+```
+on message.created / message.updated / message.deleted / 差分・履歴・自分の応答で届いた行 (m):
+    if m がタイムラインの行でない (スレッドだけ・送信待ち) or 会員でない: 何もしない
+    cur = channel.last_message
+    if m.deleted:
+        if cur.id != m.id: 何もしない
+        タイムラインを持っていれば (synced_seq != null) その中で m.seq より前の最新の生きた行 → last_message
+        無ければ last_message = null。さらに synced_seq が null か has_older なら GET /channels/{id} で取り直す
+    elif cur is null or cur.id == m.id or m.seq > cur.seq:
+        last_message = m から作る (同じ excerpt の規則)
+```
+
+- **`synced_seq` が null の会話でも更新する** (DM 一覧は開いていない会話ばかり)。
+- 取り直しの応答より新しいもの (その間に届いたイベント) が手元にあれば、それを残す。
+- 取りこぼしは再接続の bootstrap で直る (bootstrap の値で置き換える。null も含む)。
+- 編集は seq を変えないので、最後の行の編集は本文だけ差し替わる。リアクションだけの `message.updated` では変わらない。
 
 ## 8. マージ規則
 

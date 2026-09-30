@@ -197,6 +197,13 @@ CREATE UNIQUE INDEX channels_times_owner_uniq ON channels (times_owner_id) WHERE
   未読があっても太字にせず「未読あり」にも数えない (メンションのときだけ未読・バッジ・プッシュ)。自分の times と、
   `all` にした他人の times は普通のチャンネルと同じ。
 
+**最後のメッセージ (M49、MOBILE_UI.md §7.1)**: 列は足さない。会員への応答の `ChannelOut.last_message`
+(`{id, sender_id, type, seq, excerpt, has_attachments, created_at}`) は、その都度 messages から求める:
+会話ごとに `uq_messages_channel_seq` を逆順にたどり、削除済みでなくタイムラインに出る行 (トップレベルか
+`also_in_channel`) の最初の 1 件 (LATERAL、1 クエリ)。編集は seq を変えないので、編集された最後の行は最後のまま。
+数十会話で 1 ms 前後 (chikuwa_perf、103 会話・47 万件、温まった状態)。重くなったら `channels.last_message_id` を
+`last_message_at` と同じトランザクションで持つ (削除時の付け替えが要る)。
+
 ### DM と通常チャンネルの違い
 
 | | public | private | dm | group_dm |

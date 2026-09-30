@@ -5,8 +5,10 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { LastMessageOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
+import { lastMessageOf } from "../src/ui/dmPreview";
 import type { Persistence, Snapshot } from "../src/sync/store";
 import type { ChannelState, EventFrame, MessageState, OutboxItem, SendOptions } from "../src/sync/types";
 
@@ -578,6 +580,13 @@ export class FakeServer {
     const updated: MessageOut = { ...message, body, edited_at: now(), updated_seq: seq, mentioned_user_ids: mentionedIds(body), mention_all: MENTION_ALL.test(body) };
     this.replace(record, updated, "message.updated", "body");
     return updated;
+  }
+
+  /** M49: ChannelOut.last_message as the server makes it: the newest live timeline row, one line (ui/dmPreview.ts's rule). */
+  lastMessage(channelId: string): LastMessageOut | null {
+    const rows = this.channels.get(channelId)?.messages ?? [];
+    const row = rows.filter((m) => !m.deleted && (!m.parent_id || m.also_in_channel)).sort((a, b) => b.seq - a.seq)[0];
+    return row ? lastMessageOf(row, this.users) : null;
   }
 
   delete(channelId: string, userId: string, messageId: string): MessageOut {
@@ -1192,6 +1201,7 @@ export class FakeServer {
             membership: { role: this.roleOf(r.channel.id, userId), joined_at: now() },
             read_state: this.readState(userId, r.channel.id),
             notification: this.notificationPreference(userId, r.channel.id),
+            last_message: this.lastMessage(r.channel.id),
           }));
         return {
           server_time: now(),
@@ -1433,6 +1443,19 @@ export class FakeServer {
       setThreadFollow: async (messageId, following): Promise<ThreadState> => {
         maybeFail();
         return this.setThreadFollow(userId, messageId, following);
+      },
+      channel: async (channelId: string): Promise<ChannelOut> => {
+        maybeFail();
+        const record = this.channels.get(channelId);
+        if (!record) throw new ApiError(404, "channel_not_found", "not found");
+        const member = record.members.has(userId);
+        if (!member && record.channel.type !== "public") throw new ApiError(403, "not_a_member", "not a member");
+        return {
+          ...record.channel,
+          member_count: record.members.size,
+          membership: member ? { role: this.roleOf(channelId, userId), joined_at: now() } : null,
+          last_message: member ? this.lastMessage(channelId) : null, // M49: members only
+        };
       },
       publicChannels: async (): Promise<ChannelOut[]> =>
         [...this.channels.values()]

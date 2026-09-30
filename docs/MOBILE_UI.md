@@ -194,11 +194,16 @@ TabView / NavigationBar (4 タブ、会話・スレッドの中ではタブバ�
 ```
 - 行は 64pt/72dp。1 行目は名前と時刻、2 行目はプレビュー。
   - 時刻は「今日なら時刻 / 昨日 / 7 日以内なら曜日 / それより前は M/d」
-  - プレビューの先頭は、自分なら「あなた: 」、グループ DM なら送信者名
-  - 添付だけなら「(添付ファイル)」
+  - プレビューの先頭 (M49 で決定): 自分のものは「あなた: 」(自分だけの DM では付けない)。1:1 DM の相手のものは
+    何も付けない (行の名前が相手なので。Slack と同じ)。グループ DM は「<表示名>: 」(知らない人は「メンバー: 」)。
+    system メッセージは先頭なし。まだ何も無ければ 2 行目は今までどおり (ステータス・プレゼンス・人数)
+  - 添付だけなら通知と同じ言い方 (「画像を送信しました」「ファイルを 2 件送信しました」…)
+  - 未読のときはプレビューも太字 (Slack と同じ)。ステータスの絵文字は 1 行目の名前の後ろ
+  - 規則は Web の `ui/dmPreview.ts` の `previewLine` / `previewExcerpt`。検証ケースは `apps/shared/dm-preview.json`
+    (サーバ・3 端末共通)
 - 並び順は last_message_at の新しい順 (今の順と同じ)。自分だけの DM (メンバーが自分だけ) は先頭に固定し、まだ無いときも先頭に出す。最初に開いたときに作る。名前は自分の表示名 (Slack / Mattermost と同じ)。ホームの「ダイレクトメッセージ」でも先頭 (畳んだとき・未読だけのときは出さない)。空の会話と履歴の始まりには「ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。」 (2026-09-29 追加・変更)。
 - スワイプ: 右→左は「既読にする」(`PUT /channels/{id}/read`)、左→右は「お気に入り」。長押しはお気に入り・セクションへ移動・通知の設定。
-- プレビューにはサーバの `last_message` が要る (7.1)。それまでは今と同じく名前・プレゼンス・ステータスで出す。
+- プレビューにはサーバの `last_message` を使う (7.1)。M49 でサーバと Web が対応、iOS / Android は次。
 
 ### 6.4 アクティビティ
 ```
@@ -331,16 +336,18 @@ Aa → 書式バー [B][I][S][`][```][🔗][•][1.][❝] (選択範囲を記法
 ## 7. データモデル / API の変更 (P2 以降、OpenAPI と docs も一緒に更新する)
 
 ### 7.1 DM (と会話) のプレビュー
-- `ChannelOut.last_message: {id, sender_id, excerpt, has_attachments, created_at} | null` を足す。
+- `ChannelOut.last_message: {id, sender_id, type, seq, excerpt, has_attachments, created_at} | null` を足す (M49 で実装)。
   - 対象はトップレベルと `also_in_channel` の投稿で、削除済みは除く
-  - excerpt はサーバの `notification_text()` (messages/mentions.py:61) で作る。メンションを名前にして 140 文字まで。プッシュの本文と同じ規則になる
-- 返すのは **会員に向けた応答だけ** (bootstrap と `GET /channels`・`GET /channels/{id}`)。
-  - `channel.updated` は非会員にも配ることがある (M15b) ので、ここには含めない
-- クライアントでの更新:
-  - `message.created` (トップレベル) が来たら置き換える。**`synced_seq` が null の会話でも更新する** (SYNC_PROTOCOL.md §7.4 に追記する)
+  - excerpt はサーバの `notification_text()` (messages/mentions.py) で作る。メンションを名前にして 140 文字まで。本文が無ければ `attachment_text()`。プッシュの本文と同じ規則になる
+  - `seq` は取り直しの応答と手元の値の新旧を比べるため、`type` は system メッセージに先頭を付けないため
+- 返すのは **会員に向けた応答だけ** (bootstrap と `GET /channels`・`GET /channels/{id}`・既存の DM を返す `POST /dms`)。
+  - `channel.updated` は非会員にも配ることがある (M15b) ので、ここには含めない。他の応答とイベントでは常に null で、クライアントは持っている値を残す
+  - DM に限らず会員の会話すべてに入れる。1 会話 1 回のインデックス参照で、DM だけに絞っても問い合わせの数も時間もほぼ変わらないため。クライアントが出すのは今は DM 一覧だけ
+- クライアントでの更新 (SYNC_PROTOCOL.md §7.8):
+  - `message.created` (タイムラインの行) が来たら置き換える。**`synced_seq` が null の会話でも更新する**
   - `message.updated` で同じ id なら本文を差し替える
-  - `message.deleted` で同じ id なら `GET /channels/{id}` を取り直す
-- 性能: まずは LATERAL で (channel_id, seq) の一意インデックスを逆順に 1 件引く (マイグレーション不要)。数十会話なら十分だが、実際に計測してから決める。重ければ `channels.last_message_id` を last_message_at と同じトランザクションで更新する (messages/repository.py:26-30)。
+  - `message.deleted` で同じ id なら、持っているタイムラインのその前の行にする。持っていなければ `GET /channels/{id}` を取り直す
+- 性能: LATERAL で (channel_id, seq) の一意インデックスを逆順にたどる (マイグレーション不要)。chikuwa_perf (103 会話・47 万件) で全会話 1 クエリ 1 ms (温まった状態、初回 24 ms)。bootstrap の問い合わせの数は会話の数で増えない (テストあり)。重くなったら `channels.last_message_id` を last_message_at と同じトランザクションで更新する (messages/repository.py の allocate_seq)。
 
 ### 7.2 アクティビティ (段階 B)
 - `GET /api/v1/activity?filter=all|mentions|threads|reactions&cursor=&limit=50`
@@ -372,7 +379,7 @@ Aa → 書式バー [B][I][S][`][```][🔗][•][1.][❝] (選択範囲を記法
 - タブの名前・順番・バッジの規則 (DM タブ = 未読のある DM の数、アクティビティ = 未読の項目数でメンションがあれば赤、ホーム = 未読メンションがあれば点)。
 - ホームのセクションの順番、折りたたんでも未読は出す規則、タイルの種類と並び順。
 - 操作シートの項目・順番・文言。クイックリアクションは今の `["👍","❤️","😂","🎉","👀","✅"]` (ChannelView.swift:347、MessageActions.kt:32、Web の REACTION_PALETTE) を使い続ける。
-- プレビューの文言 (あなた: / 送信者名: / (添付ファイル)) と時刻表示の規則。既存の excerpt 関数 (Timeline.excerpt / plainText / Web) に揃える。
+- プレビューの文言 (あなた: / 送信者名: / 添付の言い方。§6.3) と時刻表示の規則。既存の excerpt 関数 (Timeline.excerpt / plainText / Web) に揃える。検証ケースは `apps/shared/dm-preview.json` (M49)。
 - 未読の判定 (showsUnread / badgeContribution、Store.swift:31-33 と Channels.kt と channels.ts) は変えない。
 - 契約テスト (ContractTests.swift / ContractTest.kt / Web) に、プレビューとアクティビティ既読の fixture を足す。
 

@@ -17,6 +17,7 @@ from app.modules.emoji import service as emoji
 from app.modules.favorites import service as favorites
 from app.modules.groups import service as groups
 from app.modules.lab import service as lab
+from app.modules.messages import service as messages
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.notifications import service as notifications
 from app.modules.reads import rules as unread_rules
@@ -49,6 +50,8 @@ async def bootstrap(
     prefs = await notifications.preferences_for(db, actor.id)
     read_states = await reads.states_for_user(db, actor.id, [c.id for c in listed])
     canvas_tabs = await canvases.tab_ids(db, [c.id for c in listed])
+    # M49: every listed channel is mine; the query count does not grow with them.
+    last_messages = await messages.last_messages(db, [c.id for c in listed], visible)
     with_prefs = [
         c.model_copy(
             update={
@@ -61,6 +64,7 @@ async def bootstrap(
                 ),
                 "read_state": read_states.get(c.id),
                 "canvas_tab_id": canvas_tabs.get(c.id),
+                "last_message": last_messages.get(c.id),
             }
         )
         for c in listed

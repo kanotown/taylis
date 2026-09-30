@@ -21,6 +21,21 @@ from app.modules.reads.schemas import ReadMark, ReadStateOut
 router = APIRouter(tags=["channels"])
 
 
+async def _with_last_message(
+    request: Request, db: Db, user: CurrentUser, listed: list[ChannelOut]
+) -> list[ChannelOut]:
+    """M49: `last_message` for the channels the user is a member of (never a non-member's
+    public channel). The lookup comes from main.py (channels does not depend on messages)."""
+    mine = [c.id for c in listed if c.membership is not None]
+    if not mine:
+        return listed
+    visible = await service.visible_user_ids(db, user)
+    last = await request.app.state.last_messages(db, mine, visible)
+    return [
+        c.model_copy(update={"last_message": last[c.id]}) if c.id in last else c for c in listed
+    ]
+
+
 @router.post("/channels", response_model=ChannelOut, status_code=201)
 async def create_channel(user: CurrentUser, body: ChannelCreate, db: Db) -> ChannelOut:
     return await service.create_channel(db, user, body)
@@ -30,14 +45,17 @@ async def create_channel(user: CurrentUser, body: ChannelCreate, db: Db) -> Chan
 async def list_channels(
     user: CurrentUser,
     db: Db,
+    request: Request,
     include: Literal["public"] | None = Query(default=None),
 ) -> list[ChannelOut]:
-    return await service.list_channels(db, user, include_public=include == "public")
+    listed = await service.list_channels(db, user, include_public=include == "public")
+    return await _with_last_message(request, db, user, listed)
 
 
 @router.get("/channels/{channel_id}", response_model=ChannelOut)
-async def get_channel(channel_id: UUID, user: CurrentUser, db: Db) -> ChannelOut:
-    return await service.get_channel(db, user, channel_id)
+async def get_channel(channel_id: UUID, user: CurrentUser, db: Db, request: Request) -> ChannelOut:
+    channel = await service.get_channel(db, user, channel_id)
+    return (await _with_last_message(request, db, user, [channel]))[0]
 
 
 @router.patch("/channels/{channel_id}", response_model=ChannelOut)
@@ -106,12 +124,14 @@ async def ensure_times(
 
 @router.post("/dms", response_model=ChannelOut)
 async def get_or_create_dm(
-    user: CurrentUser, body: DmCreate, db: Db, response: Response
+    user: CurrentUser, body: DmCreate, db: Db, request: Request, response: Response
 ) -> ChannelOut:
     participants = await service.load_users(db, body.user_ids)
     channel, created = await service.get_or_create_dm(db, user, participants)
     response.status_code = 201 if created else 200
-    return channel
+    if created:
+        return channel  # nothing said yet
+    return (await _with_last_message(request, db, user, [channel]))[0]
 
 
 @router.post("/channels/read-all", response_model=list[ChannelReadStateOut])

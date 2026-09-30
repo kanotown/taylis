@@ -40,6 +40,21 @@ class MembershipOut(BaseModel):
     joined_at: datetime
 
 
+class LastMessageOut(BaseModel):
+    """M49: a conversation's newest message as one line (MOBILE_UI.md §7.1, the DM list's
+    preview). Only top-level messages and replies also sent to the channel count; deleted ones
+    do not. The clients put the prefix (あなた: / the sender's name) in front."""
+
+    id: UUID
+    sender_id: UUID
+    type: str  # "user" | "system" (a system message's text goes without a prefix)
+    seq: int
+    # notification_text() with mention names, else attachment_text(): the push body's rule.
+    excerpt: str
+    has_attachments: bool
+    created_at: datetime
+
+
 class ChannelOut(BaseModel):
     id: UUID
     type: ChannelType
@@ -66,6 +81,10 @@ class ChannelOut(BaseModel):
     # M41: the conversation's canvas tab (CANVAS.md §4.3). Filled by bootstrap only (null
     # elsewhere); afterwards the canvas.* events carry is_channel_tab.
     canvas_tab_id: UUID | None = None
+    # M49: only in answers to a member (bootstrap, GET /channels, GET /channels/{id}, POST /dms);
+    # null there = no message yet. Always null elsewhere (other responses, channel.* events,
+    # non-members): clients keep the one they hold (SYNC_PROTOCOL.md §7.8).
+    last_message: LastMessageOut | None = None
 
 
 class MemberOut(BaseModel):

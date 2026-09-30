@@ -5,6 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
 import { badgeCount, hasUnread, isMutedChannel } from "./channels";
+import { previewLine } from "./dmPreview";
 import { fullTimestamp } from "./format";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { dmList, dmTimeLabel, isSelfNotes, showsSelfNotesPlaceholder } from "./mobileTabs";
@@ -36,8 +37,8 @@ export function useOpenSelfNotes(controller: AppController, meId: string | null,
 
 /**
  * M34, the phone's DM tab (MOBILE_UI.md §6.3): my DMs and group DMs, my own DM (titled with my name) first, then the
- * newest. A row shows the name and the time, the presence and status (the last message's preview comes with M37),
- * unread in bold with its count. Until my own DM exists, a placeholder row (my picture and name) stands first; a tap
+ * newest. A row shows the name and the time, then the last message (M49, dmPreview.ts; the presence or status while
+ * there is none), unread in bold with its count. Until my own DM exists, a placeholder row (my picture and name) stands first; a tap
  * makes it and opens it.
  */
 export function DmListView({ controller, onOpen, onNew }: { controller: AppController; onOpen: (id: string) => void; onNew: () => void }) {
@@ -120,7 +121,9 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
   const muted = isMutedChannel(channel);
   const title = channelTitle(channel, controller);
   const time = dmTimeLabel(channel.last_message_at, now);
-  const second = status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? `${others.length + 1} 人` : "";
+  // M49: the last message (「あなた: …」 / 「佐藤: …」, dmPreview.ts); without one, the status, presence or size as before.
+  const preview = previewLine(channel, channel.last_message, meId, store.users);
+  const second = preview || (status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? `${others.length + 1} 人` : "");
   return (
     <li>
       <button type="button" onClick={onOpen} className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-panel active:bg-panel">
@@ -133,7 +136,13 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
         ) : null}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className={cn("min-w-0 flex-1 truncate text-[15px]", unread ? "font-bold text-ink" : "font-medium text-ink/90")}>{title}</span>
+            <span className={cn("min-w-0 truncate text-[15px]", unread ? "font-bold text-ink" : "font-medium text-ink/90")}>{title}</span>
+            {preview && status?.emoji && (
+              <span className="shrink-0 text-[13px]" title={status.text ?? undefined} aria-label={status.text ?? undefined}>
+                {status.emoji}
+              </span>
+            )}
+            <span className="flex-1" />
             {time && (
               <span className={cn("shrink-0 text-xs", unread ? "font-semibold text-ink" : "text-muted")} title={channel.last_message_at ? fullTimestamp(channel.last_message_at) : undefined}>
                 {time}
@@ -141,7 +150,9 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             )}
           </span>
           <span className="mt-0.5 flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{second}</span>
+            <span data-dm-preview={preview ? "" : undefined} className={cn("min-w-0 flex-1 truncate text-[13px]", preview && unread ? "font-semibold text-ink" : "text-muted")}>
+              {second}
+            </span>
             {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label="ミュート中" />}
             {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}
             {unread && badge === 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label="未読" />}

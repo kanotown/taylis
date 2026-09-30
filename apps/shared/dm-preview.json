@@ -1,0 +1,286 @@
+{
+  "_comment": "MOBILE_UI.md §6.3 / §7.1 (M49): the DM list's preview line. excerpt: what the server puts in ChannelOut.last_message.excerpt and what a client computes from a message event: the body as one line (mention tokens as display names, unknown people 「@メンバー」, unknown groups 「@グループ」; light markdown dropped; newlines collapsed; at most 140 characters, the 140th being …), or, without text, the attachments' words (the push body's rule). line: the client's prefix: nothing without a last message or with an empty excerpt; a system message as it is; my message 「あなた: 」 except in my own DM (only me); someone else's in a 1:1 DM as it is; elsewhere 「<表示名>: 」 (an unknown sender 「メンバー: 」). Hand-written; the server (tests/test_last_message.py) and every client test against it.",
+  "me": "00000000-0000-7000-8000-0000000000a0",
+  "users": {
+    "00000000-0000-7000-8000-0000000000a0": "自分",
+    "00000000-0000-7000-8000-0000000000a1": "田中",
+    "00000000-0000-7000-8000-0000000000a2": "佐藤"
+  },
+  "groups": {
+    "00000000-0000-7000-8000-0000000000b1": "design"
+  },
+  "excerpt": [
+    {
+      "name": "plain",
+      "body": "了解です",
+      "attachments": [],
+      "excerpt": "了解です"
+    },
+    {
+      "name": "markdown and newlines",
+      "body": "**明日**の件、`資料`を\n\n確認お願いします",
+      "attachments": [],
+      "excerpt": "明日の件、資料を 確認お願いします"
+    },
+    {
+      "name": "list and quote",
+      "body": "> 引用\n- 一つ目\n- 二つ目",
+      "attachments": [],
+      "excerpt": "引用 一つ目 二つ目"
+    },
+    {
+      "name": "code fence",
+      "body": "```python\nprint(1)\n```",
+      "attachments": [],
+      "excerpt": "print(1)"
+    },
+    {
+      "name": "link",
+      "body": "[資料](https://example.com/a) です",
+      "attachments": [],
+      "excerpt": "資料 です"
+    },
+    {
+      "name": "user mention",
+      "body": "<@00000000-0000-7000-8000-0000000000a1> 見ました？",
+      "attachments": [],
+      "excerpt": "@田中 見ました？"
+    },
+    {
+      "name": "unknown user",
+      "body": "<@00000000-0000-7000-8000-0000000000af> hi",
+      "attachments": [],
+      "excerpt": "@メンバー hi"
+    },
+    {
+      "name": "group mention",
+      "body": "<@group:00000000-0000-7000-8000-0000000000b1> 集合",
+      "attachments": [],
+      "excerpt": "@design 集合"
+    },
+    {
+      "name": "unknown group",
+      "body": "<@group:00000000-0000-7000-8000-0000000000bf> 集合",
+      "attachments": [],
+      "excerpt": "@グループ 集合"
+    },
+    {
+      "name": "channel",
+      "body": "<!channel> お知らせ",
+      "attachments": [],
+      "excerpt": "@channel お知らせ"
+    },
+    {
+      "name": "poll",
+      "body": "📊 お昼どこにする？",
+      "attachments": [],
+      "excerpt": "📊 お昼どこにする？"
+    },
+    {
+      "name": "one image",
+      "body": "",
+      "attachments": [
+        "image/png"
+      ],
+      "excerpt": "画像を送信しました"
+    },
+    {
+      "name": "two images",
+      "body": "",
+      "attachments": [
+        "image/png",
+        "image/jpeg"
+      ],
+      "excerpt": "画像を 2 枚送信しました"
+    },
+    {
+      "name": "one video",
+      "body": "",
+      "attachments": [
+        "video/mp4"
+      ],
+      "excerpt": "動画を送信しました"
+    },
+    {
+      "name": "mixed files",
+      "body": "",
+      "attachments": [
+        "image/png",
+        "application/pdf"
+      ],
+      "excerpt": "ファイルを 2 件送信しました"
+    },
+    {
+      "name": "text wins over files",
+      "body": "スライドです",
+      "attachments": [
+        "application/pdf"
+      ],
+      "excerpt": "スライドです"
+    },
+    {
+      "name": "long",
+      "body": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+      "attachments": [],
+      "excerpt": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ…"
+    },
+    {
+      "name": "exactly 140",
+      "body": "いいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいい",
+      "attachments": [],
+      "excerpt": "いいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいい"
+    }
+  ],
+  "line": [
+    {
+      "name": "no message",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1"
+      ],
+      "last_message": null,
+      "line": ""
+    },
+    {
+      "name": "1:1 mine",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a0",
+        "type": "user",
+        "excerpt": "了解です"
+      },
+      "line": "あなた: 了解です"
+    },
+    {
+      "name": "1:1 theirs",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a1",
+        "type": "user",
+        "excerpt": "明日の件…"
+      },
+      "line": "明日の件…"
+    },
+    {
+      "name": "1:1 their image",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a1",
+        "type": "user",
+        "excerpt": "画像を送信しました"
+      },
+      "line": "画像を送信しました"
+    },
+    {
+      "name": "my own DM",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a0",
+        "type": "user",
+        "excerpt": "買い物メモ"
+      },
+      "line": "買い物メモ"
+    },
+    {
+      "name": "group mine",
+      "type": "group_dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1",
+        "00000000-0000-7000-8000-0000000000a2"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a0",
+        "type": "user",
+        "excerpt": "ファイルを送信しました"
+      },
+      "line": "あなた: ファイルを送信しました"
+    },
+    {
+      "name": "group theirs",
+      "type": "group_dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1",
+        "00000000-0000-7000-8000-0000000000a2"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a2",
+        "type": "user",
+        "excerpt": "スライド共有します"
+      },
+      "line": "佐藤: スライド共有します"
+    },
+    {
+      "name": "group unknown sender",
+      "type": "group_dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1",
+        "00000000-0000-7000-8000-0000000000af"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000af",
+        "type": "user",
+        "excerpt": "こんにちは"
+      },
+      "line": "メンバー: こんにちは"
+    },
+    {
+      "name": "system message",
+      "type": "group_dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1",
+        "00000000-0000-7000-8000-0000000000a2"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a1",
+        "type": "system",
+        "excerpt": "田中 が参加しました"
+      },
+      "line": "田中 が参加しました"
+    },
+    {
+      "name": "empty excerpt",
+      "type": "dm",
+      "dm_user_ids": [
+        "00000000-0000-7000-8000-0000000000a0",
+        "00000000-0000-7000-8000-0000000000a1"
+      ],
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a0",
+        "type": "user",
+        "excerpt": ""
+      },
+      "line": ""
+    },
+    {
+      "name": "channel theirs",
+      "type": "public",
+      "dm_user_ids": null,
+      "last_message": {
+        "sender_id": "00000000-0000-7000-8000-0000000000a1",
+        "type": "user",
+        "excerpt": "おはようございます"
+      },
+      "line": "田中: おはようございます"
+    }
+  ]
+}
