@@ -369,7 +369,7 @@ struct MessageBodyView: View {
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {
                 if let lang { Text(lang.uppercased()).font(.caption2).foregroundStyle(.secondary) }
-                Text(code).font(.system(.body, design: .monospaced))
+                Text(Self.untabbed(code)).font(.system(.body, design: .monospaced))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -434,7 +434,14 @@ struct MessageBodyView: View {
         tokens.reduce(Text("")) { $0 + render($1, emojiHeight: emojiHeight) }
     }
 
+    /// A tab as spaces: SwiftUI's Text puts what follows a tab at the next tab stop but breaks the line as if it were not
+    /// there, so a table pasted with tabs ran past the right edge, cut off (tester, 2026-09-30).
+    static func untabbed(_ text: String) -> String {
+        text.contains("\t") ? text.replacingOccurrences(of: "\t", with: "    ") : text
+    }
+
     private func emojiText(_ text: String, height: CGFloat = CustomEmoji.inlineHeight) -> Text {
+        let text = Self.untabbed(text)
         guard !keywords.isEmpty else { return plainEmojiText(text, height: height) }
         return NotifyKeywords.pieces(text, keywords).reduce(Text("")) { sum, piece in
             sum + (piece.hit ? Text(piece.text).bold().foregroundStyle(Color.accentColor) : plainEmojiText(piece.text, height: height))
@@ -451,8 +458,8 @@ struct MessageBodyView: View {
         case .bold(let text): return emojiText(text, height: emojiHeight).bold()
         case .italic(let text): return emojiText(text, height: emojiHeight).italic()
         case .strike(let text): return emojiText(text, height: emojiHeight).strikethrough()
-        case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
-        case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
+        case .code(let text): return Text(Self.untabbed(text)).font(.system(.body, design: .monospaced))
+        case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(.system(.body, design: .monospaced))
         case .link(let url, let label):
             if let id = CanvasLink.canvasId(base: internalBase, url: url) {
                 // M45: a canvas of this server opens in the app (its screen, or 「メンバーではありません」).

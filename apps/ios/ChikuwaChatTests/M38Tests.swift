@@ -33,6 +33,47 @@ final class M38Tests: XCTestCase {
         XCTAssertLessThanOrEqual(fittedSize(code, width: 280).width, 280.5)
     }
 
+    /// Whether a glyph is cut off at the body's right edge: a line longer than the width is drawn up to its last pixel
+    /// column and no further (a line that fits keeps at least a side bearing's half point clear of it).
+    private func inkAtRightEdge(_ text: String, width: CGFloat, size: DynamicTypeSize) -> Bool {
+        let view = MessageBodyView(text: text, users: [:]).frame(width: width)
+            .background(Color.white).environment(\.colorScheme, .light).dynamicTypeSize(size)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.cgImage, let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else {
+            XCTFail("not rendered"); return false
+        }
+        let perPixel = image.bitsPerPixel / 8
+        return (0..<image.height).contains { y in
+            let pixel = bytes + y * image.bytesPerRow + (image.width - 1) * perPixel
+            return pixel[0] < 200 || pixel[1] < 200 || pixel[2] < 200
+        }
+    }
+
+    /// A table pasted from a chat keeps its tabs: SwiftUI's Text put the part after a tab at the tab stop but broke the
+    /// line as if it were not there, and 「約 29 億」 ran past the right edge (tester, 2026-09-30, thread, text one size
+    /// smaller than the default).
+    func testTabbedLinesWrapWithinTheRow() {
+        let rows = [["生成 (出力)", "約 2,400 万", "約 760 万", "約 3,150 万"],
+                    ["新規に読んだ文脈 (キャッシュ書き込み)", "約 6,200 万", "約 9,000 万", "約 1.5 億"],
+                    ["キャッシュからの再読み込み", "約 52 億", "約 29 億", "約 81 億"],
+                    ["応答回数", "9,973", "12,538", "22,511"]]
+        let prose = "ログに残っている使用量を足し合わせた概算です。このセッション 1 本 (9/25〜今日) と、そこから起動したサブエージェント 103 本分。"
+        for width in stride(from: CGFloat(300), through: 340, by: 2) {
+            XCTAssertFalse(inkAtRightEdge("> " + prose, width: width, size: .medium), "prose \(width)") // the check itself
+        }
+        for separator in ["\t", " \t", "\t\t"] {
+            let table = rows.map { $0.joined(separator: separator) }
+            for body in [table.map { "> " + $0 }.joined(separator: "\n"), table.joined(separator: "\n")] {
+                for size in [DynamicTypeSize.medium, .large] {
+                    for width in stride(from: CGFloat(300), through: 340, by: 2) {
+                        XCTAssertFalse(inkAtRightEdge(body, width: width, size: size), "\(size) \(width) \(separator.debugDescription) \(body.prefix(4))")
+                    }
+                }
+            }
+        }
+    }
+
     func testTableCellsWrapAtTheirCap() {
         XCTAssertEqual(CappedWidth.width(offered: nil, max: 200), 200) // a sideways scroll view offers any width
         XCTAssertEqual(CappedWidth.width(offered: .infinity, max: 200), 200)
