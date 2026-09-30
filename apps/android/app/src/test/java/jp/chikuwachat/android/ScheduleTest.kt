@@ -46,6 +46,15 @@ class ScheduleTest {
         assertEquals(local(2026, 10, 3, 9), presets[3].at)
     }
 
+    @Test fun aCustomReminderIsLabelledWithItsTime() {
+        val now = local(2026, 10, 2, 19, 30)
+        val custom = Schedule.customReminder(local(2026, 10, 7, 14, 15), now)
+        assertEquals(Schedule.CUSTOM, custom.key)
+        assertEquals("10月7日(水) 14:15", custom.label)
+        assertEquals(local(2026, 10, 7, 14, 15), custom.at)
+        assertEquals("明日 8:00", Schedule.customReminder(local(2026, 10, 3, 8), now).label)
+    }
+
     @Test fun labelsAreRelativeToToday() {
         val now = local(2026, 10, 2, 10)
         assertEquals("今日 18:00", Schedule.label(local(2026, 10, 2, 18), now))
