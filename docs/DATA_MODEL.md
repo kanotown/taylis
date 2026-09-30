@@ -20,6 +20,7 @@ users 1---* notification_preferences *---1 channels
 channels 1---* messages 1---* reactions
                         1---* attachments
                         1---* messages (parent_id: スレッド返信)
+channels 1---* canvases 1---* canvas_revisions   (M41。canvas_templates は独立)
 outbox_events (独立。channel_id / audience で配信先を持つ)
 push_deliveries *---1 devices   (event_id は outbox_events.id を参照するが FK は張らない)
 audit_logs *---1 users (actor)
@@ -693,6 +694,83 @@ CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, 
     時刻が読めない・終わりが先、のどれかなら何も作らずに使い方を出す。
   - `/日程` だけなら投票の作成画面を開き、質問「日程調整」、複数選択、今日の翌日からの平日 5 日を選択肢に入れておく。
 
+### canvases / canvas_revisions / canvas_templates (キャンバス、M41、CANVAS.md §4)
+
+```sql
+CREATE TABLE canvases (
+  id               uuid PRIMARY KEY,                        -- UUIDv7
+  channel_id       uuid NOT NULL REFERENCES channels(id),   -- 所属する会話。権限はすべてここから
+  title            varchar(200) NOT NULL,
+  body             text NOT NULL DEFAULT '',                -- キャンバス用 markdown。100,000 文字まで。改行は \n に揃える
+  version          bigint NOT NULL DEFAULT 1,               -- 本文・題名・設定・ゴミ箱の出し入れごとに +1 (大きい方が勝つ)
+  head_rev_id      uuid NOT NULL,                           -- 現在の本文の版 (次の保存の base_rev_id)
+  is_channel_tab   boolean NOT NULL DEFAULT false,          -- 会話の「キャンバス」タブ (1 会話 1 つ)
+  edit_policy      varchar(16) NOT NULL DEFAULT 'members',  -- 'members' | 'owners' (DM では無視)
+  template_key     varchar(40),                             -- 作成に使ったテンプレート
+  share_message_id uuid REFERENCES messages(id),            -- 会話に共有したメッセージ (M42 で使う)
+  task_total       integer NOT NULL DEFAULT 0,              -- 保存時に数える (一覧の「3/8」)
+  task_done        integer NOT NULL DEFAULT 0,
+  created_by       uuid NOT NULL REFERENCES users(id),
+  updated_by       uuid NOT NULL REFERENCES users(id),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  deleted_at       timestamptz,                             -- ゴミ箱 (30 日後に完全削除、M42)
+  deleted_by       uuid REFERENCES users(id),
+  CHECK (edit_policy IN ('members', 'owners'))
+);
+CREATE INDEX canvases_channel_idx ON canvases (channel_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX canvases_tab_uniq ON canvases (channel_id) WHERE is_channel_tab AND deleted_at IS NULL;
+
+CREATE TABLE canvas_revisions (
+  id              uuid PRIMARY KEY,                         -- UUIDv7
+  canvas_id       uuid NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
+  version         bigint,                                   -- この版で canvases.version がいくつになったか。side は NULL
+  kind            varchar(16) NOT NULL,                     -- create | save | merge | side | restore | erased
+  parent_rev_id   uuid,                                     -- save / side: 元にした版。merge / restore: その時点の head
+  author_id       uuid NOT NULL REFERENCES users(id),
+  title           varchar(200) NOT NULL,                    -- その時点の題名
+  body            text NOT NULL,                            -- erased は ''
+  client_save_id  uuid,                                     -- 冪等キー (create・直接の save・side・restore)
+  label           varchar(80),                              -- 名前付きの版 (「提出版」)
+  lines_added     integer NOT NULL DEFAULT 0,               -- 親との差 (行の多重集合の差)。履歴の一覧に本文なしで出す
+  lines_removed   integer NOT NULL DEFAULT 0,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (kind IN ('create', 'save', 'merge', 'side', 'restore', 'erased'))
+);
+CREATE INDEX canvas_revisions_canvas_idx ON canvas_revisions (canvas_id, created_at);
+CREATE UNIQUE INDEX canvas_revisions_save_uniq ON canvas_revisions (author_id, client_save_id) WHERE client_save_id IS NOT NULL;
+
+CREATE TABLE canvas_templates (
+  id          uuid PRIMARY KEY,
+  key         varchar(40) NOT NULL UNIQUE,  -- 組み込み: weekly_report | minutes | research_plan | conference_checklist | thesis_schedule。admin が足したものは custom_…
+  name        varchar(80) NOT NULL,
+  description varchar(200),
+  title       varchar(200) NOT NULL,        -- 例: '週報 {{week}} {{me_name}}'
+  body        text NOT NULL,
+  position    integer NOT NULL,
+  builtin     boolean NOT NULL DEFAULT false,   -- 組み込みは編集・非表示はできるが削除できない
+  hidden      boolean NOT NULL DEFAULT false,
+  created_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- **会話に属する**: チャンネル / DM / グループ DM / 自分との DM。権限は `channel_members` から (SECURITY.md §3.2)。
+  会話あたり 200 件まで (ゴミ箱を除く、`409 too_many_canvases`)。編集は channel の seq を消費しない (未読を増やさない)。
+- **版**: 本文が変わるたびに 1 行 (create / save / merge / restore)。マージした保存では、送られた本文そのものを side 版として
+  残す。これがその端末の次の保存の base になる (CANVAS.md §4.4、SYNC_PROTOCOL.md §14)。履歴の一覧 (`GET
+  /canvases/{id}/revisions`) は side を出さない。消去 (`DELETE …/revisions/{rev}`) は本文を '' にして kind を erased にする。
+  現在の版は消去できない (`409 canvas_revision_is_head`)。erased の版は base にも復元元にもならない。
+- **版の整理** (M42 で周期ジョブに追加する予定、CANVAS.md §4.9): 24 時間以内の版はすべて残す。24 時間を過ぎたら side を消し、
+  同じ作者の連続した版は 10 分ごとの最後の 1 つだけ残す。create・restore・ラベル付き・現在の版は常に残す。
+- **タスク**: `- [ ] 項目` / `- [x] 項目` (`*` も、先頭の空白による入れ子も) を保存時に数える。``` の囲みの中は数えない。
+- **テンプレート**: 組み込みの 5 つはマイグレーション 0046 が入れ、起動時に欠けていれば入れ直す (削除はできないので、通常は何も
+  しない)。作成 API の中でサーバが `tz` の日付で `{{date}}` (`2026-10-01 (木)`)、`{{week}}` (ISO 週 `2026-W40`、投稿テンプレート
+  と同じ)、`{{me}}` (本文では `<@id>`、題名では表示名)、`{{me_name}}`、`{{channel}}` (チャンネル名。DM は相手の表示名を「、」で
+  つないだもの、自分との DM は自分の表示名) を 1 回だけ置き換える。ほかの `{{…}}` はそのまま。
+- **エクスポート**: `cli export-channel` の JSONL は、メッセージの後にキャンバスを 1 行ずつ `{"type": "canvas", …}` で出す
+  (ゴミ箱を除く)。
+
 ### drafts (端末間で共有する下書き、M15d)
 
 ```sql
@@ -1135,6 +1213,7 @@ M15h で内容の条件を足した (Slack と同じ語): `has:file` (`has:attac
 | outbox_events | 1 日数千行 | 処理済みは 7 日で削除 |
 | push_deliveries | 1 日数千行 | 7 日で削除 |
 | sessions / devices | ユーザー × 端末 | 失効 / 無効化から 30 日で削除 |
+| canvases / canvas_revisions | 版 1 つ ≈ 本文の圧縮後 (約 1 万字で 9.6 KB)。1 時間の自動保存で約 700 版 | キャンバスは無期限 (ゴミ箱は 30 日)。版は 24 時間後に整理 (M42) |
 
 ## 6. 将来の追加候補 (スキーマ上の置き場所だけ決めておく)
 

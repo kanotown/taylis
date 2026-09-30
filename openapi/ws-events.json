@@ -52,6 +52,326 @@
         "type": "object"
       }
     },
+    "canvas.created": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CanvasMeta": {
+            "description": "A canvas without its body: lists and the canvas.* events (CANVAS.md §4.6).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "deleted_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Deleted At"
+              },
+              "edit_policy": {
+                "enum": [
+                  "members",
+                  "owners"
+                ],
+                "title": "Edit Policy",
+                "type": "string"
+              },
+              "head_rev_id": {
+                "format": "uuid",
+                "title": "Head Rev Id",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "is_channel_tab": {
+                "title": "Is Channel Tab",
+                "type": "boolean"
+              },
+              "share_message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Share Message Id"
+              },
+              "task_done": {
+                "title": "Task Done",
+                "type": "integer"
+              },
+              "task_total": {
+                "title": "Task Total",
+                "type": "integer"
+              },
+              "template_key": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Template Key"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "updated_by": {
+                "format": "uuid",
+                "title": "Updated By",
+                "type": "string"
+              },
+              "version": {
+                "title": "Version",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "title",
+              "version",
+              "head_rev_id",
+              "is_channel_tab",
+              "edit_policy",
+              "template_key",
+              "share_message_id",
+              "task_total",
+              "task_done",
+              "created_by",
+              "updated_by",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "CanvasMeta",
+            "type": "object"
+          }
+        },
+        "description": "canvas.created: a new canvas, or one back from the trash.",
+        "properties": {
+          "canvas": {
+            "$ref": "#/$defs/CanvasMeta"
+          }
+        },
+        "required": [
+          "canvas"
+        ],
+        "title": "CanvasCreatedData",
+        "type": "object"
+      }
+    },
+    "canvas.deleted": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "description": "canvas.deleted: moved to the trash; drop it.",
+        "properties": {
+          "canvas_id": {
+            "format": "uuid",
+            "title": "Canvas Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canvas_id",
+          "channel_id"
+        ],
+        "title": "CanvasDeletedData",
+        "type": "object"
+      }
+    },
+    "canvas.updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CanvasMeta": {
+            "description": "A canvas without its body: lists and the canvas.* events (CANVAS.md §4.6).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "deleted_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Deleted At"
+              },
+              "edit_policy": {
+                "enum": [
+                  "members",
+                  "owners"
+                ],
+                "title": "Edit Policy",
+                "type": "string"
+              },
+              "head_rev_id": {
+                "format": "uuid",
+                "title": "Head Rev Id",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "is_channel_tab": {
+                "title": "Is Channel Tab",
+                "type": "boolean"
+              },
+              "share_message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Share Message Id"
+              },
+              "task_done": {
+                "title": "Task Done",
+                "type": "integer"
+              },
+              "task_total": {
+                "title": "Task Total",
+                "type": "integer"
+              },
+              "template_key": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Template Key"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "updated_by": {
+                "format": "uuid",
+                "title": "Updated By",
+                "type": "string"
+              },
+              "version": {
+                "title": "Version",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "title",
+              "version",
+              "head_rev_id",
+              "is_channel_tab",
+              "edit_policy",
+              "template_key",
+              "share_message_id",
+              "task_total",
+              "task_done",
+              "created_by",
+              "updated_by",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "CanvasMeta",
+            "type": "object"
+          }
+        },
+        "description": "canvas.updated: re-read the canvas (GET /canvases/{id}) if it is open and not being\nedited; the body is not in the event.",
+        "properties": {
+          "canvas": {
+            "$ref": "#/$defs/CanvasMeta"
+          },
+          "change": {
+            "enum": [
+              "content",
+              "title",
+              "settings",
+              "restore"
+            ],
+            "title": "Change",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canvas",
+          "change"
+        ],
+        "title": "CanvasUpdatedData",
+        "type": "object"
+      }
+    },
     "channel.archived": {
       "audience": "channel",
       "consumes_seq": false,
@@ -80,6 +400,19 @@
               "archived": {
                 "title": "Archived",
                 "type": "boolean"
+              },
+              "canvas_tab_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Canvas Tab Id"
               },
               "created_at": {
                 "format": "date-time",
@@ -550,6 +883,19 @@
               "archived": {
                 "title": "Archived",
                 "type": "boolean"
+              },
+              "canvas_tab_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Canvas Tab Id"
               },
               "created_at": {
                 "format": "date-time",

@@ -1,0 +1,9 @@
+{
+  "description": "One deletes a line, the other edits another: both happen.",
+  "resolve": "fail",
+  "base": "one\ntwo\nthree\nfour\nfive\n",
+  "ours": "one\nthree\nfour\nfive\n",
+  "theirs": "one\ntwo\nthree\nfour\nFIVE\n",
+  "expected": "one\nthree\nfour\nFIVE\n",
+  "conflicts": []
+}

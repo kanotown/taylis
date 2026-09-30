@@ -1,0 +1,17 @@
+{
+  "description": "The same Japanese phrase rewritten on both sides: a conflict.",
+  "resolve": "fail",
+  "base": "集合は正門前です。",
+  "ours": "集合は東門前です。",
+  "theirs": "集合は西門前です。",
+  "expected": "集合は西門前です。",
+  "conflicts": [
+    {
+      "base": "集合は正門前です。",
+      "ours": "集合は東門前です。",
+      "theirs": "集合は西門前です。",
+      "ours_line": 0,
+      "theirs_line": 0
+    }
+  ]
+}

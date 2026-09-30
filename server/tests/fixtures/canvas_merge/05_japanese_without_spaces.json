@@ -1,0 +1,9 @@
+{
+  "description": "Japanese without spaces: words split at punctuation and where the script changes (kanji / hiragana / katakana / Latin), so different phrases of one sentence merge.",
+  "resolve": "fail",
+  "base": "今日は研究室で実験を行い、結果をまとめた。",
+  "ours": "昨日は研究室で実験を行い、結果をまとめた。",
+  "theirs": "今日は研究室で実験を行い、結果を報告した。",
+  "expected": "昨日は研究室で実験を行い、結果を報告した。",
+  "conflicts": []
+}

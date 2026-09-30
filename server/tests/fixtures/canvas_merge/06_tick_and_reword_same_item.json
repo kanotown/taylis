@@ -1,0 +1,9 @@
+{
+  "description": "One ticks an item while another rewords it: both changes stay.",
+  "resolve": "fail",
+  "base": "- [ ] 予稿を提出\n",
+  "ours": "- [x] 予稿を提出\n",
+  "theirs": "- [ ] 予稿を修正して提出\n",
+  "expected": "- [x] 予稿を修正して提出\n",
+  "conflicts": []
+}

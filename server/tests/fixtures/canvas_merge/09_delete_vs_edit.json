@@ -1,0 +1,17 @@
+{
+  "description": "One deletes a line the other edits: a conflict (the edit is not lost).",
+  "resolve": "fail",
+  "base": "a\nb\nc\n",
+  "ours": "a\nc\n",
+  "theirs": "a\nB!\nc\n",
+  "expected": "a\nB!\nc\n",
+  "conflicts": [
+    {
+      "base": "b",
+      "ours": "",
+      "theirs": "B!",
+      "ours_line": 1,
+      "theirs_line": 1
+    }
+  ]
+}

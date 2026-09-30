@@ -652,6 +652,671 @@
         "title": "BootstrapOut",
         "type": "object"
       },
+      "CanvasConflictDetails": {
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "head": {
+            "$ref": "#/components/schemas/CanvasOut"
+          },
+          "timed_out": {
+            "default": false,
+            "title": "Timed Out",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "head"
+        ],
+        "title": "CanvasConflictDetails",
+        "type": "object"
+      },
+      "CanvasConflictError": {
+        "properties": {
+          "code": {
+            "enum": [
+              "canvas_conflict",
+              "canvas_base_expired"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/CanvasConflictDetails"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "title": "CanvasConflictError",
+        "type": "object"
+      },
+      "CanvasConflictResponse": {
+        "description": "409 from PUT /canvases/{id}/content.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/CanvasConflictError"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "CanvasConflictResponse",
+        "type": "object"
+      },
+      "CanvasCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "as_tab": {
+            "default": false,
+            "title": "As Tab",
+            "type": "boolean"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "CanvasCreate",
+        "type": "object"
+      },
+      "CanvasMeta": {
+        "description": "A canvas without its body: lists and the canvas.* events (CANVAS.md §4.6).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "edit_policy": {
+            "enum": [
+              "members",
+              "owners"
+            ],
+            "title": "Edit Policy",
+            "type": "string"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_channel_tab": {
+            "title": "Is Channel Tab",
+            "type": "boolean"
+          },
+          "share_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Message Id"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "title",
+          "version",
+          "head_rev_id",
+          "is_channel_tab",
+          "edit_policy",
+          "template_key",
+          "share_message_id",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CanvasMeta",
+        "type": "object"
+      },
+      "CanvasOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "edit_policy": {
+            "enum": [
+              "members",
+              "owners"
+            ],
+            "title": "Edit Policy",
+            "type": "string"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_channel_tab": {
+            "title": "Is Channel Tab",
+            "type": "boolean"
+          },
+          "share_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Message Id"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "title",
+          "version",
+          "head_rev_id",
+          "is_channel_tab",
+          "edit_policy",
+          "template_key",
+          "share_message_id",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "body"
+        ],
+        "title": "CanvasOut",
+        "type": "object"
+      },
+      "CanvasPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasMeta"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CanvasPage",
+        "type": "object"
+      },
+      "CanvasTemplateCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 100000,
+            "title": "Body",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,40}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "body"
+        ],
+        "title": "CanvasTemplateCreate",
+        "type": "object"
+      },
+      "CanvasTemplateOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "builtin": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "title",
+          "body",
+          "position",
+          "builtin",
+          "hidden",
+          "updated_at"
+        ],
+        "title": "CanvasTemplateOut",
+        "type": "object"
+      },
+      "CanvasTemplateUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "CanvasTemplateUpdate",
+        "type": "object"
+      },
+      "CanvasUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "edit_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "members",
+                  "owners"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edit Policy"
+          },
+          "is_channel_tab": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Channel Tab"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "CanvasUpdate",
+        "type": "object"
+      },
       "ChannelCreate": {
         "properties": {
           "name": {
@@ -747,6 +1412,18 @@
           "archived": {
             "title": "Archived",
             "type": "boolean"
+          },
+          "canvas_tab_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Tab Id"
           },
           "created_at": {
             "format": "date-time",
@@ -1056,6 +1733,78 @@
           }
         },
         "title": "ChannelUpdate",
+        "type": "object"
+      },
+      "ConflictOut": {
+        "description": "A region both sides changed differently. `ours_line` / `theirs_line`: its first line\n(0-based) in the submitted body and in the head.",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "ours": {
+            "title": "Ours",
+            "type": "string"
+          },
+          "ours_line": {
+            "title": "Ours Line",
+            "type": "integer"
+          },
+          "theirs": {
+            "title": "Theirs",
+            "type": "string"
+          },
+          "theirs_line": {
+            "title": "Theirs Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "ours",
+          "theirs",
+          "ours_line",
+          "theirs_line"
+        ],
+        "title": "ConflictOut",
+        "type": "object"
+      },
+      "ContentSave": {
+        "additionalProperties": false,
+        "description": "PUT /canvases/{id}/content (CANVAS.md §4.4).",
+        "properties": {
+          "base_rev_id": {
+            "format": "uuid",
+            "title": "Base Rev Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "on_conflict": {
+            "default": "fail",
+            "enum": [
+              "fail",
+              "ours",
+              "theirs",
+              "both"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_rev_id",
+          "body",
+          "client_save_id"
+        ],
+        "title": "ContentSave",
         "type": "object"
       },
       "CustomEmojiOut": {
@@ -3593,6 +4342,267 @@
         "title": "ReminderOut",
         "type": "object"
       },
+      "RevisionMeta": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "canvas_id": {
+            "format": "uuid",
+            "title": "Canvas Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "save",
+              "merge",
+              "side",
+              "restore",
+              "erased"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lines_added": {
+            "title": "Lines Added",
+            "type": "integer"
+          },
+          "lines_removed": {
+            "title": "Lines Removed",
+            "type": "integer"
+          },
+          "parent_rev_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Rev Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "canvas_id",
+          "version",
+          "kind",
+          "parent_rev_id",
+          "author_id",
+          "title",
+          "label",
+          "lines_added",
+          "lines_removed",
+          "created_at"
+        ],
+        "title": "RevisionMeta",
+        "type": "object"
+      },
+      "RevisionOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "canvas_id": {
+            "format": "uuid",
+            "title": "Canvas Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "save",
+              "merge",
+              "side",
+              "restore",
+              "erased"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lines_added": {
+            "title": "Lines Added",
+            "type": "integer"
+          },
+          "lines_removed": {
+            "title": "Lines Removed",
+            "type": "integer"
+          },
+          "parent_rev_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Rev Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "canvas_id",
+          "version",
+          "kind",
+          "parent_rev_id",
+          "author_id",
+          "title",
+          "label",
+          "lines_added",
+          "lines_removed",
+          "created_at",
+          "body"
+        ],
+        "title": "RevisionOut",
+        "type": "object"
+      },
+      "RevisionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionMeta"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RevisionPage",
+        "type": "object"
+      },
+      "RevisionRestore": {
+        "additionalProperties": false,
+        "properties": {
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "RevisionRestore",
+        "type": "object"
+      },
+      "RevisionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "RevisionUpdate",
+        "type": "object"
+      },
       "RolloverApply": {
         "additionalProperties": false,
         "properties": {
@@ -3899,6 +4909,29 @@
           "items"
         ],
         "title": "RolloverPreviewOut",
+        "type": "object"
+      },
+      "SaveOut": {
+        "properties": {
+          "canvas": {
+            "$ref": "#/components/schemas/CanvasOut"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "boolean"
+          },
+          "submitted_rev_id": {
+            "format": "uuid",
+            "title": "Submitted Rev Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canvas",
+          "submitted_rev_id",
+          "merged"
+        ],
+        "title": "SaveOut",
         "type": "object"
       },
       "ScheduledCreate": {
@@ -5800,6 +6833,180 @@
         ]
       }
     },
+    "/api/v1/admin/canvas-templates": {
+      "get": {
+        "description": "All templates, hidden ones too (administrators).",
+        "operationId": "admin_list_canvas_templates_api_v1_admin_canvas_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasTemplateOut"
+                  },
+                  "title": "Response Admin List Canvas Templates Api V1 Admin Canvas Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin List Canvas Templates",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_canvas_template_api_v1_admin_canvas_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanvasTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Create Canvas Template",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/admin/canvas-templates/{template_id}": {
+      "delete": {
+        "description": "Only templates added by an administrator; built-in ones are hidden instead.",
+        "operationId": "admin_delete_canvas_template_api_v1_admin_canvas_templates__template_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Delete Canvas Template",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "patch": {
+        "description": "Edit, reorder or hide (`hidden`) a template, built-in ones too.",
+        "operationId": "admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanvasTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Update Canvas Template",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
     "/api/v1/admin/groups": {
       "post": {
         "operationId": "create_group_api_v1_admin_groups_post",
@@ -7139,6 +8346,715 @@
         ]
       }
     },
+    "/api/v1/canvas-templates": {
+      "get": {
+        "description": "Templates to start a canvas from (hidden ones left out).",
+        "operationId": "list_canvas_templates_api_v1_canvas_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasTemplateOut"
+                  },
+                  "title": "Response List Canvas Templates Api V1 Canvas Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Canvas Templates",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases": {
+      "get": {
+        "description": "The canvases of all my conversations, most recently updated first.",
+        "operationId": "list_my_canvases_api_v1_canvases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Canvases",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}": {
+      "delete": {
+        "description": "To the trash.",
+        "operationId": "delete_canvas_api_v1_canvases__canvas_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Canvas",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "get": {
+        "description": "Metadata, body and head_rev_id. ETag is the version; If-None-Match → 304.",
+        "operationId": "get_canvas_api_v1_canvases__canvas_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match matched the version (ETag)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Canvas",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "patch": {
+        "description": "Title, edit_policy, the conversation's tab.",
+        "operationId": "update_canvas_api_v1_canvases__canvas_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanvasUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Canvas",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}/content": {
+      "put": {
+        "description": "Save the whole body written on `base_rev_id`; merged with saves made since (CANVAS.md\n§4.4). 409 canvas_conflict when the same words changed on both sides (on_conflict=fail),\n409 canvas_base_expired when the base version is gone.",
+        "operationId": "save_canvas_content_api_v1_canvases__canvas_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasConflictResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Canvas Content",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}/restore": {
+      "post": {
+        "description": "Back from the trash.",
+        "operationId": "restore_canvas_api_v1_canvases__canvas_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Canvas",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}/revisions": {
+      "get": {
+        "description": "The history without bodies, newest first.",
+        "operationId": "list_canvas_revisions_api_v1_canvases__canvas_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Canvas Revisions",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}/revisions/{revision_id}": {
+      "delete": {
+        "description": "Erase a version's body (owners and administrators; in a DM its creator). Audited.",
+        "operationId": "erase_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Erase Canvas Revision",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "get": {
+        "operationId": "get_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Canvas Revision",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "patch": {
+        "description": "Name a version (「提出版」); null removes the name.",
+        "operationId": "label_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Label Canvas Revision",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
+    "/api/v1/canvases/{canvas_id}/revisions/{revision_id}/restore": {
+      "post": {
+        "description": "That version's body as a new version.",
+        "operationId": "restore_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionRestore"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Canvas Revision",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
     "/api/v1/channels": {
       "get": {
         "operationId": "list_channels_api_v1_channels_get",
@@ -7422,6 +9338,138 @@
         "summary": "Archive Channel",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/canvases": {
+      "get": {
+        "description": "The conversation's canvases without bodies, most recently updated first.",
+        "operationId": "list_channel_canvases_api_v1_channels__channel_id__canvases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trash instead (restorable)",
+            "in": "query",
+            "name": "trashed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The trash instead (restorable)",
+              "title": "Trashed",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasMeta"
+                  },
+                  "title": "Response List Channel Canvases Api V1 Channels  Channel Id  Canvases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Channel Canvases",
+        "tags": [
+          "canvases"
+        ]
+      },
+      "post": {
+        "description": "A new canvas, empty or from a template (placeholders put in with `tz`).",
+        "operationId": "create_canvas_api_v1_channels__channel_id__canvases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanvasCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "A retry: the canvas made before"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Canvas",
+        "tags": [
+          "canvases"
         ]
       }
     },

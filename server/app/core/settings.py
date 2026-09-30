@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     link_preview_rate_limit_per_user: int = 60
     # SECURITY.md §5: posts per user per minute, and WebSocket sockets / attempts.
     message_rate_limit_per_user: int = 60
+    # CANVAS.md §4.3: canvas saves (and creates, restores) per user per minute.
+    canvas_save_rate_limit_per_user: int = 120
     ws_max_connections_per_user: int = 10
     ws_connect_rate_limit_per_ip: int = 30
     link_preview_timeout_seconds: float = 5.0

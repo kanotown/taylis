@@ -1,0 +1,17 @@
+{
+  "description": "The same word changed differently: a conflict with the three versions.",
+  "resolve": "fail",
+  "base": "Deadline: Friday\nRoom: 101\n",
+  "ours": "Deadline: Monday\nRoom: 101\n",
+  "theirs": "Deadline: Tuesday\nRoom: 101\n",
+  "expected": "Deadline: Tuesday\nRoom: 101\n",
+  "conflicts": [
+    {
+      "base": "Deadline: Friday",
+      "ours": "Deadline: Monday",
+      "theirs": "Deadline: Tuesday",
+      "ours_line": 0,
+      "theirs_line": 0
+    }
+  ]
+}

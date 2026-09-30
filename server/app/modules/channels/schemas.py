@@ -63,6 +63,9 @@ class ChannelOut(BaseModel):
     posting_policy: PostingPolicy = "everyone"
     # M24: whose times this is; others see it as quiet unread (SYNC_PROTOCOL.md §10.5).
     times_owner_id: UUID | None = None
+    # M41: the conversation's canvas tab (CANVAS.md §4.3). Filled by bootstrap only (null
+    # elsewhere); afterwards the canvas.* events carry is_channel_tab.
+    canvas_tab_id: UUID | None = None
 
 
 class MemberOut(BaseModel):

@@ -1,0 +1,17 @@
+{
+  "description": "on_conflict=both: the current version, then the submitted one quoted.",
+  "resolve": "both",
+  "base": "Deadline: Friday\nRoom: 101\n",
+  "ours": "Deadline: Monday\nRoom: 101\n",
+  "theirs": "Deadline: Tuesday\nRoom: 202\n",
+  "expected": "Deadline: Tuesday\n> Deadline: Monday\nRoom: 202\n",
+  "conflicts": [
+    {
+      "base": "Deadline: Friday",
+      "ours": "Deadline: Monday",
+      "theirs": "Deadline: Tuesday",
+      "ours_line": 0,
+      "theirs_line": 0
+    }
+  ]
+}
