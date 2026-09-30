@@ -91,6 +91,9 @@ class MainTabsTest {
         assertFalse(MainTabs.homeDot(listOf(channel("times-x", unread = 2, timesOwner = "x")), me, now))
         assertTrue(MainTabs.homeDot(listOf(channel("times-x", unread = 2, mentions = 1, timesOwner = "x")), me, now))
         assertFalse(MainTabs.homeDot(listOf(channel("left", unread = 2, member = false)), me, now))
+        // An archived channel is not on the home list, so it lights nothing (M37).
+        val archived = channel("old", unread = 2)
+        assertFalse(MainTabs.homeDot(listOf(archived.copy(channel = archived.channel.copy(archived = true))), me, now))
     }
 
     // --- the DM list ---

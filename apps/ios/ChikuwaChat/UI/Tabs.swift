@@ -28,7 +28,8 @@ enum TabBadges {
 
     /// Home: a dot while a channel (not a DM) counts as unread.
     static func homeDot(_ channels: [ChannelState], meId: String?, now: Date = Date()) -> Bool {
-        channels.contains { $0.isMember && !$0.channel.isDm && $0.hasUnread(meId: meId, now: now) }
+        // Not an archived channel: the home list does not show it, so its dot would point at nothing.
+        channels.contains { $0.isMember && !$0.channel.archived && !$0.channel.isDm && $0.hasUnread(meId: meId, now: now) }
     }
 }
 

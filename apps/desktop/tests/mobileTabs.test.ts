@@ -69,6 +69,7 @@ describe("tab badges (§8, on the unread rules of channels.ts)", () => {
     expect(homeDot([channel("a", { unreadCount: 1 })], ME, now)).toBe(true);
     expect(homeDot([dm("b", [ME, "x"], { unreadCount: 3 })], ME, now)).toBe(false);
     expect(homeDot([channel("c", { unreadCount: 3, notificationLevel: "none" })], ME, now)).toBe(false);
+    expect(homeDot([channel("old", { unreadCount: 2, archived: true })], ME, now)).toBe(false); // not on the home list (M37)
     expect(homeDot([channel("d", { unreadCount: 3, times_owner_id: "x" })], ME, now)).toBe(false); // someone else's times
     expect(homeDot([channel("e", { unreadCount: 3, times_owner_id: "x", mentionCount: 1 })], ME, now)).toBe(true);
     expect(homeDot([channel("f", { unreadCount: 3, isMember: false })], ME, now)).toBe(false);

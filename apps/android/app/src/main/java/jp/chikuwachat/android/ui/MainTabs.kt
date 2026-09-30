@@ -178,7 +178,8 @@ object MainTabs {
 
     /** Home tab: a dot while any channel (not a DM) of mine is unread by the list's rule. */
     fun homeDot(channels: Collection<ChannelState>, meId: String?, now: Instant = Instant.now()): Boolean =
-        channels.any { it.isMember && !it.channel.isDm && Channels.hasUnread(it, meId, now) }
+        // Not an archived channel: the home list does not show it, so its dot would point at nothing.
+        channels.any { it.isMember && !it.channel.archived && !it.channel.isDm && Channels.hasUnread(it, meId, now) }
 
     // --- the DM list (§6.3) ---
 

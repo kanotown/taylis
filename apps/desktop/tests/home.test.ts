@@ -109,7 +109,7 @@ describe("home sections", () => {
     expect(off.unread).toEqual([]);
     expect(off.channels.map((c) => c.id)).toEqual(["a", "b"]);
     const on = homeSections(list, title, { meId: ME, favorites: new Set(["fav"]), gatherUnread: true });
-    expect(on.unread.map((c) => c.id)).toEqual(["fav", "b", "d1"]);
+    expect(on.unread.map((c) => c.id)).toEqual(["d1", "fav", "b"]); // newest first (the channels have no message time here)
     expect(on.favorites).toEqual([]);
     expect(on.channels.map((c) => c.id)).toEqual(["a"]);
     expect(on.dms.map((c) => c.id)).toEqual(["d2"]);
