@@ -15,7 +15,7 @@ describe("アンケートを作成 (tester request: a form like Polly, several a
   it("checks the question and the options before sending", () => {
     expect(pollProblem("", ["a", "b"])).toBe("質問を入れてください");
     expect(pollProblem("いつ？", ["月曜", " "])).toBe("選択肢を 2 つ以上入れてください");
-    expect(pollProblem("いつ？", ["月曜", "月曜 "])).toBe("同じ選択肢が重なっています");
+    expect(pollProblem("いつ？", ["月曜", "月曜 "])).toBe("同じ選択肢が複数あります");
     expect(pollProblem("いつ？", ["月曜", "火曜", ""])).toBeNull(); // blank rows are left out
   });
 

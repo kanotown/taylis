@@ -1093,6 +1093,8 @@ struct EditMessageView: View {
     @State private var text: String
     @State private var saving = false
     @State private var failure: String?
+    /// Editing means typing: the keyboard is up as the editor opens (testers, 2026-09-30).
+    @FocusState private var focused: Bool
     /// Saves the text: nil once the server took it, else why not (shown here, the editor stays).
     let onSave: (String) async -> String?
 
@@ -1122,11 +1124,17 @@ struct EditMessageView: View {
                         .padding([.horizontal, .top])
                 }
                 TextEditor(text: $text)
+                    .focused($focused)
                     .disabled(saving)
                     .padding()
             }
             .navigationTitle("メッセージを編集")
             .navigationBarTitleDisplayMode(.inline)
+            // After the sheet has come up: focused while it was still presenting, the keyboard did not show.
+            .task {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                focused = true
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {

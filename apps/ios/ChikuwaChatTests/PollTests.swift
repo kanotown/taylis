@@ -17,7 +17,7 @@ final class PollFormTests: XCTestCase {
     func testChecksTheQuestionAndTheOptions() {
         XCTAssertEqual(PollForm.problem(question: "", options: ["a", "b"]), "質問を入れてください")
         XCTAssertEqual(PollForm.problem(question: "いつ？", options: ["月曜", " "]), "選択肢を 2 つ以上入れてください")
-        XCTAssertEqual(PollForm.problem(question: "いつ？", options: ["月曜", "月曜 "]), "同じ選択肢が重なっています")
+        XCTAssertEqual(PollForm.problem(question: "いつ？", options: ["月曜", "月曜 "]), "同じ選択肢が複数あります")
         XCTAssertNil(PollForm.problem(question: "いつ？", options: ["月曜", "火曜", ""]))
     }
 }

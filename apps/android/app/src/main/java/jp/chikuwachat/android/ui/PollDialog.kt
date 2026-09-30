@@ -42,7 +42,7 @@ object PollForm {
         return when {
             question.isBlank() -> "質問を入れてください"
             filled.size < 2 -> "選択肢を 2 つ以上入れてください"
-            filled.map { it.lowercase() }.toSet().size != filled.size -> "同じ選択肢が重なっています"
+            filled.map { it.lowercase() }.toSet().size != filled.size -> "同じ選択肢が複数あります"
             else -> null
         }
     }

@@ -12,7 +12,7 @@ export function pollProblem(question: string, options: readonly string[]): strin
   const filled = options.map((o) => o.trim()).filter(Boolean);
   if (!question.trim()) return "質問を入れてください";
   if (filled.length < 2) return "選択肢を 2 つ以上入れてください";
-  if (new Set(filled.map((o) => o.toLowerCase())).size !== filled.length) return "同じ選択肢が重なっています";
+  if (new Set(filled.map((o) => o.toLowerCase())).size !== filled.length) return "同じ選択肢が複数あります";
   return null;
 }
 
