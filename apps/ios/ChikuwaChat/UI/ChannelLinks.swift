@@ -81,11 +81,13 @@ struct ChannelLinkChips: View {
 
 /// M29: what a conversation's body shows (Slack's tabs under the header).
 enum ChannelTab: Hashable, CaseIterable {
-    case messages, pins, files
+    /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1).
+    case messages, canvas, pins, files
 
     var title: String {
         switch self {
         case .messages: "メッセージ"
+        case .canvas: "キャンバス"
         case .pins: "ピン留め"
         case .files: "ファイル"
         }

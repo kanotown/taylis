@@ -28,7 +28,8 @@ ChikuwaChat/
   App/        ChikuwaChatApp (入口、scenePhase で復帰時に再接続)、AppController (ワークスペース、セッション復元、ログイン、強制パスワード変更、エンジン)、
               Workspaces (M16c: 登録済みサーバの一覧と移行、URL の正規化、通知の振り分け、アプリアイコンのバッジ)
   Api/        ApiClient (bearer 認証、token_expired で 1 回だけ refresh、エラー分類)、Models (OpenAPI のモデル)、JSON (コーダと JSONValue)
-  Sync/       SyncEngine (SYNC_PROTOCOL.md §5/§7/§8/§9)、Store (表示の唯一のソース、SQLite へ write-through)、Frames、WebSocketTransport
+  Sync/       SyncEngine (SYNC_PROTOCOL.md §5/§7/§8/§9)、Store (表示の唯一のソース、SQLite へ write-through)、Frames、WebSocketTransport、
+              CanvasSave (キャンバスの保存ループ、CANVAS.md §4.4) と CanvasHub (一覧・canvas.* イベント・保存待ち、M45)
   Platform/   Keychain、SQLiteStore (SQLite3 ラッパと永続化)
   UI/         LoginView (最初のログイン / ワークスペースの追加 / 再ログイン)、ChangePasswordView、MainView (NavigationSplitView)、ChannelListView、
               ChannelView、MessageBodyView、Sheets、WorkspaceViews (切り替えシート、タイル)、YouView + YouRules (M40: 「自分」タブと設定の画面、表示のテーマ)、Search + SearchView (M16b: 候補、絞り込み、結果)

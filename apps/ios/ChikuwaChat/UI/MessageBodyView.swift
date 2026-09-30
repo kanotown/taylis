@@ -20,6 +20,14 @@ struct BodyListItem: Equatable {
     let tokens: [BodyToken]
 }
 
+/// A task of the canvas dialect (CANVAS.md §4.2); `line` is its line in the body (0-based), which a tick changes.
+struct BodyTaskItem: Equatable {
+    let level: Int
+    let done: Bool
+    let tokens: [BodyToken]
+    let line: Int
+}
+
 enum BodyBlock: Equatable {
     case heading(Int, [BodyToken])
     case paragraph([[BodyToken]])
@@ -28,6 +36,12 @@ enum BodyBlock: Equatable {
     case codeBlock(String, lang: String?)
     /// M15g: a GFM table; rows have exactly as many cells as the header.
     case table(align: [BodyTableAlign], header: [[BodyToken]], rows: [[[BodyToken]]])
+    // The canvas dialect (CANVAS.md §4.2, `canvas: true`; messages keep these as text).
+    case task([BodyTaskItem])
+    /// `![alt](attachment:<uuid>)` on a line of its own: an image of the canvas (other image URLs stay text).
+    case image(alt: String, attachmentId: String, line: Int)
+    /// `---` between blank lines.
+    case rule
 }
 
 /// M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right).
@@ -46,6 +60,9 @@ enum BodyTokenizer {
     private static let quote = try! NSRegularExpression(pattern: #"^>\s?(.*)$"#)
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(\S.*)$"#)
     private static let tableSeparator = try! NSRegularExpression(pattern: #"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
+    // The canvas dialect (CANVAS.md §4.2), as markdown.ts: tasks as the server counts them, images of the canvas, rules.
+    private static let imageLine = try! NSRegularExpression(pattern: #"^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$"#)
+    private static let ruleLine = try! NSRegularExpression(pattern: #"^-{3,}\s*$"#)
 
     /// M15g: the cells of a table row; "\|" is a literal pipe, outer pipes are optional.
     static func splitTableRow(_ line: String) -> [String] {
@@ -143,9 +160,19 @@ enum BodyTokenizer {
         return range.location == NSNotFound ? "" : (line as NSString).substring(with: range)
     }
 
-    /// Block structure for rendering: paragraphs, quotes, lists and fenced code, in order.
-    static func parseBlocks(_ body: String) -> [BodyBlock] {
+    /// Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. `canvas`: the canvas dialect
+    /// (tasks, images and rules; apps/shared/canvas_markdown.json).
+    static func parseBlocks(_ body: String, canvas: Bool = false) -> [BodyBlock] {
+        parseLinedBlocks(body, canvas: canvas).map(\.block)
+    }
+
+    /// The blocks with the line each starts on (0-based): a canvas's outline and section editing find its headings.
+    static func parseLinedBlocks(_ body: String, canvas: Bool = false) -> [(block: BodyBlock, line: Int)] {
         let lines = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+        func blank(_ index: Int) -> Bool { index < 0 || index >= lines.count || lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
+        func isTask(_ index: Int) -> Bool { canvas && index < lines.count && firstMatch(CanvasText.taskLine, lines[index]) != nil }
+        func isImage(_ index: Int) -> Bool { canvas && firstMatch(imageLine, lines[index]) != nil }
+        func isRule(_ index: Int) -> Bool { canvas && firstMatch(ruleLine, lines[index]) != nil && blank(index - 1) && blank(index + 1) }
         func fenceCloseAfter(_ index: Int) -> Int? {
             ((index + 1)..<lines.count).first { firstMatch(fenceClose, lines[$0]) != nil }
         }
@@ -155,18 +182,41 @@ enum BodyTokenizer {
             guard index + 1 < lines.count, lines[index].contains("|"), firstMatch(tableSeparator, lines[index + 1]) != nil else { return false }
             return splitTableRow(lines[index]).count == splitTableRow(lines[index + 1]).count
         }
-        var blocks: [BodyBlock] = []
+        var lined: [(block: BodyBlock, line: Int)] = []
         var i = 0
         while i < lines.count {
             let line = lines[i]
+            let first = i
+            func append(_ block: BodyBlock) { lined.append((block, first)) }
             if opensFence(i), let open = firstMatch(fenceOpen, line), let close = fenceCloseAfter(i) {
                 let lang = group(open, 1, in: line)
-                blocks.append(.codeBlock(lines[(i + 1)..<close].joined(separator: "\n"), lang: lang.isEmpty ? nil : lang.lowercased()))
+                append(.codeBlock(lines[(i + 1)..<close].joined(separator: "\n"), lang: lang.isEmpty ? nil : lang.lowercased()))
                 i = close + 1
                 continue
             }
             if let h = firstMatch(heading, line) {
-                blocks.append(.heading(group(h, 1, in: line).count, tokenizeInline(group(h, 2, in: line))))
+                append(.heading(group(h, 1, in: line).count, tokenizeInline(group(h, 2, in: line))))
+                i += 1
+                continue
+            }
+            if isTask(i) {
+                var items: [BodyTaskItem] = []
+                while i < lines.count, let m = firstMatch(CanvasText.taskLine, lines[i]) {
+                    let indent = group(m, 1, in: lines[i]).replacingOccurrences(of: "\t", with: "  ").count
+                    items.append(BodyTaskItem(level: indent >= 2 ? 1 : 0, done: group(m, 2, in: lines[i]) != " ",
+                                              tokens: tokenizeInline(group(m, 3, in: lines[i])), line: i))
+                    i += 1
+                }
+                append(.task(items))
+                continue
+            }
+            if isImage(i), let m = firstMatch(imageLine, line) {
+                append(.image(alt: group(m, 1, in: line), attachmentId: group(m, 2, in: line), line: i))
+                i += 1
+                continue
+            }
+            if isRule(i) {
+                append(.rule)
                 i += 1
                 continue
             }
@@ -176,7 +226,7 @@ enum BodyTokenizer {
                     quoted.append(tokenizeInline(group(q, 1, in: lines[i])))
                     i += 1
                 }
-                blocks.append(.quote(quoted))
+                append(.quote(quoted))
                 continue
             }
             if opensTable(i) {
@@ -189,7 +239,7 @@ enum BodyTokenizer {
                     rows.append(header.indices.map { tokenizeInline($0 < cells.count ? cells[$0] : "") }) // short rows pad, long rows are cut (GFM)
                     i += 1
                 }
-                blocks.append(.table(align: align, header: header.map(tokenizeInline), rows: rows))
+                append(.table(align: align, header: header.map(tokenizeInline), rows: rows))
                 continue
             }
             let isBullet = firstMatch(bullet, line) != nil
@@ -198,25 +248,25 @@ enum BodyTokenizer {
                 var items: [BodyListItem] = []
                 var start = 1
                 if ordered, let first = firstMatch(numbered, line) { start = Int(group(first, 2, in: line)) ?? 1 }
-                while i < lines.count, let m = firstMatch(ordered ? numbered : bullet, lines[i]) {
+                while i < lines.count, !isTask(i), let m = firstMatch(ordered ? numbered : bullet, lines[i]) {
                     let indent = group(m, 1, in: lines[i]).replacingOccurrences(of: "\t", with: "  ").count
                     let text = group(m, ordered ? 3 : 2, in: lines[i])
                     items.append(BodyListItem(level: indent >= 2 ? 1 : 0, tokens: tokenizeInline(text)))
                     i += 1
                 }
-                blocks.append(.list(ordered: ordered, start: start, items: items))
+                append(.list(ordered: ordered, start: start, items: items))
                 continue
             }
             var paragraph: [[BodyToken]] = []
             while i < lines.count {
                 let current = lines[i]
-                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil { break }
+                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil || isImage(i) || isRule(i) { break }
                 paragraph.append(tokenizeInline(current))
                 i += 1
             }
-            blocks.append(.paragraph(paragraph))
+            append(.paragraph(paragraph))
         }
-        return blocks
+        return lined
     }
 }
 
@@ -235,6 +285,9 @@ struct MessageBodyView: View {
     var onNeedEmojiImage: ((CustomEmojiOut) -> Void)? = nil
     /// M12g: my notification keywords, highlighted where they occur (as on the web; M28d).
     var keywords: [String] = []
+    /// M45: blocks parsed already (a canvas draws its own blocks and hands the others over one by one); `text` is then
+    /// only read for its custom emoji.
+    var preparsed: [BodyBlock]? = nil
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -261,7 +314,7 @@ struct MessageBodyView: View {
 
     private var blocks: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(BodyTokenizer.parseBlocks(text).enumerated()), id: \.offset) { _, block in
+            ForEach(Array((preparsed ?? BodyTokenizer.parseBlocks(text)).enumerated()), id: \.offset) { _, block in
                 blockView(block)
                     // M38: every block as wide as the row and as tall as its wrapped text at that width. A quote's
                     // text beside its bar was measured at one width and drawn at another: lines ran past the right
@@ -311,6 +364,8 @@ struct MessageBodyView: View {
             }
         case .table(let align, let header, let rows):
             tableView(align: align, header: header, rows: rows)
+        case .task, .image, .rule:
+            EmptyView() // the canvas dialect: drawn by CanvasBodyView (messages never parse these)
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {
                 if let lang { Text(lang.uppercased()).font(.caption2).foregroundStyle(.secondary) }
@@ -399,6 +454,12 @@ struct MessageBodyView: View {
         case .code(let text): return Text(text).font(.system(.body, design: .monospaced))
         case .codeBlock(let text, _): return Text(text).font(.system(.body, design: .monospaced))
         case .link(let url, let label):
+            if let id = CanvasLink.canvasId(base: internalBase, url: url) {
+                // M45: a canvas of this server opens in the app (its screen, or 「メンバーではありません」).
+                var attributed = AttributedString("📄 " + ((label != nil && label != url) ? label! : "キャンバスを開く"))
+                attributed.link = CanvasLink.internalLink(canvasId: id)
+                return Text(attributed)
+            }
             if let id = Permalink.messageId(base: internalBase, url: url) {
                 var attributed = AttributedString("💬 " + ((label != nil && label != url) ? label! : "メッセージを表示"))
                 attributed.link = Permalink.internalLink(messageId: id)
