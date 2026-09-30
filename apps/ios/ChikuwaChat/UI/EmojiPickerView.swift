@@ -118,5 +118,7 @@ struct EmojiPickerView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+        // MOBILE_POLISH.md C4: solid, not iOS 26's glass (the conversation showed through the emoji).
+        .presentationBackground(Color(.systemBackground))
     }
 }

@@ -38,9 +38,9 @@
 | 2 | Android の入力欄を全幅のカプセル型にする (今は幅の 4 割で、短い文でも 3 行に折り返す) | Android | M | 不要 | C2 |
 | 3 | Android のチャンネルの ⋮ から全体のメニュー (ログアウトなど) を外す | Android | S | 不要 | C6 |
 | 4 | Android の見出しの接続の点をやめる (題名とトピックが切れる)。DM タブの題名切れ。PDF のファイル名に ID が付く | Android | S | 不要 | C5・V1 |
-| 5 | iOS ホームで、スクロールするとセクションの見出しが上の行に重なる | iOS | S | 不要 | H1 |
+| 5 | iOS ホームで、スクロールするとセクションの見出しが上の行に重なる (**済み**) | iOS | S | 不要 | H1 |
 | 6 | Android ホームの空の「未読」セクション (見出しがずれ、「未読の会話はありません」が常に出る) | Android | S | 不要 | H3 |
-| 7 | 抜粋と日時の表記を揃える (アクティビティ・検索で記法がそのまま、Android の検索は長い日付) | 両方 | S | 不要 | X1・S1 |
+| 7 | 抜粋と日時の表記を揃える (アクティビティ・検索で記法がそのまま、Android の検索は長い日付) (iOS 済み) | 両方 | S | 不要 | X1・S1 |
 | 8 | 「N 件の返信」の行に参加者のアバターと最終返信の時刻を出す | 両方 | M | 一部要 | C3 |
 | 9 | チャンネル詳細の頭に名前と丸いボタン列を置き、通知は 1 行にまとめる | 両方 | M | 不要 | D1 |
 | 10 | 絵文字ピッカー: 「よく使う」を先頭に。Android は下からのシートにする | 両方 | M | 不要 | C9・C10 |
@@ -62,10 +62,10 @@
 | C1 | **iOS でリンクのカードが出ない**。URL だけが出る。#audit-test と #link-test の両方で出ず、サーバのログにも iOS からの `GET /link-previews` が 1 回も無い。Android は画像付きで出る (`ios/light-10-channel.png`、`ios/light-29-link-test.png`、`android/light-10-channel.png`) | リンクの下にサイト名・題名・説明・画像のカード | 原因の見立て: `LinkPreviewCard.swift` は `Group { if let … }` に `.task` を付けている。まだ読み込んでいないとき Group の中身が空なので、`.task` が付く相手が無く、読み込みが始まらない。`.task` を常にあるビュー (例: `VStack` で包む) に付ける。直したら実機でも確かめる | S | iOS | 不要 |
 | C2 | **Android の入力欄が狭い**。左に 📎 ☺ テンプレートの 3 つ、右に送信があり、枠線付きの欄は幅の 4 割ほど。「Thanks, I will check it tomorrow」で 3 行になる。プレースホルダは「メッセージ」だけ (`android/light-10-channel.png`、`android/light-17-composer-typing.png`) | 全幅のカプセル「#audit-test へのメッセージ」。フォーカスすると欄の下にツール行 (＋・@・絵文字・書式・…) と送信。iOS はすでにこの形 (`ios/light-15-composer-idle.png`、`ios/light-16-composer-focused.png`) | iOS と同じ構成にする。閉じているとき [＋][カプセル][送信]、フォーカス中は欄を全幅にし、下にツール行。枠線をやめ、角丸の塗り。プレースホルダは「#名前 へのメッセージ」 | M | Android | 不要 |
 | C3 | 返信のまとめは「💬 3 件の返信」だけ (`ios/light-11-channel-older.png`、`android/light-12-channel-older2.png`) | 返信した人の小さいアバター (数人) + 「3 件の返信」 + 最終返信の時刻 | 最終返信の時刻は既存の `last_reply_at` で出せる (サーバ不要)。アバターは `MessageOut` に返信者の ID を先頭 3 人まで足す (OpenAPI も更新) | M | 両方 | アバターのみ要 |
-| C4 | iOS の長押しシートと絵文字ピッカーの地が半透明で、後ろの写真や文字が透けて読みにくい (`ios/light-13-long-press.png`、`ios/light-14-long-press-own.png`、`ios/light-20c-reaction-picker.png`) | 不透明な地 (確度 中: iOS 26 標準の見た目なので好みもある) | `.presentationBackground(Color(.systemBackground))` などで地を塗る | S | iOS | 不要 |
+| C4 | iOS の長押しシートと絵文字ピッカーの地が半透明で、後ろの写真や文字が透けて読みにくい (`ios/light-13-long-press.png`、`ios/light-14-long-press-own.png`、`ios/light-20c-reaction-picker.png`) | 不透明な地 (確度 中: iOS 26 標準の見た目なので好みもある) | `.presentationBackground(Color(.systemBackground))` などで地を塗る。**済み** (長押しシートと絵文字ピッカー。ダークでは一段明るい地) | S | iOS | 不要 |
 | C5 | Android の見出し: 題名の横に接続の点 (緑 / 橙)、その右に 🔍 と ⋮。トピックが「スマホ UI の監査用 (テスト投…」と切れる。DM タブは題名が「ダイレクトメッセ…」と切れる。点はホーム・スレッド・アクティビティ・自分にも出る (`android/light-10-channel.png`、`android/light-30-dm-tab.png`、`android/light-25-channel-details.png`) | 見出しに接続の表示は無く、切れたときだけ帯で知らせる。iOS も点を出していない | 点をやめ、切断中だけ既存の ConnectionBanner を出す (MOBILE_UI §6.6 の方針どおり)。DM タブの題名は iOS と同じ「DM」 | S | Android | 不要 |
 | C6 | Android のチャンネルの ⋮ に、チャンネルの操作 (お気に入り・通知・チャンネル情報) に続いて全体の操作 (ダイレクトメッセージ・メンバー・チャンネルを作成・探す・新しいセクション・すべて既読・メンバーを追加・設定・ログアウト) が並ぶ。アイコンがある行と無い行が混じる (`android/light-27-channel-menu.png`) | チャンネルのメニューはそのチャンネルのことだけ | お気に入り・通知・チャンネル情報・メンバーを追加だけにする。全体の操作はホームの ⋯ と自分タブに既にある | S | Android | 不要 |
-| C7 | iOS のスレッド: 短いスレッドが画面の下に寄り、上に大きな空白。題名は「スレッド」だけ (Android は 2 行目に「#audit-test」) (`ios/light-21-thread.png`、`android/light-21-thread.png`) | 親の投稿が上、返信が続く。題名の下にチャンネル名 | 題名に 2 行目 (#チャンネル名) を足す (S)。上寄せは、会話が逆さまのリスト (M36) なので、内容が画面より短いときだけ上に寄せる工夫が要る (M) | S〜M | iOS | 不要 |
+| C7 | iOS のスレッド: 短いスレッドが画面の下に寄り、上に大きな空白。題名は「スレッド」だけ (Android は 2 行目に「#audit-test」) (`ios/light-21-thread.png`、`android/light-21-thread.png`) | 親の投稿が上、返信が続く。題名の下にチャンネル名 | 題名に 2 行目 (#チャンネル名) を足す (S、**済み**: DM では相手の名前)。上寄せは、会話が逆さまのリスト (M36) なので、内容が画面より短いときだけ上に寄せる工夫が要る (M) | S〜M | iOS | 不要 |
 | C8 | クイックリアクションの並びが端末で違う (iOS 👍❤️😂🎉👀✅、Android 🎉👍❤️😂👀✅) (`ios/light-13-long-press.png`、`android/light-13-long-press.png`) | 最近使ったもの (確度 中) | 3 端末で同じ規則 (最近使った順、足りない分は既定の 6 個) にする | S | 両方 | 不要 |
 | C9 | Android の絵文字ピッカーは画面中央のダイアログ。カテゴリのチップが 3 行に折り返し、絵文字は 6 行しか見えない。「閉じる」は下 (`android/light-20-emoji-picker.png`)。iOS は下からのシート (`ios/light-20-emoji-picker.png`) | 下からのシート、検索欄、カテゴリは 1 行のアイコンのタブ | `ModalBottomSheet` にし、カテゴリは横スクロールの 1 行にする | M | Android | 不要 |
 | C10 | 絵文字ピッカーに「よく使う / 最近使った」が無く、いつも「顔」から始まる (両端末) | 先頭に「よく使う」 | 端末内に使った回数を記録して先頭に出す。端末をまたいで揃えたくなったらサーバに置く | S〜M | 両方 | 不要 |
@@ -76,7 +76,7 @@
 
 | # | 今 | Slack / あるべき姿 | 対応案 | 工数 | 端末 | サーバ |
 |---|---|---|---|---|---|---|
-| H1 | iOS: 下へスクロールすると「チャンネル」の見出しが画面上部に貼り付き、半透明のナビバーの下で上の行 (general・history-test) と重なって読めない (`ios/light-02-home-scrolled.png`) | 見出しはリストと一緒に流れる | 見出しを貼り付けない (List の見出しの固定をやめる)。固定するなら地を塗る | S | iOS | 不要 |
+| H1 | iOS: 下へスクロールすると「チャンネル」の見出しが画面上部に貼り付き、半透明のナビバーの下で上の行 (general・history-test) と重なって読めない (`ios/light-02-home-scrolled.png`) | 見出しはリストと一緒に流れる | 見出しを貼り付けない (List の見出しの固定をやめる)。固定するなら地を塗る。**済み**: 見出しを各セクションの最初の行にした (リストと一緒に流れる)。見出しの字も濃くなり、H2 の空きも少し縮んだ | S | iOS | 不要 |
 | H2 | iOS: タイルと最初のセクションの間に 40pt ほどの空き (`ios/light-01-home.png`) | 詰まっている | 余白を 12〜16pt に | S | iOS | 不要 |
 | H3 | Android: 「未読をまとめる」がオンのとき、「未読」の見出しだけ ∨ が無く字下げがずれ、未読が無くても「未読の会話はありません」が出る (`android/light-01-home.png`) | 未読が無ければ「未読」セクションは出さない (確度 中) | 空なら出さない。出すときは他のセクションと同じ見出し | S | Android | 不要 |
 | H4 | ホームの見出し: iOS は自分のアバター + 中央に「ChikuwaChat」、Android は左にワークスペースのアイコンと名前 (`ios/light-01-home.png`、`android/light-01-home.png`) | 左にワークスペースのアイコンと名前 (確度 中) | 揃えるなら iOS を左寄せに。急がない | S | iOS | 不要 |
@@ -86,7 +86,7 @@
 | # | 今 | Slack / あるべき姿 | 対応案 | 工数 | 端末 | サーバ |
 |---|---|---|---|---|---|---|
 | M1 | iOS の DM 一覧: 先頭の行の上に線が 1 本余分にあり、区切り線の開始位置が行によって違う (`ios/light-30-dm-tab.png`) | 区切り線は揃う | MUI-6 (プレビュー) の作業で一緒に直す | S | iOS | 不要 |
-| X1 | 抜粋の表記がばらばら。アクティビティと検索で `- 発表順は案 2 - 次回…` や ```` ```python ```` のように記法がそのまま出る。iOS のアクティビティは「@android1」(ユーザー名)、会話では「@Android android1」(表示名)。iOS のリアクションの行だけ「」で囲む (`ios/light-32-activity.png`、`ios/light-43-search-results-nokb.png`、`android/light-32-activity.png`、`android/light-42-search-results.png`) | 書式を外した 1〜2 行の本文、メンションは表示名 | 抜粋を作る関数を 1 つにし (記法を外す、改行は空白、メンションは表示名)、アクティビティ・検索・通知の本文で使う。3 端末で同じ規則にし、`apps/shared` に検証ケースを置く | S | 両方 | 不要 |
+| X1 | 抜粋の表記がばらばら。アクティビティと検索で `- 発表順は案 2 - 次回…` や ```` ```python ```` のように記法がそのまま出る。iOS のアクティビティは「@android1」(ユーザー名)、会話では「@Android android1」(表示名)。iOS のリアクションの行だけ「」で囲む (`ios/light-32-activity.png`、`ios/light-43-search-results-nokb.png`、`android/light-32-activity.png`、`android/light-42-search-results.png`) | 書式を外した 1〜2 行の本文、メンションは表示名 | 抜粋を作る関数を 1 つにし (記法を外す、改行は空白、メンションは表示名)、アクティビティ・検索・通知の本文で使う。3 端末で同じ規則にし、`apps/shared` に検証ケースを置く。**iOS 済み**: M49 の `Timeline.excerpt` (`apps/shared/dm-preview.json` の規則) をアクティビティ・検索で使い、リアクションの「」をやめ、本文の無い添付はファイル名でなく「画像を送信しました」などにした (Android と同じ)。検索の日時 (S1) は「今日 9:05」「昨日 14:00」「9月25日 (金) 14:00」「2025年12月31日 (水) 14:00」で、時刻は地域の設定によらず 24 時間 (テストで固定)。アクティビティの日時は DM 一覧と同じ短い表記 (「22:16」「昨日」「火曜日」「9/3」) で両端末同じ | S | 両方 | 不要 |
 | S1 | Android の検索結果の日時が「2026年9月30日 19:50」と長い。iOS は「今日 22:16」(`android/light-42-search-results.png`、`ios/light-43-search-results-nokb.png`) | 今日 / 昨日 / 日付 | iOS と同じ規則にする | S | Android | 不要 |
 | S2 | iOS: 移動・検索で「メッセージ検索」を選ぶと、別の画面 (「閉じる」と 2 つ目の検索欄) が重なる (`ios/light-41-jump-query.png` → `ios/light-43-search-results-nokb.png`) | 同じ画面のまま結果に切り替わる (確度 中) | 急がない。やるなら検索欄を 1 つにし、結果を同じ画面に出す | M | iOS | 不要 |
 | S3 | iOS の小見出し (「最近の会話」「最近の検索」「チャンネル」「人」) が薄い灰色で読みにくい。ダークでも同じ (`ios/light-40-jump-empty.png`、`ios/dark-40-jump-empty.png`、`ios/light-04-new-message.png`) | 見出しははっきり読める | `.secondary` にし、字を少し太く | S | iOS | 不要 |

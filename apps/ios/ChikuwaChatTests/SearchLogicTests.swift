@@ -63,6 +63,16 @@ final class SearchLogicTests: XCTestCase {
         XCTAssertEqual(SearchLogic.totalLabel(1000, capped: true), "1,000 件以上")
     }
 
+    /// MOBILE_POLISH.md S1: a hit's time is 今日 / 昨日 / the date, then a 24-hour time (Android's results the same).
+    func testResultStampsSayTodayYesterdayOrTheDate() {
+        XCTAssertEqual(SearchResultRow.stamp("2026-09-27T00:05:00Z", now: now, calendar: tokyo), "今日 9:05")
+        XCTAssertEqual(SearchResultRow.stamp("2026-09-27T13:16:00.123456Z", now: now, calendar: tokyo), "今日 22:16")
+        XCTAssertEqual(SearchResultRow.stamp("2026-09-26T05:00:00Z", now: now, calendar: tokyo), "昨日 14:00")
+        XCTAssertEqual(SearchResultRow.stamp("2026-09-25T05:00:00Z", now: now, calendar: tokyo), "9月25日 (金) 14:00")
+        XCTAssertEqual(SearchResultRow.stamp("2025-12-31T05:00:00Z", now: now, calendar: tokyo), "2025年12月31日 (水) 14:00")
+        XCTAssertEqual(SearchResultRow.stamp("not a date", now: now, calendar: tokyo), "")
+    }
+
     func testRequestSendsTheFiltersAndSortsFilterOnlySearchesNewestFirst() {
         let params = SearchParams(q: "  ", fromUserId: "u1", date: .preset(.yesterday), has: [.file, .link], isThread: true, sort: .relevance)
         XCTAssertFalse(params.isEmpty)

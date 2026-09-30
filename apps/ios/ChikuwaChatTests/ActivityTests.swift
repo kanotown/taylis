@@ -166,6 +166,31 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(ActivityRules.emptyText("reactions"), "自分の投稿へのリアクションはまだありません")
     }
 
+    /// MOBILE_POLISH.md X1: the audit's rows (ios/light-32-activity.png) as one clean line — no list markers or code
+    /// fences, a mention by display name, what was sent without text, the same for a reaction as for a mention.
+    func testExcerptsAreOneCleanLineWithDisplayNames() {
+        let android1 = UserPublic(id: "00000000-0000-7000-8000-0000000000a1", username: "android1", displayName: "Android android1", role: "member",
+                                  deactivatedAt: nil, createdAt: "", updatedAt: "")
+        let users = [android1.id: android1]
+        func message(_ body: String, attachments: [AttachmentOut] = [], deleted: Bool = false) -> MessageOut {
+            var out = MessageOut(id: "m", channelId: "c1", senderId: "u2", seq: 1, updatedSeq: 1, clientMsgId: nil, body: body, createdAt: "",
+                                 editedAt: nil, deleted: deleted)
+            out.attachments = attachments
+            return out
+        }
+        XCTAssertEqual(ActivityRules.excerpt(message("今日の議事メモ:\n- 発表順は案 2\n- 次回までに analysis.py を整理\n- 締切は 10/15"), users: users),
+                       "今日の議事メモ: 発表順は案 2 次回までに analysis.py を整理 締切は 10/15")
+        XCTAssertEqual(ActivityRules.excerpt(message("<@\(android1.id)> 共有ドライブのアクセス権を付けました。確認お願いします"), users: users),
+                       "@Android android1 共有ドライブのアクセス権を付けました。確認お願いします")
+        XCTAssertEqual(ActivityRules.excerpt(message("```python\nprint(1)\n```\n**太字** と `code`"), users: users), "print(1) 太字 と code")
+        XCTAssertEqual(ActivityRules.excerpt(message("> 一行目の引用\n> 二行目の引用"), users: users), "一行目の引用 二行目の引用")
+        let photo = AttachmentOut(id: "a", filename: "IMG_0001.jpg", contentType: "image/jpeg", sizeBytes: 1, width: 1, height: 1, hasThumbnail: true,
+                                  status: "ready", createdAt: "")
+        XCTAssertEqual(ActivityRules.excerpt(message("", attachments: [photo, photo]), users: users), "画像を 2 枚送信しました")
+        XCTAssertEqual(ActivityRules.excerpt(message("", deleted: true), users: users), "(削除されたメッセージ)")
+        XCTAssertFalse(ActivityRules.excerpt(message(String(repeating: "あ", count: 200)), users: users).contains("\n"))
+    }
+
     // MARK: what fetches the badge again
 
     private func me(keywords: [String]? = nil) -> UserMe {
