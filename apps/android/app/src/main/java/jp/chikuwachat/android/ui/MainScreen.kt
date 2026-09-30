@@ -48,7 +48,6 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -72,7 +71,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.time.Instant
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 import jp.chikuwachat.android.app.AppController
@@ -456,7 +454,8 @@ fun MainScreen(controller: AppController) {
                 TopAppBar(
                     title = {
                         when {
-                            detailsOpen -> TwoLineTitle(channelTitle(selectedChannel, store), null)
+                            // D1: the page's own header shows the name large.
+                            detailsOpen -> Text(if (isChannel) "チャンネル情報" else "詳細", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
                             selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
                             // M29: the title opens the details page.
@@ -538,34 +537,8 @@ fun MainScreen(controller: AppController) {
                         // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
                         // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
                         if (conversationPage && selectedChannel != null) {
-                            // M35: 「既定 (…)」 follows the overall setting (level null); 「ミュート」 lasts until unmuted.
-                            val ownLevel = NotificationLevels.own(selectedChannel)
-                            val overall = store.me?.notificationDefault ?: NotificationLevels.MENTIONS
-                            val mutedOn = NotificationLevels.mutedUntilUnmuted(selectedChannel)
-                            val mute = Timeline.muteLabel(selectedChannel.channel.notification?.mutedUntil)
-                            DropdownMenu(expanded = bellOpen, onDismissRequest = { bellOpen = false }) {
-                                (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(overall)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
-                                    .forEach { (value, label) ->
-                                        DropdownMenuItem(
-                                            text = { Text((if (ownLevel == value) "✓ " else "    ") + label) },
-                                            onClick = { bellOpen = false; scope.launch { controller.setChannelLevel(selectedChannel.id, value) } },
-                                        )
-                                    }
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text("ミュート") },
-                                    trailingIcon = { Switch(checked = mutedOn, onCheckedChange = null) },
-                                    onClick = { bellOpen = false; scope.launch { controller.setChannelMuted(selectedChannel.id, !mutedOn) } },
-                                )
-                                if (mute != null) {
-                                    DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { bellOpen = false; scope.launch { controller.setChannelTimedMute(selectedChannel.id, null) } })
-                                } else {
-                                    DropdownMenuItem(text = { Text("8 時間ミュート") }, onClick = {
-                                        bellOpen = false
-                                        scope.launch { controller.setChannelTimedMute(selectedChannel.id, Instant.now().plusSeconds(8 * 3600).toString()) }
-                                    })
-                                }
-                            }
+                            // M35 (D1: the same menu as the details page's 「通知」).
+                            ChannelNotificationMenu(controller, selectedChannel, bellOpen, onDismiss = { bellOpen = false })
                         }
                         // The 自分 tab is the settings page: no search or menu over it.
                         if (barButtons) {
@@ -679,7 +652,13 @@ fun MainScreen(controller: AppController) {
                             onOpenThread = ::openThread,
                         )
                         when {
-                            detailsOpen -> CoveringPage { ChannelDetailsPane(controller, selectedChannel, version, onClose = { stack = MainNav.closeDetails(stack) }) }
+                            detailsOpen -> CoveringPage {
+                                ChannelDetailsPane(
+                                    controller, selectedChannel, version, onClose = { stack = MainNav.closeDetails(stack) },
+                                    // D1: 「検索」 searches this conversation (newest first; words can be added), back returns here.
+                                    onSearch = { openSearch(); runSearch(SearchParams(channelId = selectedChannel.id, sort = Search.NEWEST)) },
+                                )
+                            }
                             // A pin or a file shows its message under 「メッセージ」 (its thread too for a reply): openConversation
                             // goes back to that tab.
                             conversationTab == ConversationTab.PINS -> CoveringPage { PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal) }
@@ -899,7 +878,7 @@ fun ConnectionBanner(status: EngineStatus) {
 private const val BANNER_GRACE_MS = 2_000L
 
 /** 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2) as the app bar subtitle. */
-private fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
+internal fun dmPresenceSubtitle(channel: ChannelState, store: Store): String? {
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != store.me?.id }
     if (others.size != 1) return null
     val presence = presenceLabel(store.presenceOf(others[0]))

@@ -225,8 +225,9 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("キャンセル") } },
     )
     if (picking) {
-        EmojiPickerDialog(
-            custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations, onNeedImage = { controller.loadEmojiImage(it) },
+        EmojiPickerSheet(
+            recent = QuickReactions.read(controller.prefs),
+            store = store, onNeedImage = { controller.loadEmojiImage(it) },
             onDismiss = { picking = false }, onPick = { emoji = it; picking = false },
         )
     }
