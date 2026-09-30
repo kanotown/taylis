@@ -77,7 +77,7 @@ function layRowsOut() {
  * (unless `notes` is false: then `createDm` makes them, after `createDm.gate` when one is set), and a thread under m1
  * that bob follows with one unread reply. Bob is on this device, at the home tab's root.
  */
-async function setup(options: { posts?: number; notes?: boolean; activity?: boolean } = {}) {
+async function setup(options: { posts?: number; notes?: boolean; activity?: boolean; group?: boolean } = {}) {
   const w = world({ posts: options.posts ?? 5, lastRead: options.posts ?? 5 });
   // M39: false = a server before it (no bootstrap `activity`): the activity tab is stage A.
   w.server.activityEnabled = options.activity ?? true;
@@ -91,6 +91,15 @@ async function setup(options: { posts?: number; notes?: boolean; activity?: bool
   if (options.notes !== false) {
     const notesId = w.server.createChannel("", w.bob.id, "dm").id;
     w.server.channels.get(notesId)!.channel.dm_user_ids = [w.bob.id];
+  }
+  // M49: a group DM with alice and carol, carol's 「スライド共有します」 last.
+  const groupId = options.group ? w.server.createChannel("", w.alice.id, "group_dm").id : null;
+  if (groupId) {
+    const carol = w.server.addUser("carol");
+    w.server.channels.get(groupId)!.channel.dm_user_ids = [w.alice.id, w.bob.id, carol.id];
+    w.server.join(groupId, w.bob.id);
+    w.server.join(groupId, carol.id);
+    w.server.post(groupId, carol.id, "スライド共有します");
   }
   const createDm = Object.assign(
     async (userIds: string[]) => {
@@ -118,7 +127,7 @@ async function setup(options: { posts?: number; notes?: boolean; activity?: bool
   (controller as unknown as { active: unknown }).active = { serverUrl: "http://server", username: "bob", api, store: w.store, engine: w.engine, me: w.store.me, leaving: false };
   render(<Screen w={w} controller={controller} />);
   await flush();
-  return { w, controller, dmId, dmMessage, first, createDm };
+  return { w, controller, dmId, dmMessage, first, createDm, groupId };
 }
 
 function Screen({ w, controller }: { w: World; controller: AppController }) {
@@ -147,6 +156,8 @@ const back = async () => {
   fireEvent.click(within(header()).getByRole("button", { name: "戻る" }));
   await flush();
 };
+/** M49: the DM tab's rows show the last message too; a conversation's or a result's text is looked for elsewhere. */
+const NOT_PREVIEW = { ignore: "script, style, [data-dm-preview]" };
 const serverRead = (w: World) => w.server.readState(w.bob.id, w.channelId).last_read_seq;
 async function settle(w: World) {
   await act(async () => {
@@ -255,10 +266,45 @@ it("the DM tab: my own DM (titled with my name) first, then by the last message,
   await act(async () => { await w.engine.idle(); });
   expect(bar()).toBeNull();
   expect(w.engine.currentChannelId).toBe(dmId);
-  expect(screen.getByText("DM です")).toBeTruthy();
+  expect(screen.getByText("DM です", NOT_PREVIEW)).toBeTruthy();
   await back();
   expect(selected()).toBe("dm");
   expect(w.engine.currentChannelId).toBeNull();
+  w.engine.stop();
+});
+
+it("M49: a DM row's second line is the last message (theirs as it is, mine 「あなた: 」, a group DM's with the name), bold while unread, following new, edited and deleted messages", async () => {
+  const { w, dmId, groupId } = await setup({ group: true });
+  await tap("dm");
+  const preview = (title: string) => {
+    const row = within(root("dm")!).getAllByRole("listitem").find((li) => li.querySelector("span.text-\\[15px\\]")?.textContent === title)!;
+    return row.querySelector<HTMLElement>("[data-dm-preview]");
+  };
+  const live = async (work: () => void) => {
+    work();
+    await act(async () => { await w.engine.idle(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  };
+  expect(preview("Alice")!.textContent).toBe("DM です");
+  expect(preview("Alice")!.className).toContain("font-semibold"); // unread
+  expect(preview("Alice, Carol")!.textContent).toBe("Carol: スライド共有します");
+  expect(preview("Bob")).toBeNull(); // my own DM, still empty: no preview line (the status or nothing, as before)
+
+  await live(() => w.server.post(dmId, w.alice.id, "**明日**の件\nよろしく"));
+  expect(preview("Alice")!.textContent).toBe("明日の件 よろしく");
+  const mine = w.server.post(dmId, w.bob.id, `<@${w.alice.id}> 了解です`).message;
+  await live(() => {});
+  expect(preview("Alice")!.textContent).toBe("あなた: @Alice 了解です");
+  await live(() => w.server.edit(dmId, w.bob.id, mine.id, "了解しました"));
+  expect(preview("Alice")!.textContent).toBe("あなた: 了解しました");
+  // A reply only in the thread leaves it; deleting the last one brings back the one before (from the server: no
+  // timeline of this DM is held here).
+  await live(() => w.server.post(dmId, w.alice.id, "スレッドだけ", undefined, mine.id));
+  expect(preview("Alice")!.textContent).toBe("あなた: 了解しました");
+  await live(() => w.server.delete(dmId, w.bob.id, mine.id));
+  expect(preview("Alice")!.textContent).toBe("明日の件 よろしく");
+
+  await live(() => w.server.post(groupId!, w.bob.id, "", undefined, null, ["a1"]));
+  expect(preview("Alice, Carol")!.textContent).toBe("あなた: ファイルを送信しました");
   w.engine.stop();
 });
 
@@ -386,7 +432,7 @@ it("a DM permalink lands on the DM tab, the home tab keeps its conversation; the
   await act(async () => { await controller.openPermalink(dmMessage.id); await w.engine.idle(); });
   await flush();
   expect(w.engine.currentChannelId).toBe(dmId);
-  expect(screen.getByText("DM です")).toBeTruthy();
+  expect(screen.getByText("DM です", NOT_PREVIEW)).toBeTruthy();
   await back();
   expect(selected()).toBe("dm"); // landed on the DM tab
   await tap("home");
@@ -439,7 +485,7 @@ it("a search result in a DM lands on the DM tab; 「検索結果に戻る」 goe
   fireEvent.click(rows[rows.length - 1]!);
   await flush();
   expect(screen.queryByRole("dialog", { name: "移動・検索" })).toBeNull();
-  fireEvent.click(await screen.findByText(/DM です/));
+  fireEvent.click(await screen.findByText(/DM です/, NOT_PREVIEW));
   await act(async () => { await w.engine.idle(); });
   await flush();
   expect(w.engine.currentChannelId).toBe(dmId);
@@ -447,7 +493,7 @@ it("a search result in a DM lands on the DM tab; 「検索結果に戻る」 goe
   fireEvent.click(screen.getByText("検索結果に戻る"));
   await flush();
   expect(selected()).toBe("home");
-  expect(await screen.findByText(/DM です/)).toBeTruthy(); // the results, on the home tab
+  expect(await screen.findByText(/DM です/, NOT_PREVIEW)).toBeTruthy(); // the results, on the home tab
   // The DM tab kept its conversation (without the way back to the results, which are on the home tab now).
   await back();
   await tap("dm");

@@ -451,6 +451,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "last_message": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/LastMessageOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "last_message_at": {
                 "anyOf": [
                   {
@@ -598,6 +609,53 @@
               "dm_user_ids"
             ],
             "title": "ChannelOut",
+            "type": "object"
+          },
+          "LastMessageOut": {
+            "description": "M49: a conversation's newest message as one line (MOBILE_UI.md §7.1, the DM list's\npreview). Only top-level messages and replies also sent to the channel count; deleted ones\ndo not. The clients put the prefix (あなた: / the sender's name) in front.",
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "excerpt": {
+                "title": "Excerpt",
+                "type": "string"
+              },
+              "has_attachments": {
+                "title": "Has Attachments",
+                "type": "boolean"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              },
+              "seq": {
+                "title": "Seq",
+                "type": "integer"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sender_id",
+              "type",
+              "seq",
+              "excerpt",
+              "has_attachments",
+              "created_at"
+            ],
+            "title": "LastMessageOut",
             "type": "object"
           },
           "MembershipOut": {
@@ -934,6 +992,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "last_message": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/LastMessageOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "last_message_at": {
                 "anyOf": [
                   {
@@ -1081,6 +1150,53 @@
               "dm_user_ids"
             ],
             "title": "ChannelOut",
+            "type": "object"
+          },
+          "LastMessageOut": {
+            "description": "M49: a conversation's newest message as one line (MOBILE_UI.md §7.1, the DM list's\npreview). Only top-level messages and replies also sent to the channel count; deleted ones\ndo not. The clients put the prefix (あなた: / the sender's name) in front.",
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "excerpt": {
+                "title": "Excerpt",
+                "type": "string"
+              },
+              "has_attachments": {
+                "title": "Has Attachments",
+                "type": "boolean"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              },
+              "seq": {
+                "title": "Seq",
+                "type": "integer"
+              },
+              "type": {
+                "title": "Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sender_id",
+              "type",
+              "seq",
+              "excerpt",
+              "has_attachments",
+              "created_at"
+            ],
+            "title": "LastMessageOut",
             "type": "object"
           },
           "MembershipOut": {

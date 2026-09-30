@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.messages.models import (
@@ -123,6 +124,24 @@ async def list_delta(
         .order_by(Message.updated_seq.asc())
         .limit(limit)
     )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def last_in_timelines(db: AsyncSession, channel_ids: list[uuid.UUID]) -> list[Message]:
+    """The newest live timeline row of each channel (M49, the DM list's preview), in one query:
+    per channel a LATERAL walk down the (channel_id, seq) unique index that stops at the first
+    row neither deleted nor a thread-only reply. Channels without one are absent."""
+    if not channel_ids:
+        return []
+    latest = (
+        select(Message)
+        .where(Message.channel_id == Channel.id, Message.deleted_at.is_(None), timeline_filter())
+        .order_by(Message.seq.desc())
+        .limit(1)
+        .lateral("latest")
+    )
+    row = aliased(Message, latest)
+    stmt = select(row).select_from(Channel).join(latest, true()).where(Channel.id.in_(channel_ids))
     return list((await db.execute(stmt)).scalars().all())
 
 

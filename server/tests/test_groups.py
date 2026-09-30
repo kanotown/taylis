@@ -17,7 +17,8 @@ def test_group_tokens_are_parsed_and_named() -> None:
     assert extract_group_mentions(body) == [gid]
     assert extract_group_mentions("<@group:not-a-uuid>") == []
     assert notification_text(body, {gid: "design"}) == "@design 明日のレビューお願いします @design"
-    assert notification_text(body, {}) == "@メンバー 明日のレビューお願いします @メンバー"
+    # An unknown group reads 「@グループ」, as on the clients (M49, apps/shared/dm-preview.json).
+    assert notification_text(body, {}) == "@グループ 明日のレビューお願いします @グループ"
 
 
 async def _post(client: AsyncClient, channel_id: str, body: str) -> dict[str, object]:

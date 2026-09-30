@@ -192,6 +192,11 @@ export class ApiClient {
     return (await this.channels(true)).filter((c) => c.membership === null);
   }
 
+  /** M49: one channel; a member's answer carries `last_message` (the DM list's preview). */
+  channel(channelId: string): Promise<ChannelOut> {
+    return this.request("GET", `/api/v1/channels/${channelId}`);
+  }
+
   addMember(channelId: string, userId: string): Promise<MemberOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/members`, { user_id: userId });
   }

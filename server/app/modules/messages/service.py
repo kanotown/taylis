@@ -16,6 +16,7 @@ from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
+from app.modules.channels.schemas import LastMessageOut
 from app.modules.groups import service as groups
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
@@ -26,7 +27,13 @@ from app.modules.messages.events import (
     MessageDeletedData,
     MessageUpdatedData,
 )
-from app.modules.messages.mentions import extract_group_mentions, extract_mentions
+from app.modules.messages.mentions import (
+    MENTION_USER,
+    attachment_text,
+    extract_group_mentions,
+    extract_mentions,
+    notification_text,
+)
 from app.modules.messages.models import Message
 from app.modules.messages.schemas import (
     DeltaOut,
@@ -298,6 +305,46 @@ async def messages_out(
         )
         for m in rows
     ]
+
+
+# M49: the preview's length (MOBILE_UI.md §7.1); the row cuts it to one line anyway.
+PREVIEW_LENGTH = 140
+
+
+async def last_messages(
+    db: AsyncSession, channel_ids: list[uuid.UUID], visible: set[uuid.UUID] | None = None
+) -> dict[uuid.UUID, LastMessageOut]:
+    """M49: each channel's newest timeline message as one line (the push body's rule: mention
+    names, then the attachments' words). Callers pass only channels the viewer is a member of.
+    A constant number of queries whatever the number of channels (at most four). `visible`: the
+    people a guest may see (M13e); other mentions read 「@メンバー」, as on its own client."""
+    rows = await repo.last_in_timelines(db, channel_ids)
+    if not rows:
+        return {}
+    files = await attachments.for_messages(db, [m.id for m in rows])
+    user_ids = {uuid.UUID(raw) for m in rows for raw in MENTION_USER.findall(m.body)}
+    if visible is not None:
+        user_ids &= visible
+    names: dict[uuid.UUID, str] = {}
+    if user_ids:
+        found = await users.get_users(db, list(user_ids))
+        names.update({user_id: user.display_name for user_id, user in found.items()})
+    group_ids = list({g for m in rows for g in extract_group_mentions(m.body)})
+    if group_ids:
+        names.update(await groups.names_for(db, group_ids))
+    return {
+        m.channel_id: LastMessageOut(
+            id=m.id,
+            sender_id=m.sender_id,
+            type=m.type,
+            seq=m.seq,
+            excerpt=notification_text(m.body, names, PREVIEW_LENGTH)
+            or attachment_text(files.get(m.id, [])),
+            has_attachments=bool(files.get(m.id)),
+            created_at=m.created_at,
+        )
+        for m in rows
+    }
 
 
 async def live_bodies(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
