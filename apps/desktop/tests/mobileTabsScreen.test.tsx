@@ -308,7 +308,7 @@ it("the DM tab without my own DM: a placeholder row first (my picture and name, 
   w.engine.stop();
 });
 
-it("the home list's 「ダイレクトメッセージ」: my own DM first; until it exists a placeholder (my picture and name) that makes it once and opens it; none while folded or unread only", async () => {
+it("the home list's 「ダイレクトメッセージ」: my own DM first; until it exists a placeholder (my picture and name) that makes it once and opens it; none while folded", async () => {
   const { w, createDm } = await setup({ notes: false });
   const home = () => root("home")!;
   const dmSection = () => within(home()).getByText("ダイレクトメッセージ").closest("section")!;
@@ -317,13 +317,7 @@ it("the home list's 「ダイレクトメッセージ」: my own DM first; until
   expect(placeholder()!.textContent).toMatch(/Bob$/);
   expect(dmNames()).toEqual(["Bob", "Alice"]);
 
-  // Only unread conversations: no placeholder.
-  fireEvent.click(within(home()).getByRole("button", { name: "未読" }));
-  await flush();
-  expect(placeholder()).toBeNull();
-  fireEvent.click(within(home()).getByRole("button", { name: "未読" }));
-  await flush();
-  // Folded: no placeholder either.
+  // Folded: no placeholder.
   fireEvent.click(within(home()).getByText("ダイレクトメッセージ"));
   await flush();
   expect(placeholder()).toBeNull();
@@ -430,11 +424,15 @@ it("switching tabs keeps each tab's screens: a list pushed on home comes back af
 
 it("a search result in a DM lands on the DM tab; 「検索結果に戻る」 goes back to the results on the home tab", async () => {
   const { w, dmId } = await setup();
-  fireEvent.click(within(root("home")!).getByText(/を検索$/));
-  const input = await screen.findByPlaceholderText(/メッセージ、人、チャンネルを検索/);
+  // M37: from 「移動・検索」, its last row 「"DM" をメッセージ検索」.
+  fireEvent.click(within(root("home")!).getByText("移動・検索"));
+  const input = await screen.findByPlaceholderText("会話・人・メッセージを検索");
   fireEvent.change(input, { target: { value: "DM" } });
-  fireEvent.keyDown(input, { key: "Enter" });
+  const rows = screen.getByRole("dialog", { name: "移動・検索" }).querySelectorAll("[data-jump-row]");
+  expect(rows[rows.length - 1]!.getAttribute("data-jump-row")).toBe("search");
+  fireEvent.click(rows[rows.length - 1]!);
   await flush();
+  expect(screen.queryByRole("dialog", { name: "移動・検索" })).toBeNull();
   fireEvent.click(await screen.findByText(/DM です/));
   await act(async () => { await w.engine.idle(); });
   await flush();

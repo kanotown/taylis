@@ -678,6 +678,16 @@ export class AppController {
     }
   }
 
+  /** M37 「再読み込み」: the engine syncs again (bootstrap and the open conversation's catch-up). */
+  async resync(): Promise<void> {
+    if (!this.engine) return;
+    try {
+      await this.engine.resync();
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   /** M11c: saved for me only; the store flag moves at once, bookmark.updated confirms on every device. */
   async toggleBookmark(message: MessageState): Promise<void> {
     if (!this.api) return;

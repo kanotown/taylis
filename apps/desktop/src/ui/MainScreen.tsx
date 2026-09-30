@@ -30,7 +30,11 @@ import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
-import { pushRecent, readRecent, recentKey, type SearchParams } from "./search";
+import { pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
+import { HomeView } from "./HomeView";
+import { JumpView } from "./JumpView";
+import { NewMessageView } from "./NewMessageView";
+import { pushRecentConversation, readGatherUnread, readRecentConversations, recentConversationsKey, writeGatherUnread } from "./home";
 import { Sidebar } from "./Sidebar";
 import { ThreadPane } from "./ThreadPane";
 import { ThreadsView } from "./ThreadsView";
@@ -113,6 +117,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [pinsOpen, setPinsOpen] = useState(false);
   const [switcher, setSwitcher] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(readUnreadOnly);
+  // M37, phones: 「移動・検索」 or ✏️'s picker over the screen, 「未読をまとめる」, and the recent conversations.
+  const [homeOverlay, setHomeOverlay] = useState<"jump" | "compose" | null>(null);
+  const [gatherUnread, setGatherUnread] = useState(readGatherUnread);
+  const recentConversationsStorageKey = recentConversationsKey(controller.accountKey ?? "");
+  const [recentConversations, setRecentConversations] = useState(() => readRecentConversations(recentConversationsStorageKey));
+  /** Set when a conversation opens from ✏️: its input takes the focus once it is on screen. */
+  const focusComposer = useRef(false);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [paneWidth, setPaneWidth] = useState(readPaneWidth);
   // Phones: one column at a time, the conversation list first; a conversation or a view covers it until 「戻る」.
@@ -157,6 +168,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSearchOpen(false);
     setDialog(null);
     setSwitcher(false);
+    setHomeOverlay(null);
   };
   /** The live screen of the selected tab. */
   const currentNav = (): Nav => ({ ...navigation, results: searchSnapshot.current });
@@ -278,8 +290,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const banner = useConnectionBanner(status);
 
   // The keyboard handler is registered once and reads the latest state through this ref.
-  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab });
-  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab };
+  const state = useRef({ currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay });
+  state.current = { currentId, dialog, threadId, searchOpen, switcher, view, pinsOpen, tab, detailsOpen, compact, mobileTab, homeOverlay };
   /** A conversation always opens on 「メッセージ」, without its details page (M29). */
   const resetConversation = () => {
     setTab("messages");
@@ -353,6 +365,19 @@ export function MainScreen({ controller }: { controller: AppController }) {
     void opened.catch((error) => controller.setError(error));
   }, [engineChannelId, engine, previewing, compact]);
 
+  // M37: every conversation opened goes first in this device's 「最近の会話」 (per account).
+  useEffect(() => {
+    if (engineChannelId) setRecentConversations(pushRecentConversation(recentConversationsStorageKey, engineChannelId));
+  }, [engineChannelId, recentConversationsStorageKey]);
+
+  // M37: a conversation opened from ✏️ gets its input focused once it is on screen.
+  useEffect(() => {
+    if (!focusComposer.current || pane !== "main" || view !== "channel") return;
+    focusComposer.current = false;
+    const timer = setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [currentId, pane, view, mobileTab]);
+
   const open = (id: string) => {
     controller.clearMessageFocus();
     controller.setEditing(null);
@@ -365,6 +390,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setSwitcher(false);
     setBackToSearch(false);
     setPane("main");
+  };
+
+  /**
+   * M37, a phone: a conversation picked in 「移動・検索」 or ✏️ lands where it belongs (a DM on the DM tab, a channel on
+   * the home tab), as a notification does.
+   */
+  const openLanded = (id: string, options: { focusComposer?: boolean } = {}) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setHomeOverlay(null);
+    focusComposer.current = !!options.focusComposer;
+    land(id, null);
   };
 
   const openSaved = () => {
@@ -530,7 +567,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       const s = state.current;
       // A dialog or the switcher on top has the keyboard: the shortcuts that open or move things would act under it
       // (the search box under a modal, a channel switched behind the settings). Esc and ⌘/ still work there.
-      const covered = !!s.dialog || s.switcher;
+      const covered = !!s.dialog || s.switcher || !!s.homeOverlay;
       if (event.key === "F6" && !mod && !event.altKey && !covered && !s.searchOpen) {
         if (focusChatRegion(event.shiftKey)) event.preventDefault();
       } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
@@ -545,7 +582,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setDialog("dm");
       } else if (mod && !event.shiftKey && key === "f" && !covered) {
         event.preventDefault();
-        setSearchOpen(true);
+        // A phone has no search box: 「移動・検索」 is the way in (M37).
+        if (s.compact) setHomeOverlay("jump");
+        else setSearchOpen(true);
       } else if (mod && event.shiftKey && key === "t" && !covered) {
         event.preventDefault();
         openThreads();
@@ -565,6 +604,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       } else if (event.key === "Escape") {
         if (s.switcher) setSwitcher(false);
         else if (s.dialog) setDialog(null);
+        else if (s.homeOverlay) setHomeOverlay(null);
         else if (s.searchOpen) setSearchOpen(false);
         else if (s.detailsOpen) setDetailsOpen(false);
         else if (s.pinsOpen) setPinsOpen(false);
@@ -1025,13 +1065,27 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const showTabBar = atRoot || (view !== "channel" && !sidePane && !showDetails);
     const rootContent = (value: MobileTab) =>
       value === "home" ? (
-        <>
-          <div className="flex h-11 shrink-0 items-center px-2">
-            <WorkspaceMenu controller={controller} />
-          </div>
-          <div className="shrink-0 px-3 pb-2">{searchBar}</div>
-          <div className="min-h-0 flex-1">{sidebar}</div>
-        </>
+        <HomeView
+          controller={controller}
+          gatherUnread={gatherUnread}
+          onGatherUnread={(on) => {
+            writeGatherUnread(on);
+            setGatherUnread(on);
+          }}
+          onOpen={open}
+          onJump={() => setHomeOverlay("jump")}
+          onCompose={() => setHomeOverlay("compose")}
+          onThreads={openThreads}
+          onDrafts={() => openView("drafts")}
+          onSaved={openSaved}
+          onReminders={() => openView("reminders")}
+          onFiles={() => openFiles(null)}
+          onBrowse={() => setDialog("browse")}
+          onNewChannel={() => setDialog("channel")}
+          onDirectory={() => setDialog("directory")}
+          onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
+          onAllDms={() => selectTab("dm")}
+        />
       ) : value === "dm" ? (
         <DmListView controller={controller} onOpen={open} onNew={() => setDialog("dm")} />
       ) : value === "activity" ? (
@@ -1081,6 +1135,22 @@ export function MainScreen({ controller }: { controller: AppController }) {
           </div>
           {/* The bottom tabs, except in a conversation, a thread or the details page (Slack). */}
           {showTabBar && <MobileTabBar controller={controller} tab={mobileTab} onTab={(value) => selectTab(value)} />}
+          {homeOverlay === "jump" && (
+            <JumpView
+              controller={controller}
+              recentIds={recentConversations}
+              recentSearches={recent}
+              onOpen={(id) => openLanded(id)}
+              onOpenPerson={(userId) => void controller.openDmWith(userId).then((id) => { if (id) openLanded(id); })}
+              onSearch={(params) => {
+                setHomeOverlay(null);
+                runSearch(params);
+              }}
+              onRemoveRecentSearch={(params) => setRecent(removeRecent(recentStorageKey, params))}
+              onClose={() => setHomeOverlay(null)}
+            />
+          )}
+          {homeOverlay === "compose" && <NewMessageView controller={controller} onOpen={(id) => openLanded(id, { focusComposer: true })} onClose={() => setHomeOverlay(null)} />}
           {overlays}
         </div>
       </BackToList.Provider>

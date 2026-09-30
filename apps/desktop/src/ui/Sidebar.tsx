@@ -433,7 +433,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
 const FOLDED_KEY = "chikuwa.sidebar.folded";
 
 /** Which default sections are folded on this device (favorites, channels, times, dms); a per-viewer convenience. */
-function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void] {
+export function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void] {
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => {
     try {
       const parsed: unknown = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]");
@@ -515,7 +515,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 }
 
 /** Short enough for the narrowest sidebar (the banner over the conversation says more). */
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
   switch (status) {
     case "online":
       return "オンライン";
@@ -528,7 +528,7 @@ function statusLabel(status: string): string {
   }
 }
 
-function statusTitle(status: string): string {
+export function statusTitle(status: string): string {
   switch (status) {
     case "online":
       return "サーバに接続しています";

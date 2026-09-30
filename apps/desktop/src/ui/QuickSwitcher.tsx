@@ -1,21 +1,30 @@
 import { Command } from "cmdk";
 import { AtSign, Hash, Lock, Search } from "lucide-react";
 import { Dialog } from "radix-ui";
+import { useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel } from "./channels";
+import { jumpConversations } from "./home";
 import { channelTitle } from "./MainScreen";
 import { Badge, Kbd } from "./primitives";
 
-/** Cmd/Ctrl+K: jump to a channel or DM by typing part of its name (cmdk does the fuzzy matching). */
+/**
+ * Cmd/Ctrl+K: jump to a channel or DM by typing part of its name. M37: filtered and ordered by the shared jump-match rule
+ * (apps/shared/jump-match.json, as the phones' 「移動・検索」), not cmdk's fuzzy matching; empty, unread first, then by name.
+ */
 export function QuickSwitcher({ controller, onOpen, onClose }: { controller: AppController; onOpen: (id: string) => void; onClose: () => void }) {
   const store = controller.store;
   const me = store.me?.id;
-  const channels: ChannelState[] = [...store.channels.values()]
-    .filter((c) => c.isMember && !c.archived)
-    .sort((a, b) => Number(hasUnread(b, me ?? null)) - Number(hasUnread(a, me ?? null)) || channelTitle(a, controller).localeCompare(channelTitle(b, controller), "ja"));
+  const [query, setQuery] = useState("");
+  const all = [...store.channels.values()];
+  const channels: ChannelState[] = query.trim()
+    ? jumpConversations(query, all, { users: store.users, meId: me ?? null, me: store.me ?? controller.me, title: (c) => channelTitle(c, controller).replace(/^#/, "") }, Number.POSITIVE_INFINITY)
+    : all
+        .filter((c) => c.isMember && !c.archived)
+        .sort((a, b) => Number(hasUnread(b, me ?? null)) - Number(hasUnread(a, me ?? null)) || channelTitle(a, controller).localeCompare(channelTitle(b, controller), "ja"));
 
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -24,10 +33,10 @@ export function QuickSwitcher({ controller, onOpen, onClose }: { controller: App
         <Dialog.Content className="rx-drop fixed left-1/2 top-[14vh] z-50 w-[540px] max-w-[92vw] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-canvas text-ink shadow-2xl focus:outline-none">
           <Dialog.Title className="sr-only">チャンネルに移動</Dialog.Title>
           <Dialog.Description className="sr-only">名前を入力して Enter で開きます</Dialog.Description>
-          <Command label="チャンネルに移動" loop>
+          <Command label="チャンネルに移動" loop shouldFilter={false}>
             <div className="flex items-center gap-2.5 border-b border-line px-4">
               <Search size={16} className="shrink-0 text-muted" />
-              <Command.Input autoFocus placeholder="チャンネルや相手の名前で移動…" className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
+              <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder="チャンネルや相手の名前で移動…" className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
               <Kbd>Esc</Kbd>
             </div>
             <Command.List className="max-h-[52vh] overflow-y-auto p-1.5">
@@ -39,7 +48,7 @@ export function QuickSwitcher({ controller, onOpen, onClose }: { controller: App
                 return (
                   <Command.Item
                     key={channel.id}
-                    value={`${title} ${channel.name ?? ""}`}
+                    value={channel.id}
                     onSelect={() => onOpen(channel.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm"
                   >
