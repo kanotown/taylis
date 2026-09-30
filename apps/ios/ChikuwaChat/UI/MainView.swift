@@ -49,6 +49,11 @@ struct MainView: View {
         return id
     }
 
+    /// The activity tab's badge: stage B's unread items (M39), else stage A's rule.
+    private var activityBadge: (count: Int, mention: Bool) {
+        TabBadges.activity(Array(store.channels.values), threads: store.threadSummary, activity: store.activity)
+    }
+
     /// The conversation on screen: the top of the selected tab's stack (M34 (8): only it reads and is "open").
     private var frontChannelId: String? {
         if case .channel(let id)? = paths[tab]?.last { return id }
@@ -100,12 +105,14 @@ struct MainView: View {
                 .tag(MainTab.dms)
             activityTab
                 .tabItem { Label("アクティビティ", systemImage: "bell") }
-                .badge(TabBadges.activity(Array(store.channels.values), threads: store.threadSummary).count)
+                .badge(activityBadge.count)
                 .tag(MainTab.activity)
             SettingsView(controller: controller, embedded: true)
                 .tabItem { Label("自分", systemImage: "person.crop.circle") }
                 .tag(MainTab.you)
         }
+        // M39: the activity badge is red only with a mention among its items.
+        .background(TabBadgeTint(index: 2, count: activityBadge.count, mention: activityBadge.mention))
         .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner(status: status) }
         .overlay(alignment: .bottom) {
             VStack(spacing: 6) {
@@ -251,9 +258,13 @@ struct MainView: View {
 
     private var activityTab: some View {
         NavigationStack(path: path(.activity)) {
-            ActivityView(controller: controller) { message in
+            ActivityView(controller: controller, onOpenMention: { message in
                 Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
-            }
+            }, onOpenItem: { item in
+                // M39: the message in its conversation, a reply in its thread, on this tab's stack.
+                let message = item.message
+                Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
+            })
             .navigationDestination(for: MainRoute.self) { route in screen(route, on: .activity) }
         }
     }

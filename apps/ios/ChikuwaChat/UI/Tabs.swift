@@ -20,8 +20,11 @@ enum TabBadges {
         channels.filter { $0.isMember && $0.channel.isDm && $0.hasUnread(meId: meId, now: now) }.count
     }
 
-    /// Activity: followed threads with unread replies, plus channels (not DMs) where I am mentioned; red with a mention.
-    static func activity(_ channels: [ChannelState], threads: ThreadSummary) -> (count: Int, mention: Bool) {
+    /// Activity. Stage B (M39, the server sends `activity`): its unread items, red with a mention among them. Stage A (a
+    /// server before M39): followed threads with unread replies, plus channels (not DMs) where I am mentioned; red with
+    /// a mention.
+    static func activity(_ channels: [ChannelState], threads: ThreadSummary, activity: ActivitySummary? = nil) -> (count: Int, mention: Bool) {
+        if let activity { return (activity.unreadCount, activity.unreadCount > 0 && activity.mentionUnread) }
         let mentioned = channels.filter { $0.isMember && !$0.channel.isDm && $0.mentionCount > 0 }.count
         return (threads.unreadCount + mentioned, mentioned > 0 || threads.mentionCount > 0)
     }
@@ -184,13 +187,25 @@ struct DMListView: View {
     }
 }
 
-/// The activity tab, stage A (MOBILE_UI.md §6.4): mentions and followed threads, from the existing lists.
+/// The activity tab (MOBILE_UI.md §6.4). With a server of M39 or later (bootstrap `activity`), stage B: the activity
+/// list (ActivityFeedView). A server before it: stage A, mentions and followed threads from the existing lists.
 struct ActivityView: View {
     @Bindable var controller: AppController
+    /// Stage A: a mention opens its message.
     let onOpenMention: (MessageOut) -> Void
+    /// Stage B: an item opens its message (in its thread when it is a reply).
+    let onOpenItem: (ActivityItem) -> Void
     @State private var segment = "mentions"
 
     var body: some View {
+        if controller.store.activity != nil {
+            ActivityFeedView(controller: controller, onOpen: onOpenItem)
+        } else {
+            stageA
+        }
+    }
+
+    private var stageA: some View {
         VStack(spacing: 0) {
             Picker("表示", selection: $segment) {
                 Text("メンション").tag("mentions")

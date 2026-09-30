@@ -55,6 +55,10 @@ struct UserMe: Codable, Equatable {
     /// servers before M35 (their per-type defaults are the same as "mentions").
     var notificationDefault: String? = nil
     var overallNotification: String { notificationDefault ?? "mentions" }
+    /// M39: reactions to my messages as banners (pushes). nil from a server before M39 (no such setting there: the
+    /// switch is hidden); off when absent.
+    var notifyReactions: Bool? = nil
+    var reactionBanners: Bool { notifyReactions ?? false }
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
@@ -482,6 +486,59 @@ struct BootstrapOut: Codable {
     var sidebarSections: [SidebarSectionOut]? = nil
     /// My drafts shared by my devices (M15d); changes arrive as draft.updated.
     var drafts: [DraftOut]? = nil
+    /// M39: the activity badge and read position; nil from a server before M39 (the activity tab stays at stage A).
+    var activity: ActivitySummary? = nil
+}
+
+/// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
+/// of mine (who and which emoji, one item per message), or someone's reply in a thread I follow.
+struct ActivityItem: Codable, Equatable, Identifiable {
+    /// "mention" / "reaction" / "thread_reply".
+    let kind: String
+    /// When it happened (a reaction item: its newest reaction); compared with the read position.
+    let at: String
+    let message: MessageOut
+    /// Who did it (a mention or a reply: its sender).
+    let actorIds: [String]
+    /// A reaction item's emoji (`:name:` for a custom one).
+    var emojis: [String] = []
+
+    /// One row per kind and message.
+    var id: String { "\(kind):\(message.id)" }
+
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis }
+
+    init(kind: String, at: String, message: MessageOut, actorIds: [String], emojis: [String] = []) {
+        self.kind = kind
+        self.at = at
+        self.message = message
+        self.actorIds = actorIds
+        self.emojis = emojis
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        at = try c.decode(String.self, forKey: .at)
+        message = try c.decode(MessageOut.self, forKey: .message)
+        actorIds = try c.decodeIfPresent([String].self, forKey: .actorIds) ?? []
+        emojis = try c.decodeIfPresent([String].self, forKey: .emojis) ?? []
+    }
+}
+
+/// GET /activity: a page, the next page's cursor (nil at the end) and my read position.
+struct ActivityListOut: Codable {
+    let items: [ActivityItem]
+    let nextCursor: String?
+    let readAt: String
+}
+
+/// M39: the activity badge (bootstrap `activity`, GET /activity/summary, PUT /activity/read): the items after my read
+/// position (at most 99), and whether a mention is among them.
+struct ActivitySummary: Codable, Equatable {
+    var readAt: String
+    var unreadCount: Int
+    var mentionUnread: Bool
 }
 
 /// A link pinned to the top of a conversation (M15f).

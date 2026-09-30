@@ -68,14 +68,22 @@ struct PushPayload: Equatable, Sendable {
     var parentId: String?
     /// `aps.badge`: that server's count for this account.
     var badge: Int?
+    /// "message" (also when absent), "reminder", "reaction" (M39) …
+    var kind: String?
 
-    init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil) {
+    init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
+         kind: String? = nil) {
         self.workspaceId = workspaceId
         self.channelId = channelId
         self.messageId = messageId
         self.parentId = parentId
         self.badge = badge
+        self.kind = kind
     }
+
+    /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
+    /// message push opens its conversation (and a reply's thread) as before.
+    var opensMessage: Bool { kind == "reaction" && messageId != nil }
 
     init(userInfo: [AnyHashable: Any]) {
         func text(_ key: String) -> String? {
@@ -86,6 +94,7 @@ struct PushPayload: Equatable, Sendable {
         channelId = text("channel_id")
         messageId = text("message_id")
         parentId = text("parent_id")
+        kind = text("kind")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }

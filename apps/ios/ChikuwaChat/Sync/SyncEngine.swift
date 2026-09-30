@@ -54,6 +54,8 @@ struct EngineOptions {
     var threadPageSize = 50
     /// thread.updated bursts (one per reply) collapse into one list / badge refresh.
     var threadRefresh: TimeInterval = 0.3
+    /// M39: the events that may move the activity badge collapse into one GET /activity/summary this long after.
+    var activityRefresh: TimeInterval = 1
     /// §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtl.
     var typingInterval: TimeInterval = 3
     var typingTtl: TimeInterval = 5
@@ -102,6 +104,7 @@ final class SyncEngine {
     /// channel; the channel is not trimmed while any is shown.
     @ObservationIgnored private var views: [String: Int] = [:]
     private var threadRefreshTask: Task<Void, Never>?
+    private var activityRefreshTask: Task<Void, Never>?
     /// "channel[:parent]" → when the last typing frame went out.
     private var typingSent: [String: Date] = [:]
     var isActive: () -> Bool = { true }
@@ -441,10 +444,12 @@ final class SyncEngine {
         heartbeatTask?.cancel()
         watchdogTask?.cancel()
         threadRefreshTask?.cancel()
+        activityRefreshTask?.cancel()
         outboxRetryTask?.cancel()
         heartbeatTask = nil
         watchdogTask = nil
         threadRefreshTask = nil
+        activityRefreshTask = nil
         outboxRetryTask = nil
     }
 
@@ -463,6 +468,9 @@ final class SyncEngine {
         reapplyUnsentReads()
         if let summary = bootstrap.threads { store.setThreadSummary(summary) }
         if store.threadsLoaded { scheduleThreadRefresh() } // the list may have moved while we were away
+        // M39: the server's count after every (re)connect (SYNC_PROTOCOL.md §7.5); none from a server before M39.
+        activityRefreshTask?.cancel()
+        store.setActivity(bootstrap.activity)
         store.replacePresence(bootstrap.presence ?? [])
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
@@ -623,6 +631,14 @@ final class SyncEngine {
             let pref = try frame.data.decode(NotificationPreferenceOut.self)
             store.setNotification(pref.channelId, pref)
             onBadge?(store.badgeCount)
+        case "activity.read":
+            // M39: my read position moved on another device (or by this one's PUT): the dots follow, the badge is
+            // fetched again.
+            if let readAt = frame.data["read_at"]?.stringValue { store.advanceActivityRead(readAt) }
+            scheduleActivityRefresh()
+        case "reaction.added":
+            // M39: someone reacted to my message (the banner is the server's push, for those who turned it on).
+            scheduleActivityRefresh()
         case "session.revoked":
             signOut()
         default:
@@ -639,7 +655,12 @@ final class SyncEngine {
         let message = payload.message
         let thread = payload.parentThread
         let isNew = frame.event == "message.created"
-        if isNew { noteActivity(message) }
+        if isNew {
+            noteActivity(message)
+            // M39: a mention of me or a reply in a thread I follow moves the activity badge (the server counts it).
+            let followed = message.parentId.flatMap { store.threads[$0]?.state.following } ?? false
+            if ActivityRules.refreshesBadge(on: message, me: store.me, thread: thread, followed: followed) { scheduleActivityRefresh() }
+        }
 
         guard let synced = channel.syncedSeq else {
             // No timeline here: the list's numbers move, and rows already held (a thread opened from 「スレッド」,
@@ -1101,6 +1122,40 @@ final class SyncEngine {
             store.setThreadSummary(page.summary)
             onBadge?(store.badgeCount)
         }
+    }
+
+    // MARK: activity (M39, MOBILE_UI.md §7.2)
+
+    /// The events that may move the activity badge collapse into one GET /activity/summary a moment later. Nothing to
+    /// do for a server before M39 (no summary held).
+    private func scheduleActivityRefresh() {
+        guard api is ActivityApi, store.activity != nil else { return }
+        activityRefreshTask?.cancel()
+        let options = self.options
+        activityRefreshTask = Task { [weak self] in
+            await options.sleep(options.activityRefresh)
+            guard let self, !Task.isCancelled, self.status == .online else { return }
+            await self.refreshActivity()
+        }
+    }
+
+    /// The activity badge from the server; a failure waits for the next event or bootstrap.
+    func refreshActivity() async {
+        guard let api = api as? ActivityApi, store.activity != nil else { return }
+        if let summary = try? await api.activitySummary() { store.setActivity(summary) }
+    }
+
+    /// Everything in the activity up to `readAt` is read (「すべて既読」, or the newest item the list showed). The server
+    /// only moves it forward; its answer is the new badge, and my other devices get activity.read.
+    func markActivityRead(_ readAt: String) async throws {
+        guard let api = api as? ActivityApi else { return }
+        activityRefreshTask?.cancel()
+        store.setActivity(try await api.markActivityRead(readAt: readAt))
+    }
+
+    /// Waits for the debounced activity refresh (tests).
+    func flushActivity() async {
+        await activityRefreshTask?.value
     }
 
     /// Waits for the debounced thread refresh and read marks (tests).

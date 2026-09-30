@@ -127,7 +127,7 @@ final class WorkspacesTests: XCTestCase {
         // Routing fields sit outside `aps`; the badge is that server's count.
         let userInfo: [AnyHashable: Any] = ["aps": ["alert": ["title": "#general", "body": "hi"], "badge": 4, "thread-id": "ch"],
                                             "kind": "message", "workspace_id": "wb", "channel_id": "ch", "message_id": "m", "seq": 3]
-        XCTAssertEqual(PushPayload(userInfo: userInfo), PushPayload(workspaceId: "wb", channelId: "ch", messageId: "m", badge: 4))
+        XCTAssertEqual(PushPayload(userInfo: userInfo), PushPayload(workspaceId: "wb", channelId: "ch", messageId: "m", badge: 4, kind: "message"))
         XCTAssertEqual(PushPayload(userInfo: ["workspace_id": "", "channel_id": NSNull()]), PushPayload())
     }
 

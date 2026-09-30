@@ -317,6 +317,9 @@ final class Store {
     /// Followed threads (THREADS.md §5), replaced by thread.updated and GET /threads pages.
     var threads: [String: ThreadEntry] = [:]
     var threadSummary = ThreadSummary(unreadCount: 0, mentionCount: 0)
+    /// M39: the activity badge and read position; nil while the server has sent none (before M39: stage A). Kept with
+    /// `me`, so an offline start shows the last badge; bootstrap replaces it.
+    private(set) var activity: ActivitySummary?
     var threadsFilter = "all"
     var threadsLoaded = false
     var threadsCursor: String?
@@ -480,6 +483,9 @@ final class Store {
             if let data = value.data(using: .utf8), let draft = try? JSON.plainDecoder.decode(Draft.self, from: data) { drafts[key] = draft }
         }
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
+        if let raw = snapshot.meta[Self.activityKey], let data = raw.data(using: .utf8) {
+            activity = try? JSON.plainDecoder.decode(ActivitySummary.self, from: data) // corrupt: the next bootstrap brings it
+        }
         if let raw = snapshot.meta[Self.unsentReadsKey], let data = raw.data(using: .utf8) {
             unsentReads = (try? JSON.plainDecoder.decode([String: Int].self, from: data)) ?? [:]
         }
@@ -550,6 +556,28 @@ final class Store {
     // MARK: threads (THREADS.md §5)
 
     func setThreadSummary(_ summary: ThreadSummary) { threadSummary = summary }
+
+    // MARK: activity (M39, MOBILE_UI.md §7.2)
+
+    static let activityKey = "activity"
+
+    /// The server's activity summary (bootstrap `activity`, GET /activity/summary, PUT /activity/read). One behind the
+    /// read position held is stale and dropped (ActivityRules.accepts); nil (a server before M39) leaves the tab at
+    /// stage A.
+    func setActivity(_ summary: ActivitySummary?) {
+        guard ActivityRules.accepts(summary, over: activity), summary != activity else { return }
+        activity = summary
+        let encoded = summary.flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.activityKey, value: encoded) }
+    }
+
+    /// activity.read: my read position moved on another device (or by this one's PUT). The dots follow now; the count
+    /// comes with the summary fetched after it.
+    func advanceActivityRead(_ readAt: String) {
+        guard var current = activity, ActivityRules.moves(readAt, readAt: current.readAt) else { return }
+        current.readAt = readAt
+        setActivity(current)
+    }
 
     /// A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
     /// refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
@@ -958,6 +986,7 @@ final class Store {
             if let data = try? JSON.plainEncoder.encode(value) { snapshot.meta[key] = String(data: data, encoding: .utf8) }
         }
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
+        if let activity, let data = try? JSON.plainEncoder.encode(activity) { snapshot.meta[Self.activityKey] = String(data: data, encoding: .utf8) }
         if !unsentReads.isEmpty, let data = try? JSON.plainEncoder.encode(unsentReads) { snapshot.meta[Self.unsentReadsKey] = String(data: data, encoding: .utf8) }
         snapshot.users = Array(users.values)
         snapshot.channels = Array(channels.values)
