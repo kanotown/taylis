@@ -385,7 +385,7 @@ export function Composer({
     }
     if (event.key !== "Enter") return;
     if (imeEnter) return; // confirming a Japanese conversion, not sending
-    const sendKey = controller.sendKey ?? "shift-enter";
+    const sendKey = controller.sendKey ?? "mod-enter";
     if (isSendKey(event, sendKey)) {
       const el = area.current;
       // With Enter as the send key, Enter inside an open ``` fence is still a newline.
@@ -663,7 +663,7 @@ export function Composer({
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-3">
             <span className="hidden items-center gap-1 text-[11px] text-muted @3xl:flex">
-              <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").newline}</Kbd> 改行
+              <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").newline}</Kbd> 改行
             </span>
             <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
               <PopoverTrigger asChild>

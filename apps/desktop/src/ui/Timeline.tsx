@@ -1052,7 +1052,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           if (e.key === "Escape") {
             e.preventDefault();
             finish();
-          } else if (isSendKey(e, controller.sendKey ?? "shift-enter") && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
+          } else if (isSendKey(e, controller.sendKey ?? "mod-enter") && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {
             e.preventDefault();
             if (draft.trim() && !saving) void save();
           }
@@ -1066,7 +1066,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           キャンセル
         </Button>
         <span className="flex items-center gap-1 text-[11px] text-muted">
-          <Kbd>{sendKeyLabel(controller.sendKey ?? "shift-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
+          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
         </span>
       </div>
     </div>
