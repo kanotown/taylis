@@ -102,7 +102,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
               {reminderPresets().map((preset) => (
                 <li key={preset.key}>
                   <SheetButton icon={<AlarmClock size={18} />} onClick={then(() => remind(preset.at))}>
-                    {preset.label} <span className="ml-auto text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                    {preset.label} {scheduleLabel(preset.at.toISOString()) !== preset.label && <span className="ml-auto text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>}
                   </SheetButton>
                 </li>
               ))}

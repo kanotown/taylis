@@ -23,6 +23,14 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(mondayPresets[3].at, local(2026, 10, 12, 9))
     }
 
+    /// 「明日 9:00」 once, not 「明日 9:00 (明日 9:00)」; a relative name keeps its time.
+    func testAChoiceShowsItsTimeOnlyWhenThatSaysMore() {
+        let now = Date()
+        let at = now.addingTimeInterval(3600)
+        XCTAssertEqual(Schedule.choice(Schedule.Preset(key: "a", label: Schedule.label(at, now: now), at: at), now: now), Schedule.label(at, now: now))
+        XCTAssertEqual(Schedule.choice(Schedule.Preset(key: "b", label: "1 時間後", at: at), now: now), "1 時間後 (\(Schedule.label(at, now: now)))")
+    }
+
     func testReminderPresetsAreALittleLaterOrNextMorning() {
         let now = local(2026, 10, 2, 19, 30)
         let presets = Schedule.reminderPresets(now: now, calendar: calendar)

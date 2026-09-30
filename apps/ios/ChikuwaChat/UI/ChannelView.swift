@@ -1617,7 +1617,7 @@ struct ComposerView: View {
         // and 「後で送信」 did nothing (tester, 2026-09-30).
         .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
             ForEach(Schedule.presets()) { preset in
-                Button("\(preset.label) (\(Schedule.label(preset.at)))") { schedule(preset.at) }
+                Button(Schedule.choice(preset)) { schedule(preset.at) }
             }
             Button("日時を指定…") { customSendAt = Date().addingTimeInterval(3600); showCustomSchedule = true }
         }

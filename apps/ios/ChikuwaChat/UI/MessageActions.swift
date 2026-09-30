@@ -190,7 +190,7 @@ struct MessageActionsSheet: View {
                 }
                 Menu {
                     ForEach(Schedule.reminderPresets()) { preset in
-                        Button("\(preset.label) (\(Schedule.label(preset.at)))") {
+                        Button(Schedule.choice(preset)) {
                             run { _ = await controller.setReminder(messageId: message.id, at: preset.at) }
                         }
                     }

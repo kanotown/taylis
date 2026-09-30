@@ -944,7 +944,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                   <li key={preset.key}>
                     <button type="button" className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => remind(preset.at)}>
                       <span>{preset.label}</span>
-                      <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>
+                      {scheduleLabel(preset.at.toISOString()) !== preset.label && <span className="text-xs text-muted">{scheduleLabel(preset.at.toISOString())}</span>}
                     </button>
                   </li>
                 ))}
