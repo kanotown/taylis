@@ -576,7 +576,14 @@ export class Store {
     const bucket = this.bucket(channelId);
     const parent = bucket.get(thread.id);
     if (!parent || thread.updated_seq <= parent.updated_seq) return;
-    const updated: MessageState = { ...parent, reply_count: thread.reply_count, last_reply_at: thread.last_reply_at, updated_seq: thread.updated_seq };
+    const updated: MessageState = {
+      ...parent,
+      reply_count: thread.reply_count,
+      last_reply_at: thread.last_reply_at,
+      // C3: an older server sends no list; the parent keeps what it had.
+      ...(thread.reply_user_ids ? { reply_user_ids: thread.reply_user_ids } : {}),
+      updated_seq: thread.updated_seq,
+    };
     bucket.set(parent.id, updated);
     this.timelines.delete(channelId);
     this.persist((p) => p.saveMessage(updated));

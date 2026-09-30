@@ -34,7 +34,7 @@ from app.modules.messages.mentions import (
     extract_mentions,
     notification_text,
 )
-from app.modules.messages.models import Message
+from app.modules.messages.models import Message, with_replier
 from app.modules.messages.schemas import (
     DeltaOut,
     HistoryOut,
@@ -140,6 +140,10 @@ async def create_message(
     try:
         async with db.begin_nested():
             seq = await repo.allocate_seq(db, channel_id)
+            if parent is not None:
+                # Read the counters again under the channel lock: a reply committed since the
+                # parent was loaded must not be lost (reply_count, reply_user_ids).
+                await db.refresh(parent)
             message = Message(
                 channel_id=channel_id,
                 sender_id=actor.id,
@@ -177,6 +181,7 @@ async def create_message(
                 # The reply consumes the seq; the parent's counters move to it (DATA_MODEL.md).
                 parent.reply_count += 1
                 parent.last_reply_at = message.created_at
+                parent.reply_user_ids = with_replier(parent.reply_user_ids, actor.id)
                 parent.updated_seq = seq
                 await db.flush()
                 # Followers (THREADS.md): auto-follow, then they are the push targets.
@@ -424,6 +429,8 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
         parent = await repo.get_message(db, message.parent_id)
         if parent is not None:
             parent.reply_count = max(0, parent.reply_count - 1)
+            # C3: the deleted reply's author may have no other live reply (or move down).
+            parent.reply_user_ids = await repo.reply_user_ids(db, parent.id)
             parent.updated_seq = seq
             await db.flush()
             await threads.on_reply_deleted_in_tx(db, parent)

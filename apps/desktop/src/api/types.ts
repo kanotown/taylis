@@ -18,6 +18,8 @@ export interface ParentThread {
   id: string;
   reply_count: number;
   last_reply_at: string | null;
+  /** C3: the parent's repliers after the change (absent from older servers). */
+  reply_user_ids?: string[];
   updated_seq: number;
   participant_ids?: string[];
 }

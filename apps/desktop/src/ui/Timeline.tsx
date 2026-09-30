@@ -11,7 +11,7 @@ import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
-import { ackLine, bannerText, buildTimeline, fullTimestamp, rowKey, timeLabel } from "./format";
+import { ackLine, bannerText, buildTimeline, compactNames, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
@@ -655,6 +655,41 @@ interface MessageRowViewProps {
   readOnly: boolean;
 }
 
+/**
+ * C3 (MOBILE_POLISH.md): the line under a thread parent, as in Slack: up to three repliers' avatars (most recent first),
+ * 「N 件の返信」 and 「最終返信 今日 14:05」. An older server sends no repliers: the speech bubble stands in for them.
+ */
+function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; store: Store; onOpen: () => void }) {
+  const repliers = message.reply_user_ids ?? [];
+  const nameOf = (id: string) => store.users.get(id)?.display_name ?? "?";
+  const last = message.last_reply_at ? lastReplyLabel(message.last_reply_at) : "";
+  return (
+    <button
+      type="button"
+      data-testid="thread-summary"
+      className="group mt-1 flex max-w-full items-center gap-2 rounded-md text-left text-xs"
+      title={repliers.length > 0 ? `返信した人: ${compactNames(repliers.map(nameOf))}` : undefined}
+      onClick={onOpen}
+    >
+      {repliers.length > 0 ? (
+        <span className="flex shrink-0 -space-x-1">
+          {repliers.slice(0, 3).map((id) => (
+            <Avatar key={id} id={id} name={nameOf(id)} size={20} className="rounded-md text-[9px] ring-2 ring-canvas" />
+          ))}
+        </span>
+      ) : (
+        <MessageSquare size={13} className="shrink-0 text-accent" />
+      )}
+      <span className="whitespace-nowrap font-semibold text-accent group-hover:underline">{message.reply_count} 件の返信</span>
+      {last && (
+        <span className="truncate text-muted" title={message.last_reply_at ? fullTimestamp(message.last_reply_at) : undefined}>
+          {last}
+        </span>
+      )}
+    </button>
+  );
+}
+
 const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -834,11 +869,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         )}
         {message.poll && <PollCard poll={message.poll} message={message} controller={controller} readOnly={readOnly} />}
         {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} readOnly={readOnly} />}
-        {(message.reply_count ?? 0) > 0 && onOpenThread && (
-          <button type="button" className="mt-1 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:underline" onClick={() => onOpenThread(message.id)}>
-            <MessageSquare size={13} /> {message.reply_count} 件の返信
-          </button>
-        )}
+        {(message.reply_count ?? 0) > 0 && onOpenThread && <ThreadSummaryLine message={message} store={store} onOpen={() => onOpenThread(message.id)} />}
         {reactions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {reactions.map((reaction) => {

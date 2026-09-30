@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, delete, func, select, true, update
+from sqlalchemy import and_, delete, func, select, text, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.messages.models import (
+    REPLY_USERS_MAX,
     Message,
     MessageAck,
     MessageRevision,
@@ -233,6 +234,39 @@ async def list_replies(db: AsyncSession, parent_id: uuid.UUID) -> list[Message]:
         .order_by(Message.seq.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def reply_user_ids(db: AsyncSession, parent_id: uuid.UUID) -> list[uuid.UUID]:
+    """C3: the thread's repliers, most recent reply first (live replies only, as reply_count)."""
+    stmt = (
+        select(Message.sender_id)
+        .where(Message.parent_id == parent_id, Message.deleted_at.is_(None))
+        .group_by(Message.sender_id)
+        .order_by(func.max(Message.seq).desc())
+        .limit(REPLY_USERS_MAX)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+# The same rule as reply_user_ids, for many parents in one statement (migration 0049 has a copy).
+_REFRESH_REPLY_USERS = text(
+    """
+    UPDATE messages AS p SET reply_user_ids = ARRAY(
+        SELECT r.sender_id FROM messages AS r
+        WHERE r.parent_id = p.id AND r.deleted_at IS NULL
+        GROUP BY r.sender_id
+        ORDER BY max(r.seq) DESC
+        LIMIT :max
+    )
+    WHERE p.id = ANY(:ids)
+    """
+)
+
+
+async def refresh_reply_user_ids(db: AsyncSession, parent_ids: list[uuid.UUID]) -> None:
+    """Recompute reply_user_ids for these parents (bulk writers: the Mattermost import)."""
+    if parent_ids:
+        await db.execute(_REFRESH_REPLY_USERS, {"max": REPLY_USERS_MAX, "ids": parent_ids})
 
 
 async def list_all(db: AsyncSession, channel_id: uuid.UUID) -> list[Message]:

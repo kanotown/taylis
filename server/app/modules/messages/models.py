@@ -27,6 +27,15 @@ from app.core.base import Base
 from app.core.ids import uuid7
 from app.core.time import utcnow
 
+# C3 (MOBILE_POLISH.md): how many repliers a thread parent names (clients show 3).
+REPLY_USERS_MAX = 5
+
+
+def with_replier(current: list[uuid.UUID], sender_id: uuid.UUID) -> list[uuid.UUID]:
+    """C3: reply_user_ids after `sender_id` replied: they move to the front, the rest keep their
+    order (the new reply is the newest), the list stays at REPLY_USERS_MAX."""
+    return [sender_id, *(uid for uid in current if uid != sender_id)][:REPLY_USERS_MAX]
+
 
 class Message(Base):
     __tablename__ = "messages"
@@ -57,6 +66,11 @@ class Message(Base):
     # Thread parent bookkeeping (DATA_MODEL.md "各操作と seq").
     reply_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # C3: who replied, most recent first, at most REPLY_USERS_MAX (the live replies, as
+    # reply_count counts them); kept with the counters so every MessageOut carries it for free.
+    reply_user_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid()), default=list, server_default=text("'{}'::uuid[]")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

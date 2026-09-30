@@ -583,8 +583,10 @@ describe("threads (M8c)", () => {
     await engine.idle();
     expect(store.replies(channel.id, parent.id).map((m) => m.body)).toEqual(["reply 1", "reply 2"]);
     expect(store.message(channel.id, parent.id)?.reply_count).toBe(2);
+    expect(store.message(channel.id, parent.id)?.reply_user_ids).toEqual([bob.id, alice.id]); // C3: parent_thread carries them
     server.post(channel.id, alice.id, "reply 3", undefined, parent.id);
     await engine.idle();
+    expect(store.message(channel.id, parent.id)?.reply_user_ids).toEqual([alice.id, bob.id]);
     expect(notifications).toEqual(["reply 3"]); // bob replied, so alice's reply notifies him
 
     const restored = new Store();

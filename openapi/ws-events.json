@@ -1825,6 +1825,15 @@
                 "title": "Reply Count",
                 "type": "integer"
               },
+              "reply_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Reply User Ids",
+                "type": "array"
+              },
               "sender_id": {
                 "format": "uuid",
                 "title": "Sender Id",
@@ -1891,6 +1900,15 @@
               "reply_count": {
                 "title": "Reply Count",
                 "type": "integer"
+              },
+              "reply_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Reply User Ids",
+                "type": "array"
               },
               "updated_seq": {
                 "title": "Updated Seq",
@@ -2311,6 +2329,15 @@
                 "title": "Reply Count",
                 "type": "integer"
               },
+              "reply_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Reply User Ids",
+                "type": "array"
+              },
               "sender_id": {
                 "format": "uuid",
                 "title": "Sender Id",
@@ -2377,6 +2404,15 @@
               "reply_count": {
                 "title": "Reply Count",
                 "type": "integer"
+              },
+              "reply_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Reply User Ids",
+                "type": "array"
               },
               "updated_seq": {
                 "title": "Updated Seq",
@@ -2797,6 +2833,15 @@
                 "default": 0,
                 "title": "Reply Count",
                 "type": "integer"
+              },
+              "reply_user_ids": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Reply User Ids",
+                "type": "array"
               },
               "sender_id": {
                 "format": "uuid",

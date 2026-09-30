@@ -71,6 +71,23 @@ ThreadState
 
 `GET /messages/{id}/replies` と `GET /messages/{id}/context` は変えない。
 
+### 3.1 親の「返信した人」(C3、2026-09-30)
+
+スレッドの親の `MessageOut` は `reply_count` と `last_reply_at` に加えて `reply_user_ids` を持つ。削除されていない
+返信の送信者を、最近の返信の順に重複なく最大 5 人 (親の投稿者も返信していれば入る。返信の無い行は空)。タイムラインの
+「N 件の返信」の行に先頭 3 人のアバターを出すため (MOBILE_POLISH.md C3)。
+
+- 保存: `messages.reply_user_ids` (uuid[]) に `reply_count` と同じく非正規化して持つ。返信の作成では返信者を先頭へ
+  動かすだけ (追加の問い合わせなし)、返信の削除ではその親の返信から数え直す (`messages_parent_idx` を使う 1 回)。
+  読むときは列をそのまま返すので、履歴・差分・スレッド一覧のどのページでも問い合わせは増えない。
+  読むたびに返信から集計する案は、ページ分を 1 回で取れるが、`MessageOut` を作るすべての経路 (イベントの
+  `to_message_out` を含む) に集計を足す必要があり、足し忘れた経路が空のリストを配って端末の表示を消してしまう。
+- 同時の返信: 返信は親を読んだ後にチャンネルの行ロック (seq の採番) を取るので、ロックの後に親を読み直してから
+  `reply_count` と `reply_user_ids` を進める (読み直さないと、間に確定した返信の分が失われる)。
+- Mattermost の取り込み (M18) はバッチごとに対象の親を返信から数え直す。移行 0049 は既存の親を同じ規則で埋める。
+- イベント: 返信の作成 / 削除の `parent_thread` にも `reply_user_ids` を入れる (SYNC_PROTOCOL.md §6)。親への
+  それ以外の変更 (`message.updated`) は `MessageOut` ごと届くのでそのまま入っている。
+
 ## 4. イベント
 
 - `thread.updated` (audience=user、フォロワー全員): 返信の作成 / 削除はフォロワー全員に、フォロー変更と既読更新は
