@@ -24,6 +24,14 @@
     {
       "input": "  m2-進捗 ",
       "output": "m2-進捗"
+    },
+    {
+      "input": "ｾﾞﾐ",
+      "output": "ぜみ"
+    },
+    {
+      "input": "ﾊﾟｰﾃｨ",
+      "output": "ぱーてぃ"
     }
   ],
   "score": [
@@ -110,6 +118,20 @@
       "query": "#ran",
       "names": [
         "random"
+      ],
+      "score": 0
+    },
+    {
+      "query": "ｾﾞﾐ",
+      "names": [
+        "ゼミ連絡"
+      ],
+      "score": 0
+    },
+    {
+      "query": "ぜみ",
+      "names": [
+        "ｾﾞﾐ連絡"
       ],
       "score": 0
     }

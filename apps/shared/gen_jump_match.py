@@ -46,7 +46,7 @@ def rank(query: str, items: list[dict]) -> list[str]:
     return [h[3] for h in sorted(h for h in hits if h[0] is not None)]
 
 
-NORMALIZE = ["#General", "ＡＢＣ", "ｶﾀｶﾅ", "カタカナ", "@kano", "  m2-進捗 "]
+NORMALIZE = ["#General", "ＡＢＣ", "ｶﾀｶﾅ", "カタカナ", "@kano", "  m2-進捗 ", "ｾﾞﾐ", "ﾊﾟｰﾃｨ"]
 SCORES = [
     ("gen", ["general"]),
     ("GEN", ["general"]),
@@ -60,6 +60,9 @@ SCORES = [
     ("zzz", ["general"]),
     ("", ["general"]),
     ("#ran", ["random"]),
+    # A half-width voiced kana is one letter after NFKC (Foundation splits it unless composed again: NFC after NFKC).
+    ("ｾﾞﾐ", ["ゼミ連絡"]),
+    ("ぜみ", ["ｾﾞﾐ連絡"]),
 ]
 ITEMS = [
     {"id": "general", "title": "general", "names": ["general"]},
