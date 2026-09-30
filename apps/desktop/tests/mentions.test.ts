@@ -74,4 +74,11 @@ describe("group mentions (M12k)", () => {
     expect(rows[0]!.label).toBe("グループ · 2 人 · デザイン担当");
     expect(mentionCandidates("", users, [design]).map((r) => r.username)).toEqual(["alice", "bob.k", "design", "channel", "here"]);
   });
+  it("mentions right after Japanese text or punctuation (M46), not in an e-mail address or a saved token", () => {
+    expect(encodeMentions("まとめます。@bob.k", users)).toBe(`まとめます。<@${bob.id}>`);
+    expect(encodeMentions("田中さん@alice よろしく", users)).toBe(`田中さん<@${alice.id}> よろしく`);
+    expect(encodeMentions("alice@example.jp", users)).toBe("alice@example.jp");
+    expect(encodeMentions(`<@${alice.id}>`, users)).toBe(`<@${alice.id}>`);
+    expect(mentionQuery("確認。@al", 6)).toEqual({ start: 3, query: "al" });
+  });
 });

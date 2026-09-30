@@ -23,6 +23,16 @@ final class MentionsTests: XCTestCase {
         XCTAssertEqual(Mentions.encode("@Alice", users: users), "<@\(alice.id)>")
     }
 
+    /// Right after Japanese text or punctuation too (M46 found 「まとめます。@android2」 left as text); an e-mail address and a
+    /// saved token stay as they are.
+    func testMentionsRightAfterJapaneseText() {
+        XCTAssertEqual(Mentions.encode("まとめます。@bob.k", users: users), "まとめます。<@\(bob.id)>")
+        XCTAssertEqual(Mentions.encode("田中さん@alice よろしく", users: users), "田中さん<@\(alice.id)> よろしく")
+        XCTAssertEqual(Mentions.encode("alice@example.jp", users: users), "alice@example.jp")
+        XCTAssertEqual(Mentions.encode("<@\(alice.id)>", users: users), "<@\(alice.id)>")
+        XCTAssertEqual(Mentions.query("確認。@al"), "al")
+    }
+
     func testDecodesTokensToHandles() {
         let byId = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
         XCTAssertEqual(Mentions.decode("hi <@\(bob.id)> <!unknown> <!here>", users: byId), "hi @bob.k <!unknown> @here")

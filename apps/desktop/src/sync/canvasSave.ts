@@ -167,6 +167,13 @@ export class CanvasSaver {
     this.scheduleRefresh();
   }
 
+  /** An IME composition ended: a version that came in meanwhile was not put in (canReplace), and a composition that
+   *  changed nothing starts no save to merge it — read again now (a 304 when nothing is newer). As Android (M46). */
+  compositionEnded(): void {
+    if (this.disposed || !this.loaded) return;
+    this.scheduleRefresh(0);
+  }
+
   /** After reconnecting: saves that failed go out now; an idle canvas is read again (If-None-Match). */
   online(): void {
     if (this.disposed) return;

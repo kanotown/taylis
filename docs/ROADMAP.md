@@ -28,7 +28,8 @@ L3 / MUI-2 などの ID で本書を参照する。** 実際の記録は [IMPLEM
 | M33 | Canvas のサーバの検索・画像・版の整理・`/c/` | M42 | 実装済み (サーバの Canvas は完成) |
 | M34 | Canvas の Desktop / Web の表示・編集・自動保存 | M43 | 実装済み |
 | M35 | Canvas の Desktop / Web の履歴・検索・画像・共有 | M44 | 実装済み |
-| M36〜M37 | Canvas (iOS、Android) | | 未着手 |
+| M36 | Canvas の iOS の閲覧と編集 | M45 | 実装済み |
+| M37 | Canvas の Android の閲覧と編集 | M46 | 実装済み (Canvas の Phase 1 は完了) |
 | M38〜M46 | L5・L6・MUI-5〜8・L8・L9・Canvas Phase 2 | | 未着手 |
 
 カレンダー (個人・共有・リマインダー) は 2026-09-28 のテスターの要望で加わり、Canvas の後に置く
