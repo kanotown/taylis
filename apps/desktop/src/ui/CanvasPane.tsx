@@ -67,6 +67,19 @@ export function CanvasPane({ controller, channel, canvasId, onSelect, onOpenThre
     return <Empty icon={<CircleAlert size={22} />} title="キャンバスを使えません" text="サーバがキャンバスに対応していません。" />;
   }
   if (list === null && !selectedId) {
+    const failure = store.canvasListFailure(channel.id);
+    if (failure === "unsupported") {
+      return <Empty icon={<CircleAlert size={22} />} title="このサーバはまだキャンバスに対応していません" text="サーバの更新後に使えるようになります。" />;
+    }
+    if (failure === "failed") {
+      return (
+        <Empty
+          icon={<CircleAlert size={22} />}
+          title="キャンバスを読み込めませんでした"
+          action={<Button variant="secondary" size="sm" onClick={() => void hub.loadList(channel.id)}>再読み込み</Button>}
+        />
+      );
+    }
     return <Empty icon={<Loader2 size={22} className="animate-spin" />} title="読み込み中…" />;
   }
   if (!selectedId) {

@@ -121,6 +121,21 @@ export class Store {
       return mine && mine.version > meta.version ? mine : meta;
     });
     this.canvasLists.set(channelId, sortCanvases(merged));
+    this.canvasListFailures.delete(channelId);
+    this.emit();
+  }
+  /**
+   * Why a conversation's list could not be loaded, until it loads: "unsupported" (404, a server from before M41),
+   * "failed" (anything else). Without it the pane waited on 「読み込み中…」 for ever (tester, 2026-09-30).
+   */
+  private readonly canvasListFailures = new Map<string, "unsupported" | "failed">();
+  canvasListFailure(channelId: string): "unsupported" | "failed" | null {
+    return this.canvasListFailures.get(channelId) ?? null;
+  }
+  setCanvasListFailure(channelId: string, failure: "unsupported" | "failed" | null): void {
+    if ((this.canvasListFailures.get(channelId) ?? null) === failure) return;
+    if (failure) this.canvasListFailures.set(channelId, failure);
+    else this.canvasListFailures.delete(channelId);
     this.emit();
   }
   /** canvas.created / canvas.updated, or an answer of mine: the larger version wins. */

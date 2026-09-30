@@ -90,8 +90,9 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
       {open && (
         <>
           <div className="fixed inset-0 z-40" onMouseDown={() => onOpenChange(false)} />
-          {/* On a phone the search takes the whole screen, with 「キャンセル」 instead of a click outside. */}
-          <div role="dialog" aria-label="検索" className="rx-popover absolute left-1/2 top-[-6px] z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl max-md:fixed max-md:inset-0 max-md:flex max-md:w-auto max-md:translate-x-0 max-md:flex-col max-md:rounded-none max-md:border-0">
+          {/* On a phone the search takes the whole screen, with 「キャンセル」 instead of a click outside. Wider, it opens at
+              the bar's top edge, keeping the bar's margin above it (it reached the window's top, tester 2026-09-30). */}
+          <div role="dialog" aria-label="検索" className="rx-popover absolute left-1/2 top-0 z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl max-md:fixed max-md:inset-0 max-md:flex max-md:w-auto max-md:translate-x-0 max-md:flex-col max-md:rounded-none max-md:border-0">
             <div className="flex shrink-0 items-center gap-2 border-b border-line px-3">
               <Search size={16} className="shrink-0 text-muted" />
               <input
