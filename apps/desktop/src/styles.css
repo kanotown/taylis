@@ -93,6 +93,10 @@
 .rx-dialog[data-state="open"] { animation: rx-pop-in 140ms ease-out; }
 .rx-popover[data-state="open"] { animation: rx-slide-in 120ms ease-out; }
 
+/* Two or more photos in a message (M38): equal squares in a row that wraps only when full, 9rem at most and three to a
+   row on a narrow screen (0.75rem = the two gaps of gap-1.5 between three tiles). */
+.photo-tile { flex: none; width: min(9rem, calc((100% - 0.75rem) / 3)); }
+
 /* Message bodies (light markdown) */
 .body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 4px; }
