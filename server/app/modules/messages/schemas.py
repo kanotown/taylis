@@ -129,6 +129,8 @@ class ParentThread(BaseModel):
     id: UUID
     reply_count: int
     last_reply_at: datetime | None
+    # C3: the parent's reply_user_ids after the change (MessageOut.reply_user_ids).
+    reply_user_ids: list[UUID] = []
     updated_seq: int
     # The thread's followers (THREADS.md §2): push targets for the reply (PUSH_NOTIFICATIONS.md §4).
     participant_ids: list[UUID] = []
@@ -152,6 +154,9 @@ class MessageOut(BaseModel):
     attachments: list[AttachmentOut] = []
     reply_count: int = 0
     last_reply_at: datetime | None = None
+    # C3: on a thread parent, who replied: distinct authors of the live replies, most recent
+    # reply first, at most 5 (the parent's author too when they replied). Empty otherwise.
+    reply_user_ids: list[UUID] = []
     created_at: datetime
     edited_at: datetime | None
     deleted: bool
@@ -254,6 +259,7 @@ def to_message_out(
         attachments=[] if deleted else list(attachments),
         reply_count=message.reply_count,
         last_reply_at=message.last_reply_at,
+        reply_user_ids=list(message.reply_user_ids or []),
         created_at=message.created_at,
         edited_at=message.edited_at,
         deleted=deleted,
@@ -271,6 +277,7 @@ def thread_of(parent: Message, participant_ids: list[UUID]) -> ParentThread:
         id=parent.id,
         reply_count=parent.reply_count,
         last_reply_at=parent.last_reply_at,
+        reply_user_ids=list(parent.reply_user_ids or []),
         updated_seq=parent.updated_seq,
         participant_ids=participant_ids,
     )

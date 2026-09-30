@@ -895,6 +895,7 @@ CREATE TABLE messages (
   mention_all         boolean NOT NULL DEFAULT false,      -- <!channel> / <!here>
   reply_count         integer NOT NULL DEFAULT 0,          -- スレッド親のみ
   last_reply_at       timestamptz,
+  reply_user_ids      uuid[] NOT NULL DEFAULT '{}',        -- スレッド親のみ。返信した人 (削除されていない返信の送信者、最近の返信順、重複なし、最大 5)。C3 (0049)
   created_at          timestamptz NOT NULL DEFAULT now(),  -- サーバ時刻
   edited_at           timestamptz,
   deleted_at          timestamptz,                         -- トゥームストーン
@@ -944,7 +945,7 @@ CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention
 | 編集 | 1 | `body`, `edited_at`, `updated_seq = 新 seq` | `message.updated (change=body)` |
 | 削除 | 1 | `deleted_at`, `body = ''`, `updated_seq = 新 seq`、添付を `deleted` に | `message.deleted` |
 | リアクション追加 / 削除 | 1 | `reactions` 行、`updated_seq = 新 seq` | `message.updated (change=reactions)` |
-| スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
+| スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `reply_user_ids` (返信者を先頭へ), `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
 
 ### message_revisions (編集履歴、M14c)
 

@@ -458,6 +458,7 @@ export class FakeServer {
       attachments: attachmentIds.map((id) => ({ id, filename: `file-${id}`, content_type: "application/octet-stream", size_bytes: 1, width: null, height: null, has_thumbnail: false, status: "attached", created_at: now() })),
       reply_count: 0,
       last_reply_at: null,
+      reply_user_ids: [],
       created_at: now(),
       edited_at: null,
       deleted: false,
@@ -475,13 +476,15 @@ export class FakeServer {
     let parentThread: ParentThread | null = null;
     if (parentIndex >= 0) {
       const old = record.messages[parentIndex]!;
-      const parent: MessageOut = { ...old, reply_count: old.reply_count + 1, last_reply_at: message.created_at, updated_seq: seq };
+      // C3: the replier moves to the front, at most five.
+      const repliers = [senderId, ...(old.reply_user_ids ?? []).filter((id) => id !== senderId)].slice(0, 5);
+      const parent: MessageOut = { ...old, reply_count: old.reply_count + 1, last_reply_at: message.created_at, reply_user_ids: repliers, updated_seq: seq };
       record.messages[parentIndex] = parent;
       // THREADS.md §2: auto-follow, the replier has read their own reply, followers are the push targets.
       this.autoFollow(parent.id, [parent.sender_id, senderId, ...(parent.mentioned_user_ids ?? []), ...message.mentioned_user_ids]);
       const own = this.threadFollows.get(`${parent.id}:${senderId}`)!;
       own.lastReadSeq = Math.max(own.lastReadSeq, seq);
-      parentThread = { id: parent.id, reply_count: parent.reply_count, last_reply_at: parent.last_reply_at ?? null, updated_seq: seq, participant_ids: this.followers(parent.id) };
+      parentThread = { id: parent.id, reply_count: parent.reply_count, last_reply_at: parent.last_reply_at ?? null, reply_user_ids: repliers, updated_seq: seq, participant_ids: this.followers(parent.id) };
     }
     this.emit(record.members, {
       type: "event",

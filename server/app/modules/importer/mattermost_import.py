@@ -57,6 +57,7 @@ from app.modules.emoji import service as emoji_service
 from app.modules.emoji.models import CustomEmoji
 from app.modules.groups import service as groups
 from app.modules.importer.models import ImportRef
+from app.modules.messages import repository as message_repo
 from app.modules.messages.mentions import extract_mentions
 from app.modules.messages.models import Message, Reaction
 from app.modules.messages.schemas import EMOJI_PATTERN
@@ -716,6 +717,8 @@ class MattermostImport:
                 )
                 .execution_options(synchronize_session=False)
             )
+        # C3: the repliers, from the rows (a re-run appends to threads imported before).
+        await message_repo.refresh_reply_user_ids(self.db, list(self.parent_bumps))
         self.parent_bumps.clear()
         for state in self.channels.values():
             if state.touched:

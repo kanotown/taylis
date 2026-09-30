@@ -272,6 +272,7 @@ async def test_import_maps_people_threads_mentions_files_and_reads(
     assert p1.body == f"hello <@{ebi}>. and <!channel> 😄 :hanpen_ok: `@bobmm` @onlymentioned"
     assert p1.mentioned_user_ids == [ebi] and p1.mention_all
     assert p1.reply_count == 1 and p1.updated_seq == 2 and p1.last_reply_at == p2.created_at
+    assert p1.reply_user_ids == [p2.sender_id]  # C3
     assert p2.parent_id == p1.id and p2.body == f"thanks <@{kano}>"
     assert p1.id < p2.id < p3.id  # ids carry the Mattermost post times
     assert p3.pinned_at == p3.created_at and p3.edited_at is not None and p3.body == ""
@@ -339,6 +340,7 @@ async def test_rerun_appends_only_new_posts(
     rows = await _messages(db, general.id)
     assert rows[-1].seq == 6 and rows[-1].parent_id == rows[0].id and general.last_seq == 6
     assert rows[0].reply_count == 2 and rows[0].updated_seq == 6
+    assert rows[0].reply_user_ids == [people["kano"].id, rows[1].sender_id]  # C3: newest first
     read = await db.get(ReadState, (people["kano"].id, general.id))
     assert read is not None and read.last_read_seq == 6
 

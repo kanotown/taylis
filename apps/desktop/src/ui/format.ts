@@ -46,6 +46,12 @@ export function sinceLabel(iso: string, now = new Date()): string {
   return `${dateLabel(iso, now)} ${t}`;
 }
 
+/** C3: the thread line's 「最終返信 今日 14:05」 (昨日 14:05, 9月26日 (金) 14:05, as the day separators say it). */
+export function lastReplyLabel(iso: string, now = new Date()): string {
+  const day = dateLabel(iso, now);
+  return day ? `最終返信 ${day} ${timeLabel(iso)}` : "";
+}
+
 /** 1234 → "1,234": ASCII commas whatever the locale. */
 export function group3(n: number): string {
   return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");

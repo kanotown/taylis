@@ -3885,6 +3885,11 @@ export interface components {
              */
             reply_count: number;
             /**
+             * Reply User Ids
+             * @default []
+             */
+            reply_user_ids: string[];
+            /**
              * Sender Id
              * Format: uuid
              */

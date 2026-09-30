@@ -3892,6 +3892,15 @@
             "title": "Reply Count",
             "type": "integer"
           },
+          "reply_user_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Reply User Ids",
+            "type": "array"
+          },
           "sender_id": {
             "format": "uuid",
             "title": "Sender Id",
