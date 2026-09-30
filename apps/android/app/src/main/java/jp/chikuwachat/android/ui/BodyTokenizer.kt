@@ -1,6 +1,13 @@
 package jp.chikuwachat.android.ui
 
-/** Message body format (DATA_MODEL.md "本文の形式"): plain text plus a light markdown subset shared with the other clients. */
+/**
+ * Message body format (DATA_MODEL.md "本文の形式"): plain text plus a light markdown subset shared with the other clients.
+ *
+ * The canvas dialect (CANVAS.md §4.2, `parseBlocks(body, canvas = true)`, M46) adds tasks ("- [ ] item" / "- [x] item",
+ * "*" too, two leading spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image
+ * URLs stay text) and rules ("---" between blank lines). Messages keep showing all of these as text.
+ * apps/shared/canvas_markdown.json holds the cases the three clients share (CanvasMarkdownTest).
+ */
 sealed class BodyToken {
     data class Text(val text: String) : BodyToken()
     data class Bold(val text: String) : BodyToken()
@@ -17,15 +24,28 @@ sealed class BodyToken {
 
 data class BodyListItem(val level: Int, val tokens: List<BodyToken>)
 
+/** A task of the canvas dialect: `line` is its line in the body (0-based), which a tick changes. */
+data class BodyTaskItem(val level: Int, val done: Boolean, val tokens: List<BodyToken>, val line: Int)
+
 sealed class BodyBlock {
-    data class Heading(val level: Int, val tokens: List<BodyToken>) : BodyBlock()
+    /** `line`: the heading's line in the body (canvas only; the outline and the section editor use it). */
+    data class Heading(val level: Int, val tokens: List<BodyToken>, val line: Int? = null) : BodyBlock()
     data class Paragraph(val lines: List<List<BodyToken>>) : BodyBlock()
     data class Quote(val lines: List<List<BodyToken>>) : BodyBlock()
     data class ListBlock(val ordered: Boolean, val start: Int, val items: List<BodyListItem>) : BodyBlock()
     data class CodeBlock(val text: String, val lang: String?) : BodyBlock()
     /** M15g: a GFM table; rows have exactly as many cells as the header. */
     data class Table(val align: List<TableAlign>, val header: List<List<BodyToken>>, val rows: List<List<List<BodyToken>>>) : BodyBlock()
+    // The canvas dialect (CANVAS.md §4.2).
+    data class Tasks(val items: List<BodyTaskItem>) : BodyBlock()
+    data class Image(val alt: String, val attachmentId: String, val line: Int) : BodyBlock()
+    data object Rule : BodyBlock()
 }
+
+/** A task line, as the server counts it (server/app/modules/canvases/service.py TASK_LINE). */
+val TASK_LINE = Regex("""^([ \t]*)[-*] \[([ xX])\](?: (.*))?$""")
+private val IMAGE_LINE = Regex("""^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$""")
+private val RULE_LINE = Regex("""^-{3,}\s*$""")
 
 private const val INLINE =
     """(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"""
@@ -124,9 +144,13 @@ private fun splitFence(raw: String): BodyToken.CodeBlock {
     return BodyToken.CodeBlock(raw.trim('\n'))
 }
 
-/** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
-fun parseBlocks(body: String): List<BodyBlock> {
+/** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order; `canvas`: the canvas dialect too. */
+fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
     val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n")
+    fun blank(index: Int) = index < 0 || index >= lines.size || lines[index].isBlank()
+    fun isTask(index: Int) = canvas && TASK_LINE.matches(lines[index])
+    fun isImage(index: Int) = canvas && IMAGE_LINE.matches(lines[index])
+    fun isRule(index: Int) = canvas && RULE_LINE.matches(lines[index]) && blank(index - 1) && blank(index + 1)
     fun fenceCloseAfter(index: Int): Int = (index + 1 until lines.size).firstOrNull { FENCE_CLOSE.matches(lines[it]) } ?: -1
     fun opensFence(index: Int) = FENCE_OPEN.matches(lines[index]) && fenceCloseAfter(index) != -1
     // M15g: a header row with a pipe, directly followed by a separator with as many cells.
@@ -144,7 +168,29 @@ fun parseBlocks(body: String): List<BodyBlock> {
             continue
         }
         HEADING.find(line)?.let { h ->
-            blocks.add(BodyBlock.Heading(h.groupValues[1].length, tokenizeInline(h.groupValues[2])))
+            blocks.add(BodyBlock.Heading(h.groupValues[1].length, tokenizeInline(h.groupValues[2]), if (canvas) i else null))
+            i++
+            continue
+        }
+        if (isTask(i)) {
+            val items = ArrayList<BodyTaskItem>()
+            while (i < lines.size && isTask(i)) {
+                val m = TASK_LINE.find(lines[i])!!
+                val indent = m.groupValues[1].replace("\t", "  ").length
+                items.add(BodyTaskItem(if (indent >= 2) 1 else 0, m.groupValues[2] != " ", tokenizeInline(m.groupValues[3]), i))
+                i++
+            }
+            blocks.add(BodyBlock.Tasks(items))
+            continue
+        }
+        if (isImage(i)) {
+            val m = IMAGE_LINE.find(line)!!
+            blocks.add(BodyBlock.Image(m.groupValues[1], m.groupValues[2], i))
+            i++
+            continue
+        }
+        if (isRule(i)) {
+            blocks.add(BodyBlock.Rule)
             i++
             continue
         }
@@ -178,6 +224,7 @@ fun parseBlocks(body: String): List<BodyBlock> {
             val start = if (ordered) NUMBERED.find(line)?.groupValues?.get(2)?.toIntOrNull() ?: 1 else 1
             while (i < lines.size) {
                 val m = (if (ordered) NUMBERED else BULLET).find(lines[i]) ?: break
+                if (isTask(i)) break
                 val indent = m.groupValues[1].replace("\t", "  ").length
                 val text = m.groupValues[if (ordered) 3 else 2]
                 items.add(BodyListItem(if (indent >= 2) 1 else 0, tokenizeInline(text)))
@@ -189,13 +236,32 @@ fun parseBlocks(body: String): List<BodyBlock> {
         val paragraph = ArrayList<List<BodyToken>>()
         while (i < lines.size) {
             val current = lines[i]
-            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current))) break
+            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isRule(i))) break
             paragraph.add(tokenizeInline(current))
             i++
         }
         blocks.add(BodyBlock.Paragraph(paragraph))
     }
     return blocks
+}
+
+/** What a reader sees of inline tokens as text: a link shows its label, emphasis markers are gone (tests, the outline). */
+fun visibleText(tokens: List<BodyToken>): String = buildString {
+    for (token in tokens) {
+        when (token) {
+            is BodyToken.Text -> append(token.text)
+            is BodyToken.Bold -> append(token.text)
+            is BodyToken.Italic -> append(token.text)
+            is BodyToken.Strike -> append(token.text)
+            is BodyToken.Code -> append(token.text)
+            is BodyToken.CodeBlock -> append(token.text)
+            is BodyToken.Link -> append(token.label ?: token.url)
+            is BodyToken.Mention -> append("@")
+            is BodyToken.MentionGroup -> append("@")
+            is BodyToken.MentionAll -> append("@" + token.target)
+            BodyToken.Newline -> append("\n")
+        }
+    }
 }
 
 /** Lines for rendering by older callers: code blocks stand alone, newlines split. */

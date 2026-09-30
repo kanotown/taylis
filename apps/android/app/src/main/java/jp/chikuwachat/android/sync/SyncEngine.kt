@@ -134,6 +134,8 @@ data class EngineOptions(
     val random: () -> Double = { Random.nextDouble() },
     val newId: () -> String = { UUID.randomUUID().toString() },
     val now: () -> String = { java.time.Instant.now().toString() },
+    /** M46: the canvas save loop's pauses (CANVAS.md §4.4). */
+    val canvasSave: CanvasSaverOptions = CanvasSaverOptions(),
 )
 
 /**
@@ -154,6 +156,9 @@ class SyncEngine(
     val status: StateFlow<EngineStatus> = _status
     /** M15d: my drafts across devices. */
     val drafts = DraftSync(api as? DraftApi, store, scope, { _status.value == EngineStatus.ONLINE }, options.draftSaveMs)
+
+    /** M46: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
+    val canvases = CanvasHub(api as? CanvasApi, store, scope, options.canvasSave)
 
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
@@ -267,6 +272,7 @@ class SyncEngine(
 
     fun stop() {
         stopped = true
+        canvases.stop()
         cancelReconnect()
         stopHeartbeat()
         threadRefresh?.cancel()
@@ -367,6 +373,7 @@ class SyncEngine(
         if (_status.value != EngineStatus.ONLINE) return
         scope.launch { flushOutbox() }
         scope.launch { drafts.flush() } // edited while offline (M15d)
+        canvases.online() // M46: canvas saves that failed, open canvases read again, edits kept from before a restart
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         currentChannelId?.let { current -> scope.launch { openChannel(current) } }
@@ -637,6 +644,7 @@ class SyncEngine(
                 val id = frame.data.str("channel_id") ?: return
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
+            "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
@@ -891,6 +899,7 @@ class SyncEngine(
     /** The channel leaves this device (I left it, it was made private, it is no longer browsable). */
     fun dropChannel(channelId: String) {
         forgetThreads(channelId)
+        canvases.removeChannel(channelId)
         store.removeChannel(channelId)
     }
 
@@ -913,6 +922,7 @@ class SyncEngine(
             return
         }
         scope.launch { loadLinks(channelId) }
+        scope.launch { canvases.loadList(channelId) } // M46 (CANVAS.md §4.6)
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue
             if (channel.syncedSeq == null || channel.syncedSeq < channel.lastSeq) catchUp(channelId)

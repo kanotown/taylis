@@ -15,6 +15,7 @@ import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AckOut
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.CanvasMeta
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -185,6 +186,9 @@ interface Persistence {
 
 const val LOCAL_PREFIX = "local:"
 
+/** M46: the meta key prefix of a canvas's unsaved edits ("canvas:<id>"). */
+const val CANVAS_PENDING_PREFIX = "canvas:"
+
 /**
  * At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
  * stay). Older history is paged in again when the reader scrolls up.
@@ -312,6 +316,58 @@ class Store(private val persistence: Persistence? = null) {
     }
     fun linksOf(channelId: String): List<ChannelLinkOut> = channelLinks[channelId] ?: emptyList()
 
+    /**
+     * M46 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
+     * Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger version
+     * wins). Not persisted.
+     */
+    private val canvasLists = HashMap<String, List<CanvasMeta>>()
+
+    /** Null: not loaded yet. */
+    fun canvasesOf(channelId: String): List<CanvasMeta>? = canvasLists[channelId]
+
+    fun canvasMeta(canvasId: String): CanvasMeta? = canvasLists.values.firstNotNullOfOrNull { list -> list.firstOrNull { it.id == canvasId } }
+
+    fun setCanvases(channelId: String, list: List<CanvasMeta>) {
+        val known = canvasLists[channelId] ?: emptyList()
+        // A newer version from an event that overtook the list keeps its place.
+        val merged = list.map { meta -> known.firstOrNull { it.id == meta.id }?.takeIf { it.version > meta.version } ?: meta }
+        canvasLists[channelId] = sortCanvases(merged)
+        emit()
+    }
+
+    /** canvas.created / canvas.updated, or an answer of mine: the larger version wins. */
+    fun applyCanvasMeta(meta: CanvasMeta) {
+        val list = canvasLists[meta.channelId] ?: return // loaded with the list when the conversation opens
+        val existing = list.firstOrNull { it.id == meta.id }
+        if (existing != null && existing.version >= meta.version) return
+        canvasLists[meta.channelId] = sortCanvases(list.filter { it.id != meta.id } + meta.copy(deletedAt = null))
+        emit()
+    }
+
+    fun removeCanvas(channelId: String, canvasId: String) {
+        val list = canvasLists[channelId] ?: return
+        if (list.none { it.id == canvasId }) return
+        canvasLists[channelId] = list.filter { it.id != canvasId }
+        emit()
+    }
+
+    private fun sortCanvases(list: List<CanvasMeta>): List<CanvasMeta> =
+        list.sortedWith(compareByDescending<CanvasMeta> { it.updatedAt }.thenByDescending { it.id })
+
+    /** M46: unsaved canvas edits, kept in the meta table under "canvas:<id>" so a restart sends them (same key, §4.4). */
+    private val canvasPending = LinkedHashMap<String, CanvasPendingState>()
+
+    fun pendingCanvas(canvasId: String): CanvasPendingState? = canvasPending[canvasId]
+
+    fun pendingCanvases(): List<Pair<String, CanvasPendingState>> = canvasPending.entries.map { it.key to it.value }
+
+    fun setPendingCanvas(canvasId: String, state: CanvasPendingState?) {
+        if (state != null) canvasPending[canvasId] = state
+        else if (canvasPending.remove(canvasId) == null) return
+        persist { it.saveMeta(CANVAS_PENDING_PREFIX + canvasId, state?.let { value -> Codec.plain.encodeToString(CanvasPendingState.serializer(), value) }) }
+    }
+
     /** §7.6.1: the public channel being read before joining, if any (never persisted, see ChannelPreview). */
     var preview: ChannelPreview? = null
         private set
@@ -424,6 +480,9 @@ class Store(private val persistence: Persistence? = null) {
     private fun apply(snapshot: Snapshot, messagesLost: Boolean = false) {
         snapshot.meta.filterKeys { it.startsWith("draft:") }.forEach { (key, value) ->
             runCatching { Codec.plain.decodeFromString(Draft.serializer(), value) }.getOrNull()?.let { drafts[key] = it }
+        }
+        snapshot.meta.filterKeys { it.startsWith(CANVAS_PENDING_PREFIX) }.forEach { (key, value) ->
+            runCatching { Codec.plain.decodeFromString(CanvasPendingState.serializer(), value) }.getOrNull()?.let { canvasPending[key.removePrefix(CANVAS_PENDING_PREFIX)] = it }
         }
         me = snapshot.meta["me"]?.let { runCatching { Codec.plain.decodeFromString(UserMe.serializer(), it) }.getOrNull() }
         snapshot.users.forEach { users[it.id] = it }
@@ -557,6 +616,9 @@ class Store(private val persistence: Persistence? = null) {
     fun removeChannel(id: String) {
         channels.remove(id)
         messagesByChannel.remove(id)
+        // M46 (CANVAS.md §4.6): its canvases and their unsaved edits go with it.
+        canvasLists.remove(id)
+        canvasPending.filterValues { it.channelId == id }.keys.toList().forEach { setPendingCanvas(it, null) }
         if (preview?.channelId == id) preview = null // made private, or no longer listed: its preview goes too
         persist { it.clearMessages(id); it.deleteChannel(id) }
         emit()

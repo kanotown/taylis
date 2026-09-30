@@ -123,6 +123,10 @@ object MainTabs {
     fun land(state: TabStacks, tab: MainTab, channelId: String, parentId: String? = null): TabStacks =
         withStack(state, tab, MainNav.openConversation(rootStack(tab), channelId, parentId)).copy(selected = tab)
 
+    /** M46: a `/c/<id>` link lands like a permalink, on the canvas's conversation's 「キャンバス」 tab. */
+    fun landCanvas(state: TabStacks, tab: MainTab, channelId: String, canvasId: String): TabStacks =
+        withStack(state, tab, MainNav.openCanvas(rootStack(tab), channelId, canvasId)).copy(selected = tab)
+
     /**
      * A search result lands on its tab. On the tab the search is on, the results stay behind the conversation (M16b:
      * back and 「検索結果に戻る」 return to them); on another tab, the search's tab keeps its results for when it comes back.
