@@ -643,7 +643,7 @@ fun MessageRow(
                     onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
                     onShowReactors = { showingReactors = true },  // M27
                 )
-                if (message.replyCount > 0 && onOpenThread != null) ThreadSummaryLine(message, store, onOpenThread, onNeedRepliers = controller::loadRepliers)  // C3
+                if (message.replyCount > 0 && onOpenThread != null) ThreadSummaryLine(message, store, onOpenThread)  // C3
                 if (message.failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)

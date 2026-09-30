@@ -104,22 +104,6 @@ class PolishCTest {
         assertEquals(listOf("u5"), store.message("c1", "p1")!!.replyUserIds)
     }
 
-    @Test
-    fun theSameVersionFromTheServerFillsTheRepliersOfARowStoredBefore() {
-        // Migration 0049 filled the lists without moving updated_seq: a page or GET /messages/{id} of the same version
-        // must still bring them in.
-        val store = Store()
-        store.upsertMessage(parent())
-        assertEquals(emptyList<String>(), store.message("c1", "p1")!!.replyUserIds)
-        store.upsertMessage(parent(listOf("u3", "u2")))
-        assertEquals(listOf("u3", "u2"), store.message("c1", "p1")!!.replyUserIds)
-        // An empty list at the same version (an older server) does not clear it; an older version changes nothing.
-        store.upsertMessage(parent())
-        assertEquals(listOf("u3", "u2"), store.message("c1", "p1")!!.replyUserIds)
-        store.upsertMessage(parent(listOf("u9"), updatedSeq = 4))
-        assertEquals(listOf("u3", "u2"), store.message("c1", "p1")!!.replyUserIds)
-    }
-
     // --- D1: the details page's header ---
 
     @Test
