@@ -31,7 +31,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
     return !name || (!!controller && customByName.has(name));
   });
   return (
-    <div className="w-80" onKeyDown={(event) => event.stopPropagation()}>
+    <div className="w-80 max-w-full" onKeyDown={(event) => event.stopPropagation()}>
       <div className="relative">
         <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
         <Input value={query} autoFocus placeholder="検索 (例: tada、乾杯)" className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />

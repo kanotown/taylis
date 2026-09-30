@@ -4845,6 +4845,8 @@ export interface components {
              * @default false
              */
             presence_hidden: boolean;
+            /** Quick Reactions */
+            quick_reactions?: string[] | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Role */
             role: string;
@@ -4919,6 +4921,8 @@ export interface components {
             notify_reactions?: boolean | null;
             /** Presence Hidden */
             presence_hidden?: boolean | null;
+            /** Quick Reactions */
+            quick_reactions?: string[] | null;
             quiet_hours?: components["schemas"]["QuietHours"] | null;
             /** Status Emoji */
             status_emoji?: string | null;

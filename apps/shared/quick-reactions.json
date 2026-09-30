@@ -1,0 +1,15 @@
+{
+  "_comment": "M50: the long-press quick reactions. rule: `chosen` is UserMe.quick_reactions (null = not set). Set: exactly the chosen ones in their order (the desktop hover bar takes the first `count`). Null: the ones I used last (`recent`, newest first, custom `:name:` skipped), then the defaults, without repeats, `count` of them. valid / invalid: what PATCH /users/me accepts as one item of quick_reactions (1-6 distinct items, else 422 validation_error): a plain Unicode emoji of at most 16 characters; no ASCII (so no text or `:custom:`), whitespace, letters or digits.",
+  "defaults": ["👍", "❤️", "😂", "🎉", "👀", "✅"],
+  "rule": [
+    { "name": "not set, nothing recent: the defaults", "chosen": null, "recent": [], "count": 6, "expected": ["👍", "❤️", "😂", "🎉", "👀", "✅"] },
+    { "name": "not set: recent first, then defaults without repeats", "chosen": null, "recent": ["🙏", "🎉"], "count": 6, "expected": ["🙏", "🎉", "👍", "❤️", "😂", "👀"] },
+    { "name": "not set: custom emoji stay in the picker", "chosen": null, "recent": [":hanpen:", "🔥"], "count": 6, "expected": ["🔥", "👍", "❤️", "😂", "🎉", "👀"] },
+    { "name": "set: exactly the chosen ones, in order", "chosen": ["🔥", "🙏", "👍"], "recent": ["🎉", "😂"], "count": 6, "expected": ["🔥", "🙏", "👍"] },
+    { "name": "set: six chosen", "chosen": ["🍣", "🍜", "🍺", "☕", "🍰", "🍙"], "recent": [], "count": 6, "expected": ["🍣", "🍜", "🍺", "☕", "🍰", "🍙"] },
+    { "name": "set: the hover bar's three are the first chosen", "chosen": ["🍣", "🍜", "🍺", "☕"], "recent": ["🎉"], "count": 3, "expected": ["🍣", "🍜", "🍺"] },
+    { "name": "set to an empty list (never sent by the server): as not set", "chosen": [], "recent": ["🙏"], "count": 3, "expected": ["🙏", "👍", "❤️"] }
+  ],
+  "valid": ["👍", "❤️", "✅", "🇯🇵", "👩‍💻", "👍🏽", "⚠️", "‼️", "🫠"],
+  "invalid": ["", "ok", "+1", ":tada:", ":hanpen:", " 👍", "👍 ", "👍 👍", "あ", "漢", "１", "　", "👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍👍"]
+}

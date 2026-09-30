@@ -621,6 +621,7 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       api={controller.api}
       rowsVersion={store.rowsVersion}
       recentEmoji={recentEmoji}
+      chosenReactions={store.me?.quick_reactions ?? null}
       editing={controller.editing === message.id}
       highlighted={controller.messageFocus?.messageId === message.id}
       saved={store.isBookmarked(message.id)}
@@ -646,6 +647,8 @@ interface MessageRowViewProps {
   rowsVersion: number;
   /** The emoji I used last, newest first (EmojiPicker): the quick reactions of the hover bar and the pickers' 「最近」. */
   recentEmoji: string[];
+  /** M50: the quick reactions I chose (UserMe.quick_reactions); null = the recent-first rule. */
+  chosenReactions: readonly string[] | null;
   editing: boolean;
   highlighted: boolean;
   saved: boolean;
@@ -690,7 +693,7 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
   );
 }
 
-const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
+const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, chosenReactions, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
@@ -920,8 +923,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       </div>
       {!message.pending && !readOnly && (
         <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
-          {/* The three I used last (then the defaults), as the phone sheet's six (M25); the rest is in the picker. */}
-          {quickReactions(recentEmoji, 3).map((emoji) => (
+          {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25). */}
+          {quickReactions(recentEmoji, 3, chosenReactions).map((emoji) => (
             <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
             </button>

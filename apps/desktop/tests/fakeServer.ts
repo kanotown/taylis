@@ -124,6 +124,17 @@ export class FakeServer {
   /** notification_preferences rows by "channel:user" (level null = follows the overall setting). */
   readonly notificationPrefs = new Map<string, { level: NotificationLevel | null; muted_until: string | null; muted: boolean }>();
 
+  /** M50: users.quick_reactions (missing = null, the recent-first rule). */
+  readonly quickReactions = new Map<string, string[] | null>();
+
+  /** PATCH /users/me {quick_reactions} (M50): a newer updated_at and user.updated to everyone, without the list itself. */
+  setQuickReactions(userId: string, list: string[] | null): void {
+    this.quickReactions.set(userId, list);
+    const user = this.users.get(userId)!;
+    user.updated_at = new Date(Math.max(Date.now(), Date.parse(user.updated_at) + 1)).toISOString();
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "user.updated", ts: now(), channel_id: null, seq: null, data: { user: { ...user } } } as EventFrame);
+  }
+
   /** PATCH /users/me {notification_default}: only what bootstrap and later preferences say (no event, like the server). */
   setNotificationDefault(userId: string, level: NotificationLevel): void {
     this.notificationDefaults.set(userId, level);
@@ -1179,6 +1190,12 @@ export class FakeServer {
 
   // --- the API as seen by one user ------------------------------------------------------
 
+  /** UserMe as bootstrap and GET /users/me give it. */
+  meOf(userId: string): UserMe {
+    const user = this.users.get(userId)!;
+    return { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), has_password: true, quick_reactions: this.quickReactions.get(userId) ?? null };
+  }
+
   apiFor(userId: string): SyncApi & FakeCanvasApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
@@ -1192,10 +1209,13 @@ export class FakeServer {
       failNext: (error: Error) => {
         pendingFailure = error;
       },
+      me: async (): Promise<UserMe> => {
+        maybeFail();
+        return this.meOf(userId);
+      },
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
-        const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), has_password: true };
+        const me = this.meOf(userId);
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({

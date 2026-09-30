@@ -6287,6 +6287,20 @@
             "title": "Presence Hidden",
             "type": "boolean"
           },
+          "quick_reactions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quick Reactions"
+          },
           "quiet_hours": {
             "anyOf": [
               {
@@ -6596,6 +6610,22 @@
               }
             ],
             "title": "Presence Hidden"
+          },
+          "quick_reactions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quick Reactions"
           },
           "quiet_hours": {
             "anyOf": [

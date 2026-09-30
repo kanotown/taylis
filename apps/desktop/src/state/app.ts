@@ -1075,6 +1075,20 @@ export class AppController {
   }
 
   /**
+   * M50: 「リアクションの候補」 (users.quick_reactions), null = back to the recent-first rule. Shown at once; a refused or
+   * failed save puts the previous list back (and says why). My other devices read it on their next bootstrap, or at once
+   * when they hear user.updated about me (SyncEngine).
+   */
+  async setQuickReactions(list: string[] | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) return false;
+    this.store.setMe({ ...before, quick_reactions: list });
+    const ok = await this.updateProfile({ quick_reactions: list });
+    if (!ok && this.store.me?.quick_reactions === list) this.store.setMe({ ...this.store.me, quick_reactions: before.quick_reactions ?? null });
+    return ok;
+  }
+
+  /**
    * M39: the activity is read up to `readAt` (「すべて既読」: now; the view on screen: its newest item). The badge takes
    * the server's answer; my other devices follow through activity.read.
    */

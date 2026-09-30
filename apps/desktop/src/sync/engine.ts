@@ -7,7 +7,7 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import { CanvasHub } from "./canvases";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic, ReactionAdded } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -33,6 +33,8 @@ export function mentionsMe(
 
 export interface SyncApi {
   bootstrap(): Promise<BootstrapOut>;
+  /** GET /users/me: my private settings after another of my devices changed them (M50). Optional (older fakes). */
+  me?(): Promise<UserMe>;
   history(channelId: string, beforeSeq: number | null, limit: number): Promise<HistoryOut>;
   delta(channelId: string, sinceSeq: number, limit: number): Promise<DeltaOut>;
   postMessage(channelId: string, clientMsgId: string, body: string, parentId?: string | null, attachmentIds?: string[], options?: SendOptions): Promise<{ message: MessageOut; created: boolean }>;
@@ -722,6 +724,10 @@ export class SyncEngine {
       case "user.deactivated": {
         const data = frame.data as { user: UserPublic };
         store.upsertUser(data.user);
+        // M50: about me and newer than what I hold: another of my devices changed my settings. The event carries only the
+        // public fields, so the private ones (quick reactions, notification settings, keywords …) are read again.
+        const me = store.me;
+        if (me && data.user.id === me.id && Date.parse(data.user.updated_at) > Date.parse(me.updated_at)) void this.refreshMe();
         return;
       }
       case "notification_preference.updated": {
@@ -1008,6 +1014,19 @@ export class SyncEngine {
       this.activityRefreshCancel = null;
       await this.refreshActivity();
     })();
+  }
+
+  /** M50: my own settings again (GET /users/me), kept only when still newer than what the store holds. */
+  async refreshMe(): Promise<void> {
+    const api = this.deps.api;
+    if (!api.me) return;
+    try {
+      const fresh = await api.me();
+      const held = this.deps.store.me;
+      if (held && held.id === fresh.id && Date.parse(fresh.updated_at) >= Date.parse(held.updated_at)) this.deps.store.setMe(fresh);
+    } catch {
+      // the next bootstrap brings them
+    }
   }
 
   /** M39: the activity badge from the server (a server before M39 has none: nothing to refresh). */
