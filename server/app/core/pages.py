@@ -1,8 +1,12 @@
-"""Pages outside the API: the message permalink landing page (M12b) and the invite page (M12h).
+"""Pages outside the API: the permalink landing pages for messages (M12b) and canvases (M42), and
+the invite page (M12h).
 
-A permalink is `<server>/m/<message_id>`. The apps recognise it in message bodies and open the
-message in place; a browser lands here and learns nothing about the message (no auth, no lookup),
-so a link that leaks tells nothing on its own.
+A permalink is `<server>/m/<message_id>` or `<server>/c/<canvas_id>`. The apps recognise it in
+message bodies and open the message or canvas in place, reading it through the API, which checks
+the membership (a canvas: GET /api/v1/canvases/{id}, 403 / 404 for others). A browser lands here
+and learns nothing about the target (no auth, no lookup, not even whether it exists), so a link
+that leaks tells nothing on its own. Behind Caddy these paths load the web client instead, which
+does the same as the apps.
 
 An invite link is `<server>/invite/<token>`. The apps take the link on their login screen; a
 browser gets a small page that calls the public invite API (preview, accept) and then tells the
@@ -28,33 +32,47 @@ _PAGE = """<!doctype html>
 <meta name="robots" content="noindex">
 <title>ChikuwaChat</title>
 <style>
-body { font-family: system-ui, sans-serif; margin: 0; display: grid; place-items: center;
-       min-height: 100vh; background: #f6f7fb; color: #1f2333; }
-main { max-width: 28rem; padding: 2rem; text-align: center; }
-h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
-p { margin: .25rem 0; color: #5b6172; }
+body {{ font-family: system-ui, sans-serif; margin: 0; display: grid; place-items: center;
+       min-height: 100vh; background: #f6f7fb; color: #1f2333; }}
+main {{ max-width: 28rem; padding: 2rem; text-align: center; }}
+h1 {{ font-size: 1.25rem; margin: 0 0 .75rem; }}
+p {{ margin: .25rem 0; color: #5b6172; }}
 </style>
 </head>
 <body>
 <main>
-<h1>ChikuwaChat のメッセージ</h1>
-<p>このリンクは ChikuwaChat のメッセージを指しています。</p>
+<h1>ChikuwaChat の{kind}</h1>
+<p>このリンクは ChikuwaChat の{kind}を指しています。</p>
 <p>デスクトップ / iPhone / Android のアプリでこのリンクを開くと、
-該当のメッセージが表示されます。</p>
+該当の{kind}が表示されます (見られるのは、その会話のメンバーだけです)。</p>
 </main>
 </body>
 </html>
 """
 
 
-@router.get("/m/{message_id}", response_class=HTMLResponse, include_in_schema=False)
-async def message_permalink(message_id: str) -> HTMLResponse:
-    """The landing page for a permalink; the id is only validated, never looked up."""
+def _landing(raw_id: str, kind: str) -> HTMLResponse:
+    """The id is only validated, never looked up."""
     try:
-        uuid.UUID(message_id)
+        uuid.UUID(raw_id)
     except ValueError as exc:
         raise not_found("not_found", "No such page") from exc
-    return HTMLResponse(_PAGE, headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"})
+    return HTMLResponse(
+        _PAGE.format(kind=kind),
+        headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/m/{message_id}", response_class=HTMLResponse, include_in_schema=False)
+async def message_permalink(message_id: str) -> HTMLResponse:
+    """The landing page for a message permalink (M12b)."""
+    return _landing(message_id, "メッセージ")
+
+
+@router.get("/c/{canvas_id}", response_class=HTMLResponse, include_in_schema=False)
+async def canvas_permalink(canvas_id: str) -> HTMLResponse:
+    """The landing page for a canvas permalink (M42, CANVAS.md §4.13)."""
+    return _landing(canvas_id, "キャンバス")
 
 
 _INVITE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")

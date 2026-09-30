@@ -34,6 +34,8 @@ from app.modules.users.models import User
 log = logging.getLogger("app.attachments")
 
 MAX_ATTACHMENTS_PER_MESSAGE = 10
+# CANVAS.md §4.3: images (and files) bound to one canvas.
+MAX_ATTACHMENTS_PER_CANVAS = 100
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 READ_CHUNK = 1024 * 1024
 # An upload larger than this is spooled to a temporary file rather than held in memory.
@@ -163,6 +165,63 @@ async def bind_in_tx(
     return bound
 
 
+async def bind_to_canvas_in_tx(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    *,
+    canvas_id: uuid.UUID,
+    channel_id: uuid.UUID,
+    attachment_ids: list[uuid.UUID],
+) -> list[Attachment]:
+    """Bind the actor's own pending uploads that a canvas's body now refers to (CANVAS.md §4.10).
+
+    Unlike a message, the ids come from the body (`attachment:<uuid>`), so ids that are not the
+    actor's pending uploads (someone else's, already bound elsewhere, gone) are skipped, not
+    refused: the body keeps them and the clients show 「表示できない画像」. Past
+    MAX_ATTACHMENTS_PER_CANVAS the save is refused (400 too_many_canvas_images)."""
+    if not attachment_ids:
+        return []
+    rows = [
+        a
+        for a in await repo.get_many(db, list(dict.fromkeys(attachment_ids)))
+        if a.uploader_id == actor_id and a.status == "pending"
+    ]
+    if not rows:
+        return []
+    if await repo.count_for_canvas(db, canvas_id) + len(rows) > MAX_ATTACHMENTS_PER_CANVAS:
+        raise bad_request(
+            "too_many_canvas_images",
+            f"A canvas holds at most {MAX_ATTACHMENTS_PER_CANVAS} images and files",
+        )
+    now = utcnow()
+    for attachment in rows:
+        attachment.canvas_id = canvas_id
+        attachment.channel_id = channel_id
+        attachment.status = "attached"
+        attachment.attached_at = now
+    await db.flush()
+    return rows
+
+
+async def mark_ids_deleted_in_tx(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> int:
+    """Gone at once (404); the GC loop removes the bytes and then the rows."""
+    now = utcnow()
+    count = 0
+    for attachment in await repo.get_many(db, attachment_ids):
+        if attachment.status != "deleted":
+            attachment.status = "deleted"
+            attachment.deleted_at = now
+            count += 1
+    await db.flush()
+    return count
+
+
+async def mark_canvases_deleted_in_tx(db: AsyncSession, canvas_ids: list[uuid.UUID]) -> int:
+    """The canvases are purged (CANVAS.md §4.14): their images go with them."""
+    rows = await repo.for_canvases(db, canvas_ids)
+    return await mark_ids_deleted_in_tx(db, [a.id for a in rows])
+
+
 async def reserve_in_tx(
     db: AsyncSession, actor_id: uuid.UUID, attachment_ids: list[uuid.UUID]
 ) -> list[Attachment]:
@@ -275,7 +334,8 @@ async def list_files(
 
 async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID) -> Attachment:
     """SECURITY.md §4: attached → channel members (and in a public channel anyone but a guest,
-    who reads it before joining: M27), pending → uploader only, deleted → 404."""
+    who reads it before joining: M27), pending → uploader only, deleted → 404. A canvas's image
+    (M42) → the conversation's members only, like the canvas itself (CANVAS.md §4.7)."""
     attachment = await repo.get(db, attachment_id)
     if attachment is None or attachment.status == "deleted":
         raise not_found("attachment_not_found", "Attachment not found")
@@ -285,6 +345,9 @@ async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID
         return attachment
     if attachment.channel_id is None:
         raise not_found("attachment_not_found", "Attachment not found")
+    if attachment.canvas_id is not None:
+        await channels.require_member(db, actor.id, attachment.channel_id)
+        return attachment
     await channels.require_readable(db, actor, attachment.channel_id)
     return attachment
 

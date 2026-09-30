@@ -848,7 +848,7 @@ X の作成と 👍 は 1 行にまとまって届く (状態ベース)。イベ
     予約送信・システム行・追いつきの途中は操作が無い)。参照クライアント (`contract_client.py`) はこれらの規則どおりに
     動き、各端末は §10.4 のベクトルをテストにする
 
-## 14. キャンバス (M41、CANVAS.md §4.4・§4.6)
+## 14. キャンバス (M41・M42、CANVAS.md §4.4・§4.6・§4.8〜§4.14)
 
 キャンバスは会話に属する Markdown の文書。書き込みは REST だけで、WS の `canvas.*` は「新しい版がある」ことだけを
 知らせる (本文は載せない)。channel の seq は使わない (未読を増やさない)。3 端末は同じ手順に従う。
@@ -916,3 +916,26 @@ base・送られた本文・head を 3-way マージする。
 6. 所要時間は 200 ms まで (スレッドプールで実行)。超えたら文書全体を 1 つの競合として扱う (`timed_out`)。
 
 規則は `server/tests/fixtures/canvas_merge/*.json` のフィクスチャで固定している。
+
+### 14.4 画像・共有・検索・整理 (M42、CANVAS.md §4.8〜§4.14)
+
+- **画像**: `POST /attachments` でアップロード (pending) し、本文に `![説明](attachment:<id>)` を入れて保存する。サーバは保存
+  (作成・版の復元も) のたびに、本文が指す**自分の** pending をそのキャンバスに bind する。bind できなかった id (他人の
+  アップロード、別のキャンバスやメッセージの添付) は本文に残るが、読めない端末では「表示できない画像」になる。
+  読むのは既存の `GET /attachments/{id}` (`/thumbnail`、`/content?inline=1`)。キャンバスの画像は会話のメンバーだけが読め、
+  それ以外は 403 (公開チャンネルでも)。1 キャンバス 100 件を超える保存は `400 too_many_canvas_images` (編集を止めて理由を出す。
+  再送しない)。
+- **共有とコメント**: 作成時の `share_to_channel: true`、または `POST /canvases/{id}/share` で、題名とパーマリンク
+  `<server>/c/<id>` の普通のメッセージが会話に投稿され (`message.created`、seq を使う)、`share_message_id` に入る
+  (`POST …/share` は `canvas.updated` (change=settings) も出す)。コメントはこのメッセージのスレッド。
+  コメントを開くとき `share_message_id` が null (または、そのメッセージが消えている) なら先に `POST …/share` を呼ぶ。
+  呼び直しても共有メッセージが残っていれば何も起きない。
+- **パーマリンク** `<server>/c/<canvas_id>`: `/m/` と同じく、ログインしている server のものだけを本文中で認識し、
+  `GET /canvases/{id}` で開く (題名・会話・更新者・進捗のカード)。403 / 404 なら「表示できないキャンバス」。ブラウザで
+  開いたときの `/c/` のページは中身を出さない。
+- **検索**: `GET /search/canvases?q&channel_id&from_user_id&after&before&sort&tz_offset_minutes&limit&offset`。
+  応答は `hits[] {canvas (メタのみ), snippet (プレーンテキスト), score}`・`keywords` (端末が抜粋を強調する)・`filters`・`total`。
+  自分がメンバーの会話だけが対象 (参加していない公開チャンネルのキャンバスは出ない)。
+- **整理**: 24 時間を過ぎた版は整理され (side と、同じ作者の 10 分以内の続き)、30 日ゴミ箱にあったキャンバスは消える。
+  イベントは出ない。24 時間以上オフラインで編集した端末の保存は、元の版が無ければ `409 canvas_base_expired` (§14.2)。
+  消えたキャンバスは `GET /channels/{id}/canvases?trashed=true` から外れ、`GET /canvases/{id}` は 404。

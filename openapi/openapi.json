@@ -739,6 +739,11 @@
             "title": "Client Save Id",
             "type": "string"
           },
+          "share_to_channel": {
+            "default": false,
+            "title": "Share To Channel",
+            "type": "boolean"
+          },
           "template_key": {
             "anyOf": [
               {
@@ -1056,6 +1061,81 @@
           "next_cursor"
         ],
         "title": "CanvasPage",
+        "type": "object"
+      },
+      "CanvasSearchHit": {
+        "properties": {
+          "canvas": {
+            "$ref": "#/components/schemas/CanvasMeta"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canvas",
+          "snippet",
+          "score"
+        ],
+        "title": "CanvasSearchHit",
+        "type": "object"
+      },
+      "CanvasSearchOut": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/SearchFilters"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasSearchHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_capped": {
+            "default": false,
+            "title": "Total Capped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hits",
+          "keywords",
+          "filters",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "CanvasSearchOut",
         "type": "object"
       },
       "CanvasTemplateCreate": {
@@ -9055,6 +9135,55 @@
         ]
       }
     },
+    "/api/v1/canvases/{canvas_id}/share": {
+      "post": {
+        "description": "Post the permalink `<server>/c/<id>` to the conversation as an ordinary message, whose\nthread holds the comments (share_message_id). Nothing new if that message still exists.",
+        "operationId": "share_canvas_api_v1_canvases__canvas_id__share_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "canvas_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Share Canvas",
+        "tags": [
+          "canvases"
+        ]
+      }
+    },
     "/api/v1/channels": {
       "get": {
         "operationId": "list_channels_api_v1_channels_get",
@@ -13143,6 +13272,180 @@
         "summary": "Send Scheduled Now",
         "tags": [
           "scheduled"
+        ]
+      }
+    },
+    "/api/v1/search/canvases": {
+      "get": {
+        "description": "M42 (CANVAS.md §4.8): canvases of my conversations whose title or body matches (Japanese\nand English, Groonga query syntax as for messages; from:@ in:# before: after: on:), with a\nplain-text excerpt around the first match.",
+        "operationId": "search_canvases_api_v1_search_canvases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel Id"
+            }
+          },
+          {
+            "description": "The canvas's creator or its last editor",
+            "in": "query",
+            "name": "from_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The canvas's creator or its last editor",
+              "title": "From User Id"
+            }
+          },
+          {
+            "description": "Updated at or after",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Updated at or after",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Updated before",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Updated before",
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "relevance",
+              "enum": [
+                "relevance",
+                "newest"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 840,
+              "minimum": -840,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Canvases",
+        "tags": [
+          "search"
         ]
       }
     },

@@ -39,6 +39,12 @@ def _limit_saves(request: Request, user: User) -> None:
         raise rate_limited(limiter.retry_after_seconds(key))
 
 
+def _base_url(request: Request) -> str:
+    """The server's address as the client reached it (the proxies pass Host and
+    X-Forwarded-Proto on): the permalinks in shared messages are built on it."""
+    return str(request.base_url).rstrip("/")
+
+
 def _etag(version: int) -> str:
     return f'"v{version}"'
 
@@ -70,7 +76,7 @@ async def create_canvas(
 ) -> CanvasOut:
     """A new canvas, empty or from a template (placeholders put in with `tz`)."""
     _limit_saves(request, user)
-    canvas, created = await service.create(db, user, channel_id, body)
+    canvas, created = await service.create(db, user, channel_id, body, base_url=_base_url(request))
     response.status_code = 201 if created else 200
     return canvas
 
@@ -141,6 +147,14 @@ async def delete_canvas(canvas_id: UUID, user: CurrentUser, db: Db) -> Response:
 async def restore_canvas(canvas_id: UUID, user: CurrentUser, db: Db) -> CanvasOut:
     """Back from the trash."""
     return await service.restore(db, user, canvas_id)
+
+
+@router.post("/canvases/{canvas_id}/share", response_model=CanvasOut)
+async def share_canvas(canvas_id: UUID, user: CurrentUser, db: Db, request: Request) -> CanvasOut:
+    """Post the permalink `<server>/c/<id>` to the conversation as an ordinary message, whose
+    thread holds the comments (share_message_id). Nothing new if that message still exists."""
+    _limit_saves(request, user)
+    return await service.share(db, user, canvas_id, base_url=_base_url(request))
 
 
 @router.get("/canvases/{canvas_id}/revisions", response_model=RevisionPage)

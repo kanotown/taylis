@@ -756,6 +756,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/canvases/{canvas_id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share Canvas
+         * @description Post the permalink `<server>/c/<id>` to the conversation as an ordinary message, whose
+         *     thread holds the comments (share_message_id). Nothing new if that message still exists.
+         */
+        post: operations["share_canvas_api_v1_canvases__canvas_id__share_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels": {
         parameters: {
             query?: never;
@@ -1915,6 +1936,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/canvases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Canvases
+         * @description M42 (CANVAS.md §4.8): canvases of my conversations whose title or body matches (Japanese
+         *     and English, Groonga query syntax as for messages; from:@ in:# before: after: on:), with a
+         *     plain-text excerpt around the first match.
+         */
+        get: operations["search_canvases_api_v1_search_canvases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/messages": {
         parameters: {
             query?: never;
@@ -2628,6 +2671,11 @@ export interface components {
              * Format: uuid
              */
             client_save_id: string;
+            /**
+             * Share To Channel
+             * @default false
+             */
+            share_to_channel: boolean;
             /** Template Key */
             template_key?: string | null;
             /** Title */
@@ -2764,6 +2812,38 @@ export interface components {
             items: components["schemas"]["CanvasMeta"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** CanvasSearchHit */
+        CanvasSearchHit: {
+            canvas: components["schemas"]["CanvasMeta"];
+            /** Score */
+            score: number;
+            /** Snippet */
+            snippet: string;
+        };
+        /** CanvasSearchOut */
+        CanvasSearchOut: {
+            filters: components["schemas"]["SearchFilters"];
+            /** Has More */
+            has_more: boolean;
+            /** Hits */
+            hits: components["schemas"]["CanvasSearchHit"][];
+            /** Keywords */
+            keywords: string[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Total Capped
+             * @default false
+             */
+            total_capped: boolean;
         };
         /** CanvasTemplateCreate */
         CanvasTemplateCreate: {
@@ -6319,6 +6399,37 @@ export interface operations {
             };
         };
     };
+    share_canvas_api_v1_canvases__canvas_id__share_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_channels_api_v1_channels_get: {
         parameters: {
             query?: {
@@ -8799,6 +8910,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_canvases_api_v1_search_canvases_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                channel_id?: string | null;
+                /** @description The canvas's creator or its last editor */
+                from_user_id?: string | null;
+                /** @description Updated at or after */
+                after?: string | null;
+                /** @description Updated before */
+                before?: string | null;
+                sort?: "relevance" | "newest";
+                tz_offset_minutes?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasSearchOut"];
                 };
             };
             /** @description Validation Error */

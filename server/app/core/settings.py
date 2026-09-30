@@ -95,6 +95,8 @@ class Settings(BaseSettings):
     message_rate_limit_per_user: int = 60
     # CANVAS.md §4.3: canvas saves (and creates, restores) per user per minute.
     canvas_save_rate_limit_per_user: int = 120
+    # CANVAS.md §4.14 (M42): days a canvas stays in the trash before it is purged for good.
+    canvas_trash_retention_days: int = 30
     ws_max_connections_per_user: int = 10
     ws_connect_rate_limit_per_ip: int = 30
     link_preview_timeout_seconds: float = 5.0

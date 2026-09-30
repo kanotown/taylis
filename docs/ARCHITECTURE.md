@@ -177,7 +177,7 @@ server/
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync
       reads/             # read_states, 未読数
       attachments/       # upload/bind/download, thumbnail, GC, BlobStore (S3 API)
-      search/            # PGroonga 検索 (messages / attachments の読み取り専用アクセスを許可)
+      search/            # PGroonga 検索 (messages / attachments / canvases の読み取り専用アクセスを許可。canvases は M42)
       notifications/     # notification_preferences, PushPlanner, PushSender, PushProvider 実装
       sync/              # GET /api/v1/sync/bootstrap (各モジュールの read-only 集約)
   migrations/            # Alembic
@@ -191,7 +191,7 @@ server/
 ### モジュール間の規約
 
 1. モジュール間の呼び出しは `service.py` の公開関数経由のみ。他モジュールのテーブルを直接クエリしない。
-   例外は明示的に許可する: `search` は `messages` / `attachments` を読み取り専用でクエリしてよい。
+   例外は明示的に許可する: `search` は `messages` / `attachments` / `canvases` (M42) を読み取り専用でクエリしてよい。
    `sync` は各モジュールの repository の read-only 関数を呼んでよい。`channels` はメンバー追加 / DM の
    対象ユーザー解決のため `users` を読み取り専用でクエリしてよい (`load_users`)。
    `reads` は未読数・メンション数の集計のため `messages` を読み取り専用でクエリしてよい (DATA_MODEL.md の COUNT)。
@@ -200,7 +200,7 @@ server/
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。
    同一トランザクション内での付随更新も service 呼び出しでよい。例: `messages` → `reads.advance_in_tx()`。
 4. 依存方向は一方向に保つ:
-   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups, channels` (名簿の対象、管理グループのメンバー、指導教員を学生の times に加える M24)、`channels` の `POST /times` は指導教員の一覧を `main.py` が注入した関数で得る (channels は lab に依存しない)、`admin → lab` (匿名化で名簿の行を消す)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`canvases → channels, audit` (メンバーシップ・権限・DM の相手の名前。M42 で `attachments`、共有メッセージの `messages` が加わる)、`sync → canvases` (bootstrap の `canvas_tab_id`)、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
+   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups, channels` (名簿の対象、管理グループのメンバー、指導教員を学生の times に加える M24)、`channels` の `POST /times` は指導教員の一覧を `main.py` が注入した関数で得る (channels は lab に依存しない)、`admin → lab` (匿名化で名簿の行を消す)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`canvases → channels, audit, attachments, messages` (メンバーシップ・権限・DM の相手の名前。M42: 本文の画像の bind と完全削除時の削除、会話への共有メッセージの投稿。整理の周期ジョブは参照されなくなった画像を `attachments` の表から探し、削除の印は `attachments` の service が付ける)、`sync → canvases` (bootstrap の `canvas_tab_id`)、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。
@@ -328,8 +328,8 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | Sync | `GET /sync/bootstrap`, `GET /sync/summary` (開いていないワークスペースのバッジ), `WS /ws` |
 | Server | `GET /server` (認証不要。ワークスペース名と `workspace_id`。WORKSPACES.md) |
 | Attachments | `POST /attachments` (multipart), `GET /attachments/{id}`, `GET /attachments/{id}/content`, `GET /attachments/{id}/thumbnail` |
-| Canvases (M41、CANVAS.md §4.5) | `GET/POST /channels/{id}/canvases` (`?trashed=true` でゴミ箱), `GET /canvases` (自分の会話すべて、cursor), `GET/PATCH/DELETE /canvases/{id}` (GET は ETag / If-None-Match), `PUT /canvases/{id}/content` (保存: `base_rev_id` + 冪等キー、サーバ側マージ、409 `canvas_conflict` / `canvas_base_expired`), `POST /canvases/{id}/restore`, `GET /canvases/{id}/revisions`, `GET/PATCH/DELETE /canvases/{id}/revisions/{rev}`, `POST /canvases/{id}/revisions/{rev}/restore`, `GET /canvas-templates`, `GET/POST/PATCH/DELETE /admin/canvas-templates[/{id}]` |
-| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`) |
+| Canvases (M41・M42、CANVAS.md §4.5) | `GET/POST /channels/{id}/canvases` (`?trashed=true` でゴミ箱), `GET /canvases` (自分の会話すべて、cursor), `GET/PATCH/DELETE /canvases/{id}` (GET は ETag / If-None-Match), `PUT /canvases/{id}/content` (保存: `base_rev_id` + 冪等キー、サーバ側マージ、409 `canvas_conflict` / `canvas_base_expired`), `POST /canvases/{id}/restore`, `POST /canvases/{id}/share` (M42: 会話へ共有。作成時の `share_to_channel` も), `GET /canvases/{id}/revisions`, `GET/PATCH/DELETE /canvases/{id}/revisions/{rev}`, `POST /canvases/{id}/revisions/{rev}/restore`, `GET /canvas-templates`, `GET/POST/PATCH/DELETE /admin/canvas-templates[/{id}]` |
+| Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`)、`GET /search/canvases` (M42、CANVAS.md §4.8: 同じ引数と `sort`。自分がメンバーの会話のキャンバスだけ。応答は `hits[].canvas` (本文なし) と `snippet`、`keywords`) |
 | Health | `GET /healthz` (プロセス生存), `GET /readyz` (DB / オブジェクトストレージ到達性) |
 
 ### エラー形式と分類

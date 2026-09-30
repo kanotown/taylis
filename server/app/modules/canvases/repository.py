@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,6 +117,114 @@ async def export_rows(db: AsyncSession, channel_id: uuid.UUID) -> list[Canvas]:
         .order_by(Canvas.created_at, Canvas.id)
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+# --- housekeeping (CANVAS.md §4.9, §4.10, §4.14) -------------------------------------------------
+
+
+async def delete_side_revisions(db: AsyncSession, before: datetime) -> int:
+    """Side versions (the bases of merged saves) older than `before`."""
+    result = await db.execute(
+        delete(CanvasRevision).where(
+            CanvasRevision.kind == "side", CanvasRevision.created_at < before
+        )
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+# Among the versions made between :since and :before, a run of consecutive save / merge versions
+# by one author (no label, not the head) keeps the last one of every :bucket. Create, restore,
+# erased, labelled and head versions are always kept, and end a run.
+_THIN = text(
+    """
+    WITH old AS (
+        SELECT r.id, r.canvas_id, r.author_id, r.created_at,
+               (r.kind IN ('save', 'merge') AND r.label IS NULL AND r.id <> c.head_rev_id) AS thin
+        FROM canvas_revisions r JOIN canvases c ON c.id = r.canvas_id
+        WHERE r.kind <> 'side' AND r.created_at < :before AND r.created_at >= :since
+    ), marked AS (
+        SELECT old.*,
+               CASE WHEN thin AND lag(thin) OVER w AND lag(author_id) OVER w = author_id
+                    THEN 0 ELSE 1 END AS starts
+        FROM old
+        WINDOW w AS (PARTITION BY canvas_id ORDER BY created_at, id)
+    ), runs AS (
+        SELECT marked.*,
+               sum(starts) OVER (PARTITION BY canvas_id ORDER BY created_at, id) AS run
+        FROM marked
+    ), ranked AS (
+        SELECT id, thin,
+               row_number() OVER (
+                   PARTITION BY canvas_id, run,
+                                date_bin(:bucket, created_at, TIMESTAMPTZ '2000-01-01 00:00:00+00')
+                   ORDER BY created_at DESC, id DESC
+               ) AS rn
+        FROM runs
+    )
+    DELETE FROM canvas_revisions
+    WHERE id IN (SELECT id FROM ranked WHERE thin AND rn > 1)
+    """
+)
+
+
+async def thin_revisions(
+    db: AsyncSession, *, before: datetime, since: datetime, bucket: timedelta
+) -> int:
+    result = await db.execute(_THIN, {"before": before, "since": since, "bucket": bucket})
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def trashed_before(db: AsyncSession, before: datetime, limit: int) -> list[Canvas]:
+    stmt = (
+        select(Canvas)
+        .where(Canvas.deleted_at.is_not(None), Canvas.deleted_at < before)
+        .order_by(Canvas.deleted_at, Canvas.id)
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def revision_counts(db: AsyncSession, canvas_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not canvas_ids:
+        return {}
+    stmt = (
+        select(CanvasRevision.canvas_id, func.count())
+        .where(CanvasRevision.canvas_id.in_(canvas_ids))
+        .group_by(CanvasRevision.canvas_id)
+    )
+    return {row[0]: int(row[1]) for row in (await db.execute(stmt)).all()}
+
+
+async def delete_canvases(db: AsyncSession, canvas_ids: list[uuid.UUID]) -> None:
+    """For good: the versions go with them (ON DELETE CASCADE)."""
+    if canvas_ids:
+        await db.execute(delete(Canvas).where(Canvas.id.in_(canvas_ids)))
+
+
+# Images bound to a canvas before :bound_before that neither the canvas's body nor any version
+# it keeps refers to (the id in either case). Reads attachments (canvases → attachments); the
+# attachments module marks them deleted.
+_UNREFERENCED_IMAGES = text(
+    """
+    SELECT a.id FROM attachments a
+    WHERE a.canvas_id IS NOT NULL AND a.status = 'attached' AND a.attached_at < :bound_before
+      AND NOT EXISTS (
+          SELECT 1 FROM canvases c WHERE c.id = a.canvas_id
+             AND (strpos(c.body, a.id::text) > 0 OR strpos(c.body, upper(a.id::text)) > 0))
+      AND NOT EXISTS (
+          SELECT 1 FROM canvas_revisions r WHERE r.canvas_id = a.canvas_id
+             AND (strpos(r.body, a.id::text) > 0 OR strpos(r.body, upper(a.id::text)) > 0))
+    ORDER BY a.attached_at
+    LIMIT :limit
+    """
+)
+
+
+async def unreferenced_images(
+    db: AsyncSession, *, bound_before: datetime, limit: int
+) -> list[uuid.UUID]:
+    rows = await db.execute(_UNREFERENCED_IMAGES, {"bound_before": bound_before, "limit": limit})
+    return [row[0] for row in rows.all()]
 
 
 # --- templates ---------------------------------------------------------------------------------

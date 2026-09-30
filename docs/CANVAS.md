@@ -3,8 +3,9 @@
 2026-09-28 の設計提案 (復元、[ROADMAP.md](ROADMAP.md) 参照)。編集方式は利用者の回答どおり「自動保存 + サーバ側マージ」。マイグレーション番号 (「0036〜」) は当時のもので、着手時点の次の番号に読み替える。
 
 **状態 (2026-09-30)**: サーバの中核 (ROADMAP の M32) を **M41** で実装した (マイグレーション 0046)。表、保存 / マージ / 冪等、
-権限、イベント、履歴、ゴミ箱、テンプレート。検索・画像・版の整理・ゴミ箱の完全削除・会話への共有と `/c/` は次の M42、
-クライアントはその後。実装で決めたこと・設計から変えたことは末尾の「§11 実装メモ (M41)」。
+権限、イベント、履歴、ゴミ箱、テンプレート。残りのサーバ (ROADMAP の M33) を **M42** で実装した (マイグレーション 0047):
+検索 (`canvases_search_idx`、`/search/canvases`)、画像 (`attachments.canvas_id`)、版の整理とゴミ箱の完全削除、会話への共有と `/c/`。
+**サーバは完成、クライアントは未着手。** 実装で決めたこと・設計から変えたことは末尾の「§11 実装メモ (M41)」と「§12 実装メモ (M42)」。
 
 ## 0. 結論
 
@@ -252,6 +253,7 @@ save():
 | PUT | /canvases/{id}/content | 保存 (§4.4) |
 | PATCH | /canvases/{id} | 題名、edit_policy、is_channel_tab |
 | DELETE / POST | /canvases/{id}、/canvases/{id}/restore | ゴミ箱へ移す / 戻す |
+| POST | /canvases/{id}/share | 会話に共有 (共有メッセージが残っていれば何もしない。M42 で追加、§12) |
 | GET | /canvases/{id}/revisions?cursor= | 版の一覧 (本文なし: 作者、時刻、種類、ラベル、差分の行数) |
 | GET | /canvases/{id}/revisions/{rev} | 版の本文 |
 | POST | /canvases/{id}/revisions/{rev}/restore | その版を新しい版として復元 |
@@ -631,3 +633,56 @@ save():
   `422 canvas_too_large`。
 - **M42 への引き継ぎ**: `canvases_search_idx` と `/search/canvases`、`attachments.canvas_id` と画像の bind・GC、版の整理と
   ゴミ箱の 30 日での完全削除 (`canvas.purge` の監査) を `_purge_loop` に、会話への共有と `/c/`。
+
+## 12. 実装メモ (M42)
+
+M42 でサーバの残り (検索・画像・版の整理・完全削除・共有・`/c/`) を実装した。マイグレーション 0047。
+
+- **検索** (`GET /search/canvases`、search モジュール。canvases を読み取り専用で参照):
+  - 索引は設計どおり `canvases_search_idx` (`ARRAY[title::text, body]`) の 1 つ。クエリはメッセージ検索と同じく、語だけを条件に
+    した MATERIALIZED の段から入り、範囲 (自分がメンバーの会話・ゴミ箱でない・修飾子) はその結果にかける。`enable_seqscan = off`
+    も同じ。テストが EXPLAIN に `canvases_search_idx` が出ることを確かめる。
+  - **落とし穴**: SQLAlchemy は配列の隣の文字列を配列として bind する (`ARRAY['東','京']`)。PostgreSQL が「演算子が無い」と
+    返し、それがメッセージ検索と同じ「構文エラーならエスケープして再検索」の経路に落ちて、Groonga の構文 (OR、`-`) が効かない
+    だけで結果は出てしまった。語を text として渡し、テストで `実験 OR tokyo` と `東京 -研究計画` を確かめている。
+  - 対象は自分がメンバーの会話 (DM を含む) だけ。メッセージと違い、未参加の公開チャンネルのキャンバスは出ない (§4.7)。
+  - 修飾子: `in:#`、`from:@` (作成者か最終更新者)、`before:` / `after:` / `on:` (updated_at)。`has:` / `is:` は `unresolved` に返す。
+    同時実行の上限・時間切れ・レート制限はメッセージ検索と共有 (`search` の limiter と gate)。
+  - 抜粋は LIMIT の後に作る (`search/snippet.py`): 空白と改行を 1 つにまとめ、最初の `keywords` の前後 60 字。題名だけに当たった
+    ときは本文の先頭 120 字。全角英数は NFKC で比べる (PGroonga の正規化に合わせる)。
+  - 測定 (この機械、サービス全体: 会話の一覧・検索・件数 (1,001 件で打ち切り)・keywords・抜粋。1 回温めた後の中央値):
+    - 開発 DB の複製に docs/*.md の段落から作った 5,000 件 / 5,921 万字 (§7 と同じ規模、全件が自分の会話): 当たらない語 7.4 ms、
+      `PGroonga` 22.7 ms、`マージ 競合` 26.5 ms、`キャンバス` (全件の題名) 31.4 ms、`Tauri OR SwiftUI` 42.5 ms、`検索` 46.8 ms
+      (どれも 1,000 件以上に当たる)。§7 の 12.4 ms はクエリ 1 本の値で、件数のための 2 本目と抜粋の分が加わる。
+    - pytest (HTTP 経由) の約 5,000 字 × 400 件: 10〜13 ms。
+- **画像** (`attachments.canvas_id`、ON DELETE SET NULL、部分索引):
+  - bind は作成・保存・版の復元のたびに、本文の `attachment:<uuid>` (大文字の id も。Swift の `uuidString` は大文字) が指す、
+    **保存した本人の pending** だけ。設計の「新しく現れたもの」は、本文が指す自分の pending すべてと同じ結果になるので区別しない。
+  - 画像以外のファイルも bind する (設計は「画像」。本文にリンク `[名前](attachment:…)` を書く端末があっても、24 時間で消えない
+    ように)。描画するのは画像だけ。1 キャンバス 100 件 (`400 too_many_canvas_images`。errors.json に足した。端末の表は `gen_errors.py` で作り直す)。
+  - 他人の pending・別のキャンバスやメッセージの添付は bind せず、エラーにもしない (本文から作る参照なので)。
+  - 読むのは会話のメンバーだけ (`get_for_access` で `canvas_id` のある添付は `require_member`)。公開チャンネルの添付の
+    「参加前のプレビュー」(M27) は当てはまらない。`GET /files` とメッセージ検索のファイル名には出ない (messages と結合するため)。
+  - 設計は「本文から消しても完全削除まで残す」だったが、版の整理で古い版が消えると、どこからも参照されない画像が残り続ける。
+    そこで周期ジョブが、bind から 24 時間を過ぎて、本文にも残っている版のどれにも id が無い画像を deleted にする (整理された版・
+    消去された版にだけあった画像)。24 時間以内の版はすべて残るので、編集中に消えることはない。消去した版の秘密の画像も
+    これで消える。
+- **版の整理** (`_purge_loop`、1 時間ごと): SQL 1 文 (窓関数)。24 時間を過ぎた side を消し、同じ作者の連続した save / merge は
+  `date_bin('10 minutes')` の区切りごとに最後の 1 つを残す。create・restore・erased・ラベル付き・現在の版は残し、連続を区切る。
+  読み直すのは 24 時間〜8 日前の版だけ (1 回で済むため。止まっていた期間の版は少し多く残るだけ)。
+- **ゴミ箱の完全削除**: 30 日 (`canvas_trash_retention_days`)。画像を deleted にしてから行を消す (版は CASCADE)。監査
+  `canvas.purge` は actor なしで、会話・題名・削除者・版の数を残す。共有メッセージは会話に残す (普通のメッセージなので)。
+  イベントは出さない (ゴミ箱の一覧は開くたびに読み直す)。
+- **共有**: 作成時の `share_to_channel` に加えて `POST /canvases/{id}/share` を足した (§4.13 の「共有メッセージが無ければ
+  コメントを開くときに作る」のため。設計の API 表に無かった)。本文は `📄 題名\n<server>/c/<id>` の普通のメッセージで、
+  `messages.create_message(commit=False)` でキャンバスと同じトランザクションに入れる (`canvas.created` が最初から
+  `share_message_id` を持つ)。`<server>` は要求の届いた先 (uvicorn の `--proxy-headers` と Caddy の trusted_proxies で
+  https とホスト名になる)。設定の公開 URL は足していない。題名の `<` は全角 `＜` にする (共有した人の名前で `<!channel>` が
+  飛ばないように)。共有メッセージが残っていれば何もしない。消されていれば新しく投稿する。`POST …/share` は version だけ
+  +1 して `canvas.updated` (change=settings) を出す (updated_by / updated_at は変えない。編集ではないため)。
+  権限は投稿と同じ (`create_message` の検査。投稿制限のチャンネルでは owner / admin)。
+- **`/c/<id>` のページ**: `/m/` と同じく認証なし・照会なしの案内ページ (id の形だけ確かめ、存在するかも出さない)。
+  「メンバーには開き、他の人には 404」は、アプリと Web クライアントが `GET /canvases/{id}` で解決するときに決まる (非メンバーは
+  403 `not_a_member`、無いものは 404 `canvas_not_found`)。本番では Caddy が `/c/` も Web クライアントに渡す (`/m/` と同じ)。
+- **残したこと**: クライアント (M34〜M37 の計画。`python3 apps/shared/gen_errors.py` で `too_many_canvas_images` を 3 端末の表に入れる)、`/c/` のカードを軽くする専用の API (今は `GET /canvases/{id}` が本文も返す)、
+  Phase 2 (メンション通知・タスク・編集中の表示)。

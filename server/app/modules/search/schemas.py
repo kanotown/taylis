@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.modules.canvases.schemas import CanvasMeta
 from app.modules.messages.schemas import MessageOut
 
 MAX_QUERY_LENGTH = 200
@@ -61,5 +62,44 @@ class SearchOut(BaseModel):
     offset: int
     has_more: bool
     # How many messages match (counting stops past 1000: then total_capped is true).
+    total: int = 0
+    total_capped: bool = False
+
+
+# --- canvases (M42, CANVAS.md §4.8) -------------------------------------------------------------
+
+
+class CanvasSearchQuery(BaseModel):
+    # Words and modifiers (from:@ in:# before: after: on:); has: / is: do not apply to canvases.
+    q: str = Field(default="", max_length=MAX_QUERY_LENGTH)
+    channel_id: UUID | None = None
+    # The canvas's creator or its last editor.
+    from_user_id: UUID | None = None
+    # On the last update (updated_at).
+    after: datetime | None = None
+    before: datetime | None = None
+    sort: SearchSort = "relevance"
+    tz_offset_minutes: int = Field(default=0, ge=-840, le=840)
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=10_000)
+
+
+class CanvasSearchHit(BaseModel):
+    canvas: CanvasMeta
+    # Plain text around the first matching word of the body (about 60 characters on each side,
+    # whitespace folded, "…" where cut); the start of the body when only the title matched.
+    # Clients highlight `keywords` in it themselves (no HTML).
+    snippet: str
+    score: float
+
+
+class CanvasSearchOut(BaseModel):
+    hits: list[CanvasSearchHit]
+    keywords: list[str]
+    filters: SearchFilters
+    limit: int
+    offset: int
+    has_more: bool
+    # How many canvases match (counting stops past 1000: then total_capped is true).
     total: int = 0
     total_capped: bool = False

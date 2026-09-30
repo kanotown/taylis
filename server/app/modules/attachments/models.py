@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +29,11 @@ class Attachment(Base):
     uploader_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
     channel_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("channels.id"))
+    # M42: an image (or file) in a canvas's body (CANVAS.md §4.10). message_id stays NULL and
+    # channel_id is the canvas's conversation; only its members read it.
+    canvas_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("canvases.id", ondelete="SET NULL")
+    )
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
@@ -46,4 +52,9 @@ class Attachment(Base):
     __table_args__ = (
         Index("attachments_message_idx", "message_id"),
         Index("attachments_gc_idx", "status", "created_at"),
+        Index(
+            "attachments_canvas_idx",
+            "canvas_id",
+            postgresql_where=text("canvas_id IS NOT NULL"),
+        ),
     )
