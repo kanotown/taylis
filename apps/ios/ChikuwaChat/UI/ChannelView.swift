@@ -540,7 +540,7 @@ struct ChannelView: View {
                             .font(.footnote).foregroundStyle(.secondary).padding()
                     } else {
                         TypingLine(controller: controller, channelId: channelId)
-                        ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へメッセージ", controller: controller) { body, attachmentIds, options in
+                        ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へのメッセージ", controller: controller) { body, attachmentIds, options in
                             Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds, options: options) }
                         }
                         // Under the pins / files (M29): SwiftUI's text field stays an accessibility element through a
