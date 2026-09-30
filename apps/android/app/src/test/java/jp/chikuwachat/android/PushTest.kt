@@ -42,6 +42,26 @@ class PushTest {
         assertNull(PushMessage.parse(mapOf("kind" to "message", "workspace_id" to "", "badge" to "x"))!!.workspaceId)
     }
 
+    @Test fun aCalendarAlarmStandsApartAndMayHaveNoConversation() { // M52 (PUSH_NOTIFICATIONS.md, CALENDAR.md §6)
+        val shared = PushMessage.parse(
+            mapOf("kind" to "calendar", "channel_id" to "c1", "event_id" to "ev1", "title" to "予定", "body" to "14:00 ゼミ (#lab)", "collapse_key" to "calendar:ev1"),
+        )!!
+        assertEquals("ev1", shared.eventId)
+        assertEquals(true, shared.isCalendar)
+        assertEquals("calendar:ev1", shared.notificationKey) // never replaced by the channel's messages, nor cleared by a read
+        assertEquals(true, shared.shown)
+        assertEquals("予定", shared.displayTitle)
+        // My own calendar's: no channel_id at all (the server leaves None out of the data), still shown, keyed by the event.
+        val own = PushMessage.parse(mapOf("kind" to "calendar", "event_id" to "ev2", "title" to "予定", "body" to "終日 学会"))!!
+        assertNull(own.channelId)
+        assertEquals("calendar:ev2", own.notificationKey)
+        assertEquals(true, own.shown)
+        // A message without its conversation is not shown; neither is a calendar push without its event.
+        assertEquals(false, PushMessage.parse(mapOf("kind" to "message", "title" to "t", "body" to "b"))!!.shown)
+        assertEquals(false, PushMessage.parse(mapOf("kind" to "calendar", "title" to "予定", "body" to "b"))!!.shown)
+        assertEquals(false, PushMessage.parse(mapOf("kind" to "silent", "channel_id" to "c1"))!!.shown)
+    }
+
     @Test fun readsTheThreadParentOfAReply() { // M28c: the tap opens the thread at the reply
         val reply = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "message_id" to "m2", "parent_id" to "m1", "title" to "t", "body" to "b"))!!
         assertEquals("m1", reply.parentId)

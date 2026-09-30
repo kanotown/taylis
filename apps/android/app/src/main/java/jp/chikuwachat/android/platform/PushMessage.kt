@@ -18,8 +18,16 @@ data class PushMessage(
     val workspaceId: String? = null,
     /** That server's app-icon count for me when it was sent (PUSH_NOTIFICATIONS.md §4.2); an approximation. */
     val badge: Int? = null,
+    /** M52: a calendar alarm's event (`kind = calendar`); its `channel_id` is null for my own calendar. */
+    val eventId: String? = null,
 ) {
     val isSilent: Boolean get() = kind == "silent"
+
+    /** M52 (PUSH_NOTIFICATIONS.md, CALENDAR.md §6): one of my calendar alarms; the tap opens the event. */
+    val isCalendar: Boolean get() = kind == "calendar" && eventId != null
+
+    /** Whether it becomes a notification: a conversation's, or a calendar alarm's (which may have no conversation). */
+    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar)
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
@@ -36,6 +44,8 @@ data class PushMessage(
     val notificationKey: String? get() = when (kind) {
         "reminder" -> collapseKey ?: messageId?.let { "reminder:$it" }
         "reaction" -> collapseKey ?: messageId?.let { "reaction:$it" }
+        // M52: one per event ("calendar:<event id>"): never replaced by a message, nor cleared by a read.
+        "calendar" -> collapseKey ?: eventId?.let { "calendar:$it" }
         else -> channelId
     }
 
@@ -54,6 +64,7 @@ data class PushMessage(
                 collapseKey = data["collapse_key"]?.takeIf { it.isNotBlank() },
                 workspaceId = data["workspace_id"]?.takeIf { it.isNotBlank() },
                 badge = data["badge"]?.toIntOrNull(),
+                eventId = data["event_id"]?.takeIf { it.isNotBlank() },
             )
         }
     }

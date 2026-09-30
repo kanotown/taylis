@@ -160,6 +160,9 @@ class SyncEngine(
     /** M46: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
     val canvases = CanvasHub(api as? CanvasApi, store, scope, options.canvasSave)
 
+    /** M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5, §15). */
+    val calendar = CalendarHub(api as? CalendarApi, scope, { store.me?.id })
+
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
         store.onStalePreview = { channelId -> post { refreshLastMessage(channelId) } }
@@ -285,6 +288,7 @@ class SyncEngine(
     fun stop() {
         stopped = true
         canvases.stop()
+        calendar.stop()
         cancelReconnect()
         stopHeartbeat()
         threadRefresh?.cancel()
@@ -386,6 +390,7 @@ class SyncEngine(
         scope.launch { flushOutbox() }
         scope.launch { drafts.flush() } // edited while offline (M15d)
         canvases.online() // M46: canvas saves that failed, open canvases read again, edits kept from before a restart
+        calendar.online() // M52: the calendar's ranges on screen and the counts read again (CALENDAR.md §5)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         currentChannelId?.let { current -> scope.launch { openChannel(current) } }
@@ -658,6 +663,8 @@ class SyncEngine(
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
+            // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
+            "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
@@ -915,6 +922,7 @@ class SyncEngine(
     fun dropChannel(channelId: String) {
         forgetThreads(channelId)
         canvases.removeChannel(channelId)
+        calendar.removeChannel(channelId) // M52: its shared calendar leaves every range (CALENDAR.md §3)
         store.removeChannel(channelId)
     }
 

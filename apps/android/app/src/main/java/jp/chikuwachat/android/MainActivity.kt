@@ -45,6 +45,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takeConversation(intent: Intent?) {
+        // M52: a calendar alarm's notification opens its event (my own calendar's has no conversation).
+        val eventId = intent?.getStringExtra(Notifier.EXTRA_EVENT_ID)
+        if (eventId != null) {
+            val channel = intent.getStringExtra(Notifier.EXTRA_CHANNEL_ID)
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(Notifier.EXTRA_EVENT_ID)
+            intent.removeExtra(Notifier.EXTRA_CHANNEL_ID)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openEventFromNotification(workspace, channel, eventId)
+            return
+        }
         val channelId = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID) ?: return
         val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
         val messageId = intent.getStringExtra(Notifier.EXTRA_MESSAGE_ID)

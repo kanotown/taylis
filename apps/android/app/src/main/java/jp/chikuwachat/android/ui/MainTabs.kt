@@ -127,6 +127,14 @@ object MainTabs {
     fun landCanvas(state: TabStacks, tab: MainTab, channelId: String, canvasId: String): TabStacks =
         withStack(state, tab, MainNav.openCanvas(rootStack(tab), channelId, canvasId)).copy(selected = tab)
 
+    /** M52: a channel calendar's alarm lands like a notification, on the channel's 「予定」 tab (home tab: never a DM). */
+    fun landEvents(state: TabStacks, channelId: String): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.openEvents(rootStack(MainTab.HOME), channelId)).copy(selected = MainTab.HOME)
+
+    /** M52: an alarm of my own calendar: the home tab shows the calendar over its list. */
+    fun landCalendar(state: TabStacks): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.openCalendar(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
+
     /**
      * A search result lands on its tab. On the tab the search is on, the results stay behind the conversation (M16b:
      * back and 「検索結果に戻る」 return to them); on another tab, the search's tab keeps its results for when it comes back.

@@ -309,6 +309,14 @@ class MainTabsTest {
         assertEquals(MainTab.HOME, toHome.selected)
         assertEquals(listOf(Route.ChannelList, Route.Channel("c1"), Route.Thread("c1", "p1")), MainTabs.stack(toHome))
         assertEquals(listOf(Route.DmList, Route.Channel("d2")), MainTabs.stack(toHome, MainTab.DM))
+        // M52: a calendar alarm lands on the home tab: its channel's 「予定」 tab, or the calendar for my own event.
+        val toEvents = MainTabs.landEvents(busy, "c1")
+        assertEquals(MainTab.HOME, toEvents.selected)
+        assertEquals(listOf(Route.ChannelList, Route.Channel("c1", tab = ConversationTab.EVENTS)), MainTabs.stack(toEvents))
+        assertEquals(listOf(Route.Activity(), Route.Channel("c9")), MainTabs.stack(toEvents, MainTab.ACTIVITY))
+        val toCalendar = MainTabs.landCalendar(busy)
+        assertEquals(MainTab.HOME, toCalendar.selected)
+        assertEquals(listOf(Route.ChannelList, Route.Calendar), MainTabs.stack(toCalendar))
     }
 
     @Test

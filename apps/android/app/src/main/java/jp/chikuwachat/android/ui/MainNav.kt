@@ -72,6 +72,10 @@ sealed interface Route {
     @Serializable @SerialName("reminders")
     data object Reminders : Pane { override val keptUnderConversation get() = true }
 
+    /** M52 (CALENDAR.md §7): the calendar, from the home's tile or a tapped alarm of my own calendar. */
+    @Serializable @SerialName("calendar")
+    data object Calendar : Pane { override val keptUnderConversation get() = true }
+
     /** A draft row closes the list itself before opening its conversation ([MainNav.openDraft]). */
     @Serializable @SerialName("drafts")
     data object Drafts : Pane { override val keptUnderConversation get() = true }
@@ -194,6 +198,14 @@ object MainNav {
     /** M46: a `/c/<id>` link: the canvas's conversation opens on its 「キャンバス」 tab, as [openConversation] does. */
     fun openCanvas(stack: List<Route>, channelId: String, canvasId: String): List<Route> =
         base(stack) + Route.Channel(channelId, tab = ConversationTab.CANVAS, canvasId = canvasId)
+
+    /** M52: a channel calendar's alarm tapped: the channel opens on its 「予定」 tab, as [openConversation] does. */
+    fun openEvents(stack: List<Route>, channelId: String): List<Route> =
+        base(stack) + Route.Channel(channelId, tab = ConversationTab.EVENTS)
+
+    /** M52: the calendar over the home's list (the tile, or an alarm of my own calendar); one already open stays as it is. */
+    fun openCalendar(stack: List<Route>): List<Route> =
+        if (top(stack) == Route.Calendar) stack else stack.filter { it is Route.Root } + Route.Calendar
 
     /** M29: the conversation's details page, over whichever tab. */
     fun openDetails(stack: List<Route>): List<Route> = updateChannel(stack) { it.copy(detailsOpen = true) }

@@ -143,6 +143,8 @@ enum class HomeTile(val label: String) {
     DRAFTS("下書き"),
     SAVED("保存"),
     REMINDERS("リマインダー"),
+    /** M52 (CALENDAR.md §7): the calendar, next to リマインダー; no number. */
+    CALENDAR("カレンダー"),
     FILES("ファイル"),
 }
 
@@ -161,6 +163,7 @@ object HomeTiles {
         TileState(HomeTile.DRAFTS, drafts),
         TileState(HomeTile.SAVED, saved),
         TileState(HomeTile.REMINDERS, firedReminders, alert = firedReminders > 0),
+        TileState(HomeTile.CALENDAR, null),
         TileState(HomeTile.FILES, null),
     )
 
