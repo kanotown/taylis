@@ -12,6 +12,7 @@ import type { ApiClient } from "../src/api/client";
 import type { UserMe, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { COMPACT_QUERY } from "../src/ui/compact";
+import { pauseValue } from "../src/ui/dnd";
 import { MainScreen } from "../src/ui/MainScreen";
 import { world, type World } from "./unreadWorld";
 
@@ -88,7 +89,6 @@ const back = async () => {
   fireEvent.click(within(you()).getByRole("button", { name: "戻る" }));
   await flush();
 };
-const hhmm = (iso: string) => { const at = new Date(iso); return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`; };
 
 it("the phone's 「自分」: me on top, 「ステータスを更新」, the pause and the quiet hours with their values, the screens, a red 「ログアウト」; no 管理 for a member", async () => {
   const { w } = await setup({ title: "M2" });
@@ -117,7 +117,9 @@ it("「通知を一時停止」: 1 時間 pauses (dnd_until) and returns to the 
   expect(Date.parse(until) - before).toBeGreaterThanOrEqual(3_600_000 - 1000);
   expect(Date.parse(until) - before).toBeLessThan(3_600_000 + 5000);
   expect(you().querySelector("[data-you-section]")).toBeNull(); // back on the list
-  expect(rowNames()).toContain(`通知を一時停止 〜 ${hhmm(until)} まで`);
+  // The row says what pauseValue says: 「〜 HH:mm まで」, or with the date when the hour crosses midnight (this failed
+  // on runs after 23:00).
+  expect(rowNames()).toContain(`通知を一時停止 ${pauseValue(until)}`);
 
   await openRow(/^通知を一時停止 〜/);
   fireEvent.click(within(you()).getByRole("button", { name: "再開" }));
