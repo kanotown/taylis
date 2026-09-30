@@ -27,9 +27,9 @@ sealed interface Route {
     @Serializable @SerialName("dms")
     data object DmList : Root
 
-    /** M34: the activity tab (§6.4 stage A), on one of its two lists. */
+    /** M34: the activity tab (§6.4), on one of its filters (M39: 「すべて」 first). */
     @Serializable @SerialName("activity")
-    data class Activity(val segment: ActivitySegment = ActivitySegment.MENTIONS) : Root
+    data class Activity(val segment: ActivitySegment = ActivitySegment.ALL) : Root
 
     /** M34: the 自分 tab (the settings as a page, §6.5). */
     @Serializable @SerialName("you")
@@ -80,8 +80,21 @@ sealed interface Route {
     data class Files(val channelId: String? = null) : Pane { override val keptUnderConversation get() = false }
 }
 
-/** M34: the activity tab's switch [メンション | スレッド]. */
-enum class ActivitySegment(val label: String) { MENTIONS("メンション"), THREADS("スレッド") }
+/**
+ * The activity tab's filter. M39 (stage B, MOBILE_UI.md §6.4): the chips [すべて][メンション][スレッド][リアクション],
+ * `filter` being GET /activity's. M34's stage A (a server before M39) shows only [メンション | スレッド] ([stageA]).
+ */
+enum class ActivitySegment(val label: String, val filter: String) {
+    ALL("すべて", "all"),
+    MENTIONS("メンション", "mentions"),
+    THREADS("スレッド", "threads"),
+    REACTIONS("リアクション", "reactions"),
+    ;
+
+    companion object {
+        val stageA: List<ActivitySegment> = listOf(MENTIONS, THREADS)
+    }
+}
 
 /** Where a thread was opened from: its conversation, the 「スレッド」 list, or the search's results. */
 enum class ThreadFrom { CHANNEL, LIST, SEARCH }

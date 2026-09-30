@@ -36,6 +36,8 @@ class Notifier(private val context: Context) {
         channelId: String, title: String, body: String, key: String = channelId, workspace: String? = null, subText: String? = null,
         /** M28c: the message and, for a reply, its thread: the tap opens the thread at the reply (as a permalink does). */
         messageId: String? = null, parentId: String? = null,
+        /** M39: a reaction's notification: the tap reveals `messageId` itself (the push has no thread id for a reply). */
+        reveal: Boolean = false,
         /** M28c: my unread count across the workspaces, for launchers that show a number on the app icon. */
         badge: Int? = null,
     ) {
@@ -47,6 +49,7 @@ class Notifier(private val context: Context) {
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
             if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
+            if (reveal) putExtra(EXTRA_REVEAL, true)
         }
         val request = ((workspace ?: "") + "|" + key).hashCode()
         val pending = PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -93,6 +96,8 @@ class Notifier(private val context: Context) {
         /** M28c: the message the notification is about and, for a reply, its thread's parent. */
         const val EXTRA_MESSAGE_ID = "message_id"
         const val EXTRA_PARENT_ID = "parent_id"
+        /** M39: open the message itself (a reaction's notification), not the conversation at its unread position. */
+        const val EXTRA_REVEAL = "reveal"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

@@ -34,12 +34,15 @@ class MainActivity : ComponentActivity() {
         val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
         val messageId = intent.getStringExtra(Notifier.EXTRA_MESSAGE_ID)
         val parentId = intent.getStringExtra(Notifier.EXTRA_PARENT_ID)
+        val reveal = intent.getBooleanExtra(Notifier.EXTRA_REVEAL, false)
         intent.removeExtra(Notifier.EXTRA_CHANNEL_ID)
         intent.removeExtra(Notifier.EXTRA_WORKSPACE)
         intent.removeExtra(Notifier.EXTRA_MESSAGE_ID)
         intent.removeExtra(Notifier.EXTRA_PARENT_ID)
-        // M16c: the notification's workspace comes on screen first (WORKSPACES.md §7); M28c: a reply's thread opens at the reply.
-        controller.openFromNotification(workspace, channelId, messageId, parentId)
+        intent.removeExtra(Notifier.EXTRA_REVEAL)
+        // M16c: the notification's workspace comes on screen first (WORKSPACES.md §7); M28c: a reply's thread opens at the
+        // reply; M39: a reaction's notification opens the message reacted to.
+        controller.openFromNotification(workspace, channelId, messageId, parentId, reveal)
     }
 
     override fun onStart() {

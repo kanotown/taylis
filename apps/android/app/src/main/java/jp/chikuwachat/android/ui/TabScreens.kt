@@ -33,9 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,23 +59,22 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
-import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.Store
-import jp.chikuwachat.android.sync.ThreadEntry
 import kotlinx.coroutines.launch
 
 /**
  * M34: the bottom tabs (MOBILE_UI.md §5) with their badges (§8, [MainTabs]): DM = the unread DMs, activity = the unread
- * followed threads and the channels with a mention (red with a mention), home = a dot for an unread channel.
+ * activity items (M39; before it the unread followed threads and the channels with a mention), red with a mention,
+ * home = a dot for an unread channel.
  * `version`: the counts come from the Store.
  */
 @Composable
 fun MainTabBar(store: Store, version: Int, selected: MainTab, onTab: (MainTab) -> Unit) {
     val meId = store.me?.id
     val dm = remember(version, meId) { MainTabs.dmBadge(store.channels.values, meId) }
-    val activity = remember(version) { MainTabs.activityBadge(store.channels.values, store.threadSummary) }
+    val activity = remember(version) { MainTabs.activityBadge(store.channels.values, store.threadSummary, store.activity) }
     val home = remember(version, meId) { MainTabs.homeDot(store.channels.values, meId) }
     NavigationBar {
         MainTab.entries.forEach { tab ->
@@ -271,41 +267,6 @@ private fun DmRow(channel: ChannelState, store: Store, version: Int, now: ZonedD
                 } else if (unread) {
                     Box(Modifier.padding(start = 6.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
                 }
-            }
-        }
-    }
-}
-
-/**
- * M34, the activity tab, stage A (MOBILE_UI.md §6.4): [メンション | スレッド] over the existing 「メンション」 and
- * 「スレッド」 lists; a row opens its message or thread on this tab's stack.
- */
-@Composable
-fun ActivityScreen(
-    controller: AppController,
-    version: Int,
-    segment: ActivitySegment,
-    onSegment: (ActivitySegment) -> Unit,
-    mentionsState: LazyListState,
-    threadsState: LazyListState,
-    onOpenMessage: (MessageOut) -> Unit,
-    onOpenThread: (ThreadEntry) -> Unit,
-) {
-    Column(Modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            ActivitySegment.entries.forEachIndexed { index, value ->
-                SegmentedButton(
-                    selected = value == segment,
-                    onClick = { onSegment(value) },
-                    shape = SegmentedButtonDefaults.itemShape(index, ActivitySegment.entries.size),
-                    label = { Text(value.label) },
-                )
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (segment) {
-                ActivitySegment.MENTIONS -> MentionsPane(controller, version, onOpen = onOpenMessage, listState = mentionsState)
-                ActivitySegment.THREADS -> ThreadsPane(controller, version, onOpen = onOpenThread, listState = threadsState)
             }
         }
     }

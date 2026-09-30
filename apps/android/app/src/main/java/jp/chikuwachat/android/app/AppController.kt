@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.app
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
 import jp.chikuwachat.android.api.CustomEmojiOut
@@ -132,6 +133,11 @@ class AppController(private val app: Application) {
      * parent id): the thread opens at the reply, as a permalink does. Null for a top-level post (the channel opens).
      */
     var pendingReply by mutableStateOf<Pair<String, String>?>(null)
+    /**
+     * M39: with [pendingChannelId], the message a tapped reaction notification was about (its thread, if a reply, is not
+     * in the push): it is fetched and revealed like a permalink. Null for a message's notification.
+     */
+    var pendingRevealId by mutableStateOf<String?>(null)
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -741,11 +747,11 @@ class AppController(private val app: Application) {
      * A local notification, for the workspace it belongs to (named when there are two or more, WORKSPACES.md §7). M28c:
      * with the message (and its thread for a reply), and my unread count across the workspaces as the icon's number.
      */
-    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId, messageId: String? = null, parentId: String? = null) {
+    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId, messageId: String? = null, parentId: String? = null, reveal: Boolean = false) {
         val named = workspaces.size >= 2
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
-            messageId = messageId, parentId = parentId, badge = totalBadge(),
+            messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(),
         )
     }
 
@@ -774,6 +780,8 @@ class AppController(private val app: Application) {
      * screen it is shown unless the app is in the foreground with a live socket (the event arrives over the socket,
      * which alerts for every conversation but the open one); the engine catches up either way. Another workspace's
      * push is always shown (its server sees no connection) and marks that workspace unread.
+     * M39: a reaction's push (`kind = reaction`, sent only to those who turned 「リアクションのバナー」 on) shows the same
+     * way, as its own notification; its tap opens the message reacted to. It marks nothing unread.
      */
     fun handlePush(message: PushMessage) {
         scope.launch {
@@ -789,7 +797,7 @@ class AppController(private val app: Application) {
                 val live = appForeground && engineStatus == EngineStatus.ONLINE
                 val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
                 if (!message.isSilent && !live && !reading && message.channelId != null && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -798,7 +806,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (!message.isSilent && message.channelId != null && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction)
             }
         }
     }
@@ -816,11 +824,13 @@ class AppController(private val app: Application) {
      * A tapped notification (WORKSPACES.md §7): its workspace comes on screen (switching if needed), then the
      * conversation opens as before (the main screen opens [pendingChannelId] once the store knows it).
      */
-    fun openFromNotification(workspaceKey: String?, channelId: String, messageId: String? = null, parentId: String? = null) {
+    fun openFromNotification(workspaceKey: String?, channelId: String, messageId: String? = null, parentId: String? = null, reveal: Boolean = false) {
         pendingWorkspaceKey = workspaceKey
         pendingChannelId = channelId
         // M28c: a reply's notification opens its thread at the reply (the main screen reveals it once the store knows the channel).
         pendingReply = if (messageId != null && parentId != null) messageId to parentId else null
+        // M39: a reaction's notification opens the message reacted to (in its thread when it is a reply).
+        pendingRevealId = if (reveal && pendingReply == null) messageId else null
         scope.launch {
             sessionLock.withLock {
                 if (!restored) return@withLock // startup opens the pending workspace itself
@@ -954,6 +964,7 @@ class AppController(private val app: Application) {
             closeActive()
             pendingChannelId = null
             pendingReply = null
+            pendingRevealId = null
         }
         push.detach(serverUrl)
         val username = entry?.username ?: if (wasActive) savedUsername else null
@@ -1043,6 +1054,26 @@ class AppController(private val app: Application) {
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = attempt { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = attempt { api!!.listBookmarks(cursor) }
     suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = attempt { api!!.listMentions(cursor) }
+
+    /** M39: the activity badge read again (the tab's pull to refresh). */
+    suspend fun refreshActivity() {
+        engine?.refreshActivity()
+    }
+
+    /** M39: a page of the activity tab (`filter` all / mentions / reactions / threads). */
+    suspend fun listActivity(filter: String, cursor: String? = null): Result<jp.chikuwachat.android.api.ActivityListOut> =
+        attempt { api!!.listActivity(filter, cursor) }
+
+    /**
+     * M39: the activity is read up to `readAt` (the server only moves it forward); the badge takes the answer. `quiet`:
+     * the tab's own mark as it is looked at, which the next look retries, so a failure only goes to the log; a
+     * 「すべて既読」 that failed says so.
+     */
+    suspend fun markActivityRead(readAt: String, quiet: Boolean = false): jp.chikuwachat.android.api.ActivitySummaryOut? =
+        attempt { api!!.markActivityRead(readAt) }
+            .onSuccess { store.setActivity(it) }
+            .onFailure { if (quiet) Log.i("AppController", "activity read not saved: $it") else error = describe(it) }
+            .getOrNull()
     suspend fun listFiles(channelId: String? = null, query: String? = null, cursor: String? = null): Result<jp.chikuwachat.android.api.FileListOut> =
         attempt { api!!.listFiles(channelId, query, cursor) }
     /** M11h: every public channel plus my private ones, for the channel browser. */
@@ -1180,13 +1211,16 @@ class AppController(private val app: Application) {
         notice = "テキストをコピーしました"
     }
 
-    /** A permalink tapped in a body: fetch the message (membership is checked there) and hand it to the screen. */
-    suspend fun openPermalink(messageId: String) {
-        val api = api ?: return
-        try {
+    /**
+     * A permalink tapped in a body: fetch the message (membership is checked there) and hand it to the screen. M39: also
+     * a reaction's notification. Whether it will show.
+     */
+    suspend fun openPermalink(messageId: String): Boolean {
+        val api = api ?: return false
+        return try {
             val message = api.message(messageId)
-            if (revealMessage(message)) pendingReveal = message
-        } catch (e: Exception) { report(e) }
+            revealMessage(message).also { if (it) pendingReveal = message }
+        } catch (e: Exception) { report(e); false }
     }
 
     /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */
@@ -1392,6 +1426,9 @@ class AppController(private val app: Application) {
      * the default show the new level at once; my other devices learn it on their next bootstrap.
      */
     suspend fun setNotificationDefault(overall: String): Boolean = updateProfileJson(buildJsonObject { put("notification_default", overall) })
+
+    /** M39: 「リアクションのバナー」, a push when someone reacts to my message (the activity lists it either way). */
+    suspend fun setNotifyReactions(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_reactions", on) })
 
     /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
     suspend fun updateProfile(fields: Map<String, String?>): Boolean =

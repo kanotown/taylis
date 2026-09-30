@@ -113,6 +113,8 @@ data class EngineOptions(
     val threadPageSize: Int = 50,
     /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
     val threadRefreshMs: Long = 300,
+    /** M39: the events that move the activity badge collapse into one GET /activity/summary this long after the last. */
+    val activityRefreshMs: Long = 1_000,
     /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
     val typingIntervalMs: Long = 3_000,
     val typingTtlMs: Long = 5_000,
@@ -217,6 +219,7 @@ class SyncEngine(
     /** §7.7: views of a channel's rows besides the open conversation (a thread pane); the channel is not trimmed meanwhile. */
     private val views = HashMap<String, Int>()
     private var threadRefresh: Job? = null
+    private var activityRefresh: Job? = null
     /** "channel[:parent]" → when the last typing frame went out. */
     private val typingSent = HashMap<String, Long>()
 
@@ -268,6 +271,8 @@ class SyncEngine(
         stopHeartbeat()
         threadRefresh?.cancel()
         threadRefresh = null
+        activityRefresh?.cancel()
+        activityRefresh = null
         outboxRetry?.cancel()
         outboxRetry = null
         closeSocket()
@@ -526,6 +531,8 @@ class SyncEngine(
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { dropChannel(it.id) }
         reapplyUnsentReads()
         bootstrap.threads?.let { store.setThreadSummary(it) }
+        // M39: every connect corrects the activity badge (the events alone may have been missed); none from an older server.
+        store.setActivity(bootstrap.activity)
         store.setLimits(bootstrap.limits)
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
@@ -711,6 +718,12 @@ class SyncEngine(
                     ?: NotificationPreferenceOut(channelId, frame.data.str("level") ?: NotificationLevels.MENTIONS, frame.data.str("muted_until"))
                 store.setNotification(pref.copy(channelId = channelId))
             }
+            // M39 (SYNC_PROTOCOL.md §6): someone reacted to my message, or my read position moved on another device.
+            "reaction.added" -> {
+                store.noteActivity()
+                scheduleActivityRefresh()
+            }
+            "activity.read" -> scheduleActivityRefresh()
             "session.revoked" -> signOut()
         }
     }
@@ -725,6 +738,11 @@ class SyncEngine(
         val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
         val synced = channel.syncedSeq
+        // M39: a mention of me or a reply in a thread I follow is an activity item (not an event applied already).
+        if (isNew && (synced == null || seq > synced) && ActivityRules.isActivity(message, store.me, thread, message.parentId?.let { store.threads[it]?.state?.following } == true)) {
+            store.noteActivity()
+            scheduleActivityRefresh()
+        }
         when {
             synced == null -> {
                 // §7.4: no timeline here, but rows already held (an open thread's parent and replies) follow the event.
@@ -1092,6 +1110,30 @@ class SyncEngine(
     suspend fun refreshThreads() {
         if (store.threadsLoaded) runCatching { loadThreads(store.threadsFilter) }
         else runCatching { api.threads("unread", null, 1) }.onSuccess { store.setThreadSummary(it.summary) }
+    }
+
+    /**
+     * M39: the activity badge is read again shortly after the events that move it (a burst of them, one request). Not
+     * against a server before M39 (no badge came with bootstrap, and it sends none of these events anyway).
+     */
+    private fun scheduleActivityRefresh() {
+        if (store.activity == null || api !is ActivityApi) return
+        activityRefresh?.cancel()
+        activityRefresh = scope.launch {
+            options.sleep(options.activityRefreshMs)
+            if (_status.value == EngineStatus.ONLINE) refreshActivity()
+        }
+    }
+
+    /** GET /activity/summary into the store; a failure keeps the last badge (the next connect's bootstrap corrects it). */
+    suspend fun refreshActivity() {
+        val activityApi = api as? ActivityApi ?: return
+        runCatching { activityApi.activitySummary() }.onSuccess { store.setActivity(it) }
+    }
+
+    /** Waits for the debounced activity refresh (tests). */
+    suspend fun flushActivity() {
+        activityRefresh?.join()
     }
 
     /** Waits for the debounced thread refresh and read marks (tests). */

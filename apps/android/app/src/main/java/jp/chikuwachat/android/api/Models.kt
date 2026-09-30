@@ -57,6 +57,11 @@ data class UserMe(
      * §4). Pushes only: the unread rules never read it (SYNC_PROTOCOL.md §10.5).
      */
     val notificationDefault: String = "mentions",
+    /**
+     * M39: a banner (push) when someone reacts to my message (PUSH_NOTIFICATIONS.md §4); off unless turned on. The
+     * activity tab lists the reactions either way. Absent from servers before M39 (off).
+     */
+    val notifyReactions: Boolean = false,
 ) {
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
@@ -347,6 +352,11 @@ data class BootstrapOut(
     val drafts: List<DraftOut> = emptyList(),
     /** Post templates (M30): the workspace's, then mine; changes arrive as template.updated. Absent before M30. */
     val templates: List<TemplateOut> = emptyList(),
+    /**
+     * M39: the activity tab's badge (GET /activity/summary; SYNC_PROTOCOL.md §4.1). Null from a server before M39: the
+     * tab then keeps its stage-A lists and badge rule (MainTabs.activityBadge).
+     */
+    val activity: ActivitySummaryOut? = null,
 )
 
 /**
@@ -475,6 +485,31 @@ data class ScheduledOut(
 /** GET /mentions (M11h): messages that mention me or everyone, newest first. */
 @Serializable
 data class MentionListOut(val items: List<MessageOut>, val nextCursor: String? = null)
+
+/**
+ * M39 (MOBILE_UI.md §7.2): one row of the activity tab. `kind` "mention" (a message mentioning me), "reaction" (my
+ * message, with everyone who reacted and the distinct emoji, the newest reaction's time as `at`) or "thread_reply" (a
+ * reply by someone else in a thread I follow). `actorIds`: who did it (never me).
+ */
+@Serializable
+data class ActivityItem(
+    val kind: String,
+    val at: String,
+    val message: MessageOut,
+    val actorIds: List<String>,
+    val emojis: List<String> = emptyList(),
+) {
+    /** One row per kind and message (a reaction row is per message, whoever reacts next). */
+    val key: String get() = "$kind:${message.id}"
+}
+
+/** GET /activity: newest first; `nextCursor` (the oldest row's time) goes back as `cursor`, null at the end. */
+@Serializable
+data class ActivityListOut(val items: List<ActivityItem>, val nextCursor: String? = null, val readAt: String)
+
+/** GET /activity/summary, PUT /activity/read and bootstrap `activity`: the items after `readAt` (at most 99). */
+@Serializable
+data class ActivitySummaryOut(val readAt: String, val unreadCount: Int, val mentionUnread: Boolean)
 
 @Serializable
 data class PresenceEntry(val userId: String, val status: String)
