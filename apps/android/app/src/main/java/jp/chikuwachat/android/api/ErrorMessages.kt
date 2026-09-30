@@ -117,6 +117,7 @@ object ErrorMessages {
         "times_exists" to "この人の times はすでにあります",
         "token_expired" to "ログインし直してください",
         "too_many_attachments" to "添付は 10 件までです",
+        "too_many_canvas_images" to "1 つのキャンバスに入れられる画像・ファイルは 100 件までです",
         "too_many_canvases" to "この会話のキャンバスが多すぎます (200 件まで)",
         "too_many_drafts" to "下書きが多すぎます。不要な下書きを削除してください",
         "too_many_links" to "リンクは 30 件までです",
