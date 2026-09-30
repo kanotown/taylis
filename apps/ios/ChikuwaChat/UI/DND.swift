@@ -49,7 +49,7 @@ enum DND {
             case .halfHour: "30 分"
             case .hour: "1 時間"
             case .twoHours: "2 時間"
-            case .tomorrow: "明日 8:00 まで"
+            case .tomorrow: "明日 8:00"
             }
         }
         func until(from now: Date = Date()) -> Date {

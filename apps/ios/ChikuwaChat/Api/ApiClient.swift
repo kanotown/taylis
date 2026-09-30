@@ -172,6 +172,13 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
                                  body: .object(["current_password": .string(current), "new_password": .string(new)]), auth: true, retry401: true)
     }
 
+    /// M40: my signed-in devices; ending one signs that device out (its pushes stop).
+    func sessions() async throws -> [SessionOut] { try await request("GET", "/api/v1/auth/sessions") }
+
+    func revokeSession(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/auth/sessions/\(id)", body: nil, auth: true, retry401: true)
+    }
+
     func users() async throws -> [UserPublic] { try await request("GET", "/api/v1/users") }
 
     /// Register (or clear, with nil) this session's push token (PUSH_NOTIFICATIONS.md §3).

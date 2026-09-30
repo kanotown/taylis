@@ -1100,6 +1100,18 @@ final class AppController {
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
+    /// M40: my signed-in devices, this one first (the account screen's ログイン中の端末).
+    func loadSessions() async throws -> [SessionOut] {
+        guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        return SessionList.ordered(try await api.sessions())
+    }
+
+    /// M40: sign another device out; whether it went through (the reason is shown).
+    func revokeSession(_ id: String) async -> Bool {
+        guard let api else { return false }
+        do { try await api.revokeSession(id: id); return true } catch { self.error = describe(error); return false }
+    }
+
     // MARK: sidebar sections (M14f)
 
     private func sidebarChange(_ work: (ApiClient) async throws -> [SidebarSectionOut]) async -> Bool {
