@@ -46,6 +46,9 @@ class User(Base):
     notification_default: Mapped[str] = mapped_column(
         String(16), default="mentions", server_default="mentions"
     )
+    # M50: my long-press quick reactions, in order (1-6 plain emoji); NULL = the clients' rule
+    # (the ones I used last, then the defaults).
+    quick_reactions: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

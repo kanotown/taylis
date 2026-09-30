@@ -1,3 +1,4 @@
+import unicodedata
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -11,6 +12,24 @@ EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+MAX_QUICK_REACTIONS = 6
+
+
+def is_plain_emoji(value: str) -> bool:
+    """M50: a Unicode emoji as a reaction takes it (messages.schemas.EMOJI_PATTERN's plain half),
+    and nothing that reads as text: no ASCII (so no `:custom:`), whitespace, controls, letters or
+    digits, and at least one symbol. Marks, joiners and unassigned code points (newer emoji than
+    this Python knows) may follow."""
+    if not 1 <= len(value) <= 16:
+        return False
+    symbol = False
+    for char in value:
+        category = unicodedata.category(char)
+        if ord(char) < 0x80 or category[0] in "LNZ" or category in ("Cc", "Cs", "Co"):
+            return False
+        symbol = symbol or category[0] in "SP" or category == "Cn"
+    return symbol
 
 
 class QuietHours(BaseModel):
@@ -92,6 +111,9 @@ class UserMe(UserPublic):
     notify_reactions: bool = False
     # M48: false for an account made by Google sign-in; clients hide 「パスワードを変更」.
     has_password: bool = True
+    # M50: my quick reactions in order (1-6 plain emoji); null = not chosen, the clients' rule
+    # (the ones I used last, then the defaults).
+    quick_reactions: list[str] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -115,6 +137,22 @@ class UserUpdate(BaseModel):
     notification_default: Literal["all", "mentions", "none"] | None = None
     # M39: reaction banners on or off.
     notify_reactions: bool | None = None
+    # M50: 1-6 distinct plain emoji; null resets to the clients' rule.
+    quick_reactions: list[str] | None = Field(
+        default=None, min_length=1, max_length=MAX_QUICK_REACTIONS
+    )
+
+    @field_validator("quick_reactions")
+    @classmethod
+    def quick_reactions_are_plain_emoji(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        for emoji in value:
+            if not is_plain_emoji(emoji):
+                raise ValueError("Quick reactions are plain emoji (no text or custom emoji)")
+        if len(set(value)) != len(value):
+            raise ValueError("Quick reactions must be distinct")
+        return value
 
     @field_validator("notify_keywords")
     @classmethod
@@ -184,4 +222,5 @@ def to_user_me(user: User) -> UserMe:
         notification_default=user.notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
         has_password=user.password_hash is not None,
+        quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
     )

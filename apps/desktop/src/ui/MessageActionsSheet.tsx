@@ -10,11 +10,17 @@ import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 /** The default quick reactions of the phone sheet, the same six as iOS and Android (M25). */
 export const SHEET_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 
+/** M50: at most this many chosen quick reactions (UserMe.quick_reactions, 「リアクションの候補」 in the settings). */
+export const MAX_QUICK_REACTIONS = 6;
+
 /**
- * The six quick reactions: the ones I used last first, then the defaults (tester request, 2026-09-28; the same rule on
- * iOS and Android). Custom emoji stay in the picker: the quick row shows plain emoji.
+ * The quick reactions (apps/shared/quick-reactions.json). M50: the ones I chose (`chosen`, UserMe.quick_reactions),
+ * exactly and in their order; the hover bar takes the first `count`. Not chosen (null): the ones I used last first, then
+ * the defaults (tester request, 2026-09-28; the same rule on iOS and Android). Custom emoji stay in the picker: the quick
+ * row shows plain emoji.
  */
-export function quickReactions(recent: readonly string[], count = 6): string[] {
+export function quickReactions(recent: readonly string[], count = 6, chosen?: readonly string[] | null): string[] {
+  if (chosen && chosen.length > 0) return chosen.slice(0, count);
   const custom = /^:[^:\s]+:$/;
   return [...new Set([...recent.filter((glyph) => !custom.test(glyph)), ...SHEET_REACTIONS])].slice(0, count);
 }
@@ -137,7 +143,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
         ) : (
           <>
             <div className="flex justify-center gap-2 px-3 pb-2 pt-1">
-              {quickReactions(readRecentEmoji()).map((emoji) => (
+              {quickReactions(readRecentEmoji(), 6, me?.quick_reactions).map((emoji) => (
                 <button
                   key={emoji}
                   type="button"

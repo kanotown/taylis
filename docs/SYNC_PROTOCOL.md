@@ -246,7 +246,7 @@
 | `channel.member_added` | channel | — | `{ channel_id, user_id }`。追加された本人には `channel.created` も送る。クライアントは保持している `member_count` を +1 (`member_removed` は −1) して、次の一覧取得までの表示に使う (M11h) |
 | `channel.member_removed` | channel + 本人 (outbox 行を 2 つ書く) | — | `{ channel_id, user_id }` |
 | `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
-| `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` |
+| `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` (UserPublic)。本人だけの設定 (UserMe の `notify_keywords`・`notification_default`・`notify_reactions`・`quick_reactions` など) は載らない。`PATCH /users/me` はどの項目でも `updated_at` を進めて `user.updated` を出すので、**自分についての `user.updated` の `updated_at` が手元の `me` より新しければ、別の端末が設定を変えた**: クライアントは `GET /users/me` を読み直して `me` を置き換える (M50。読み直さない端末も次の bootstrap の `me` で揃う) |
 | `session.revoked` | session | — | `{ reason }` |
 
 `message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `MessageOut` スキーマ)。フレームと各イベントの

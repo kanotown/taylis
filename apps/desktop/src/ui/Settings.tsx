@@ -10,6 +10,8 @@ import { AdminBody } from "./AdminDialog";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar } from "./Avatar";
 import { OVERALL_LEVEL_LABELS, OVERALL_LEVEL_NOTE, overallLevel } from "./channels";
+import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
+import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
 import { customPauseAt, DAY_LABELS, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
@@ -193,7 +195,7 @@ function sectionSubtitle(section: SettingsSection): string | undefined {
     case "appearance":
       return "端末に合わせる / ライト / ダーク";
     case "input":
-      return "送信キー・テンプレート";
+      return "送信キー・リアクションの候補・テンプレート";
     case "profile":
       return "写真・表示名・肩書";
     case "account":
@@ -525,8 +527,80 @@ function InputSection({ controller }: { controller: AppController }) {
           ))}
         </div>
       </section>
+      <QuickReactionsSettings controller={controller} />
       <TemplatesSettings controller={controller} />
     </div>
+  );
+}
+
+/**
+ * M50 「リアクションの候補」: the six quick reactions of the long-press sheet (the hover bar shows the first three), mine on
+ * every device (users.quick_reactions). A slot opens the picker (plain emoji only) and replaces its emoji; one already in
+ * another slot trades places with it. Not chosen: the slots show today's rule (the ones I used last, then the defaults),
+ * and choosing one keeps the others as shown. 「元に戻す」 goes back to that rule. A server before M50 has no such setting.
+ */
+export function QuickReactionsSettings({ controller }: { controller: AppController }) {
+  const me = meOf(controller);
+  const recent = useRecentEmoji();
+  const [slot, setSlot] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!me || me.quick_reactions === undefined) return null;
+  const chosen = me.quick_reactions ?? null;
+  const shown = quickReactions(recent, MAX_QUICK_REACTIONS, chosen);
+  const save = (list: string[] | null) => {
+    setSlot(null);
+    setBusy(true);
+    void controller.setQuickReactions(list).finally(() => setBusy(false));
+  };
+  const pick = (index: number, glyph: string) => {
+    const next = [...shown];
+    const other = next.indexOf(glyph);
+    if (other === index) return setSlot(null);
+    if (other >= 0) next[other] = next[index]!;
+    next[index] = glyph;
+    save(next);
+  };
+  return (
+    <section className="space-y-2" aria-label="リアクションの候補">
+      <h3 className="text-sm font-semibold">リアクションの候補</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        {shown.map((emoji, index) => (
+          <button
+            key={`${index}:${emoji}`}
+            type="button"
+            data-slot={index}
+            aria-label={`候補 ${index + 1}: ${emoji} (タップして変更)`}
+            aria-pressed={slot === index}
+            disabled={busy}
+            onClick={() => setSlot(slot === index ? null : index)}
+            className={cn(
+              "flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-colors disabled:opacity-60",
+              slot === index ? "bg-accent-soft ring-2 ring-accent" : "bg-panel hover:bg-panel-2",
+            )}
+          >
+            {emoji}
+          </button>
+        ))}
+        <Button size="sm" variant="secondary" disabled={busy || chosen === null} onClick={() => save(null)} className="ml-auto">
+          元に戻す
+        </Button>
+      </div>
+      <p className="text-xs text-muted">
+        {chosen === null
+          ? "未設定: 最近使った絵文字が先に並びます。タップして選ぶと、どの端末でもこの順になります。"
+          : "長押しのメニューにこの順で並びます (パソコンのメッセージ上には先頭の 3 つ)。どの端末でも同じです。"}
+      </p>
+      {slot !== null && (
+        <div className="rounded-xl border border-line p-3">
+          <div className="mb-2 flex items-center justify-between text-xs text-muted">
+            <span>候補 {slot + 1} の絵文字を選んでください</span>
+            <button type="button" className="rounded px-1.5 py-0.5 hover:bg-panel hover:text-ink" onClick={() => setSlot(null)}>キャンセル</button>
+          </div>
+          {/* Plain emoji only: no custom emoji (no `custom`, and recent ones like :name: are left out). */}
+          <EmojiPicker recent={recent.filter((glyph) => !glyph.startsWith(":"))} onPick={(entry) => pick(slot, entry.glyph)} />
+        </div>
+      )}
+    </section>
   );
 }
 
