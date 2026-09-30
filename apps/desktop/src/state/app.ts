@@ -3,7 +3,7 @@ import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
-import { challengeFor, newVerifier, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
+import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
@@ -19,7 +19,9 @@ import type { AttachmentOut, AuthMethodsOut, CanvasMeta, CanvasOut, CanvasPage, 
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
+import { listenForDeepLinks } from "../platform/deepLink";
 import { isTauri, isWeb } from "../platform/env";
+import { openInBrowser } from "../platform/external";
 import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
 import { secretStore } from "../platform/secrets";
@@ -217,6 +219,7 @@ export class AppController {
    * (SYNC_PROTOCOL.md §7.2). In Tauri the other workspaces sign in behind it (WORKSPACES.md §6).
    */
   async boot(): Promise<void> {
+    if (isTauri()) void this.watchSsoLinks();
     try {
       // M48: back from Google sign-in (`/#sso_ticket=` / `#sso_error=`); the fragment is removed at once.
       const sso = isWeb() ? takeSsoReturn() : null;
@@ -230,7 +233,7 @@ export class AppController {
       }
       this.activeServer = this.workspaces.find((e) => e.serverUrl === saved.active)?.serverUrl ?? this.workspaces[0]?.serverUrl ?? null;
       if (sso?.kind === "ticket") {
-        const failure = await this.completeSso(sso.ticket);
+        const failure = await this.completeSso(sso.ticket, takeSsoPending());
         if (failure !== null) this.setScreen("login", failure);
         return;
       }
@@ -392,7 +395,8 @@ export class AppController {
     }
   }
 
-  // --- Google sign-in (M48, docs/SSO.md §6): the browser build; the Tauri app's deep link comes later ----------
+  // --- Google sign-in (M48, docs/SSO.md §6): the browser build leaves the tab; the Tauri app opens the system browser
+  // and gets the ticket back through the `chikuwachat://sso` deep link.
 
   /** GET /auth/methods of the login form's server; null when it cannot tell (an older server, offline). */
   async authMethods(server: string): Promise<AuthMethodsOut | null> {
@@ -408,13 +412,24 @@ export class AppController {
   /** Where 「Google でログイン」 sends the tab (tests replace it). */
   navigate: (url: string) => void = (url) => location.assign(url);
 
-  /** 「Google でログイン」: a fresh verifier kept in this tab, and off to the server's start URL with its challenge. */
+  /** Tauri: opens the start page in the system browser (tests replace it). */
+  openBrowser: (url: string) => Promise<void> = openInBrowser;
+
+  /**
+   * Tauri: "waiting" while the sign-in is open in the browser (the login screen says so and offers キャンセル),
+   * "exchanging" once its ticket came back. Always "idle" in a browser, whose tab leaves instead.
+   */
+  ssoState: "idle" | "waiting" | "exchanging" = "idle";
+  /** Tauri: the server and verifier of the sign-in open in the browser; only memory holds the verifier. */
+  private ssoFlow: SsoPending | null = null;
+
+  /** 「Google でログイン」: a fresh verifier kept here, and off to the server's start URL with its challenge. */
   async startGoogleSignIn(server: string): Promise<void> {
-    const serverUrl = isWeb() ? location.origin : normalizeServerUrl(server);
-    if (!serverUrl) {
-      this.setScreen("login", "サーバ URL が正しくありません");
+    if (!isWeb()) {
+      await this.startGoogleSignInInBrowser(server);
       return;
     }
+    const serverUrl = location.origin;
     const verifier = newVerifier();
     if (!saveSsoPending({ serverUrl, verifier })) {
       this.setScreen("login", "このブラウザの設定では Google でログインできません (サイトのデータの保存を許可してください)");
@@ -423,9 +438,72 @@ export class AppController {
     this.navigate(ssoStartUrl(serverUrl, this.deviceInfo().platform, await challengeFor(verifier)));
   }
 
+  /** The Tauri app: the server as a password login would take it (§5.1), then the start page in the system browser. */
+  private async startGoogleSignInInBrowser(server: string): Promise<void> {
+    const target = await this.resolveServer(server);
+    if (target === null) return;
+    const verifier = newVerifier();
+    const url = ssoStartUrl(target.server, this.deviceInfo().platform, await challengeFor(verifier));
+    // A second start replaces the first: its ticket, if it still comes back, no longer matches the verifier.
+    this.ssoFlow = { serverUrl: target.server, verifier };
+    this.ssoState = "waiting";
+    this.totpRequired = false;
+    this.setScreen("login", null);
+    try {
+      await this.openBrowser(url);
+    } catch (err) {
+      console.error("could not open the browser for Google sign-in", err);
+      this.ssoFlow = null;
+      this.ssoState = "idle";
+      this.setScreen("login", "ブラウザを開けませんでした。もう一度お試しください");
+    }
+  }
+
+  /** 「キャンセル」 while the browser is open: a ticket that still comes back is ignored. */
+  cancelGoogleSignIn(): void {
+    if (this.ssoState !== "waiting") return;
+    this.ssoFlow = null;
+    this.ssoState = "idle";
+    this.emit();
+  }
+
+  /** Tauri: listens for `chikuwachat://` links (and takes the one that launched the app), from startup on. */
+  async watchSsoLinks(): Promise<void> {
+    try {
+      await listenForDeepLinks((url) => void this.handleSsoLink(url));
+    } catch (err) {
+      console.error("could not listen for sign-in links", err);
+    }
+  }
+
+  /**
+   * A deep link came in. Only a `chikuwachat://sso` link while a sign-in waits counts; anything else (a link from
+   * elsewhere, one that launched the app, a second copy) is ignored, and the ticket is useless without the verifier.
+   */
+  async handleSsoLink(url: string): Promise<void> {
+    const found = parseSsoDeepLink(url);
+    if (!found) return;
+    const flow = this.ssoFlow;
+    if (!flow || this.ssoState !== "waiting") {
+      console.info("ignored a sign-in link: no Google sign-in is waiting");
+      return;
+    }
+    this.ssoFlow = null;
+    if (found.kind === "error") {
+      this.ssoState = "idle";
+      this.setScreen("login", ssoErrorText(found.code));
+      return;
+    }
+    this.ssoState = "exchanging";
+    this.emit();
+    const failure = await this.completeSso(found.ticket, flow);
+    this.ssoState = "idle";
+    if (failure !== null) this.setScreen("login", failure);
+    else this.emit();
+  }
+
   /** The ticket Google sign-in returned → a session, as after a password login; returns the failure text, if any. */
-  private async completeSso(ticket: string): Promise<string | null> {
-    const pending = takeSsoPending();
+  private async completeSso(ticket: string, pending: SsoPending | null): Promise<string | null> {
     if (!pending) return ssoErrorText("invalid_ticket"); // started in another tab, or storage was cleared
     const normalized = isWeb() ? location.origin : pending.serverUrl;
     const server = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;

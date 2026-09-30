@@ -20,6 +20,14 @@ tauri-plugin-fs = "2"
 # External links open in the system browser. 2.5.x matches the tauri 2.11 line (2.6 needs tauri 2.12);
 # keep it in step with @tauri-apps/plugin-opener in package.json.
 tauri-plugin-opener = "~2.5.5"
+# Google sign-in (M48, docs/SSO.md §6) returns through `chikuwachat://sso?ticket=…`. 2.4.x is the last line on
+# tauri 2.11 (2.5 needs tauri 2.12); keep it in step with @tauri-apps/plugin-deep-link in package.json.
+tauri-plugin-deep-link = "~2.4.10"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Windows / Linux hand a deep link to a new process; this forwards it to the running app (its deep-link feature).
+# macOS delivers the URL to the running app itself. 2.4.x for tauri 2.11, as above.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "~2.4.5", features = ["deep-link"] }
