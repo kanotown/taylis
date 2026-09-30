@@ -77,6 +77,11 @@ struct ThreadView: View {
                     ScrollView {
                         rowStack(viewportHeight: viewport.size.height)
                         .padding(.vertical) // the side margin is each row's (margin)
+                        // MOBILE_POLISH.md C7: a thread shorter than the screen starts at the top (the parent under the
+                        // bar, the replies after it; Slack), not at the bottom under a gap. At least a screen tall, with
+                        // the rows at its far end — the screen's top in the flipped list. Layout only: a longer thread
+                        // is unchanged, and the newest reply stays at the origin (the keyboard, arrivals).
+                        .frame(minHeight: viewport.size.height, alignment: .bottom)
                         .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
                         .animation(positioned || provisional ? .easeOut(duration: 0.25) : nil, value: replies.last?.rowKey)
                         .background(StatusBarTapStays())

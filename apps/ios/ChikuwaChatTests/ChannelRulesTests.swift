@@ -108,6 +108,15 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertEqual(try JSON.snakeDecoder.decode(UserMe.self, from: Data((me + #","notification_default":"none"}"#).utf8)).overallNotification, "none")
     }
 
+    /// MOBILE_POLISH.md D1: the channel details' one 「通知」 row.
+    func testTheNotificationRowValue() {
+        XCTAssertEqual(NotificationRules.rowValue(level: "all", muted: false, timedMute: nil), "すべて")
+        XCTAssertEqual(NotificationRules.rowValue(level: "mentions", muted: false, timedMute: nil), "メンション")
+        XCTAssertEqual(NotificationRules.rowValue(level: "none", muted: false, timedMute: nil), "なし")
+        XCTAssertEqual(NotificationRules.rowValue(level: "mentions", muted: true, timedMute: "15:30 までミュート"), "メンション · ミュート")
+        XCTAssertEqual(NotificationRules.rowValue(level: "all", muted: false, timedMute: "15:30 までミュート"), "すべて · 15:30 までミュート")
+    }
+
     func testTheNotificationMenuLabel() {
         XCTAssertEqual(NotificationRules.menuLabel(level: "all", muted: false, timedMute: nil), "通知: すべて")
         XCTAssertEqual(NotificationRules.menuLabel(level: "mentions", muted: false, timedMute: "15:30 までミュート"), "通知 (15:30 までミュート)")

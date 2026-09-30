@@ -26,6 +26,16 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(Timeline.dayLabel(parseIsoDate("2025-12-31T00:00:00Z")!, now: now, calendar: calendar), "2025年12月31日 (水)")
     }
 
+    /// MOBILE_POLISH.md C3: the thread line's last reply, as the web's lastReplyLabel (24-hour, zero-padded).
+    func testLastReplyLabel() {
+        XCTAssertEqual(Timeline.lastReplyLabel("2026-09-26T00:05:00Z", now: now, calendar: calendar), "最終返信 今日 09:05")
+        XCTAssertEqual(Timeline.lastReplyLabel("2026-09-26T05:05:00.123456Z", now: now, calendar: calendar), "最終返信 今日 14:05")
+        XCTAssertEqual(Timeline.lastReplyLabel("2026-09-25T14:30:00Z", now: now, calendar: calendar), "最終返信 昨日 23:30")
+        XCTAssertEqual(Timeline.lastReplyLabel("2026-09-18T05:00:00Z", now: now, calendar: calendar), "最終返信 9月18日 (金) 14:00")
+        XCTAssertEqual(Timeline.lastReplyLabel("2025-12-31T05:00:00Z", now: now, calendar: calendar), "最終返信 2025年12月31日 (水) 14:00")
+        XCTAssertNil(Timeline.lastReplyLabel("not a date", now: now, calendar: calendar))
+    }
+
     func testGroupsConsecutiveMessagesAndPlacesUnreadDividerOnce() {
         let items = Timeline.build(
             [

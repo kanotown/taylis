@@ -195,7 +195,8 @@ struct AddMemberView: View {
     }
 }
 
-/// Channel info: topic (editable by members), notification level, members with roles.
+/// Channel info: the header (name, topic, round buttons; D1), topic and purpose (editable by members), members with
+/// roles, the notifications as one row, and the owner / admin actions.
 struct ChannelInfoView: View {
     @Bindable var controller: AppController
     let channelId: String
@@ -215,6 +216,8 @@ struct ChannelInfoView: View {
     @State private var confirmArchive = false
     @State private var confirmConvert = false
     @State private var addingLink = false
+    /// D1: 「検索」 opens the message search narrowed to this conversation.
+    @State private var searching = false
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     /// Owners and admins manage the channel (rename / archive); every member may leave.
@@ -302,6 +305,74 @@ struct ChannelInfoView: View {
         return "ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。"
     }
 
+    private func notificationValue(_ channel: ChannelState) -> String {
+        let pref = channel.channel.notification
+        return NotificationRules.rowValue(level: channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id),
+                                          muted: pref?.muted ?? false, timedMute: Timeline.muteLabel(pref?.mutedUntil))
+    }
+
+    /// MOBILE_POLISH.md D1 / MOBILE_UI.md §6.8: the conversation's name large (a DM's picture), its topic and members,
+    /// then a row of round buttons (お気に入り・通知・検索・メンバー追加) — Slack's top of the details.
+    private func header(_ channel: ChannelState) -> some View {
+        let store = controller.store
+        let others = (channel.channel.dmUserIds ?? []).filter { $0 != store.me?.id }
+        let canAdd = !channel.channel.isDm && channel.isMember && !channel.channel.archived
+        let muted = isMuted(channel)
+        return Section {
+            VStack(spacing: 16) {
+                VStack(spacing: 6) {
+                    if channel.channel.isDm {
+                        let face = others.first ?? store.me?.id ?? ""
+                        AvatarView(id: face, name: store.users[face]?.displayName ?? "?", size: 64)
+                    } else {
+                        Image(systemName: channel.channel.type == "private" ? "lock.fill" : "number")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 64, height: 64)
+                            .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .accessibilityHidden(true)
+                    }
+                    Text(channelTitle(channel, store: store))
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .accessibilityAddTraits(.isHeader)
+                    if let topic = channel.channel.topic, !topic.isEmpty {
+                        Text(topic).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(3)
+                    }
+                    if let members, !channel.channel.isDm || others.count > 1 {
+                        Text("メンバー \(members.count) 人").font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                HStack(alignment: .top, spacing: 6) {
+                    if channel.isMember {
+                        let starred = store.isFavorite(channelId)
+                        DetailButton(title: starred ? "お気に入り済み" : "お気に入り", systemImage: starred ? "star.fill" : "star", on: starred) {
+                            Task { await controller.toggleFavorite(channelId) }
+                        }
+                        Menu {
+                            NotificationLevelPicker(controller: controller, channel: channel)
+                            Divider()
+                            NotificationMuteControls(controller: controller, channel: channel, withIcons: true)
+                        } label: {
+                            DetailButtonFace(title: muted ? "ミュート中" : "通知", systemImage: muted ? "bell.slash" : "bell", on: muted)
+                        }
+                        .accessibilityLabel("通知設定")
+                    }
+                    DetailButton(title: "検索", systemImage: "magnifyingglass") { searching = true }
+                    if canAdd {
+                        DetailButton(title: "メンバー追加", systemImage: "person.badge.plus") { showAddMember = true }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+        }
+    }
+
     /// M11h: the channel's purpose, editable by members.
     @ViewBuilder
     private func purposeSection(_ channel: ChannelState, canEdit: Bool) -> some View {
@@ -365,6 +436,7 @@ struct ChannelInfoView: View {
                 let store = controller.store
                 let isChannel = !channel.channel.isDm
                 let canEdit = channel.isMember && !channel.channel.archived
+                header(channel)
                 if isChannel {
                     Section("トピック") {
                         if editingTopic {
@@ -385,20 +457,6 @@ struct ChannelInfoView: View {
                     }
                     purposeSection(channel, canEdit: canEdit)
                 }
-                if channel.isMember {
-                    // M35: 既定 / a level of its own, 「ミュート」 until unmuted, and the timed mute.
-                    let level = channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id)
-                    Section {
-                        NotificationLevelPicker(controller: controller, channel: channel)
-                            .pickerStyle(.inline)
-                            .labelsHidden()
-                        NotificationMuteControls(controller: controller, channel: channel)
-                    } header: {
-                        Text("通知")
-                    } footer: {
-                        Text(isMuted(channel) ? "ミュート中: 通知せず、メンションだけを未読にします。" : "この会話の通知: \(NotificationRules.levelLabel(level))")
-                    }
-                }
                 Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
                     if let members {
                         ForEach(sortedMembers(members), id: \.userId) { member in memberRow(member) }
@@ -407,6 +465,20 @@ struct ChannelInfoView: View {
                     }
                     if isChannel && canEdit {
                         Button("メンバーを追加", systemImage: "person.badge.plus") { showAddMember = true }
+                    }
+                }
+                if channel.isMember {
+                    // D1: one row with what the conversation notifies me of; the choices are a page of their own.
+                    Section {
+                        NavigationLink {
+                            ChannelNotificationsView(controller: controller, channelId: channelId)
+                        } label: {
+                            LabeledContent {
+                                Text(notificationValue(channel))
+                            } label: {
+                                Label("通知", systemImage: isMuted(channel) ? "bell.slash" : "bell")
+                            }
+                        }
                     }
                 }
                 if isChannel && channel.isMember { manageSection(channel) }
@@ -450,9 +522,69 @@ struct ChannelInfoView: View {
         } message: { Text(convertMessage) }
         .task(id: controller.store.memberListVersion[channelId, default: 0]) { await loadMembers() }  // L4: roles change
         .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
+        .sheet(isPresented: $searching) { SearchView(controller: controller, initial: SearchParams(channelId: channelId)) }
         .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {
             AddMemberView(controller: controller, channelId: channelId)
         }
+    }
+}
+
+/// D1: a round button of the channel details' header, its words under it.
+private struct DetailButton: View {
+    let title: String
+    let systemImage: String
+    var on = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { DetailButtonFace(title: title, systemImage: systemImage, on: on) }
+            .accessibilityLabel(title)
+    }
+}
+
+private struct DetailButtonFace: View {
+    let title: String
+    let systemImage: String
+    var on = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(on ? Color.accentColor : Color.primary)
+                .frame(width: 52, height: 52)
+                .background(Color(.secondarySystemGroupedBackground), in: Circle())
+            Text(title).font(.caption).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(width: 78)
+        .contentShape(Rectangle())
+    }
+}
+
+/// D1: a conversation's notifications on a page of their own (the details show them as one row): the level (既定 or
+/// its own), 「ミュート」 until unmuted and the timed mute (M35).
+struct ChannelNotificationsView: View {
+    @Bindable var controller: AppController
+    let channelId: String
+
+    var body: some View {
+        Form {
+            if let channel = controller.store.channel(channelId) {
+                let level = channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id)
+                Section("通知するメッセージ") {
+                    NotificationLevelPicker(controller: controller, channel: channel)
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                }
+                Section {
+                    NotificationMuteControls(controller: controller, channel: channel)
+                } footer: {
+                    Text(isMuted(channel) ? "ミュート中: 通知せず、メンションだけを未読にします。" : "この会話の通知: \(NotificationRules.levelLabel(level))")
+                }
+            }
+        }
+        .navigationTitle("通知")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

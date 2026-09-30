@@ -12,7 +12,9 @@ struct EmojiPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var category = EmojiData.categories.first?.key ?? "smileys"
-    @AppStorage("emoji.recent") private var recentRaw = ""
+    @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
+    /// C10: how often each emoji was used here (EmojiUsage), for 「よく使う」.
+    @AppStorage(EmojiUsage.key) private var usageRaw = ""
 
     private var recent: [String] { recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty } }
     private var shown: [EmojiEntry] {
@@ -32,15 +34,18 @@ struct EmojiPickerView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
 
     private func pick(_ glyph: String) {
+        var usage = EmojiUsage.decode(usageRaw, recent: recentRaw)
+        usage.record(glyph)
+        usageRaw = usage.encoded
         recentRaw = ([glyph] + recent.filter { $0 != glyph }).prefix(16).joined(separator: " ")
         onPick(glyph)
         dismiss()
     }
 
-    /// The recent ones that can be shown: a custom emoji only while it exists (testers, 2026-09-29: a removed or unknown
+    /// 「よく使う」 that can be shown: a custom emoji only while it exists (testers, 2026-09-29: a removed or unknown
     /// `:name:` was shown as its text, wider than its cell).
-    private var recentShown: [String] {
-        recent.filter { glyph in
+    private var frequentShown: [String] {
+        EmojiUsage.decode(usageRaw, recent: recentRaw).frequent.filter { glyph in
             guard let name = CustomEmoji.name(of: glyph) else { return true }
             return custom.contains { $0.name == name }
         }
@@ -73,10 +78,20 @@ struct EmojiPickerView: View {
         }
     }
 
+    /// Browsing by category (no search words).
+    private var browsing: Bool { query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .accessibilityAddTraits(.isHeader)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 8) {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                if browsing {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(categories, id: \.key) { item in
@@ -87,17 +102,18 @@ struct EmojiPickerView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                    if !recentShown.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("最近").font(.caption2).foregroundStyle(.secondary)
-                            LazyVGrid(columns: columns, spacing: 4) {
-                                ForEach(recentShown, id: \.self) { recentCell($0) }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
                 }
                 ScrollView {
+                    // C10: 「よく使う」 first (Slack), scrolling with the category under it.
+                    if browsing && !frequentShown.isEmpty {
+                        sectionTitle("よく使う")
+                        LazyVGrid(columns: columns, spacing: 4) {
+                            ForEach(frequentShown, id: \.self) { recentCell($0) }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                        sectionTitle(categories.first { $0.key == category }?.label ?? "")
+                    }
                     LazyVGrid(columns: columns, spacing: 4) {
                         ForEach(customShown) { customCell($0) }
                         ForEach(shown, id: \.shortcode) { entry in

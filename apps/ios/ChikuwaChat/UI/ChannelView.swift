@@ -832,6 +832,51 @@ struct UnreadSeparator: View {
 
 let reactionPalette = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
 
+/// MOBILE_POLISH.md C3: under a thread's parent, up to three small overlapping avatars of who replied (the latest
+/// first), 「N 件の返信」 and 「最終返信 今日 14:05」 — Slack's line, and the web's `ThreadSummaryLine`. A server without
+/// `reply_user_ids` gives no avatars: the bubble shows instead.
+struct ThreadSummaryLine: View {
+    let message: MessageState
+    let store: Store
+    let open: () -> Void
+    static let avatarSize: CGFloat = 20
+
+    private var repliers: [String] { Array(message.replyUserIds.prefix(3)) }
+    private var last: String? { message.lastReplyAt.flatMap { Timeline.lastReplyLabel($0) } }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                if repliers.isEmpty {
+                    Image(systemName: "bubble.left.and.bubble.right").font(.caption).foregroundStyle(Color.accentColor)
+                } else {
+                    HStack(spacing: -4) {
+                        ForEach(repliers, id: \.self) { id in
+                            AvatarView(id: id, name: store.users[id]?.displayName ?? "?", size: Self.avatarSize)
+                                // A ring of the page's colour parts the overlapping faces.
+                                .padding(1.5)
+                                .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: (Self.avatarSize + 3) / 4, style: .continuous))
+                        }
+                    }
+                }
+                Text("\(message.replyCount) 件の返信")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let last {
+                    Text(last).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(["\(message.replyCount) 件の返信", last].compactMap { $0 }.joined(separator: "、"))
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 struct MessageRow: View {
     let message: MessageState
     @Bindable var controller: AppController
@@ -1014,10 +1059,7 @@ struct MessageRow: View {
                     .padding(.top, 2)
                 }
                 if message.replyCount > 0, let onOpenThread {
-                    Button { onOpenThread() } label: {
-                        Label("\(message.replyCount) 件の返信", systemImage: "bubble.left.and.bubble.right").font(.caption)
-                    }
-                    .padding(.top, 2)
+                    ThreadSummaryLine(message: message, store: store, open: onOpenThread).padding(.top, 2)
                 }
                 if message.failed {
                     HStack {
