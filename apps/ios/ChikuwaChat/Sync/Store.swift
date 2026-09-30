@@ -585,8 +585,9 @@ final class Store {
 
     /// Merge server fields into the local channel, keeping the local cursor. A read state (bootstrap) is the
     /// server's and replaces the local one as it is (SYNC_PROTOCOL.md §10: no max merge).
+    /// `replacesLastMessage`: bootstrap, whose `last_message` null does mean "no message yet" (M49, §7.8).
     @discardableResult
-    func upsertChannel(_ channel: ChannelOut, isMember: Bool? = nil) -> ChannelState {
+    func upsertChannel(_ channel: ChannelOut, isMember: Bool? = nil, replacesLastMessage: Bool = false) -> ChannelState {
         let existing = channels[channel.id]
         let read = channel.readState
         var stripped = channel
@@ -596,6 +597,8 @@ final class Store {
         // Events and some responses carry no membership or count either (M11h): keep the last known ones.
         stripped.membership = channel.membership ?? existing?.channel.membership
         stripped.memberCount = channel.memberCount ?? existing?.channel.memberCount
+        // M49: only answers to a member carry the preview; null elsewhere means "not said", so the one held stays.
+        if !replacesLastMessage { stripped.lastMessage = channel.lastMessage ?? existing?.channel.lastMessage }
         let merged = ChannelState(
             channel: stripped,
             isMember: isMember ?? existing?.isMember ?? (channel.membership != nil),
@@ -612,6 +615,47 @@ final class Store {
         channels[channel.id] = merged
         persist { try $0.saveChannel(merged) }
         return merged
+    }
+
+    // MARK: the DM list's preview (M49, SYNC_PROTOCOL.md §7.8)
+
+    /// A preview emptied by a deletion the rows held could not replace: the engine asks the server (GET /channels/{id}).
+    @ObservationIgnored var onStalePreview: ((String) -> Void)?
+
+    /// A timeline message of one of my conversations moves its preview, also without a timeline held (the DM list shows
+    /// conversations never opened). A newer one takes its place; the one shown, edited, brings its new text; the one
+    /// shown, deleted, falls back to the newest live row held below it. When the rows held cannot say (no timeline, or
+    /// one that does not reach the start), the preview empties and `onStalePreview` asks the server. Thread-only
+    /// replies, pending sends, older rows (history pages) and conversations I am not in leave it.
+    func applyLastMessage(_ message: MessageState) {
+        guard let seq = message.seq, !message.pending, message.inTimeline,
+              let channel = channels[message.channelId], channel.isMember else { return }
+        let current = channel.channel.lastMessage
+        if message.deleted {
+            guard current?.id == message.id else { return }
+            // The loaded window is contiguous up to syncedSeq (§7.3): its newest live row below is the newest there is.
+            let below = channel.syncedSeq == nil ? nil : messages(channel.id).last { ($0.seq ?? .max) < seq && !$0.deleted }
+            updateChannel(channel.id) { $0.channel.lastMessage = below.map(lastMessage(of:)) }
+            if below == nil && (channel.syncedSeq == nil || channel.hasOlder) { onStalePreview?(channel.id) }
+            return
+        }
+        if let current, current.id != message.id, current.seq >= seq { return }
+        let next = lastMessage(of: message)
+        updateChannel(channel.id) { $0.channel.lastMessage = next } // unchanged (a reaction): no write
+    }
+
+    /// The server's preview fetched after such a deletion (GET /channels/{id}). A newer one that came in the meantime
+    /// (an event after the answer was made) stays.
+    func setFetchedLastMessage(_ channelId: String, _ last: LastMessageOut?) {
+        if let current = channels[channelId]?.channel.lastMessage, last.map({ current.seq > $0.seq }) ?? true { return }
+        updateChannel(channelId) { $0.channel.lastMessage = last }
+    }
+
+    /// A held or live row as `last_message` (what the server would send for it).
+    func lastMessage(of row: MessageState) -> LastMessageOut {
+        LastMessageOut(id: row.id, senderId: row.senderId, type: row.type, seq: row.seq ?? 0,
+                       excerpt: Timeline.excerpt(row.body, attachments: row.attachments, users: users, groups: groups, limit: DMList.previewLength),
+                       hasAttachments: !row.attachments.isEmpty, createdAt: row.createdAt)
     }
 
     /// Unread DMs + channel mentions + followed threads with an unread mention (PUSH_NOTIFICATIONS.md §4.2) + fired reminders (M12e).
@@ -964,6 +1008,7 @@ final class Store {
             rows.byId[message.id] = message
             persist { try $0.saveMessage(message) }
         }
+        applyLastMessage(message) // M49: events, catch-up pages and my own sends, edits and deletes alike
         return true
     }
 

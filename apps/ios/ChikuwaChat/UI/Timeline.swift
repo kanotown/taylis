@@ -33,26 +33,45 @@ enum Timeline {
         return n == 1 ? "ファイルを送信しました" : "ファイルを \(n) 件送信しました"
     }
 
-    /// One line of plain text for a message (thread lists, "replied to a thread" lines); without text, what was sent.
-    static func excerpt(_ body: String, attachments: [AttachmentOut], users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
-        if body.isEmpty { return attachmentText(attachments) }
-        var text = Mentions.decode(body, users: users, groups: groups)
+    /// One line of plain text for a message (thread lists, "replied to a thread" lines, the DM list's preview); without
+    /// text, what was sent. The server's push body rule (messages/mentions.py `notification_text`), as the web's and
+    /// Android's `plainText`: mention tokens as display names (「@メンバー」 / 「@グループ」 when unknown), light markdown
+    /// dropped, newlines collapsed, at most `limit` characters (the last one 「…」). Cases: apps/shared/dm-preview.json (M49).
+    static func excerpt(_ body: String, attachments: [AttachmentOut], users: [String: UserPublic], groups: [String: GroupOut] = [:],
+                        limit: Int = 80) -> String {
+        let text = plainText(Mentions.toNames(body, users: users, groups: groups), limit: limit)
+        return text.isEmpty ? attachmentText(attachments) : text
+    }
+
+    /// The markdown-free line of `excerpt` (mention tokens already replaced). 80 characters is the lists' cap on the
+    /// three clients; the DM list's preview takes the server's 140 (DMList.previewLength).
+    static func plainText(_ body: String, limit: Int = 80) -> String {
+        var text = body
+        func replace(_ pattern: String, _ template: String = "") {
+            text = text.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
         // M15g: a table becomes its cell text (separator rows vanish, pipes become spaces).
-        text = text.replacingOccurrences(of: #"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#, with: "", options: .regularExpression)
+        replace(#"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
         text = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("|"), trimmed.hasSuffix("|") else { return String(line) }
             return BodyTokenizer.splitTableRow(trimmed).joined(separator: " ")
         }.joined(separator: "\n")
-        for pattern in ["```[a-zA-Z0-9_+-]*", "^#{1,3}\\s+", "^>\\s?", "^\\s*[-*]\\s+", "^\\s*\\d+\\.\\s+", "\\*\\*", "~~", "`"] {
-            text = text.replacingOccurrences(of: pattern, with: "", options: [.regularExpression], range: nil)
-        }
-        // Italics and links keep their text (the web and Android; parity audit 2026-09-29).
-        for (pattern, template) in [("\\*([^*\\n]+)\\*", "$1"), ("_([^_\\n]+)_", "$1"), ("\\[([^\\]\\n]+)\\]\\(https?://[^\\s)]+\\)", "$1")] {
-            text = text.replacingOccurrences(of: pattern, with: template, options: [.regularExpression], range: nil)
-        }
-        let line = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
-        return line.count > 80 ? String(line.prefix(79)) + "…" : line // the same cap as the web and Android
+        // Line markers: code fences, headings, quotes and list items (on every line, not only the first).
+        replace(#"(?m)^```[A-Za-z0-9_+#.-]*\s*$"#)
+        replace(#"(?m)^#{1,3}\s+"#)
+        replace(#"(?m)^>\s?"#)
+        replace(#"(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"#)
+        // Bold, italics, strikes, code and links keep their text (the web and Android; parity audit 2026-09-29).
+        replace(#"\*\*([^*\n]+?)\*\*"#, "$1")
+        replace(#"\*([^*\n]+)\*"#, "$1")
+        replace(#"_([^_\n]+)_"#, "$1")
+        replace(#"~~([^~\n]+)~~"#, "$1")
+        replace(#"`([^`\n]+)`"#, "$1")
+        replace(#"\[([^\]\n]+)\]\((https?://[^\s)]+)\)"#, "$1")
+        replace(#"\s*\n+\s*"#, " ")
+        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return line.count > limit ? String(line.prefix(max(limit - 1, 0))) + "…" : line
     }
 
     static let groupWindow: TimeInterval = 5 * 60

@@ -156,10 +156,27 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     var postingPolicy: String? = nil
     /// M24: whose times (work log) this is; nil for other channels, and from servers before M24 that omit it.
     var timesOwnerId: String? = nil
+    /// M49 (SYNC_PROTOCOL.md §7.8): the conversation's newest timeline message, for the DM list's preview. Only answers
+    /// to a member carry it (bootstrap, GET /channels, GET /channels/{id}, POST /dms); elsewhere, and from servers before
+    /// M49, it is nil, which means "not said" (the store keeps the one it holds) except in bootstrap ("no message").
+    var lastMessage: LastMessageOut? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
     var isAnnouncement: Bool { postingPolicy == "owners" }
     var isTimes: Bool { timesOwnerId != nil }
+}
+
+/// M49 (MOBILE_UI.md §7.1): a conversation's newest message as one line. The excerpt follows the push body's rule
+/// (Timeline.excerpt, apps/shared/dm-preview.json); the prefix (「あなた: 」 / the sender's name) is the client's.
+struct LastMessageOut: Codable, Equatable {
+    let id: String
+    let senderId: String
+    /// "user", or "system" (shown without a prefix).
+    let type: String
+    let seq: Int
+    let excerpt: String
+    let hasAttachments: Bool
+    let createdAt: String
 }
 
 struct NotificationPreferenceOut: Codable, Equatable {

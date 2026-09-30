@@ -161,6 +161,16 @@ final class FakeServer {
             return try server.replies(userId: userId, messageId: messageId)
         }
 
+        /// GET /channels/{id} for a member, with `last_message` (M49).
+        func channel(id: String) async throws -> ChannelOut {
+            try maybeFail("channel")
+            let record = try server.requireMember(id, userId)
+            var out = record.channel
+            out.memberCount = record.members.count
+            out.lastMessage = server.lastMessage(id)
+            return out
+        }
+
         func publicChannels() async throws -> [ChannelOut] {
             server.channels.values.filter { $0.channel.type == "public" && !$0.members.contains(userId) }.map { record in
                 var out = record.channel
@@ -660,7 +670,16 @@ final class FakeServer {
         return record.messages.filter { $0.parentId == messageId && !$0.deleted }.sorted { $0.seq < $1.seq }
     }
 
-    private func requireMember(_ channelId: String, _ userId: String) throws -> ChannelRecord {
+    /// M49 (SYNC_PROTOCOL.md §7.8): the newest live timeline row (top-level or also sent to the channel) as one line.
+    func lastMessage(_ channelId: String) -> LastMessageOut? {
+        guard let row = channels[channelId]?.messages.filter({ !$0.deleted && ($0.parentId == nil || $0.alsoInChannel) }).max(by: { $0.seq < $1.seq })
+        else { return nil }
+        return LastMessageOut(id: row.id, senderId: row.senderId, type: row.type, seq: row.seq,
+                              excerpt: Timeline.excerpt(row.body, attachments: row.attachments, users: users, limit: DMList.previewLength),
+                              hasAttachments: !row.attachments.isEmpty, createdAt: row.createdAt)
+    }
+
+    fileprivate func requireMember(_ channelId: String, _ userId: String) throws -> ChannelRecord {
         guard let record = channels[channelId] else { throw ApiError.api(status: 404, code: "channel_not_found", message: "not found") }
         guard record.members.contains(userId) else { throw ApiError.api(status: 403, code: "not_a_member", message: "not a member") }
         return record
@@ -911,7 +930,8 @@ final class FakeServer {
                        createdBy: record.channel.createdBy, lastSeq: record.channel.lastSeq, lastMessageAt: record.channel.lastMessageAt,
                        createdAt: record.channel.createdAt, updatedAt: record.channel.updatedAt,
                        membership: MembershipOut(role: record.channel.createdBy == userId ? "owner" : "member", joinedAt: now()), dmUserIds: nil,
-                       readState: readState(userId: userId, channelId: record.channel.id), memberCount: record.members.count)
+                       readState: readState(userId: userId, channelId: record.channel.id), memberCount: record.members.count,
+                       lastMessage: lastMessage(record.channel.id))
         }
         return BootstrapOut(serverTime: now(), me: me, users: Array(users.values), channels: mine,
                             limits: Limits(maxMessageLength: 20000, maxAttachmentBytes: 1, maxAttachmentsPerMessage: 10),
