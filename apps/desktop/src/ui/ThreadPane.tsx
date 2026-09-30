@@ -43,6 +43,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const anchored = useRef(false);
   /** The parent whose opening position was applied (once, when the thread is ready). */
   const positioned = useRef<string | null>(null);
+  const dividerMark = useRef<{ parentId: string; seq: number | null } | null>(null);
   /** The reader scrolled before the thread was ready: the opening position is then skipped. */
   const userScrolled = useRef(false);
   const divider = useRef<HTMLDivElement>(null);
@@ -166,9 +167,15 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     }
   }, [parentId, controller.messageFocus?.messageId, replies.length]);
 
-  // 「新しい返信」: the divider sits before the first reply from someone else past my read position; only once the
-  // whole thread is held (the newest replies alone would put it in the wrong place).
-  const firstUnread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me)?.id : undefined;
+  // 「新しい返信」: the divider sits before the first reply from someone else past my read position when the whole thread
+  // was first held (the newest replies alone would put it in the wrong place), and stays there while it is open, like
+  // the channel's divider. Taken from the live position, it showed and went at once as the replies were read (tester,
+  // 2026-09-30; iOS and Android take it the same way).
+  if (ready && state && dividerMark.current?.parentId !== parentId) {
+    dividerMark.current = { parentId, seq: firstUnreadRow(replies, state.last_read_seq, me) ? state.last_read_seq : null };
+  }
+  const markSeq = dividerMark.current?.parentId === parentId ? dividerMark.current.seq : null;
+  const firstUnread = markSeq !== null ? firstUnreadRow(replies, markSeq, me)?.id : undefined;
   // M47 「連続した投稿をまとめる」: replies group by the timeline's rule; the parent above always has its picture, and
   // 「新しい返信」 starts a new run.
   const group = controller.groupPosts;

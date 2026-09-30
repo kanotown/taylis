@@ -1239,6 +1239,9 @@ describe("thread pane waits for the whole thread (§10.2)", () => {
     expect(scrolled.at(-1)).toMatchObject({ seq: 511, block: "start", text: "新しい返信" });
     await settle(w);
     expect(w.calls.threadReads).toEqual([518]); // r11..r18 on screen
+    // Read now, and the divider stays where it was placed for this open (it used to go at once).
+    expect(w.store.threads.get(w.parent.id)?.state.last_read_seq).toBe(518);
+    expect(screen.getByText("新しい返信").closest("[data-replies] > *")?.querySelector("article")?.getAttribute("data-seq")).toBe("511");
     w.engine.stop();
   });
 
