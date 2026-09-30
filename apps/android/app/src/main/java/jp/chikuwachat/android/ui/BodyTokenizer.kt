@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.sync.Store
+
 /**
  * Message body format (DATA_MODEL.md "本文の形式"): plain text plus a light markdown subset shared with the other clients.
  *
@@ -296,3 +299,24 @@ fun plainText(body: String, maxLength: Int = 200): String {
         .trim()
     return if (text.length > maxLength) text.take(maxLength - 1) + "…" else text
 }
+
+/**
+ * What a message with no text but attachments says in one line (the notification, the thread's parent, the activity
+ * feed): every attachment an image 「画像を送信しました」 / 「画像を n 枚送信しました」, every one a video 「動画を送信しました」 /
+ * 「動画を n 本送信しました」, otherwise 「ファイルを送信しました」 / 「ファイルを n 件送信しました」, from each content_type (the
+ * same rule on desktop, iOS and the server). "" with no attachments.
+ */
+fun attachmentSummary(contentTypes: List<String>): String {
+    val count = contentTypes.size
+    if (count == 0) return ""
+    fun every(prefix: String) = contentTypes.all { it.trim().lowercase().startsWith(prefix) }
+    return when {
+        every("image/") -> if (count == 1) "画像を送信しました" else "画像を $count 枚送信しました"
+        every("video/") -> if (count == 1) "動画を送信しました" else "動画を $count 本送信しました"
+        else -> if (count == 1) "ファイルを送信しました" else "ファイルを $count 件送信しました"
+    }
+}
+
+/** A message's one line: its plain text (names for mentions), else what its attachments are ([attachmentSummary]). */
+fun messageLine(body: String, attachments: List<AttachmentOut>, store: Store, maxLength: Int = 200): String =
+    plainText(Mentions.toNames(body, store.users, store.groups), maxLength).ifEmpty { attachmentSummary(attachments.map { it.contentType }) }

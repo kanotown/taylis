@@ -14,4 +14,11 @@ class LinksTest {
         assertNull(Links.first("no links here"))
         assertEquals("https://example.com/md", Links.first("[label](https://example.com/md)"))
     }
+
+    @Test fun siteLabelIsTheSiteNameAsGivenElseTheHost() {
+        assertEquals("GitHub", Links.siteLabel("GitHub", "https://github.com/a/b"))
+        assertEquals("example.com", Links.siteLabel(null, "https://example.com/page?x=1"))
+        assertEquals("www.example.com", Links.siteLabel("  ", "https://www.example.com/"))
+        assertNull(Links.siteLabel(null, "not a url"))
+    }
 }

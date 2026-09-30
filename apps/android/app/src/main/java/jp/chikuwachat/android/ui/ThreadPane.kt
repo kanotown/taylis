@@ -57,6 +57,15 @@ object ThreadRows {
     }
 
     /**
+     * Where 「新しい返信」 goes for this open, like the channel's divider (SYNC_PROTOCOL.md §10.1 rule 3): my read position
+     * when the thread was positioned, only when a reply from someone else was unread then; null = no divider. Taken
+     * from the live position instead, a reply arriving while the thread was on screen got the divider until it was read
+     * a moment later, and the row jumped (found while checking the iOS arrival jolt, 2026-09-30).
+     */
+    fun dividerMark(replies: List<MessageState>, lastReadSeq: Int?, meId: String?): Int? =
+        lastReadSeq?.takeIf { ReadGate.firstUnreadRow(replies, it, meId) != null }
+
+    /**
      * M47: the replies drawn without their picture and name (by rowKey), with the channel's rule (Timeline.continues);
      * 「新しい返信」 before `firstUnreadId` starts a new group. None when the device does not group; the parent is never among them.
      */
@@ -94,9 +103,11 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     val replies = shown.replies
     val listState = rememberLazyListState()
     val header = ThreadRows.header(parent != null)
-    // 「新しい返信」 sits before the first reply from someone else past my read position.
+    // 「新しい返信」 sits before the first reply from someone else past my read position when the thread was positioned,
+    // and stays there for this open (ThreadRows.dividerMark).
     val me = store.me?.id
-    val firstUnreadId = shown.lastReadSeq?.let { ReadGate.firstUnreadRow(replies, it, me)?.id }
+    var dividerMark by remember(parentId) { mutableStateOf<Int?>(null) }
+    val firstUnreadId = dividerMark?.let { ReadGate.firstUnreadRow(replies, it, me)?.id }
     val grouping = controller.groupPosts
     val compactKeys = remember(replies, firstUnreadId, grouping) { ThreadRows.compactKeys(replies, firstUnreadId, grouping) }
     val focusId = controller.messageFocus?.takeIf { it.parentId == parentId }?.messageId
@@ -138,6 +149,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         if (positioned) return@LaunchedEffect
         if (threadReady) {
             positioned = true
+            dividerMark = ThreadRows.dividerMark(replies, shown.lastReadSeq, me)
             if (userScrolled) return@LaunchedEffect
             val at = ThreadRows.openPosition(replies, header, focusId, shown.lastReadSeq, me)
             scrollTo(at)

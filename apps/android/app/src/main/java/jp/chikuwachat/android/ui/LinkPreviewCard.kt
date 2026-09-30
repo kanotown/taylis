@@ -1,14 +1,11 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -46,30 +43,49 @@ object Links {
         val found = URL.find(text)?.value ?: return null
         return found.trimEnd { it in TRAILING }
     }
+
+    /** The preview card's first line: the site name as given (not uppercased), else the link's host; null when neither. */
+    fun siteLabel(siteName: String?, url: String): String? =
+        siteName?.trim()?.takeIf { it.isNotEmpty() } ?: runCatching { java.net.URI(url).host }.getOrNull()?.takeIf { it.isNotEmpty() }
 }
 
-/** Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data. */
+/**
+ * Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data.
+ * A 1 dp outline, no fill and no accent bar (the same look on desktop and iOS): the site name (else the link's host),
+ * the title and the description on the left, the thumbnail on the right.
+ */
 @Composable
 fun LinkPreviewCard(controller: AppController, url: String) {
     LaunchedEffect(url) { controller.loadLinkPreview(url) }
     val preview = controller.linkPreviews[url] ?: return
     val uriHandler = LocalUriHandler.current
+    val shape = RoundedCornerShape(8.dp)
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
             .padding(top = 6.dp)
             .widthIn(max = 420.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { runCatching { uriHandler.openUri(preview.url) } },
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .clickable { runCatching { uriHandler.openUri(preview.url) } }
+            .padding(12.dp),
     ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)))
-        Column(Modifier.weight(1f).padding(10.dp)) {
-            preview.siteName?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            preview.title?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-            preview.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)) }
+        Column(Modifier.weight(1f)) {
+            Links.siteLabel(preview.siteName, preview.url)?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            preview.title?.let {
+                Text(
+                    it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            preview.description?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = secondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
         }
         preview.imageUrl?.let { image ->
-            RemoteImage(image, Modifier.padding(8.dp).size(64.dp).clip(RoundedCornerShape(8.dp)))
+            RemoteImage(image, Modifier.padding(start = 10.dp).size(64.dp).clip(RoundedCornerShape(6.dp)))
         }
     }
 }
