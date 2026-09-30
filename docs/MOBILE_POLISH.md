@@ -35,7 +35,7 @@
 | 順 | 内容 | 端末 | 工数 | サーバ | 項目 |
 |---|---|---|---|---|---|
 | 1 | iOS でリンクのカードが出ない (不具合) | iOS | S | 不要 | C1 |
-| 2 | Android の入力欄を全幅のカプセル型にする (今は幅の 4 割で、短い文でも 3 行に折り返す) | Android | M | 不要 | C2 |
+| 2 | Android の入力欄を全幅のカプセル型にする (今は幅の 4 割で、短い文でも 3 行に折り返す) (**済み**) | Android | M | 不要 | C2 |
 | 3 | Android のチャンネルの ⋮ から全体のメニュー (ログアウトなど) を外す | Android | S | 不要 | C6 |
 | 4 | Android の見出しの接続の点をやめる (題名とトピックが切れる)。DM タブの題名切れ。PDF のファイル名に ID が付く | Android | S | 不要 | C5・V1 |
 | 5 | iOS ホームで、スクロールするとセクションの見出しが上の行に重なる (**済み**) | iOS | S | 不要 | H1 |
@@ -50,7 +50,7 @@
 | 案 | 内容 | 目安 |
 |---|---|---|
 | 仕上げ A (小さな直し) | 1・3・4・5・6・7 と C4・C7 の題名 | S の集まり、1〜2 日 |
-| 仕上げ B (Android の入力欄) | 2 と C11 (MUI-5 の Android 分を前倒し) | M |
+| 仕上げ B (Android の入力欄) | 2 と C11 (MUI-5 の Android 分を前倒し)。**済み (2026-09-30)** | M |
 | 仕上げ C (Slack らしさ) | 8・9・10 と C7 の上寄せ | M × 3〜4、8 のアバターだけサーバ変更 |
 
 ---
@@ -60,7 +60,7 @@
 | # | 今 | Slack / あるべき姿 | 対応案 | 工数 | 端末 | サーバ |
 |---|---|---|---|---|---|---|
 | C1 | **iOS でリンクのカードが出ない**。URL だけが出る。#audit-test と #link-test の両方で出ず、サーバのログにも iOS からの `GET /link-previews` が 1 回も無い。Android は画像付きで出る (`ios/light-10-channel.png`、`ios/light-29-link-test.png`、`android/light-10-channel.png`) | リンクの下にサイト名・題名・説明・画像のカード | 原因の見立て: `LinkPreviewCard.swift` は `Group { if let … }` に `.task` を付けている。まだ読み込んでいないとき Group の中身が空なので、`.task` が付く相手が無く、読み込みが始まらない。`.task` を常にあるビュー (例: `VStack` で包む) に付ける。直したら実機でも確かめる | S | iOS | 不要 |
-| C2 | **Android の入力欄が狭い**。左に 📎 ☺ テンプレートの 3 つ、右に送信があり、枠線付きの欄は幅の 4 割ほど。「Thanks, I will check it tomorrow」で 3 行になる。プレースホルダは「メッセージ」だけ (`android/light-10-channel.png`、`android/light-17-composer-typing.png`) | 全幅のカプセル「#audit-test へのメッセージ」。フォーカスすると欄の下にツール行 (＋・@・絵文字・書式・…) と送信。iOS はすでにこの形 (`ios/light-15-composer-idle.png`、`ios/light-16-composer-focused.png`) | iOS と同じ構成にする。閉じているとき [＋][カプセル][送信]、フォーカス中は欄を全幅にし、下にツール行。枠線をやめ、角丸の塗り。プレースホルダは「#名前 へのメッセージ」 | M | Android | 不要 |
+| C2 | **Android の入力欄が狭い**。左に 📎 ☺ テンプレートの 3 つ、右に送信があり、枠線付きの欄は幅の 4 割ほど。「Thanks, I will check it tomorrow」で 3 行になる。プレースホルダは「メッセージ」だけ (`android/light-10-channel.png`、`android/light-17-composer-typing.png`) | 全幅のカプセル「#audit-test へのメッセージ」。フォーカスすると欄の下にツール行 (＋・@・絵文字・書式・…) と送信。iOS はすでにこの形 (`ios/light-15-composer-idle.png`、`ios/light-16-composer-focused.png`) | iOS と同じ構成にする。閉じているとき [＋][カプセル][送信]、フォーカス中は欄を全幅にし、下にツール行。枠線をやめ、角丸の塗り。プレースホルダは「#名前 へのメッセージ」。**済 (仕上げ B、2026-09-30)**: `Composer.kt`。閉じているとき [＋][カプセル (送るものがあれば中に送信)]、フォーカス中は 6 行まで伸びる欄の下に [＋][@][☺][Aa][/][🚩] と送信 (長押しで後で送信)。DM は「<名前> へのメッセージ」、スレッドは「スレッドに返信」 | M | Android | 不要 |
 | C3 | 返信のまとめは「💬 3 件の返信」だけ (`ios/light-11-channel-older.png`、`android/light-12-channel-older2.png`) | 返信した人の小さいアバター (数人) + 「3 件の返信」 + 最終返信の時刻 | 最終返信の時刻は既存の `last_reply_at` で出せる (サーバ不要)。アバターは `MessageOut` に返信者の ID を先頭 3 人まで足す (OpenAPI も更新)。**サーバと Web 済 (仕上げ C、2026-09-30)**: `MessageOut.reply_user_ids` (最近の返信順・最大 5、削除された返信は除く、`parent_thread` にも。THREADS.md §3.1)。Web はアバター 3 つ + 「N 件の返信」 + 「最終返信 今日 14:05」。iOS / Android はこれから | M | 両方 | アバターのみ要 |
 | C4 | iOS の長押しシートと絵文字ピッカーの地が半透明で、後ろの写真や文字が透けて読みにくい (`ios/light-13-long-press.png`、`ios/light-14-long-press-own.png`、`ios/light-20c-reaction-picker.png`) | 不透明な地 (確度 中: iOS 26 標準の見た目なので好みもある) | `.presentationBackground(Color(.systemBackground))` などで地を塗る。**済み** (長押しシートと絵文字ピッカー。ダークでは一段明るい地) | S | iOS | 不要 |
 | C5 | Android の見出し: 題名の横に接続の点 (緑 / 橙)、その右に 🔍 と ⋮。トピックが「スマホ UI の監査用 (テスト投…」と切れる。DM タブは題名が「ダイレクトメッセ…」と切れる。点はホーム・スレッド・アクティビティ・自分にも出る (`android/light-10-channel.png`、`android/light-30-dm-tab.png`、`android/light-25-channel-details.png`) | 見出しに接続の表示は無く、切れたときだけ帯で知らせる。iOS も点を出していない | 点をやめ、切断中だけ既存の ConnectionBanner を出す (MOBILE_UI §6.6 の方針どおり)。DM タブの題名は iOS と同じ「DM」。**済 (仕上げ A、2026-09-30)**: 見出しの点を外した (切断中は 2 秒後から帯)。点が無くなりスレッドには ⋮ も無いので、360 dp でも「フォロー中」の札が出る | S | Android | 不要 |
@@ -69,7 +69,7 @@
 | C8 | クイックリアクションの並びが端末で違う (iOS 👍❤️😂🎉👀✅、Android 🎉👍❤️😂👀✅) (`ios/light-13-long-press.png`、`android/light-13-long-press.png`) | 最近使ったもの (確度 中) | 3 端末で同じ規則 (最近使った順、足りない分は既定の 6 個) にする | S | 両方 | 不要 |
 | C9 | Android の絵文字ピッカーは画面中央のダイアログ。カテゴリのチップが 3 行に折り返し、絵文字は 6 行しか見えない。「閉じる」は下 (`android/light-20-emoji-picker.png`)。iOS は下からのシート (`ios/light-20-emoji-picker.png`) | 下からのシート、検索欄、カテゴリは 1 行のアイコンのタブ | `ModalBottomSheet` にし、カテゴリは横スクロールの 1 行にする | M | Android | 不要 |
 | C10 | 絵文字ピッカーに「よく使う / 最近使った」が無く、いつも「顔」から始まる (両端末) | 先頭に「よく使う」 | 端末内に使った回数を記録して先頭に出す。端末をまたいで揃えたくなったらサーバに置く | S〜M | 両方 | 不要 |
-| C11 | ＋ (添付) のメニュー: iOS は縦に長いメニューで、「確認を求める」「緊急」「重要」と添付が混ざる (`ios/light-19-attach-menu.png`)。Android はカメラが無く、上 3 行だけアイコンが無い (`android/light-19-attach-menu.png`) | ＋ で下からのシート: 最近の写真の横スクロール、カメラ、ファイル… (MUI-5 の設計どおり) | MUI-5 で ＋ をシートにする。重要度と確認はツール行の 🚩 へ分ける。Android はまずアイコンを揃え、カメラを足す | M | 両方 | 不要 |
+| C11 | ＋ (添付) のメニュー: iOS は縦に長いメニューで、「確認を求める」「緊急」「重要」と添付が混ざる (`ios/light-19-attach-menu.png`)。Android はカメラが無く、上 3 行だけアイコンが無い (`android/light-19-attach-menu.png`) | ＋ で下からのシート: 最近の写真の横スクロール、カメラ、ファイル… (MUI-5 の設計どおり) | MUI-5 で ＋ をシートにする。重要度と確認はツール行の 🚩 へ分ける。Android はまずアイコンを揃え、カメラを足す。**Android 済 (仕上げ B)**: ＋ は下からのシート (写真・動画 / カメラ / ファイル / アンケート / テンプレート / 後で送信…、全行アイコン付き)、重要度と確認はツール行の 🚩 だけ。カメラは `TakePicture` + FileProvider。最近の写真の横スクロールは写真の権限が要るので未着手 | M | 両方 | 不要 |
 | C12 | iOS の本文が文節で改行され、右に大きな余白が残る行がある (「…図を 2 枚 / 差し替えました」) (`ios/light-11-channel-older.png`) | (確度 低) iOS 標準の日本語の改行なので、Slack の iOS 版も同じかもしれない | 要判断。変えるなら行の改行の方式を指定する。まず実機で見て決める | S | iOS | 不要 |
 
 ## 3. ホーム

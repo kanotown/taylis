@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="downloads" path="downloads/" />
+    <!-- 仕上げ B (MOBILE_POLISH C11): the camera app writes the photo here (TakePicture); removed once uploaded. -->
+    <cache-path name="camera" path="camera/" />
 </paths>
