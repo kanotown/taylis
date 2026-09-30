@@ -140,7 +140,10 @@ class FakeCanvasServer(initial: String = "", val canvasId: String = "c1", val ch
             return answer
         }
 
-        override suspend fun listCanvases(channelId: String, trashed: Boolean): List<CanvasMeta> = if (trashed) emptyList() else listOf(canvas().meta)
+        override suspend fun listCanvases(channelId: String, trashed: Boolean): List<CanvasMeta> {
+            failures.removeFirstOrNull()?.let { throw it }
+            return if (trashed) emptyList() else listOf(canvas().meta)
+        }
         override suspend fun createCanvas(channelId: String, clientSaveId: String, templateKey: String?, title: String?, asTab: Boolean, tz: String?): CanvasOut = canvas()
         override suspend fun updateCanvas(canvasId: String, title: String?, editPolicy: String?, isChannelTab: Boolean?): CanvasOut = canvas()
         override suspend fun deleteCanvas(canvasId: String) {}
