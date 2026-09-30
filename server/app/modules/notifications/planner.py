@@ -12,9 +12,11 @@ from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
+from app.modules.activity.events import REACTION_ADDED
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.groups import service as groups
+from app.modules.messages import repository as messages_repo
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.mentions import extract_group_mentions, notification_text
@@ -42,6 +44,9 @@ class PushPlanner:
     async def handle(self, db: AsyncSession, event: OutboxEvent, audience: Audience) -> None:
         if event.event_type == REMINDER_UPDATED:
             await self.handle_reminder(db, event)
+            return
+        if event.event_type == REACTION_ADDED:
+            await self.handle_reaction(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -151,6 +156,72 @@ class PushPlanner:
             badge=max(await self.badge_for(db, user_id), 1),
             collapse_key=f"reminder:{reminder.get('id')}",
             sent_at=utcnow(),
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=channel_id,
+                message_id=message_id,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_reaction(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M39: someone reacted to my message. A push only for those who turned reaction banners on
+        (the activity lists it either way), and like any push not in a muted or silent conversation,
+        not during DND, not while I am on another device."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or not user.notify_reactions or dnd_active(user, now):
+            return
+        if self.is_active(user_id):
+            return
+        channel_id = uuid.UUID(str(data["channel_id"]))
+        message_id = uuid.UUID(str(data["message_id"]))
+        channel = await channels.require_channel(db, channel_id)
+        if await channels.membership_of(db, user_id, channel_id) is None:
+            return
+        pref = (await repo.preferences_for_channel(db, channel_id, [user_id])).get(user_id)
+        level = push_level(
+            pref.level if pref else None,
+            is_dm=channel.is_dm,
+            others_times=channel.times_owner_id is not None and channel.times_owner_id != user_id,
+            overall=user.notification_default,
+        )
+        if level == "none" or is_muted(pref, now):
+            return
+        message = await messages_repo.get_message(db, message_id)
+        if message is None or message.deleted_at is not None:
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        actor = await users.get_user(db, uuid.UUID(str(data["user_id"])))
+        emoji = str(data.get("emoji") or "")
+        excerpt = (
+            notification_text(message.body or "", {}) if self.settings.push_include_content else ""
+        )
+        where = None if channel.is_dm else f"#{channel.name}"
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        payload = PushPayload(
+            kind="reaction",
+            workspace_id=await workspace.workspace_id(db),
+            channel_id=channel_id,
+            message_id=message_id,
+            seq=None,
+            title=f"{actor.display_name if actor else '誰か'} がリアクションしました",
+            subtitle=where,
+            body=(f"{emoji} 「{excerpt}」" if excerpt else emoji)[:240] or "リアクション",
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"reaction:{message_id}",
+            sent_at=now,
         ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
         for device in devices:
             await repo.add_delivery(

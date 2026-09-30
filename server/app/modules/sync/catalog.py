@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
+from app.modules.activity import events as activity_events
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.channel_links import events as channel_link_events
@@ -60,6 +61,8 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     read_events.READ_UPDATED: (read_events.ReadUpdatedData, "user", False),
     thread_events.THREAD_UPDATED: (thread_events.ThreadUpdatedData, "user", False),
     bookmark_events.BOOKMARK_UPDATED: (bookmark_events.BookmarkUpdatedData, "user", False),
+    activity_events.ACTIVITY_READ: (activity_events.ActivityReadData, "user", False),
+    activity_events.REACTION_ADDED: (activity_events.ReactionAddedData, "user", False),
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),
     sidebar_events.SIDEBAR_UPDATED: (sidebar_events.SidebarUpdatedData, "user", False),
     draft_events.DRAFT_UPDATED: (draft_events.DraftUpdatedData, "user", False),

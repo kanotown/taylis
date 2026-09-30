@@ -53,6 +53,124 @@
         "title": "AckRemindOut",
         "type": "object"
       },
+      "ActivityItem": {
+        "properties": {
+          "actor_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Actor Ids",
+            "type": "array"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "emojis": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Emojis",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "mention",
+              "reaction",
+              "thread_reply"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageOut"
+          }
+        },
+        "required": [
+          "kind",
+          "at",
+          "message",
+          "actor_ids"
+        ],
+        "title": "ActivityItem",
+        "type": "object"
+      },
+      "ActivityListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "read_at"
+        ],
+        "title": "ActivityListOut",
+        "type": "object"
+      },
+      "ActivityReadIn": {
+        "properties": {
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at"
+        ],
+        "title": "ActivityReadIn",
+        "type": "object"
+      },
+      "ActivitySummaryOut": {
+        "properties": {
+          "mention_unread": {
+            "title": "Mention Unread",
+            "type": "boolean"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "read_at",
+          "unread_count",
+          "mention_unread"
+        ],
+        "title": "ActivitySummaryOut",
+        "type": "object"
+      },
       "AdminUserCreate": {
         "properties": {
           "display_name": {
@@ -407,6 +525,16 @@
       },
       "BootstrapOut": {
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivitySummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "bookmarks": {
             "default": [],
             "items": {
@@ -4908,6 +5036,11 @@
             "title": "Notify Keywords",
             "type": "array"
           },
+          "notify_reactions": {
+            "default": false,
+            "title": "Notify Reactions",
+            "type": "boolean"
+          },
           "presence_hidden": {
             "default": false,
             "title": "Presence Hidden",
@@ -5200,6 +5333,17 @@
               }
             ],
             "title": "Notify Keywords"
+          },
+          "notify_reactions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Reactions"
           },
           "presence_hidden": {
             "anyOf": [
@@ -5498,6 +5642,164 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/activity": {
+      "get": {
+        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39).",
+        "operationId": "list_activity_api_v1_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "mentions",
+                "reactions",
+                "threads"
+              ],
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Activity",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
+    "/api/v1/activity/read": {
+      "put": {
+        "description": "Everything up to `read_at` is read (it only moves forward).",
+        "operationId": "mark_activity_read_api_v1_activity_read_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityReadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivitySummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Activity Read",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
+    "/api/v1/activity/summary": {
+      "get": {
+        "description": "The activity tab's badge: items after my read position.",
+        "operationId": "activity_summary_api_v1_activity_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivitySummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Activity Summary",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
     "/api/v1/admin/groups": {
       "post": {
         "operationId": "create_group_api_v1_admin_groups_post",

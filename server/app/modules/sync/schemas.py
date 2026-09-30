@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.modules.activity.schemas import ActivitySummaryOut
 from app.modules.channels.schemas import ChannelOut
 from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut
@@ -52,6 +53,9 @@ class BootstrapOut(BaseModel):
     sidebar_sections: list[SidebarSectionOut] = []
     # My drafts shared by my devices (M15d); changes arrive as draft.updated.
     drafts: list[DraftOut] = []
+    # M39: the activity tab's badge (GET /activity/summary); activity.read and reaction.added move
+    # it.
+    activity: ActivitySummaryOut | None = None
 
 
 class UnreadSummaryOut(BaseModel):

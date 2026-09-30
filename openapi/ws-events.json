@@ -5,6 +5,24 @@
     "session_revoked": 4003
   },
   "events": {
+    "activity.read": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at"
+        ],
+        "title": "ActivityReadData",
+        "type": "object"
+      }
+    },
     "bookmark.updated": {
       "audience": "user",
       "consumes_seq": false,
@@ -2524,6 +2542,48 @@
           "muted_until"
         ],
         "title": "NotificationPreferenceUpdatedData",
+        "type": "object"
+      }
+    },
+    "reaction.added": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "To the message's author: someone reacted to it (the activity badge; a push if they asked for\none).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "emoji": {
+            "title": "Emoji",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "message_id",
+          "user_id",
+          "emoji",
+          "at"
+        ],
+        "title": "ReactionAddedData",
         "type": "object"
       }
     },

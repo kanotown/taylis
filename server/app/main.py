@@ -20,6 +20,7 @@ from app.core.settings import Settings, get_settings
 from app.core.time import utcnow
 from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
+from app.modules.activity.router import router as activity_router
 from app.modules.admin.router import router as admin_router
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
@@ -217,6 +218,7 @@ def build_api_router() -> APIRouter:
     api.include_router(messages_router)
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
+    api.include_router(activity_router)
     api.include_router(favorites_router)
     api.include_router(sidebar_router)
     api.include_router(drafts_router)

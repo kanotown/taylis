@@ -92,6 +92,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.presence_hidden = data.presence_hidden
     if data.notification_default is not None:
         user.notification_default = data.notification_default
+    if data.notify_reactions is not None:
+        user.notify_reactions = data.notify_reactions
     user.updated_at = utcnow()
     try:
         await db.flush()

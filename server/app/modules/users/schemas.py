@@ -87,6 +87,9 @@ class UserMe(UserPublic):
     presence_hidden: bool = False
     # M35: what channels without a level of their own notify me of (PUSH_NOTIFICATIONS.md §4).
     notification_default: Literal["all", "mentions", "none"] = "mentions"
+    # M39: a push when someone reacts to my message (banner); the activity lists reactions either
+    # way.
+    notify_reactions: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -108,6 +111,8 @@ class UserUpdate(BaseModel):
     presence_hidden: bool | None = None
     # M35: my overall notification setting.
     notification_default: Literal["all", "mentions", "none"] | None = None
+    # M39: reaction banners on or off.
+    notify_reactions: bool | None = None
 
     @field_validator("notify_keywords")
     @classmethod
@@ -175,4 +180,5 @@ def to_user_me(user: User) -> UserMe:
         notify_keywords=list(user.notify_keywords or []),
         presence_hidden=user.presence_hidden,
         notification_default=user.notification_default,  # type: ignore[arg-type]
+        notify_reactions=user.notify_reactions,
     )
