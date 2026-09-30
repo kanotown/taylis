@@ -52,6 +52,12 @@ object Schedule {
         return list
     }
 
+    /** The key of a time picked with 「日時を指定…」 in the reminder dialog. */
+    const val CUSTOM = "custom"
+
+    /** 「リマインド」's 「日時を指定…」 (as on iOS and the desktop): the picked time, labelled with when it is. */
+    fun customReminder(at: ZonedDateTime, now: ZonedDateTime = ZonedDateTime.now()): Preset = Preset(CUSTOM, label(at, now), at)
+
     private val DAYS = listOf("月", "火", "水", "木", "金", "土", "日")
 
     /** "今日 18:00" / "明日 9:00" / "10月3日(土) 9:00" / "2027年1月4日(月) 9:00". */
