@@ -68,15 +68,15 @@ final class BodyTokenizerTests: XCTestCase {
         // Without a matching separator the pipes are text.
         if case .paragraph = BodyTokenizer.parseBlocks("a | b\nc | d")[0] {} else { XCTFail("expected a paragraph") }
         XCTAssertEqual(BodyTokenizer.parseBlocks("| a | b |\n| --- |").count, 1)
-        XCTAssertEqual(Timeline.excerpt("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |", hasAttachments: false, users: [:]), "項目 担当 API 田中")
+        XCTAssertEqual(Timeline.excerpt("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |", attachments: [], users: [:]), "項目 担当 API 田中")
     }
 
     /// The one-line excerpt matches the web and Android (parity audit 2026-09-29): italics and links keep their text,
     /// and it stops at 80 characters.
     func testExcerptDropsItalicsAndLinkMarkersAndStopsAtEighty() {
-        XCTAssertEqual(Timeline.excerpt("*強調* と _斜体_ と [資料](https://example.com/a)", hasAttachments: false, users: [:]), "強調 と 斜体 と 資料")
+        XCTAssertEqual(Timeline.excerpt("*強調* と _斜体_ と [資料](https://example.com/a)", attachments: [], users: [:]), "強調 と 斜体 と 資料")
         let long = String(repeating: "あ", count: 100)
-        let excerpt = Timeline.excerpt(long, hasAttachments: false, users: [:])
+        let excerpt = Timeline.excerpt(long, attachments: [], users: [:])
         XCTAssertEqual(excerpt.count, 80)
         XCTAssertTrue(excerpt.hasSuffix("…"))
     }
@@ -88,5 +88,21 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(pieces.map(\.hit), [true, false, true, false])
         XCTAssertEqual(NotifyKeywords.pieces("plain", nil).map(\.hit), [false])
         XCTAssertEqual(NotifyKeywords.pieces("plain", [" "]).map(\.text), ["plain"])
+    }
+
+    /// A message without text says what was sent (tester, 2026-09-30); the same words as the server's push.
+    func testExcerptOfAMessageWithoutTextSaysWhatWasSent() {
+        func files(_ types: String...) -> [AttachmentOut] {
+            types.enumerated().map { AttachmentOut(id: "\($0.offset)", filename: "f", contentType: $0.element, sizeBytes: 1, width: nil, height: nil,
+                                                   hasThumbnail: false, status: "attached", createdAt: "") }
+        }
+        XCTAssertEqual(Timeline.excerpt("", attachments: [], users: [:]), "")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("image/png"), users: [:]), "画像を送信しました")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("image/png", "image/jpeg", "image/heic"), users: [:]), "画像を 3 枚送信しました")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("video/mp4"), users: [:]), "動画を送信しました")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("video/mp4", "video/quicktime"), users: [:]), "動画を 2 本送信しました")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("application/pdf"), users: [:]), "ファイルを送信しました")
+        XCTAssertEqual(Timeline.excerpt("", attachments: files("image/png", "video/mp4"), users: [:]), "ファイルを 2 件送信しました")
+        XCTAssertEqual(Timeline.excerpt("写真です", attachments: files("image/png"), users: [:]), "写真です")
     }
 }

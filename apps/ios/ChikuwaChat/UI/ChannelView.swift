@@ -881,7 +881,7 @@ struct MessageRow: View {
     private var replyLine: some View {
         if let onOpenThread {
             let parent = message.parentId.flatMap { store.message(message.channelId, id: $0) }
-            let excerpt = parent.map { Timeline.excerpt($0.body, hasAttachments: !$0.attachments.isEmpty, users: store.users, groups: store.groups) }
+            let excerpt = parent.map { Timeline.excerpt($0.body, attachments: $0.attachments, users: store.users, groups: store.groups) }
             Button { onOpenThread() } label: {
                 Label("スレッドに返信: \(excerpt ?? "元のメッセージ")", systemImage: "bubble.left").lineLimit(1)
             }

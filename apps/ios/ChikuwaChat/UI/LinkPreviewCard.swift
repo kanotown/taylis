@@ -25,15 +25,23 @@ struct LinkPreviewCard: View {
     @Bindable var controller: AppController
     let url: String
 
+    /// The link's host without "www.", for a page that names no site.
+    static func host(_ url: String) -> String {
+        guard let host = URL(string: url)?.host() else { return url }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
     var body: some View {
         Group {
             if let entry = controller.linkPreviews[url], let preview = entry {
                 Link(destination: URL(string: preview.url) ?? URL(string: url)!) {
+                    // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked
+                    // "AI-like"); the same on the desktop and Android.
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            if let site = preview.siteName { Text(site.uppercased()).font(.caption2).foregroundStyle(.secondary) }
-                            if let title = preview.title { Text(title).font(.subheadline).bold().foregroundStyle(.primary).lineLimit(2) }
-                            if let description = preview.description { Text(description).font(.footnote).foregroundStyle(.secondary).lineLimit(3) }
+                            Text(preview.siteName ?? Self.host(preview.url)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let title = preview.title { Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2) }
+                            if let description = preview.description { Text(description).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
                         }
                         Spacer(minLength: 0)
                         if let image = preview.imageUrl, let imageUrl = URL(string: image) {
@@ -41,12 +49,12 @@ struct LinkPreviewCard: View {
                                 if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
                             }
                             .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         }
                     }
                     .padding(10)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.6)).frame(width: 3).padding(.vertical, 6) }
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }

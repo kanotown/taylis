@@ -23,9 +23,19 @@ extension MessageState {
 }
 
 enum Timeline {
-    /// One line of plain text for a message (thread lists, "replied to a thread" lines).
-    static func excerpt(_ body: String, hasAttachments: Bool, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
-        if body.isEmpty { return hasAttachments ? "(添付ファイル)" : "" }
+    /// What a message without text sent (tester, 2026-09-30: 「画像を送信」 rather than a placeholder); the server's push and
+    /// the other clients use the same words. "" without attachments.
+    static func attachmentText(_ attachments: [AttachmentOut]) -> String {
+        let n = attachments.count
+        guard n > 0 else { return "" }
+        if attachments.allSatisfy({ $0.contentType.hasPrefix("image/") }) { return n == 1 ? "画像を送信しました" : "画像を \(n) 枚送信しました" }
+        if attachments.allSatisfy({ $0.contentType.hasPrefix("video/") }) { return n == 1 ? "動画を送信しました" : "動画を \(n) 本送信しました" }
+        return n == 1 ? "ファイルを送信しました" : "ファイルを \(n) 件送信しました"
+    }
+
+    /// One line of plain text for a message (thread lists, "replied to a thread" lines); without text, what was sent.
+    static func excerpt(_ body: String, attachments: [AttachmentOut], users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        if body.isEmpty { return attachmentText(attachments) }
         var text = Mentions.decode(body, users: users, groups: groups)
         // M15g: a table becomes its cell text (separator rows vanish, pipes become spaces).
         text = text.replacingOccurrences(of: #"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#, with: "", options: .regularExpression)

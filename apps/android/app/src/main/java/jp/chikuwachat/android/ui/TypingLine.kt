@@ -33,10 +33,12 @@ fun TypingLine(controller: AppController, channelId: String, parentId: String? =
             now = System.currentTimeMillis()
         }
     }
-    if (users.isEmpty()) return
-    val names = users.map { store.users[it]?.displayName ?: "…" }
-    val label = if (names.size <= 2) names.joinToString("、") + " が入力中…" else "${names.first()} ほか ${names.size - 1} 人が入力中…"
+    // The line keeps its height while nobody types (as on the desktop and iOS): coming and going, it changed the
+    // conversation's height and every row jumped when a message arrived (the typing ends with it; tester, 2026-09-30).
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (users.isEmpty()) return@Row
+        val names = users.map { store.users[it]?.displayName ?: "…" }
+        val label = if (names.size <= 2) names.joinToString("、") + " が入力中…" else "${names.first()} ほか ${names.size - 1} 人が入力中…"
         CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp)
         Text(
             label,
