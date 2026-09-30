@@ -86,6 +86,9 @@ refresh(token):
 ### 2.5 ユーザーの作成と初期管理者
 
 - 自由登録のエンドポイントは無い。初期管理者は CLI (`uv run python -m app.cli create-admin`) で作成する。
+- 例外 (M48、docs/SSO.md): サーバに `SSO_GOOGLE_*` と `SSO_AUTO_PROVISION=true` を設定したときだけ、許可した
+  Google Workspace のドメインの人は、初めて Google でログインしたときに一般メンバーとして作られる。ドメインを
+  設定しなければ SSO は無効。作成は監査ログに残り、管理者は無効化できる。
 - 以後のユーザーは管理者が `POST /admin/users` または CLI `create-user` で作成し、仮パスワードを
   本人に別経路で渡す。仮パスワードは応答に 1 回だけ含め、保存しない (ハッシュのみ)。
 - 作成直後は `must_change_password = true`。この間、認証済み API は `GET /users/me`、
