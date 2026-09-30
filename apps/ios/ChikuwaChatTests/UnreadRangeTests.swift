@@ -168,7 +168,7 @@ final class UnreadRangeTests: XCTestCase {
         XCTAssertTrue(covered)
         XCTAssertEqual(w.api.historyRequests.dropFirst(), ["before_seq=104&limit=200"])
         let rows = w.store.messages(w.channel.id)
-        let items = Timeline.build(rows, firstUnreadAfterSeq: ReadGate.dividerMark(held: nil, captured: 100, oldestLoadedSeq: state(w).oldestLoadedSeq), meId: w.bob.id)
+        let items = Timeline.build(rows, firstUnreadAfterSeq: ReadGate.dividerMark(held: nil, captured: 100, oldestLoadedSeq: state(w).oldestLoadedSeq), meId: w.bob.id, grouping: true)
         let divider = try XCTUnwrap(items.firstIndex { if case .unread = $0 { return true } else { return false } })
         guard case .message(let after, _) = items[divider + 1] else { return XCTFail("no row after the divider") }
         XCTAssertEqual(after.seq, 104)

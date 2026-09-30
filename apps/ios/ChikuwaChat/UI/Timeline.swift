@@ -85,10 +85,22 @@ enum Timeline {
         return Double(hash % 360) / 360
     }
 
+    /// M47 「連続した投稿をまとめる」 (自分 → 表示, this device only, off by default): off, every post in a channel, a DM
+    /// or a thread shows its picture, name and time; on, a run of posts from one person shows them once.
+    static let groupingKey = "groupConsecutivePosts"
+
+    /// Whether `message` (posted at `at`) goes under `previous` without its header: the same sender within
+    /// `groupWindow`. Callers pass nil for `previous` where a run is cut (a day separator, the unread divider).
+    static func continues(_ message: MessageState, at: Date, after previous: MessageState?) -> Bool {
+        guard let previous, previous.senderId == message.senderId, let previousAt = parseIsoDate(previous.createdAt) else { return false }
+        return abs(at.timeIntervalSince(previousAt)) < groupWindow
+    }
+
     static func build(
         _ messages: [MessageState],
         firstUnreadAfterSeq: Int?,
         meId: String?,
+        grouping: Bool,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [TimelineItem] {
@@ -110,17 +122,33 @@ enum Timeline {
                 unreadPlaced = true
                 previous = nil
             }
-            var compact = false
             // A reply also sent to the channel (M15c) keeps its own header. Pending messages group like sent ones:
             // my second message must not show the header until the server confirms it and then drop it.
-            if let previous, previous.senderId == message.senderId, !previous.isReply, !message.isReply,
-               let previousAt = parseIsoDate(previous.createdAt) {
-                compact = abs(at.timeIntervalSince(previousAt)) < groupWindow
-            }
+            let compact = grouping && !message.isReply && !(previous?.isReply ?? false) && continues(message, at: at, after: previous)
             items.append(.message(message, compact: compact))
             previous = message
         }
         return items
+    }
+
+    /// M47: the replies of a thread shown under the one before them (their ids), by the timeline's rule; a new day and
+    /// the 「新しい返信」 divider cut a run as the separators do in the channel. The first reply always has its header
+    /// (the reply count is between it and the parent), and so does the parent.
+    static func threadCompactIds(_ replies: [MessageState], firstUnreadId: String?, grouping: Bool,
+                                 now: Date = Date(), calendar: Calendar = .current) -> Set<String> {
+        guard grouping else { return [] }
+        var ids: Set<String> = []
+        var previous: MessageState?
+        for reply in replies {
+            let at = parseIsoDate(reply.createdAt) ?? now
+            if let before = previous, reply.id == firstUnreadId
+                || calendar.startOfDay(for: at) != calendar.startOfDay(for: parseIsoDate(before.createdAt) ?? now) {
+                previous = nil
+            }
+            if continues(reply, at: at, after: previous) { ids.insert(reply.id) }
+            previous = reply
+        }
+        return ids
     }
 
     /// "HH:mm までミュート" while a mute is active, otherwise nil.

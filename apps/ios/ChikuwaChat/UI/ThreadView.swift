@@ -7,6 +7,8 @@ struct ThreadView: View {
     let channelId: String
     let parentId: String
     @Environment(\.scenePhase) private var scenePhase
+    /// M47: replies group like the channel's rows when on (read here, so switching it redraws an open thread).
+    @AppStorage(Timeline.groupingKey) private var grouping = false
 
     /// Placed once the whole thread and my read position are known (§10.2); `provisional` until then.
     @State private var positioned = false
@@ -180,17 +182,21 @@ struct ThreadView: View {
     private func rows(viewportHeight: CGFloat) -> some View {
         EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id(UpsideDown.newest)
         if let parent {
+            let compactIds = Timeline.threadCompactIds(replies, firstUnreadId: firstUnreadId, grouping: grouping)
             ForEach(replies.reversed(), id: \.rowKey) { reply in
+                let compact = compactIds.contains(reply.id)
                 // One cell with its divider, so a reply scrolled to the top shows 「新しい返信」 too.
                 VStack(alignment: .leading, spacing: 12) {
                     if reply.id == firstUnreadId { NewRepliesDivider().padding(.horizontal, Self.margin) }
-                    MessageRow(message: reply, controller: controller, margin: Self.margin, highlighted: highlighted(reply),
+                    MessageRow(message: reply, controller: controller, compact: compact, margin: Self.margin, highlighted: highlighted(reply),
                                present: { messageSheet = $0 })
                         .background(GeometryReader { geometry in
                             Color.clear.preference(key: VisibleReplyFrames.self,
                                                    value: [reply.id: geometry.frame(in: .named("threadViewport"))])
                         })
                 }
+                // A grouped reply sits right under the one before it, as a channel's rows do (they have no spacing).
+                .padding(.top, compact ? -12 : 0)
                 .upsideDown()
                 .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                 .id(reply.rowKey)

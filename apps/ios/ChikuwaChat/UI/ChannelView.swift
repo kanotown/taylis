@@ -13,6 +13,8 @@ struct ChannelView: View {
     /// M29: 「メッセージ」, or the pins or files covering the conversation (which stays as it was underneath).
     @State private var tab: ChannelTab = .messages
     @Environment(\.scenePhase) private var scenePhase
+    /// M47: read here, so switching it in 自分 → 表示 redraws an open conversation.
+    @AppStorage(Timeline.groupingKey) private var grouping = false
     @State private var atBottom = false
     @State private var positioned = false
     /// Where the rows are on screen, for the read rules and the keyboard (not view state: written on every scroll frame,
@@ -76,7 +78,7 @@ struct ChannelView: View {
         return ReadGate.dividerMark(held: controller.engine?.unreadHold[channelId], captured: unreadMark, oldestLoadedSeq: channel?.oldestLoadedSeq)
     }
     private var items: [TimelineItem] {
-        Timeline.build(messages, firstUnreadAfterSeq: dividerMark, meId: controller.store.me?.id)
+        Timeline.build(messages, firstUnreadAfterSeq: dividerMark, meId: controller.store.me?.id, grouping: grouping)
     }
     private var unreadBanner: ReadGate.Banner? {
         guard let channel else { return nil }
