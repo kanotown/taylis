@@ -270,6 +270,9 @@ describe("年度更新 (L7)", () => {
   it("undoes a year from the history after a confirmation; undone years have no button", async () => {
     const w = setup();
     const history = await screen.findByRole("list", { name: "これまでの年度更新" });
+    // Wait for both years' rows to be filled in (the list shows before its history arrives on a slow machine; the
+    // v0.1.10 release checks failed here).
+    await within(history).findByText("取り消し済み");
     const rows = within(history).getAllByRole("listitem");
     expect(within(rows[1]!).getByText("取り消し済み")).toBeTruthy();
     expect(within(rows[1]!).queryByRole("button", { name: "取り消す" })).toBeNull();
@@ -277,10 +280,8 @@ describe("年度更新 (L7)", () => {
     fireEvent.click(within(rows[0]!).getByRole("button", { name: "取り消す" }));
     const dialog = screen.getByRole("dialog", { name: "2025 年度の年度更新を取り消しますか？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "取り消す" }));
-    await flush();
-    await flush();
-    expect(w.calls.undone).toEqual([2025]);
-    expect(screen.getByRole("status").textContent).toBe("2025 年度の年度更新を取り消しました");
+    await waitFor(() => expect(w.calls.undone).toEqual([2025]));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("2025 年度の年度更新を取り消しました"));
     expect(within(screen.getByRole("list", { name: "これまでの年度更新" })).queryByRole("button", { name: "取り消す" })).toBeNull();
   });
 
