@@ -116,10 +116,10 @@ private fun tabIcons(tab: MainTab): Pair<ImageVector, ImageVector> = when (tab) 
 
 /**
  * M34, the DM tab (MOBILE_UI.md §6.3): my DMs and group DMs, my own DM (titled with my name) first, then the newest. A
- * row shows the avatar with the presence, the name with the status emoji and the time, the status or presence (group
- * DMs: how many people), unread in bold with its count; a muted one is dimmed. The last message's preview comes with
- * M37. Until my own DM exists, a placeholder row (my picture and name) stands first; a tap makes it (POST /dms with only
- * me) and opens it.
+ * row shows the avatar with the presence, the name with the status emoji and the time, then the last message (M49,
+ * DmPreview.kt; the status or presence, group DMs how many people, while there is none), unread in bold with its count;
+ * a muted one is dimmed. Until my own DM exists, a placeholder row (my picture and name) stands first; a tap makes it
+ * (POST /dms with only me) and opens it.
  */
 @Composable
 fun DmListScreen(controller: AppController, version: Int, listState: LazyListState, onOpen: (String) -> Unit, onNew: () -> Unit) {
@@ -211,7 +211,10 @@ private fun DmRow(channel: ChannelState, store: Store, version: Int, now: ZonedD
     val muted = Channels.isMuted(channel)
     val badge = Channels.badgeCount(channel)
     val time = MainTabs.dmTimeLabel(channel.channel.lastMessageAt, now)
+    // M49: the last message (「あなた: …」 / 「佐藤: …」, DmPreview.kt); without one, the size, status or presence as before.
+    val preview = remember(version, channel) { previewLine(channel.channel, meId, store.users) }
     val second = when {
+        preview.isNotEmpty() -> preview
         others.size > 1 -> "${others.size + 1} 人"
         status != null && status.second.isNotBlank() -> status.second
         presence != null -> presenceLabel(presence)
@@ -251,8 +254,12 @@ private fun DmRow(channel: ChannelState, store: Store, version: Int, now: ZonedD
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                // The preview is bold while unread (MOBILE_UI.md §6.3, as Slack); the status / presence line never is.
+                val loud = unread && preview.isNotEmpty()
                 Text(
-                    second ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    second ?: "", style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (loud) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (loud) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp).size(14.dp))

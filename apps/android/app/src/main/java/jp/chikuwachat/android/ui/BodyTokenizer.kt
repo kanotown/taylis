@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.AttachmentOut
+import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.Store
 
 /**
@@ -319,4 +321,8 @@ fun attachmentSummary(contentTypes: List<String>): String {
 
 /** A message's one line: its plain text (names for mentions), else what its attachments are ([attachmentSummary]). */
 fun messageLine(body: String, attachments: List<AttachmentOut>, store: Store, maxLength: Int = 200): String =
-    plainText(Mentions.toNames(body, store.users, store.groups), maxLength).ifEmpty { attachmentSummary(attachments.map { it.contentType }) }
+    messageLine(body, attachments.map { it.contentType }, store.users, store.groups, maxLength)
+
+/** The same line from its parts (the DM list's preview, which the Store builds itself, M49). */
+fun messageLine(body: String, contentTypes: List<String>, users: Map<String, UserPublic>, groups: Map<String, GroupOut>, maxLength: Int = 200): String =
+    plainText(Mentions.toNames(body, users, groups), maxLength).ifEmpty { attachmentSummary(contentTypes) }

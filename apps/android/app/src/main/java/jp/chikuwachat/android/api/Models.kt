@@ -209,11 +209,34 @@ data class ChannelOut(
      * and read as null until the next bootstrap or channel event brings the value.
      */
     val timesOwnerId: String? = null,
+    /**
+     * M49 (SYNC_PROTOCOL.md §7.8): the conversation's newest timeline message as one line, the DM list's preview. Only
+     * answers to a member carry it (bootstrap, GET /channels, GET /channels/{id}, POST /dms); null elsewhere means
+     * "not said" (Store.upsertChannel keeps the held one), in bootstrap "no message yet". A server before M49 never
+     * sends it.
+     */
+    val lastMessage: LastMessageOut? = null,
 ) {
     val isDm: Boolean get() = type == "dm" || type == "group_dm"
     val isAnnouncement: Boolean get() = postingPolicy == "owners"
     val isTimes: Boolean get() = timesOwnerId != null
 }
+
+/**
+ * M49 (MOBILE_UI.md §7.1): a conversation's newest message (top-level, or a reply also sent to the channel; never a
+ * deleted one) as one line. `excerpt` is the push body's rule (ui/DmPreview.kt [jp.chikuwachat.android.ui.previewExcerpt]);
+ * the client puts the prefix in front ([jp.chikuwachat.android.ui.previewLine]). Defaults keep an incomplete row readable.
+ */
+@Serializable
+data class LastMessageOut(
+    val id: String,
+    val senderId: String,
+    val type: String = "user",
+    val seq: Int = 0,
+    val excerpt: String = "",
+    val hasAttachments: Boolean = false,
+    val createdAt: String = "",
+)
 
 @Serializable
 data class ReactionOut(val emoji: String, val count: Int, val userIds: List<String> = emptyList())
