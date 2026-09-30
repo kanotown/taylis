@@ -664,6 +664,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description Events overlapping the range: my own and those of the channels I belong to (at most
+         *     1000). All-day events overlap by date, in the offsets `from` and `to` carry (pass the
+         *     device's local midnights).
+         */
+        get: operations["list_events_api_v1_calendar_events_get"];
+        put?: never;
+        /**
+         * Create Event
+         * @description A new event in my calendar or a channel's (a member who may post there).
+         */
+        post: operations["create_event_api_v1_calendar_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event */
+        get: operations["get_event_api_v1_calendar_events__event_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Event */
+        delete: operations["delete_event_api_v1_calendar_events__event_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Event
+         * @description The creator, the channel's owners and administrators (not in an archived channel).
+         */
+        patch: operations["update_event_api_v1_calendar_events__event_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/calendar/events/{event_id}/alarm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Alarm
+         * @description My alarm on an event I can see (only I am notified). Timed: 0 / 5 / 10 / 15 / 30 / 60 /
+         *     1440 minutes before; all-day: 1440 (前日 8:00) or -480 (当日 8:00).
+         */
+        put: operations["set_alarm_api_v1_calendar_events__event_id__alarm_put"];
+        post?: never;
+        /** Clear Alarm */
+        delete: operations["clear_alarm_api_v1_calendar_events__event_id__alarm_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming
+         * @description Events of today (and tomorrow) not over yet, earliest first, at most 10: a channel's
+         *     header and the home.
+         */
+        get: operations["upcoming_api_v1_calendar_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/canvas-templates": {
         parameters: {
             query?: never;
@@ -2722,6 +2813,129 @@ export interface components {
             threads: components["schemas"]["ThreadSummary"];
             /** Users */
             users: components["schemas"]["UserPublic"][];
+        };
+        /** CalendarAlarmIn */
+        CalendarAlarmIn: {
+            /** Minutes Before */
+            minutes_before: number;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * CalendarAlarmOut
+         * @description My alarm on an event (CALENDAR.md §2, §6).
+         */
+        CalendarAlarmOut: {
+            /**
+             * Fire At
+             * Format: date-time
+             */
+            fire_at: string;
+            /** Minutes Before */
+            minutes_before: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "fired" | "cancelled";
+        };
+        /** CalendarEventCreate */
+        CalendarEventCreate: {
+            /** Alarm Minutes */
+            alarm_minutes?: number | null;
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Client Event Id */
+            client_event_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Title */
+            title: string;
+            /** Tz */
+            tz?: string | null;
+        };
+        /** CalendarEventOut */
+        CalendarEventOut: {
+            alarm: components["schemas"]["CalendarAlarmOut"] | null;
+            /** All Day */
+            all_day: boolean;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Channel Name */
+            channel_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** End Date */
+            end_date: string | null;
+            /** Ends At */
+            ends_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Location */
+            location: string | null;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Start Date */
+            start_date: string | null;
+            /** Starts At */
+            starts_at: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CalendarEventUpdate
+         * @description Only the fields sent change. Turning all_day on or off needs the other pair of times.
+         */
+        CalendarEventUpdate: {
+            /** All Day */
+            all_day?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** CanvasConflictDetails */
         CanvasConflictDetails: {
@@ -6253,6 +6467,278 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookmarkListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_calendar_events_get: {
+        parameters: {
+            query: {
+                /** @description Start of the range (with offset) */
+                from: string;
+                /** @description End of the range, excluded; at most 100 days after `from` */
+                to: string;
+                /** @description Only this channel's calendar */
+                channel_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_event_api_v1_calendar_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventCreate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the event made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_api_v1_calendar_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_event_api_v1_calendar_events__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_event_api_v1_calendar_events__event_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarEventUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_alarm_api_v1_calendar_events__event_id__alarm_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarAlarmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_alarm_api_v1_calendar_events__event_id__alarm_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upcoming_api_v1_calendar_upcoming_get: {
+        parameters: {
+            query?: {
+                /** @description Today and the next days */
+                days?: number;
+                channel_id?: string | null;
+                /** @description IANA zone of the days */
+                tz?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"][];
                 };
             };
             /** @description Validation Error */

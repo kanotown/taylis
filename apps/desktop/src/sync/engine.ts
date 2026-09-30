@@ -5,9 +5,10 @@
  */
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
+import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -63,6 +64,15 @@ export interface SyncApi {
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
   saveCanvas?(canvasId: string, body: CanvasSaveIn): Promise<CanvasSaveOut>;
+  /** M51: the calendar (CALENDAR.md §4). Optional (older fakes). */
+  calendarEvents?: CalendarApi["calendarEvents"];
+  calendarUpcoming?: CalendarApi["calendarUpcoming"];
+  createCalendarEvent?: CalendarApi["createCalendarEvent"];
+  updateCalendarEvent?: CalendarApi["updateCalendarEvent"];
+  deleteCalendarEvent?: CalendarApi["deleteCalendarEvent"];
+  setCalendarAlarm?: CalendarApi["setCalendarAlarm"];
+  clearCalendarAlarm?: CalendarApi["clearCalendarAlarm"];
+  getCalendarEvent?: CalendarApi["getCalendarEvent"];
   /** M15d: drafts shared by my devices. Optional (older fakes). */
   saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
   deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
@@ -123,6 +133,8 @@ export interface EngineDeps {
   onReaction?: (reaction: ReactionAdded, channel: ChannelState) => void;
   /** M12e: a reminder just fired (a nudge in the app while it is open). */
   onReminder?: (reminder: ReminderOut) => void;
+  /** M51: one of my calendar alarms just fired (the server pushes to phones; the app shows it while open). */
+  onCalendarAlarm?: (event: CalendarEventOut) => void;
   /** A channel became fully read (here or on another device). */
   onRead?: (channelId: string) => void;
   isActive?: () => boolean;
@@ -240,6 +252,13 @@ export class SyncEngine {
       store: deps.store,
       options: this.opts.canvasSave,
     });
+    this.calendar = new CalendarHub({
+      api: api.calendarEvents && api.calendarUpcoming && api.createCalendarEvent && api.updateCalendarEvent && api.deleteCalendarEvent && api.setCalendarAlarm && api.clearCalendarAlarm && api.getCalendarEvent
+        ? (api as unknown as CalendarApi)
+        : null,
+      me: () => deps.store.me?.id ?? null,
+      onAlarm: (event) => deps.onCalendarAlarm?.(event),
+    });
     this.drafts = new DraftSync({
       api: api.saveDraft && api.deleteDraft ? { saveDraft: (c, p, b) => api.saveDraft!(c, p, b), deleteDraft: (c, p) => api.deleteDraft!(c, p) } : null,
       store: deps.store,
@@ -269,6 +288,8 @@ export class SyncEngine {
   readonly drafts: DraftSync;
   /** M43: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
   readonly canvases: CanvasHub;
+  /** M51: the ranges of the calendar on screen and the channels' counts (CALENDAR.md §5). */
+  readonly calendar: CalendarHub;
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -399,6 +420,7 @@ export class SyncEngine {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
       this.canvases.online(); // M43: canvas saves that failed, open canvases read again
+      this.calendar.online(); // M51: the ranges on screen read again (CALENDAR.md §5)
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -454,6 +476,7 @@ export class SyncEngine {
     this.completeThreads.clear();
     this.cancelSendRetry();
     this.canvases.stop();
+    this.calendar.stop();
     this.dropSocket();
     this.setStatus("signed_out");
     this.deps.onSignedOut?.();
@@ -764,6 +787,11 @@ export class SyncEngine {
       case "canvas.deleted":
         this.canvases.applyEvent(frame.event, frame.data);
         return;
+      case "calendar.event.updated":
+      case "calendar.event.deleted":
+      case "calendar.alarm.updated":
+        this.calendar.applyEvent(frame.event, frame.data);
+        return;
       case "sidebar.updated": {
         const data = frame.data as { sections: SidebarSectionOut[] };
         store.replaceSidebar(data.sections);
@@ -896,6 +924,7 @@ export class SyncEngine {
     if (this.currentChannelId === channelId) this.currentChannelId = null;
     if (this.preview?.channelId === channelId) this.closePreview();
     this.canvases.removeChannel(channelId);
+    this.calendar.removeChannel(channelId);
     this.deps.store.removeChannel(channelId);
   }
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, TypeAdapter
 from app.modules.activity import events as activity_events
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
+from app.modules.calendar import events as calendar_events
 from app.modules.canvases import events as canvas_events
 from app.modules.channel_links import events as channel_link_events
 from app.modules.channels import events as channel_events
@@ -75,6 +76,21 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     canvas_events.CANVAS_CREATED: (canvas_events.CanvasCreatedData, "channel", False),
     canvas_events.CANVAS_UPDATED: (canvas_events.CanvasUpdatedData, "channel", False),
     canvas_events.CANVAS_DELETED: (canvas_events.CanvasDeletedData, "channel", False),
+    calendar_events.CALENDAR_EVENT_UPDATED: (
+        calendar_events.CalendarEventUpdatedData,
+        "channel (a personal event: user)",
+        False,
+    ),
+    calendar_events.CALENDAR_EVENT_DELETED: (
+        calendar_events.CalendarEventDeletedData,
+        "channel (a personal event: user)",
+        False,
+    ),
+    calendar_events.CALENDAR_ALARM_UPDATED: (
+        calendar_events.CalendarAlarmUpdatedData,
+        "user",
+        False,
+    ),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

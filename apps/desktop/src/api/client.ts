@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -338,6 +338,46 @@ export class ApiClient {
   /** Cancels a pending reminder or marks a fired one done. */
   closeReminder(reminderId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/reminders/${reminderId}`);
+  }
+
+  // --- calendar (CALENDAR.md §4, M51) --------------------------------------------------------
+
+  /** Events overlapping [from, to) (ISO with the device's offset: all-day events are matched by its dates), ≤ 100 days. */
+  calendarEvents(from: string, to: string, channelId: string | null = null): Promise<CalendarEventOut[]> {
+    const params = new URLSearchParams({ from, to, ...(channelId ? { channel_id: channelId } : {}) });
+    return this.request("GET", `/api/v1/calendar/events?${params}`);
+  }
+
+  /** Today's (and the next days') events not over yet, at most 10 (a channel's header). */
+  calendarUpcoming(channelId: string | null, days: number, tz: string): Promise<CalendarEventOut[]> {
+    const params = new URLSearchParams({ days: String(days), tz, ...(channelId ? { channel_id: channelId } : {}) });
+    return this.request("GET", `/api/v1/calendar/upcoming?${params}`);
+  }
+
+  /** A retry with the same client_event_id returns the event made the first time. */
+  createCalendarEvent(body: CalendarEventCreate): Promise<CalendarEventOut> {
+    return this.request("POST", "/api/v1/calendar/events", body);
+  }
+
+  updateCalendarEvent(eventId: string, patch: CalendarEventUpdate): Promise<CalendarEventOut> {
+    return this.request("PATCH", `/api/v1/calendar/events/${eventId}`, patch);
+  }
+
+  deleteCalendarEvent(eventId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/calendar/events/${eventId}`);
+  }
+
+  /** My alarm on an event (only I am notified); `tz` is where 8:00 of an all-day event is read. */
+  setCalendarAlarm(eventId: string, minutesBefore: number, tz: string): Promise<CalendarEventOut> {
+    return this.request("PUT", `/api/v1/calendar/events/${eventId}/alarm`, { minutes_before: minutesBefore, tz });
+  }
+
+  clearCalendarAlarm(eventId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/calendar/events/${eventId}/alarm`);
+  }
+
+  getCalendarEvent(eventId: string): Promise<CalendarEventOut> {
+    return this.request("GET", `/api/v1/calendar/events/${eventId}`);
   }
 
   // --- scheduled messages (M12d) ---------------------------------------------------------

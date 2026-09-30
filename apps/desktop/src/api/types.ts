@@ -231,3 +231,30 @@ export interface CanvasDeleted {
   canvas_id: string;
   channel_id: string;
 }
+
+/**
+ * Calendar (CALENDAR.md; M51): one-off events in my own calendar (`channel_id` null) or a channel's shared one. The
+ * calendar.* events carry the event without the fields that differ per person: `can_edit` is `editor_ids` holding me,
+ * and my alarm travels on calendar.alarm.updated (openapi/ws-events.json).
+ */
+export type CalendarEventOut = components["schemas"]["CalendarEventOut"];
+export type CalendarEventCreate = components["schemas"]["CalendarEventCreate"];
+export type CalendarEventUpdate = components["schemas"]["CalendarEventUpdate"];
+export type CalendarAlarmOut = components["schemas"]["CalendarAlarmOut"];
+export type CalendarEventData = Omit<CalendarEventOut, "can_edit" | "alarm">;
+/** calendar.event.updated: a new or changed event, and who may change it now. */
+export interface CalendarEventUpdated {
+  event: CalendarEventData;
+  editor_ids: string[];
+}
+/** calendar.event.deleted. */
+export interface CalendarEventDeleted {
+  id: string;
+  channel_id: string | null;
+}
+/** calendar.alarm.updated: my alarm on an event was set, recomputed, fired (status "fired") or removed (null). */
+export interface CalendarAlarmUpdated {
+  event_id: string;
+  channel_id: string | null;
+  alarm: CalendarAlarmOut | null;
+}

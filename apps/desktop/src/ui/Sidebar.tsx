@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -50,6 +50,9 @@ interface Props {
   /** M44: the canvases of all my conversations. */
   onCanvases?: () => void;
   canvasesActive?: boolean;
+  /** M51: my calendar and my channels'. */
+  onCalendar?: () => void;
+  calendarActive?: boolean;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
   /** M12e: reminders; listed while any is open. */
@@ -58,7 +61,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -302,6 +305,23 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               >
                 <NotebookText size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">キャンバス</span>
+              </button>
+            </li>
+          )}
+          {onCalendar && (
+            <li>
+              <button
+                type="button"
+                onClick={onCalendar}
+                aria-current={calendarActive ? "page" : undefined}
+                title="自分とチャンネルの予定"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  calendarActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <CalendarDays size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">カレンダー</span>
               </button>
             </li>
           )}

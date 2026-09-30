@@ -52,6 +52,284 @@
         "type": "object"
       }
     },
+    "calendar.alarm.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CalendarAlarmOut": {
+            "description": "My alarm on an event (CALENDAR.md §2, §6).",
+            "properties": {
+              "fire_at": {
+                "format": "date-time",
+                "title": "Fire At",
+                "type": "string"
+              },
+              "minutes_before": {
+                "title": "Minutes Before",
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "fired",
+                  "cancelled"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "minutes_before",
+              "fire_at",
+              "status"
+            ],
+            "title": "CalendarAlarmOut",
+            "type": "object"
+          }
+        },
+        "description": "calendar.alarm.updated: my alarm on an event was set, recomputed, fired or removed.",
+        "properties": {
+          "alarm": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CalendarAlarmOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "channel_id",
+          "alarm"
+        ],
+        "title": "CalendarAlarmUpdatedData",
+        "type": "object"
+      }
+    },
+    "calendar.event.deleted": {
+      "audience": "channel (a personal event: user)",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id"
+        ],
+        "title": "CalendarEventDeletedData",
+        "type": "object"
+      }
+    },
+    "calendar.event.updated": {
+      "audience": "channel (a personal event: user)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "CalendarEventData": {
+            "description": "An event as everyone who sees it sees it: calendar.event.updated carries this (the fields\nthat differ per person, can_edit and alarm, are in CalendarEventOut).",
+            "properties": {
+              "all_day": {
+                "title": "All Day",
+                "type": "boolean"
+              },
+              "channel_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Id"
+              },
+              "channel_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Name"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "end_date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "End Date"
+              },
+              "ends_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ends At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "location": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Location"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "start_date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Start Date"
+              },
+              "starts_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Starts At"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "channel_name",
+              "owner_id",
+              "title",
+              "all_day",
+              "starts_at",
+              "ends_at",
+              "start_date",
+              "end_date",
+              "location",
+              "description",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "CalendarEventData",
+            "type": "object"
+          }
+        },
+        "description": "calendar.event.updated: a new or changed event, to those who see it.",
+        "properties": {
+          "editor_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Editor Ids",
+            "type": "array"
+          },
+          "event": {
+            "$ref": "#/$defs/CalendarEventData"
+          }
+        },
+        "required": [
+          "event",
+          "editor_ids"
+        ],
+        "title": "CalendarEventUpdatedData",
+        "type": "object"
+      }
+    },
     "canvas.created": {
       "audience": "channel",
       "consumes_seq": false,

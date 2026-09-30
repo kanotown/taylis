@@ -28,11 +28,13 @@ class NotificationPreferenceOut(BaseModel):
 class PushPayload(BaseModel):
     """Provider-independent notification content stored in push_deliveries.payload (§5)."""
 
-    kind: Literal["message", "reminder", "reaction", "test"] = "message"
+    kind: Literal["message", "reminder", "reaction", "calendar", "test"] = "message"
     # Which deployment sent it (WORKSPACES.md §5): the app opens that workspace on a tap.
     workspace_id: UUID | None = None
     channel_id: UUID | None = None
     message_id: UUID | None = None
+    # kind calendar (M51): the event whose alarm this is.
+    event_id: UUID | None = None
     seq: int | None = None
     title: str = Field(max_length=120)
     subtitle: str | None = Field(default=None, max_length=120)

@@ -102,6 +102,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `messages.keyword_user_ids` に入り、`level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる。この列はクライアントに送らない (他のメンバーに本人のキーワードが分かってしまうため。M16a)。PushPlanner は行から読む | M12g / M16a |
 | `reaction.added` (M39、自分の投稿へのリアクション) | 本人が `notify_reactions` をオンにしているときだけ `kind = reaction` (タイトル「〇〇 がリアクションしました」、サブタイトルはチャンネル、本文は絵文字と投稿の抜粋、`channel_id` / `message_id` でその投稿を開く)。その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない。既読の再判定はしない (seq が無い) | M39 |
 | `reminder.updated` (status=fired、M12e) | 本人の端末へ `kind = reminder` (タイトル「リマインダー」、本文はメモ + 設定時の本文、`channel_id` / `message_id` で該当メッセージを開く)。DND 中は出さない | M12e |
+| `calendar.alarm.updated` (alarm.status=fired、M51) | 本人の端末へ `kind = calendar` (タイトル「予定」、本文「14:00 ゼミ (#m2-進捗)」、終日は「終日 学会 (#…)」、前日の通知は先頭に「明日 」(2 日以上前なら「10/3 」)、自分用はチャンネル名なし。時刻は通知を付けた端末の `tz` で書く)。`channel_id` (自分用は null) と `event_id` で予定を開く。`collapse_key = calendar:<event_id>`。本文は送る時点の予定から作る。DND 中は出さない (リマインダーと同じく、後で送り直さない)。`PUSH_INCLUDE_CONTENT=false` なら本文は「予定の時間です」 | M51 |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` | 対象 | M5 |
 | `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
@@ -166,7 +167,8 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
 
 行にはこの他に `expires_at` (有効期限) と、スレッドの返信なら `parent_id` (送信直前の既読の再判定に使う。M28a) を
 payload と並べて保存する。プロバイダは `parent_id` も端末へ送り (APNs の本体、FCM の data)、返信の通知をタップすると
-そのスレッドが開く (M28d。以前はチャンネルだけが開いた)。クライアントは知らない項目を無視する。
+そのスレッドが開く (M28d。以前はチャンネルだけが開いた)。`kind = calendar` (M51) は `event_id` も送る (APNs の本体、FCM の
+data)。クライアントは知らない項目を無視する。
 
 | 項目 | APNs | FCM (Android) |
 | --- | --- | --- |

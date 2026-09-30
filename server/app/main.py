@@ -30,6 +30,8 @@ from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
+from app.modules.calendar import service as calendar
+from app.modules.calendar.router import router as calendar_router
 from app.modules.canvases import service as canvases
 from app.modules.canvases.router import router as canvases_router
 from app.modules.channel_links.router import router as channel_links_router
@@ -179,7 +181,8 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
 
 
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
-    """Posts scheduled messages (M12d) and fires reminders (M12e) whose time has come."""
+    """Posts scheduled messages (M12d) and fires reminders (M12e) and calendar alarms (M51)
+    whose time has come."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -195,6 +198,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await reminders.fire_due(session)
             except Exception:
                 log.exception("reminder firing failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await calendar.fire_due(session)
+            except Exception:
+                log.exception("calendar alarm firing failed")
 
 
 @asynccontextmanager
@@ -255,6 +263,7 @@ def build_api_router() -> APIRouter:
     api.include_router(drafts_router)
     api.include_router(channel_links_router)
     api.include_router(canvases_router)
+    api.include_router(calendar_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)
@@ -345,7 +354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db,
         app.state.bus,
         channels_service.resolve_event_audience,
-        handlers=[planner],
+        handlers=[planner, calendar.CalendarLeaveHandler()],
         listen_dsn=asyncpg_dsn(settings.database_url),
         poll_interval=settings.outbox_poll_interval_seconds,
         batch_size=settings.outbox_batch_size,
