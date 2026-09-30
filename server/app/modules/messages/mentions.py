@@ -83,3 +83,21 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
         text = pattern.sub(replacement, text)
     text = _WHITESPACE.sub(" ", text).strip()
     return text[: max_length - 1] + "…" if len(text) > max_length else text
+
+
+def attachment_text(attachments: list[dict[str, object]] | list[object]) -> str:
+    """What a message without text sent, for notifications and one-line previews
+    (tester, 2026-09-30: 「画像を送信」 rather than 「新しいメッセージ」). The clients use the
+    same words: all images, all videos, or files; one, or how many. "" without attachments."""
+    types = [
+        str(a.get("content_type", "") if isinstance(a, dict) else getattr(a, "content_type", ""))
+        for a in attachments
+    ]
+    n = len(types)
+    if n == 0:
+        return ""
+    if all(t.startswith("image/") for t in types):
+        return "画像を送信しました" if n == 1 else f"画像を {n} 枚送信しました"
+    if all(t.startswith("video/") for t in types):
+        return "動画を送信しました" if n == 1 else f"動画を {n} 本送信しました"
+    return "ファイルを送信しました" if n == 1 else f"ファイルを {n} 件送信しました"
