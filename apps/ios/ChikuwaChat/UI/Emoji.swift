@@ -56,3 +56,58 @@ enum Emoji {
         return ns.substring(to: start) + glyph + " "
     }
 }
+
+/// MOBILE_POLISH.md C10: 「よく使う」 at the head of the emoji picker. How often each emoji was used on this device (picked
+/// in a picker or tapped as a quick reaction), in UserDefaults as JSON: per device, like the web's recent emoji. The
+/// most used come first, and among equals the latest. 「emoji.recent」 (the order the quick reactions follow, C8) stays
+/// as it is; the first time, the counts start from it.
+struct EmojiUsage: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        var glyph: String
+        var count: Int
+        /// When it was last used, as a running number (the latest is the largest).
+        var last: Int
+    }
+
+    static let key = "emoji.usage"
+    static let recentKey = "emoji.recent"
+    /// Entries remembered; past this the least used (the oldest among equals) is forgotten.
+    static let kept = 40
+    /// Shown in 「よく使う」: two rows of the picker's eight.
+    static let shown = 16
+
+    var entries: [Entry] = []
+
+    private static func ranked(_ a: Entry, _ b: Entry) -> Bool { a.count != b.count ? a.count > b.count : a.last > b.last }
+
+    /// The picker's 「よく使う」: the most used first, the latest first among equals.
+    var frequent: [String] { entries.sorted(by: Self.ranked).prefix(Self.shown).map(\.glyph) }
+
+    mutating func record(_ glyph: String) {
+        guard !glyph.isEmpty else { return }
+        let next = (entries.map(\.last).max() ?? 0) + 1
+        if let index = entries.firstIndex(where: { $0.glyph == glyph }) {
+            entries[index].count += 1
+            entries[index].last = next
+        } else {
+            if entries.count >= Self.kept { entries = Array(entries.sorted(by: Self.ranked).prefix(Self.kept - 1)) }
+            entries.append(Entry(glyph: glyph, count: 1, last: next))
+        }
+    }
+
+    /// The stored counts; without any (or unreadable), the recent list (newest first) counted once each, in its order.
+    static func decode(_ raw: String, recent: String = "") -> EmojiUsage {
+        if let data = raw.data(using: .utf8), let usage = try? JSONDecoder().decode(EmojiUsage.self, from: data) { return usage }
+        let glyphs = recent.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        return EmojiUsage(entries: glyphs.enumerated().map { Entry(glyph: $1, count: 1, last: glyphs.count - $0) })
+    }
+
+    var encoded: String { (try? JSONEncoder().encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+
+    /// Counts one use in `defaults` (a quick reaction: no picker is open to do it).
+    static func note(_ glyph: String, defaults: UserDefaults = .standard) {
+        var usage = decode(defaults.string(forKey: key) ?? "", recent: defaults.string(forKey: recentKey) ?? "")
+        usage.record(glyph)
+        defaults.set(usage.encoded, forKey: key)
+    }
+}

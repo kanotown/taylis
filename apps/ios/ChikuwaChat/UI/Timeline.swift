@@ -91,6 +91,15 @@ enum Timeline {
         return date.formatted(date: .omitted, time: .shortened)
     }
 
+    /// MOBILE_POLISH.md C3: the thread line's 「最終返信 今日 14:05」 (「昨日 14:05」, 「9月26日 (金) 14:05」): the day
+    /// separator's words and a 24-hour zero-padded time whatever the region, as the web's `lastReplyLabel`. Nil when the
+    /// time does not parse.
+    static func lastReplyLabel(_ iso: String, now: Date = Date(), calendar: Calendar = .current) -> String? {
+        guard let date = parseIsoDate(iso) else { return nil }
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return "最終返信 \(dayLabel(date, now: now, calendar: calendar)) " + String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
     static func fullLabel(_ iso: String) -> String {
         guard let date = parseIsoDate(iso) else { return "" }
         return date.formatted(date: .long, time: .shortened)

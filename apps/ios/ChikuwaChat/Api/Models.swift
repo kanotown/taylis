@@ -258,6 +258,19 @@ enum NotificationRules {
         }
     }
 
+    /// MOBILE_POLISH.md D1: the value of the channel details' one 「通知」 row: 「すべて」「メンション」「なし」, and
+    /// 「· ミュート」 or 「· 15:30 までミュート」 while muted.
+    static func rowValue(level: String, muted: Bool, timedMute: String?) -> String {
+        let base = switch level {
+        case "all": "すべて"
+        case "none": "なし"
+        default: "メンション"
+        }
+        if muted { return base + " · ミュート" }
+        if let timedMute { return base + " · " + timedMute }
+        return base
+    }
+
     /// The label of a conversation's notification menu: muted (until unmuted), a timed mute ("15:30 までミュート",
     /// `Timeline.muteLabel`), or the level it notifies me of.
     static func menuLabel(level: String, muted: Bool, timedMute: String?) -> String {
@@ -359,6 +372,8 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var alsoInChannel: Bool = false
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
+    /// C3 (THREADS.md §3.1): who replied, most recent first, at most 5; older servers send none.
+    var replyUserIds: [String] = []
     var attachments: [AttachmentOut] = []
     /// Pinned in the channel (M11c); both nil when not pinned.
     var pinnedAt: String? = nil
@@ -372,7 +387,7 @@ struct MessageOut: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
-        case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
+        case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
         case priority, ackRequested, acks
     }
 
@@ -426,15 +441,18 @@ struct ParentThread: Codable, Equatable {
     let lastReplyAt: String?
     let updatedSeq: Int
     var participantIds: [String] = []
+    /// C3: the parent's repliers after the change; nil from an older server (the parent keeps the list it had).
+    var replyUserIds: [String]? = nil
 
-    enum CodingKeys: String, CodingKey { case id, replyCount, lastReplyAt, updatedSeq, participantIds }
+    enum CodingKeys: String, CodingKey { case id, replyCount, lastReplyAt, updatedSeq, participantIds, replyUserIds }
 
-    init(id: String, replyCount: Int, lastReplyAt: String?, updatedSeq: Int, participantIds: [String] = []) {
+    init(id: String, replyCount: Int, lastReplyAt: String?, updatedSeq: Int, participantIds: [String] = [], replyUserIds: [String]? = nil) {
         self.id = id
         self.replyCount = replyCount
         self.lastReplyAt = lastReplyAt
         self.updatedSeq = updatedSeq
         self.participantIds = participantIds
+        self.replyUserIds = replyUserIds
     }
 
     init(from decoder: Decoder) throws {
@@ -444,6 +462,7 @@ struct ParentThread: Codable, Equatable {
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
         updatedSeq = try c.decode(Int.self, forKey: .updatedSeq)
         participantIds = try c.decodeIfPresent([String].self, forKey: .participantIds) ?? []
+        replyUserIds = try c.decodeIfPresent([String].self, forKey: .replyUserIds)
     }
 }
 
@@ -469,6 +488,7 @@ extension MessageOut {
         alsoInChannel = try c.decodeIfPresent(Bool.self, forKey: .alsoInChannel) ?? false
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
+        replyUserIds = try c.decodeIfPresent([String].self, forKey: .replyUserIds) ?? []
         attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)

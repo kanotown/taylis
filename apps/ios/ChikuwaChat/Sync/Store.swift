@@ -117,6 +117,8 @@ struct MessageState: Codable, Identifiable, Equatable {
     var alsoInChannel: Bool = false
     var replyCount: Int = 0
     var lastReplyAt: String? = nil
+    /// C3: who replied, most recent first (at most 5); rows persisted earlier, and older servers, have none.
+    var replyUserIds: [String] = []
     var attachments: [AttachmentOut] = []
     /// M11c: pinned in the channel; rows persisted earlier lack the fields.
     var pinnedAt: String? = nil
@@ -130,7 +132,7 @@ struct MessageState: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
-        case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, attachments, pinnedAt, pinnedBy, poll
+        case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
         case priority, ackRequested, acks
     }
 
@@ -165,6 +167,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         alsoInChannel = message.alsoInChannel
         replyCount = message.replyCount
         lastReplyAt = message.lastReplyAt
+        replyUserIds = message.replyUserIds
         attachments = message.attachments
         pinnedAt = message.pinnedAt
         pinnedBy = message.pinnedBy
@@ -197,6 +200,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         alsoInChannel = try c.decodeIfPresent(Bool.self, forKey: .alsoInChannel) ?? false
         replyCount = try c.decodeIfPresent(Int.self, forKey: .replyCount) ?? 0
         lastReplyAt = try c.decodeIfPresent(String.self, forKey: .lastReplyAt)
+        replyUserIds = try c.decodeIfPresent([String].self, forKey: .replyUserIds) ?? []
         attachments = try c.decodeIfPresent([AttachmentOut].self, forKey: .attachments) ?? []
         pinnedAt = try c.decodeIfPresent(String.self, forKey: .pinnedAt)
         pinnedBy = try c.decodeIfPresent(String.self, forKey: .pinnedBy)
@@ -242,7 +246,7 @@ extension MessageOut {
         self.init(id: state.id, channelId: state.channelId, senderId: state.senderId, seq: seq, updatedSeq: state.updatedSeq,
                   clientMsgId: state.clientMsgId, body: state.body, createdAt: state.createdAt, editedAt: state.editedAt, deleted: state.deleted,
                   type: state.type, mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
-                  alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, attachments: state.attachments,
+                  alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks)
     }
@@ -963,6 +967,7 @@ final class Store {
         guard var parent = rows.byId[thread.id], thread.updatedSeq > parent.updatedSeq else { return }
         parent.replyCount = thread.replyCount
         parent.lastReplyAt = thread.lastReplyAt
+        if let ids = thread.replyUserIds { parent.replyUserIds = ids } // C3: an older server sends none; keep what it had
         parent.updatedSeq = thread.updatedSeq
         rows.byId[parent.id] = parent // in place: no copy of the channel's rows
         persist { try $0.saveMessage(parent) }

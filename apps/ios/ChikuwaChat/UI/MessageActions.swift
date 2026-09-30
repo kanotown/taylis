@@ -156,7 +156,10 @@ struct MessageActionsSheet: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     ForEach(quickReactions, id: \.self) { emoji in
-                        Button { run { await controller.toggleReaction(message, emoji: emoji) } } label: {
+                        Button {
+                            if !mine.contains(emoji) { EmojiUsage.note(emoji) } // C10: counts toward the picker's 「よく使う」
+                            run { await controller.toggleReaction(message, emoji: emoji) }
+                        } label: {
                             Text(emoji).font(.system(size: 26))
                                 .frame(width: 44, height: 44)
                                 .background(mine.contains(emoji) ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground), in: Circle())
