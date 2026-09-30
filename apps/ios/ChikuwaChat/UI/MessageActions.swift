@@ -111,6 +111,35 @@ private struct MessageSheets: ViewModifier {
     }
 }
 
+/// The emoji at the top of a message's action sheet.
+enum QuickReactions {
+    static let count = 6
+
+    /// The ones I chose (M50, the same on every device), exactly and in their order. Without a choice: the ones used
+    /// lately first (the picker's recents, standard emoji only), then the palette, six in all — as on the web and
+    /// Android (parity audit 2026-09-29).
+    static func row(chosen: [String]?, recent recentRaw: String) -> [String] {
+        if let chosen, !chosen.isEmpty { return chosen }
+        let recent = recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty && CustomEmoji.name(of: $0) == nil }
+        var seen: Set<String> = []
+        return (recent + reactionPalette).filter { seen.insert($0).inserted }.prefix(count).map { $0 }
+    }
+
+    /// 「リアクションの候補」: `glyph` in slot `index` of `row` (an empty slot past the end adds it). One already in
+    /// another slot trades places with the one it replaces, so each stays once (the server takes unique emoji).
+    static func replacing(_ row: [String], slot index: Int, with glyph: String) -> [String] {
+        var result = Array(row.prefix(count))
+        guard index >= 0, index < count else { return result }
+        if index >= result.count {
+            if !result.contains(glyph) { result.append(glyph) }
+            return result
+        }
+        if let other = result.firstIndex(of: glyph) { result[other] = result[index] }
+        result[index] = glyph
+        return result
+    }
+}
+
 /// A message's actions, Slack-like (testers, 2026-09-28): a long press highlights the message where it is and opens this
 /// sheet from the bottom. It replaced the system context menu, whose lifted copy of the message overlapped its
 /// neighbours and made reactions flicker. Reactions first, then the actions; delete last.
@@ -128,14 +157,8 @@ struct MessageActionsSheet: View {
 
     private var store: Store { controller.store }
     private var isMine: Bool { store.me?.id == message.senderId }
-    /// The quick reactions: the ones used lately first (the picker's recents, standard emoji only), then the palette,
-    /// six in all — as on the web and Android (parity audit 2026-09-29).
-    @AppStorage("emoji.recent") private var recentRaw = ""
-    private var quickReactions: [String] {
-        let recent = recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty && CustomEmoji.name(of: $0) == nil }
-        var seen: Set<String> = []
-        return (recent + reactionPalette).filter { seen.insert($0).inserted }.prefix(6).map { $0 }
-    }
+    @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
+    private var quickReactions: [String] { QuickReactions.row(chosen: store.me?.quickReactions.chosen, recent: recentRaw) }
     private var mine: Set<String> {
         guard let me = store.me?.id else { return [] }
         return Set(message.reactions.filter { $0.userIds.contains(me) }.map(\.emoji))
@@ -236,7 +259,8 @@ struct MessageActionsSheet: View {
 
     private func rowLabel(_ title: String, _ icon: String) -> some View {
         Label(title, systemImage: icon)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading) // a plain list's row
+            // M50 (tester, 2026-10-01: the rows were tall): 44 pt, the smallest tap target, instead of a list's 50.
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .padding(.horizontal, 20)
             .contentShape(Rectangle())
     }

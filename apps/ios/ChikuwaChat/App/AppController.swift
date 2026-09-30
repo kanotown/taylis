@@ -1026,9 +1026,11 @@ final class AppController {
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
-                       presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil) async -> Bool {
+                       presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil,
+                       quickReactions: [String]?? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        if let quickReactions { fields["quick_reactions"] = quickReactions.map { .array($0.map(JSONValue.string)) } ?? .null }  // M50
         if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
         // M35: channels that follow the default show the new level at once (they resolve with store.me).
         if let notificationDefault { fields["notification_default"] = .string(notificationDefault) }
@@ -1054,6 +1056,18 @@ final class AppController {
             store.upsertUser(updated.asPublic)
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// M50: the long-press quick reactions (nil: back to the recent-first rule), shown at once and taken back when the
+    /// server refuses (the reason is shown). My other devices take it with their next bootstrap, as the other prefs.
+    func setQuickReactions(_ list: [String]?) async -> Bool {
+        guard let before = store.me else { return false }
+        var shown = before
+        shown.quickReactions = list.map(QuickReactionsSetting.chosen) ?? .unset
+        store.setMe(shown)
+        if await updateProfile(quickReactions: .some(list)) { return true }
+        if store.me == shown { store.setMe(before) }
+        return false
     }
 
     /// M39: the activity is read up to `readAt` (「すべて既読」, or the newest item the list showed). The badge takes the

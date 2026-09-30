@@ -8,6 +8,8 @@ struct EmojiPickerView: View {
     /// The animated ones' frames (GIF), shown moving.
     var animations: [String: EmojiAnimation] = [:]
     var onNeedImage: ((CustomEmojiOut) -> Void)? = nil
+    /// false where a pick is a choice rather than a use (M50's quick reaction slots): 「よく使う」 and the recents stay.
+    var countsUse = true
     let onPick: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -34,10 +36,12 @@ struct EmojiPickerView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
 
     private func pick(_ glyph: String) {
-        var usage = EmojiUsage.decode(usageRaw, recent: recentRaw)
-        usage.record(glyph)
-        usageRaw = usage.encoded
-        recentRaw = ([glyph] + recent.filter { $0 != glyph }).prefix(16).joined(separator: " ")
+        if countsUse {
+            var usage = EmojiUsage.decode(usageRaw, recent: recentRaw)
+            usage.record(glyph)
+            usageRaw = usage.encoded
+            recentRaw = ([glyph] + recent.filter { $0 != glyph }).prefix(16).joined(separator: " ")
+        }
         onPick(glyph)
         dismiss()
     }
