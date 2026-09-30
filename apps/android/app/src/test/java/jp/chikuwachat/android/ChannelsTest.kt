@@ -57,18 +57,24 @@ class ChannelsTest {
         assertEquals(3, Channels.badgeCount(channel("d", type = "dm", unread = 3), now))
     }
 
-    @Test fun unreadFilterKeepsTheOpenConversation() {
+    @Test fun groupingUnreadMovesUnreadConversationsToTheTop() { // M37: it replaced the unread-only filter
         val all = listOf(
             channel("general"),
-            channel("random", unread = 2),
-            channel("dm", type = "dm", lastMessageAt = "2026-09-26T00:00:00Z"),
-            channel("public", member = false),
+            channel("random", unread = 2, lastMessageAt = "2026-09-26T01:00:00Z"),
+            channel("dm", type = "dm", unread = 1, lastMessageAt = "2026-09-26T02:00:00Z"),
+            channel("quietdm", type = "dm", lastMessageAt = "2026-09-26T03:00:00Z"),
+            channel("public", member = false, unread = 4),
         )
-        val filtered = Channels.sections(all, unreadOnly = true, currentId = "general", now = now)
-        assertEquals(listOf("general", "random"), filtered.channels.map { it.id })
-        assertEquals(emptyList<ChannelState>(), filtered.dms)
-        assertEquals(emptyList<ChannelState>(), filtered.browse)
-        assertEquals(listOf("public"), Channels.sections(all, now = now).browse.map { it.id })
+        val grouped = Channels.sections(all, groupUnread = true, now = now)
+        assertEquals(listOf("dm", "random"), grouped.unread.map { it.id }) // DMs too, newest first
+        assertEquals(listOf("general"), grouped.channels.map { it.id }) // nothing is hidden, the unread ones moved
+        assertEquals(listOf("quietdm"), grouped.dms.map { it.id })
+        assertEquals(listOf("public"), grouped.browse.map { it.id })
+        // Off (the default): no 未読 section, every row in its own section.
+        val plain = Channels.sections(all, now = now)
+        assertEquals(emptyList<ChannelState>(), plain.unread)
+        assertEquals(listOf("general", "random"), plain.channels.map { it.id })
+        assertEquals(listOf("quietdm", "dm"), plain.dms.map { it.id })
     }
 
     @Test fun customSectionsTakeTheirConversationsFavoritesFirst() {
@@ -161,10 +167,14 @@ class ChannelsTest {
         assertEquals(listOf("general"), sections.channels.map { it.id })
         assertEquals(listOf("times-me", "times-amy", "times-zed"), sections.times.map { it.id })
         assertEquals(listOf("times-bob"), sections.browse.map { it.id }) // one I am not in is joined from the browse list
-        // Quiet unread stays out of the unread filter; a mention brings it in.
-        assertEquals(emptyList<ChannelState>(), Channels.sections(all, unreadOnly = true, now = now, meId = "me").times)
+        // Quiet unread stays in its section when unread is grouped; a mention moves it to 未読.
+        val quiet = Channels.sections(all, groupUnread = true, now = now, meId = "me")
+        assertEquals(emptyList<ChannelState>(), quiet.unread)
+        assertEquals(listOf("times-me", "times-amy", "times-zed"), quiet.times.map { it.id })
         val mentioned = all.map { if (it.id == "times-amy") it.copy(mentionCount = 1) else it }
-        assertEquals(listOf("times-amy"), Channels.sections(mentioned, unreadOnly = true, now = now, meId = "me").times.map { it.id })
+        val grouped = Channels.sections(mentioned, groupUnread = true, now = now, meId = "me")
+        assertEquals(listOf("times-amy"), grouped.unread.map { it.id })
+        assertEquals(listOf("times-me", "times-zed"), grouped.times.map { it.id })
         // Without knowing who I am, nobody's times comes first.
         assertEquals(listOf("times-amy", "times-me", "times-zed"), Channels.sections(all, now = now).times.map { it.id })
     }

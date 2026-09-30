@@ -10,7 +10,7 @@ import jp.chikuwachat.android.ui.ComposerLayout
 import jp.chikuwachat.android.ui.ReadAnchorSaver
 import jp.chikuwachat.android.ui.Timeline
 import jp.chikuwachat.android.ui.TouchTarget
-import jp.chikuwachat.android.ui.UnreadFilter
+import jp.chikuwachat.android.ui.GroupUnread
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -28,14 +28,15 @@ class AndroidAuditTest {
         assertFalse(NotificationPermission.shouldAsk(prefs, sdk = 34, granted = false)) // refused: the settings show the way
     }
 
-    @Test fun theUnreadFilterIsKeptOnTheDevice() {
-        val prefs = MemoryStore()
-        assertFalse(UnreadFilter.read(prefs))
-        UnreadFilter.write(prefs, true)
-        assertTrue(UnreadFilter.read(prefs))
-        UnreadFilter.write(prefs, false)
-        assertFalse(UnreadFilter.read(prefs))
-        assertNull(prefs.values["sidebar.unreadOnly"]) // off leaves no key behind
+    @Test fun groupingUnreadIsKeptOnTheDeviceAndReplacesTheUnreadFilter() { // M37
+        val prefs = MemoryStore(mapOf("sidebar.unreadOnly" to "1"))
+        assertFalse(GroupUnread.read(prefs)) // off at first, whatever the old filter was
+        GroupUnread.write(prefs, true)
+        assertTrue(GroupUnread.read(prefs))
+        assertNull(prefs.values["sidebar.unreadOnly"]) // the old filter's key is gone
+        GroupUnread.write(prefs, false)
+        assertFalse(GroupUnread.read(prefs))
+        assertNull(prefs.values["sidebar.groupUnread"]) // off leaves no key behind
     }
 
     @Test fun theComposerFoldsItsButtonsBelow460dp() {  // 400 until M30 added the template button

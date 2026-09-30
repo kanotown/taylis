@@ -129,6 +129,14 @@ object MainTabs {
         if (tab == state.selected) update(state) { MainNav.openFromSearch(it, channelId, parentId) }
         else land(update(state, MainNav::returnToSearch), tab, channelId, parentId)
 
+    /**
+     * M37 (MOBILE_UI.md §6.1, §6.2): a conversation picked on the jump screen or the ✏️ picker, both over the home tab:
+     * the home tab goes back to its list (the jump screen and any results behind it close), then the conversation lands
+     * on its tab like a notification's (a DM on the DM tab, a channel on home).
+     */
+    fun landFromHome(state: TabStacks, tab: MainTab, channelId: String): TabStacks =
+        land(withStack(state, MainTab.HOME, rootStack(MainTab.HOME)), tab, channelId)
+
     /** The activity tab's switch. */
     fun selectSegment(state: TabStacks, segment: ActivitySegment): TabStacks {
         val stack = stack(state, MainTab.ACTIVITY)
@@ -199,12 +207,12 @@ object MainTabs {
     }
 
     /**
-     * The home list's 「ダイレクトメッセージ」 section: the placeholder as above, but never while the section is folded or
-     * only unread conversations are listed. (My own DM starred or in one of my sections exists, so no placeholder either.)
+     * The home list's 「ダイレクトメッセージ」 section: the placeholder as above, but never while the section is folded.
+     * (My own DM starred or in one of my sections exists, so no placeholder either.)
      */
     fun showsSelfNotesInDmSection(
-        channels: Collection<ChannelState>, meId: String?, name: String, collapsed: Boolean = false, unreadOnly: Boolean = false, query: String = "",
-    ): Boolean = !collapsed && !unreadOnly && showsSelfNotesPlaceholder(channels, meId, name, query)
+        channels: Collection<ChannelState>, meId: String?, name: String, collapsed: Boolean = false, query: String = "",
+    ): Boolean = !collapsed && showsSelfNotesPlaceholder(channels, meId, name, query)
 
     /**
      * The DM (not group DM) whose members are exactly `userId` and me — with `userId` = me, my own DM, never one of my

@@ -46,9 +46,11 @@ sealed interface Route {
     /**
      * The search screen (M16b): [expanded] is the bar with its suggestions; [params] the search whose results show. It
      * stays under a result's conversation, so back (and 「検索結果に戻る」) shows the results as they were.
+     * M37: [jump] is the home's 「移動・検索」 (MOBILE_UI.md §6.2): its suggestions are conversations and people to go to,
+     * and 「"語" をメッセージ検索」 shows the same results.
      */
     @Serializable @SerialName("search")
-    data class Search(val params: SearchParams? = null, val expanded: Boolean = true) : Route
+    data class Search(val params: SearchParams? = null, val expanded: Boolean = true, val jump: Boolean = false) : Route
 
     /** The sidebar's lists that replace the channel list (THREADS.md §5, M11c, M11h, M11i). */
     @Serializable
@@ -198,6 +200,9 @@ object MainNav {
 
     /** The search bar (M16b), over whatever is on screen; a search kept behind a conversation is replaced by it. */
     fun openSearch(stack: List<Route>): List<Route> = stack.filterNot { it is Route.Search } + Route.Search()
+
+    /** M37: the home's 「移動・検索」, full screen over the list (back closes it). */
+    fun openJump(stack: List<Route>): List<Route> = stack.filterNot { it is Route.Search } + Route.Search(jump = true)
 
     /** Back from the suggestions: to the results on screen, or out of search when there are none. */
     fun collapseSearch(stack: List<Route>): List<Route> {

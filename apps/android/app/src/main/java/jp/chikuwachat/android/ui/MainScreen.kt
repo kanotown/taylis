@@ -5,14 +5,10 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,37 +17,25 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyItemScope
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,7 +44,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -81,19 +64,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -167,8 +145,16 @@ fun MainScreen(controller: AppController) {
     var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
     var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
-    // M28c: 「未読のみ」 as it was left on this device (like the folded sections), not only across a rotation.
-    var unreadOnly by remember { mutableStateOf(UnreadFilter.read(controller.prefs)) }
+    // M37: 「未読をまとめる」 as it was left on this device (like the folded sections); it replaced M28c's 「未読のみ」.
+    var groupUnread by remember { mutableStateOf(GroupUnread.read(controller.prefs)) }
+    // M37: the home's ⋮ 「すべて既読にする」 asks first; ✏️ 新しいメッセージ's picker.
+    var confirmReadAll by rememberSaveable { mutableStateOf(false) }
+    var composing by rememberSaveable { mutableStateOf(false) }
+    // M37 (MOBILE_UI.md §6.2): the conversations last opened on this device, for the jump screen.
+    val recentConversationsKey = controller.accountKey?.let { RecentConversations.key(it) }
+    var recentConversations by remember(recentConversationsKey) {
+        mutableStateOf(recentConversationsKey?.let { RecentConversations.read(controller.prefs, it) } ?: emptyList())
+    }
     val focusManager = LocalFocusManager.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -197,6 +183,17 @@ fun MainScreen(controller: AppController) {
     fun land(channelId: String, parentId: String? = null) {
         focusManager.clearFocus()
         tabs = MainTabs.land(tabs, MainTabs.landingTab(store.channel(channelId)), channelId, parentId)
+    }
+
+    /**
+     * M37: a conversation picked on the jump screen or ✏️'s picker: the jump screen closes and the conversation lands
+     * as a notification's does (a DM on the DM tab, a channel on home). `focusComposer`: its input takes the cursor.
+     */
+    fun openPicked(channelId: String, focusComposer: Boolean = false) {
+        focusManager.clearFocus()
+        controller.messageFocus = null
+        controller.composerFocus = if (focusComposer) channelId else null
+        tabs = MainTabs.landFromHome(tabs, MainTabs.landingTab(store.channel(channelId)), channelId)
     }
 
     /**
@@ -251,6 +248,10 @@ fun MainScreen(controller: AppController) {
     val conversation = MainTabs.openConversation(tabs)
     val selection = conversation?.id
     LaunchedEffect(selection) {
+        // M37: a conversation opened on any tab is the jump screen's most recent one; a composer waiting for the focus
+        // (✏️) gives it up when another conversation opens first.
+        if (selection != null) recentConversationsKey?.let { recentConversations = RecentConversations.push(controller.prefs, it, selection) }
+        if (controller.composerFocus != selection) controller.composerFocus = null
         selection?.let { controller.openChannel(it) } ?: controller.closeChannel()
     }
     // A channel we were removed from (or that vanished) closes, with its thread, on whichever tab it is.
@@ -270,6 +271,12 @@ fun MainScreen(controller: AppController) {
         stack = MainNav.openSearch(stack)
         searchText = ""
     }
+    /** M37: the home's 「移動・検索」. */
+    fun openJump() {
+        stack = MainNav.openJump(stack)
+        searchText = ""
+    }
+    val jumping = (top as? Route.Search)?.jump == true
     /** Back from the suggestions: to the results on screen, or out of search when there are none. */
     fun collapseSearch() {
         val params = searchParams
@@ -343,6 +350,14 @@ fun MainScreen(controller: AppController) {
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
         bottomBar = { if (MainTabs.barShown(stack)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab) },
+        // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
+        floatingActionButton = {
+            if (top == Route.ChannelList) {
+                FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
+                }
+            }
+        },
         topBar = {
             if (searching) {
                 SearchTopBar(
@@ -359,7 +374,51 @@ fun MainScreen(controller: AppController) {
                     },
                     onSearch = ::runSearch,
                     onBack = ::goBack,
-                    placeholder = "${controller.workspaceName} を検索",
+                    placeholder = if (jumping) "移動・検索" else "${controller.workspaceName} を検索",
+                    jump = if (!jumping) null else JumpTargets(
+                        recent = RecentConversations.shown(recentConversations) { store.channel(it) },
+                        onOpenConversation = { openPicked(it) },
+                        // Made when there is none; a failure is the app's error (openDmWith sets it).
+                        onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openPicked(it) } } },
+                    ),
+                )
+            } else if (top == Route.ChannelList) {
+                // M37 (MOBILE_UI.md §6.1): the home's own bar: the workspace (a switcher with two or more) and ⋮.
+                TopAppBar(
+                    title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
+                    actions = {
+                        StatusBadge(status)
+                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; confirmReadAll = true })
+                            DropdownMenuItem(
+                                text = { Text("未読をまとめる") },
+                                trailingIcon = { Checkbox(checked = groupUnread, onCheckedChange = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    groupUnread = !groupUnread
+                                    GroupUnread.write(controller.prefs, groupUnread)
+                                },
+                                modifier = Modifier.semantics { stateDescription = if (groupUnread) "オン" else "オフ" },
+                            )
+                            if (!controller.isGuest) {
+                                DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                                DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                            }
+                            DropdownMenuItem(text = { Text("メンバー一覧") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
+                            DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
+                            // With one workspace the title does not open the switcher, which is where another is added.
+                            if (controller.workspaces.size < 2) {
+                                DropdownMenuItem(text = { Text("ワークスペースを追加") }, onClick = { menuOpen = false; controller.beginAddWorkspace() })
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
+                            val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
+                        }
+                    },
                 )
             } else {
                 TopAppBar(
@@ -626,17 +685,25 @@ fun MainScreen(controller: AppController) {
                 } else if (top == Route.You) {
                     YouScreen(controller, version, youScrollState)
                 } else {
-                    // M34: 「メンション」 moved to the activity tab; 「スレッド」 stays.
-                    ChannelList(
-                        store, version, listState = homeListState, unreadOnly = unreadOnly, onToggleUnreadOnly = { unreadOnly = !unreadOnly; UnreadFilter.write(controller.prefs, unreadOnly) },
+                    // M37 (MOBILE_UI.md §6.1): 移動・検索, the tiles and the sections. 「メンション」 is the activity tab's (M34).
+                    HomeScreen(
+                        controller, version, listState = homeListState, groupUnread = groupUnread,
+                        onJump = ::openJump,
                         onSelect = { controller.messageFocus = null; openConversation(it) },
-                        onThreads = { stack = MainNav.open(stack, Route.Threads) },
-                        onSaved = { stack = MainNav.open(stack, Route.Saved) },
-                        onDrafts = { stack = MainNav.open(stack, Route.Drafts) },
-                        onFiles = { stack = MainNav.open(stack, Route.Files()) },
-                        onReminders = { stack = MainNav.open(stack, Route.Reminders) },
-                        onBrowse = { dialog = MainDialog.BROWSE },
-                        isGuest = controller.isGuest,
+                        onTile = { tile ->
+                            stack = MainNav.open(
+                                stack,
+                                when (tile) {
+                                    HomeTile.THREADS -> Route.Threads
+                                    HomeTile.DRAFTS -> Route.Drafts
+                                    HomeTile.SAVED -> Route.Saved
+                                    HomeTile.REMINDERS -> Route.Reminders
+                                    HomeTile.FILES -> Route.Files()
+                                },
+                            )
+                        },
+                        onAddChannel = { dialog = MainDialog.BROWSE },
+                        onAllDms = { selectMainTab(MainTab.DM) },
                         onCreateTimes = {
                             scope.launch {
                                 val id = controller.ensureTimes() ?: return@launch
@@ -650,12 +717,26 @@ fun MainScreen(controller: AppController) {
                         onToggleFolded = { folded = FoldedSections.toggle(controller.prefs, it) },
                         onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
                         sectionIcon = { emoji -> SectionIcon(controller, emoji, version) },
-                        // Made, in the Store as mine; a failure is the app's error (openDmWith sets it).
-                        openSelfNotes = { controller.store.me?.id?.let { controller.openDmWith(it) } },
                     )
                 }
             }
         }
+    }
+
+    if (composing) {
+        NewMessageDialog(controller, version, onDismiss = { composing = false }, onOpen = { id ->
+            composing = false
+            openPicked(id, focusComposer = true)
+        })
+    }
+    if (confirmReadAll) {
+        AlertDialog(
+            onDismissRequest = { confirmReadAll = false },
+            title = { Text("すべて既読にしますか？") },
+            text = { Text("参加中のすべてのチャンネルと DM を既読にします。") },
+            confirmButton = { TextButton(onClick = { confirmReadAll = false; scope.launch { controller.markAllRead() } }) { Text("既読にする") } },
+            dismissButton = { TextButton(onClick = { confirmReadAll = false }) { Text("キャンセル") } },
+        )
     }
 
     when (dialog) {
@@ -743,326 +824,6 @@ fun ConnectionBanner(status: EngineStatus) {
 }
 
 private const val BANNER_GRACE_MS = 2_000L
-
-@Composable
-private fun ChannelList(
-    store: Store,
-    version: Int,
-    /** M34: the home tab keeps its scroll position (and a re-tap of the tab scrolls it up). */
-    listState: LazyListState,
-    unreadOnly: Boolean,
-    onToggleUnreadOnly: () -> Unit,
-    /** Opens a conversation; one under 「参加できるチャンネル」 opens as a preview (M27, SYNC_PROTOCOL.md §7.6.1). */
-    onSelect: (String) -> Unit,
-    onThreads: () -> Unit,
-    onSaved: () -> Unit,
-    onDrafts: () -> Unit,
-    onBrowse: () -> Unit,
-    isGuest: Boolean = false,
-    onFiles: () -> Unit,
-    onReminders: () -> Unit,
-    /** M24: make (or open) my times. */
-    onCreateTimes: () -> Unit = {},
-    /** M14f: long-press on a conversation, and the 「…」 of one of my sections. */
-    onChannelMenu: (String) -> Unit = {},
-    onSectionMenu: (jp.chikuwachat.android.api.SidebarSectionOut, Int) -> Unit = { _, _ -> },
-    /** M26: the default sections folded on this device (FoldedSections), and folding them. */
-    folded: Set<String> = emptySet(),
-    onToggleFolded: (String) -> Unit = {},
-    /** M26: folding one of my sections (on all my devices), and drawing its icon. */
-    onToggleSection: (jp.chikuwachat.android.api.SidebarSectionOut) -> Unit = {},
-    sectionIcon: @Composable (String?) -> Unit = {},
-    /** Makes my own DM (POST /dms with only me) and returns its id; null on a failure, which it reports itself. */
-    openSelfNotes: suspend () -> String? = { null },
-) {
-    val meId = store.me?.id
-    val sections = remember(version, unreadOnly, meId) {
-        Channels.sections(store.channels.values, unreadOnly = unreadOnly, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId)
-    }
-    // My own DM is always the first DM (Channels.sections); until it exists, a placeholder row with my picture and name
-    // stands there, not while the section is folded or only unread conversations are listed.
-    val myName = remember(version, meId) { myDisplayName(store) }
-    val selfPlaceholder = remember(version, meId, unreadOnly, folded) {
-        MainTabs.showsSelfNotesInDmSection(store.channels.values, meId, myName, collapsed = FoldedSections.DMS in folded, unreadOnly = unreadOnly)
-    }
-    val scope = rememberCoroutineScope()
-    var creatingSelf by remember { mutableStateOf(false) }
-    val onSelfPlaceholder: () -> Unit = {
-        // One request at a time: a second tap while it runs does nothing.
-        if (!creatingSelf) {
-            creatingSelf = true
-            scope.launch { try { openSelfNotes()?.let(onSelect) } finally { creatingSelf = false } }
-        }
-    }
-    val draftCount = remember(version) { store.listDrafts().size + store.scheduled.size }
-    // M24: offer to make my times until I have one (joined or not: a times I left is in 「参加できるチャンネル」).
-    val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }
-    val channels = sections.channels
-    val dms = sections.dms
-    val browsable = sections.browse
-
-    LazyColumn(Modifier.fillMaxSize(), state = listState) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(selected = unreadOnly, onClick = onToggleUnreadOnly, label = { Text("未読のみ") })
-            }
-        }
-        item { ThreadsRow(store, version, onClick = onThreads) }
-        if (draftCount > 0) item { ListRow(Icons.Default.Description, "下書き", trailing = draftCount.toString(), onClick = onDrafts) }
-        val reminderCount = store.reminders.size
-        val firedCount = store.firedReminderCount()
-        if (reminderCount > 0) item { ListRow(Icons.Default.Alarm, "リマインダー", trailing = if (firedCount > 0) "$firedCount 件" else reminderCount.toString(), onClick = onReminders) }
-        item { ListRow(Icons.Outlined.Folder, "ファイル", onClick = onFiles) }
-        item { SavedRow(store, version, onClick = onSaved) }
-        // M26: a folded section keeps its unread rows (Channels.shown); its hints and actions go.
-        if (sections.favorites.isNotEmpty()) {
-            val fold = FoldedSections.FAVORITES in folded
-            item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader("お気に入り", fold) { onToggleFolded(FoldedSections.FAVORITES) } } }
-            items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-        }
-        sections.custom.forEachIndexed { index, (section, members) ->
-            item(key = "section:" + section.id) {
-                // Every row of the sidebar slides into place when a section above it folds (testers, 2026-09-29).
-                Box(Modifier.folding(this)) {
-                    CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) })
-                }
-            }
-            items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-            if (members.isEmpty() && !unreadOnly && !section.collapsed) item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") } }
-        }
-        val channelsFolded = FoldedSections.CHANNELS in folded
-        item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader("チャンネル", channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } } }
-        items(Channels.shown(channels, channelsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-        if (!channelsFolded) {
-            if (channels.isEmpty()) item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読のチャンネルはありません" else "参加中のチャンネルはありません。メニューから作成できます。") } }
-            if (!unreadOnly && !isGuest) item(key = "channels-browse") { Box(Modifier.folding(this)) { ListRow(Icons.Default.Explore, "チャンネルを探す", onClick = onBrowse) } }
-        }
-        // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
-        val offerTimes = canCreateTimes && !unreadOnly
-        if (sections.times.isNotEmpty() || offerTimes) {
-            val timesFolded = FoldedSections.TIMES in folded
-            item(key = "header:times") { Box(Modifier.folding(this)) { SectionHeader("Times", timesFolded) { onToggleFolded(FoldedSections.TIMES) } } }
-            items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-            if (offerTimes && !timesFolded) item(key = "times-create") { Box(Modifier.folding(this)) { ListRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes) } }
-        }
-        val dmsFolded = FoldedSections.DMS in folded
-        item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
-        if (selfPlaceholder && meId != null) {
-            item(key = "dms-self-placeholder") { HomeSelfNotesRow(meId, myName, busy = creatingSelf, onClick = onSelfPlaceholder, modifier = Modifier.folding(this)) }
-        }
-        items(Channels.shown(dms, dmsFolded, meId), key = { it.id }) { ChannelRow(it, store, version, onClick = { onSelect(it.id) }, onLongClick = { onChannelMenu(it.id) }, modifier = Modifier.folding(this)) }
-        if (dms.isEmpty() && !dmsFolded && !selfPlaceholder) item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(if (unreadOnly) "未読の DM はありません" else "メニューの「ダイレクトメッセージ」から相手を選べます") } }
-        if (browsable.isNotEmpty()) {
-            item(key = "header:browse") { Box(Modifier.folding(this)) { SectionHeader("参加できるチャンネル") } }
-            // M27: a tap reads the channel first (§7.6.1); joining is the button at the bottom of its preview.
-            items(browsable, key = { "browse:" + it.id }) { channel ->
-                Row(Modifier.folding(this).fillMaxWidth().clickable(onClickLabel = "プレビュー") { onSelect(channel.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ChannelGlyph(channel)
-                    Spacer(Modifier.width(12.dp))
-                    Text(channel.channel.name ?: "", modifier = Modifier.weight(1f))
-                }
-            }
-        }
-        item { Spacer(Modifier.padding(bottom = 24.dp)) }
-    }
-}
-
-/**
- * A sidebar row appearing, leaving or moving as a section folds (testers, 2026-09-29: it opened and closed at once):
- * leaving rows fade before the rows below slide over them.
- */
-private fun Modifier.folding(scope: LazyItemScope): Modifier =
-    with(scope) { this@folding.animateItem(fadeInSpec = tween(220), placementSpec = tween(260), fadeOutSpec = tween(120)) }
-
-/**
- * 「スレッド」 (THREADS.md §5): followed threads with unread replies; red when one mentions me.
- * `version`: the summary lives in the Store, so without it strong skipping would keep the first badge.
- */
-@Composable
-private fun ThreadsRow(store: Store, version: Int, onClick: () -> Unit) {
-    val summary = remember(version) { store.threadSummary }
-    val unread = summary.unreadCount > 0
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.Forum, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text("スレッド", fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-        if (unread) {
-            Text(
-                summary.unreadCount.toString(),
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier
-                    .background(if (summary.mentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
-                    .padding(horizontal = 7.dp, vertical = 2.dp),
-            )
-        }
-    }
-}
-
-/** A plain sidebar entry (M11h: 「メンション」, 「下書き」, 「チャンネルを探す」). */
-@Composable
-private fun ListRow(icon: ImageVector, label: String, trailing: String? = null, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(label, modifier = Modifier.weight(1f))
-        if (trailing != null) Text(trailing, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/** 「保存済み」 (M11c): my bookmarked messages (`version` keeps the count current). */
-@Composable
-private fun SavedRow(store: Store, version: Int, onClick: () -> Unit) {
-    val saved = remember(version) { store.bookmarks.size }
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text("保存済み", modifier = Modifier.weight(1f))
-        if (saved > 0) Text(saved.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/** A custom section's title with its icon and 「…」 (M14f); M26: tapping the title folds it on all my devices. */
-@Composable
-private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Composable () -> Unit, onToggle: () -> Unit, onMenu: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).foldable(collapsed, onToggle).padding(start = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            FoldChevron(collapsed)
-            Spacer(Modifier.width(4.dp))
-            icon()
-            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
-        }
-        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = "$title のメニュー") }
-    }
-}
-
-/** A default section's title; M26: tapping it folds it on this device. */
-@Composable
-private fun SectionHeader(title: String, collapsed: Boolean, onToggle: () -> Unit) {
-    Row(Modifier.fillMaxWidth().foldable(collapsed, onToggle).padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        FoldChevron(collapsed)
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
-    }
-}
-
-@Composable
-private fun SectionHeader(title: String) {
-    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
-}
-
-/** A section header that folds: TalkBack reads 「折りたたみ中」 / 「展開中」 and offers the action by name. */
-private fun Modifier.foldable(collapsed: Boolean, onToggle: () -> Unit): Modifier =
-    clickable(onClickLabel = if (collapsed) "開く" else "折りたたむ", onClick = onToggle).semantics { stateDescription = if (collapsed) "折りたたみ中" else "展開中" }
-
-@Composable
-private fun FoldChevron(collapsed: Boolean) {
-    val angle by animateFloatAsState(if (collapsed) -90f else 0f, label = "fold")
-    Icon(Icons.Default.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp).rotate(angle))
-}
-
-@Composable
-private fun EmptyHint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-}
-
-/** "#" / "🔒" glyph for a channel, coloured like an avatar so lists have a consistent left rail. */
-@Composable
-private fun ChannelGlyph(channel: ChannelState) {
-    Box(
-        Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(9.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            if (channel.channel.type == "private") Icons.Default.Lock else Icons.Default.Tag,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-/** `version`: the partner's name, presence dot and status emoji come from the Store, not from `channel`. */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun ChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
-    val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
-    val muted = Channels.isMuted(channel)
-    val unread = Channels.hasUnread(channel, store.me?.id)
-    // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
-    val quietDot = Channels.showsQuietDot(channel, store.me?.id)
-    val badge = Channels.badgeCount(channel)
-    Row(
-        modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (muted && !unread) 0.6f else 1f),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (channel.channel.isDm) {
-            val other = (channel.channel.dmUserIds ?: emptyList()).firstOrNull { it != store.me?.id } ?: store.me?.id ?: channel.id
-            Avatar(other, store.users[other]?.displayName ?: title, size = 36.dp, presence = store.presenceOf(other))
-        } else {
-            ChannelGlyph(channel)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val subtitle = channel.channel.topic?.takeIf { it.isNotBlank() && !channel.channel.isDm }
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (channel.channel.isDm) {
-            val other = (channel.channel.dmUserIds ?: emptyList()).firstOrNull { it != store.me?.id }
-            if (other != null) StatusEmoji(store.users[other], modifier = Modifier.padding(end = 6.dp))
-        }
-        if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
-        if (unread && badge > 0) {
-            Text(
-                badge.toString(),
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 7.dp, vertical = 2.dp),
-            )
-        } else if (unread) {
-            Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-        } else if (quietDot) {
-            Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape))
-        }
-    }
-}
-
-/** My own DM before it exists, in the home list: my picture and my name, like a DM row; disabled while the tap's request runs. */
-@Composable
-private fun HomeSelfNotesRow(meId: String, name: String, busy: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp).alpha(if (busy) 0.6f else 1f),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Avatar(meId, name, size = 36.dp)
-        Spacer(Modifier.width(12.dp))
-        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-    }
-}
 
 /** The connection dot in the app bar; M28c: TalkBack reads the state it shows (the dot said nothing). */
 @Composable
