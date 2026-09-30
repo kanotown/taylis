@@ -115,6 +115,7 @@ enum ErrorMessages {
         "times_exists": "この人の times はすでにあります",
         "token_expired": "ログインし直してください",
         "too_many_attachments": "添付は 10 件までです",
+        "too_many_canvas_images": "1 つのキャンバスに入れられる画像・ファイルは 100 件までです",
         "too_many_canvases": "この会話のキャンバスが多すぎます (200 件まで)",
         "too_many_drafts": "下書きが多すぎます。不要な下書きを削除してください",
         "too_many_links": "リンクは 30 件までです",
