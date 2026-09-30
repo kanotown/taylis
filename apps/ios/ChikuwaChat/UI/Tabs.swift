@@ -65,6 +65,37 @@ enum DMList {
         meId != nil && !channels.contains { $0.isMember && $0.channel.isDm && isNotesToSelf($0, meId: meId) }
     }
 
+    /// M49: the preview's excerpt length, the server's (messages/service.py PREVIEW_LENGTH); the row cuts it to one line.
+    static let previewLength = 140
+
+    /// M49 (MOBILE_UI.md §6.3): the line under the conversation's name. Nothing without a last message or with an empty
+    /// excerpt; a system message as it is; mine 「あなた: 」 (not in my DM with myself, where every message is mine);
+    /// someone else's in a 1:1 DM as it is (the row already names them, as Slack); elsewhere 「<表示名>: 」 (an unknown
+    /// sender 「メンバー: 」). The web's `previewLine`; cases in apps/shared/dm-preview.json.
+    static func previewLine(_ last: LastMessageOut?, type: String, dmUserIds: [String]?, meId: String?, users: [String: UserPublic]) -> String {
+        guard let last, !last.excerpt.isEmpty else { return "" }
+        if last.type != "user" { return last.excerpt }
+        if let meId, last.senderId == meId {
+            let notesToSelf = type == "dm" && (dmUserIds ?? []).allSatisfy { $0 == meId }
+            return notesToSelf ? last.excerpt : "あなた: " + last.excerpt
+        }
+        if type == "dm" { return last.excerpt }
+        let name = users[last.senderId]?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return (name.isEmpty ? "メンバー" : name) + ": " + last.excerpt
+    }
+
+    static func previewLine(_ channel: ChannelState, meId: String?, users: [String: UserPublic]) -> String {
+        previewLine(channel.channel.lastMessage, type: channel.channel.type, dmUserIds: channel.channel.dmUserIds, meId: meId, users: users)
+    }
+
+    /// A DM row's second line while there is no preview (as the web's): how many are in a group DM, else the person's
+    /// status text (its emoji is beside the name already), else their presence.
+    static func fallbackLine(memberCount: Int, status: (emoji: String, text: String)?, presence: String?) -> String {
+        if memberCount > 2 { return "\(memberCount) 人" }
+        if let text = status?.text, !text.isEmpty { return text }
+        return presence.map(presenceLabel) ?? ""
+    }
+
     /// What the notes to self are for, where the conversation starts (as Slack and Mattermost say it).
     static let notesIntro = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。"
 
@@ -108,6 +139,7 @@ struct DMListView: View {
                 Button { openNotes(meId) } label: { notesRow(meId) }
                     .buttonStyle(.plain)
                     .disabled(openingNotes)
+                    .listRowInsets(Self.rowInsets)
             }
             if rows.isEmpty && !notesMissing {
                 ContentUnavailableView(filter.isEmpty ? "ダイレクトメッセージはまだありません" : "見つかりません", systemImage: "bubble.left.and.bubble.right",
@@ -117,6 +149,7 @@ struct DMListView: View {
             ForEach(rows) { channel in
                 Button { onOpen(channel.id) } label: { row(channel, meId: meId) }
                     .buttonStyle(.plain)
+                    .listRowInsets(Self.rowInsets)
             }
         }
         .listStyle(.plain)
@@ -138,16 +171,27 @@ struct DMListView: View {
         }
     }
 
+    /// Every row is two lines at the same height (MOBILE_UI.md §6.3: 64 pt), with a preview or without; the row itself
+    /// is that high (no list insets above and below).
+    private static let rowHeight: CGFloat = 64
+    private static let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+
     /// My DM with myself before it exists: a row like the others.
     private func notesRow(_ meId: String) -> some View {
         HStack(spacing: 12) {
             AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: store.presenceOf(meId))
-            Text(store.me?.displayName ?? "…").lineLimit(1)
-            StatusEmojiView(user: store.me?.asPublic)
-            Spacer(minLength: 4)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(store.me?.displayName ?? "…").lineLimit(1)
+                    StatusEmojiView(user: store.me?.asPublic)
+                    Spacer(minLength: 4)
+                }
+                Text(DMList.fallbackLine(memberCount: 1, status: activeStatus(store.me?.asPublic), presence: store.presenceOf(meId)))
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(.vertical, 6)
-        .frame(minHeight: 56)
+        .frame(minHeight: Self.rowHeight)
         .contentShape(Rectangle())
     }
 
@@ -157,6 +201,12 @@ struct DMListView: View {
         let statusId = DMList.statusUserId(channel, meId: meId)
         let unread = channel.hasUnread(meId: meId)
         let badge = channel.badgeContribution
+        // M49: the last message (「あなた: …」 / 「佐藤: …」); without one, the status, presence or size as before.
+        let preview = DMList.previewLine(channel, meId: meId, users: store.users)
+        let second = preview.isEmpty
+            ? DMList.fallbackLine(memberCount: others.count + 1, status: statusId.flatMap { activeStatus(store.statusUser($0)) },
+                                  presence: statusId.map { store.presenceOf($0) })
+            : preview
         return HStack(spacing: 12) {
             AvatarView(id: avatarId, name: store.users[avatarId]?.displayName ?? store.me?.displayName ?? "?", size: 36,
                        presence: statusId.map { store.presenceOf($0) })
@@ -167,21 +217,27 @@ struct DMListView: View {
                     if channel.isMuted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                     Spacer(minLength: 4)
                     if let time = DMList.timeLabel(channel.channel.lastMessageAt) {
-                        Text(time).font(.caption).foregroundStyle(.secondary)
+                        Text(time).font(.caption).foregroundStyle(unread ? .primary : .secondary)
                     }
                 }
-                if others.count > 1 {
-                    Text("\(others.count + 1) 人").font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    // Bold while unread (Slack), the text itself, not the status or presence.
+                    Text(second)
+                        .font(.subheadline)
+                        .fontWeight(!preview.isEmpty && unread ? .semibold : .regular)
+                        .foregroundStyle(!preview.isEmpty && unread ? .primary : .secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if unread && badge > 0 {
+                        Text("\(badge)").font(.caption2).bold().foregroundStyle(.white)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Color.accentColor, in: Capsule())
+                    }
                 }
-            }
-            if unread && badge > 0 {
-                Text("\(badge)").font(.caption2).bold().foregroundStyle(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Color.accentColor, in: Capsule())
             }
         }
         .padding(.vertical, 6)
-        .frame(minHeight: 56)
+        .frame(minHeight: Self.rowHeight)
         .contentShape(Rectangle())
         .opacity(channel.isMuted && !unread ? 0.6 : 1)
     }

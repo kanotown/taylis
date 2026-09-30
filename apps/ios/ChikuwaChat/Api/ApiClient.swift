@@ -222,6 +222,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("GET", "/api/v1/channels" + (includePublic ? "?include=public" : ""))
     }
 
+    /// GET /channels/{id}: with the member's `last_message` (M49).
+    func channel(id: String) async throws -> ChannelOut { try await request("GET", "/api/v1/channels/\(id)") }
+
     func publicChannels() async throws -> [ChannelOut] {
         try await channels(includePublic: true).filter { $0.membership == nil }
     }

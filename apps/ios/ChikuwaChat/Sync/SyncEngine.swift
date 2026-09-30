@@ -23,6 +23,8 @@ protocol SyncApi: AnyObject {
     func threadState(messageId: String) async throws -> ThreadState
     func markThreadRead(messageId: String, lastReadSeq: Int) async throws -> ThreadState
     func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState
+    /// M49: one of my conversations as its member sees it (GET /channels/{id}, with `last_message`).
+    func channel(id: String) async throws -> ChannelOut
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
@@ -164,6 +166,18 @@ final class SyncEngine {
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
         canvases = CanvasHub(api: api as? CanvasApi, store: store, clock: options.canvasClock, options: options.canvasSave)
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
+        store.onStalePreview = { [weak self] channelId in Task { await self?.refreshLastMessage(channelId) } }
+    }
+
+    /// M49 (SYNC_PROTOCOL.md §7.8): the preview's message was deleted and the rows held do not say which one is last
+    /// now: the server's answer (GET /channels/{id}). A failure leaves it empty until the next bootstrap.
+    func refreshLastMessage(_ channelId: String) async {
+        do {
+            let channel = try await api.channel(id: channelId)
+            store.setFetchedLastMessage(channelId, channel.lastMessage)
+        } catch {
+            print("could not refresh the conversation's last message: \(error)")
+        }
     }
 
     /// M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap).
@@ -468,7 +482,8 @@ final class SyncEngine {
         var seen = Set<String>()
         for channel in bootstrap.channels {
             seen.insert(channel.id)
-            store.upsertChannel(channel, isMember: true)
+            // M49: the preview too (null here does mean "no message yet", unlike other answers').
+            store.upsertChannel(channel, isMember: true, replacesLastMessage: true)
         }
         for channel in Array(store.channels.values) where channel.isMember && !seen.contains(channel.id) {
             store.removeChannel(channel.id) // no longer a member
@@ -676,7 +691,7 @@ final class SyncEngine {
         guard let synced = channel.syncedSeq else {
             // No timeline here: the list's numbers move, and rows already held (a thread opened from 「スレッド」,
             // its parent) take the change so that thread stays live (§7.4).
-            if isHeld(message) { store.upsertMessage(message) }
+            if isHeld(message) { store.upsertMessage(message) } else { store.applyLastMessage(MessageState(message)) } // M49 (§7.8)
             if let thread { store.applyParentThread(channelId, thread) }
             store.updateChannel(channelId) { $0.lastSeq = max($0.lastSeq, seq) }
             if isNew { countUnread(message); maybeNotify(message, channel, thread) }
