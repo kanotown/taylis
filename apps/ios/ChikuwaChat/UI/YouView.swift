@@ -403,6 +403,7 @@ struct NotificationSettingsView: View {
 /// 端末に合わせる / ライト / ダーク, on this device only; the whole app follows it (RootView).
 struct AppearanceView: View {
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
+    @AppStorage(Timeline.groupingKey) private var grouping = false
 
     var body: some View {
         Form {
@@ -416,6 +417,14 @@ struct AppearanceView: View {
                 Text("テーマ")
             } footer: {
                 Text("この端末だけの設定です。")
+            }
+            // M47: this device only, off by default; open conversations and threads follow at once (they read it too).
+            Section {
+                Toggle("連続した投稿をまとめる", isOn: $grouping)
+            } header: {
+                Text("メッセージ")
+            } footer: {
+                Text("オフ: 投稿ごとにアイコンと名前を表示します。オン: 同じ人の続けての投稿をまとめます (チャンネル・DM・スレッド)。この端末だけの設定です。")
             }
         }
         .navigationTitle("表示")

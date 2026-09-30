@@ -303,14 +303,14 @@ final class ReadGateTests: XCTestCase {
         XCTAssertNotEqual(v1[20].rowKey, v1[20].id)
         XCTAssertEqual(ReadGate.openTarget(v1, focusId: nil, mark: ReadGate.dividerMark(held: nil, captured: 100, oldestLoadedSeq: 81), meId: "bob"),
                        .top(v1[20].rowKey)) // row 101 at the top
-        XCTAssertEqual(shape(Timeline.build(v1, firstUnreadAfterSeq: 100, meId: "bob")).firstIndex(of: "unread"), 20)
+        XCTAssertEqual(shape(Timeline.build(v1, firstUnreadAfterSeq: 100, meId: "bob", grouping: true)).firstIndex(of: "unread"), 20)
         XCTAssertEqual(v1.filter { ($0.seq ?? 0) > 100 && $0.senderId != "bob" }.count, 30) // §10.1 7.: 「新着 30 件」 above the bottom
 
         // V2: no divider, the newest row.
         let v2 = (2951...3000).map { row($0) }
         let mark = ReadGate.dividerMark(held: nil, captured: 1000, oldestLoadedSeq: 2951)
         XCTAssertEqual(ReadGate.openTarget(v2, focusId: nil, mark: mark, meId: "bob"), .bottom)
-        XCTAssertFalse(shape(Timeline.build(v2, firstUnreadAfterSeq: mark, meId: "bob")).contains("unread"))
+        XCTAssertFalse(shape(Timeline.build(v2, firstUnreadAfterSeq: mark, meId: "bob", grouping: true)).contains("unread"))
 
         // V4 after the jump: my own rows are skipped, as the divider skips them.
         var v4 = (851...1300).map { row($0) }

@@ -19,6 +19,7 @@ struct ChannelPreviewView: View {
     @State private var joining = false
     /// The rows are the context of `focusMessageId`, not the newest page.
     @State private var showingContext = false
+    @AppStorage(Timeline.groupingKey) private var grouping = false  // M47
 
     private static let margin: CGFloat = 12
     private static let pageSize = 50
@@ -42,7 +43,7 @@ struct ChannelPreviewView: View {
                     } else if loaded, let channel {
                         ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
                     }
-                    ForEach(Timeline.build(messages, firstUnreadAfterSeq: nil, meId: controller.store.me?.id)) { item in
+                    ForEach(Timeline.build(messages, firstUnreadAfterSeq: nil, meId: controller.store.me?.id, grouping: grouping)) { item in
                         switch item {
                         case .date(let label, _):
                             DaySeparator(label: label).padding(.horizontal, Self.margin)
