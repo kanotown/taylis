@@ -350,6 +350,35 @@ final class SyncEngine {
         }
     }
 
+    /// Pull to refresh (M37, MOBILE_UI.md §6.1): what a reconnect reads again — the bootstrap, the public channels and
+    /// the open conversation's catch-up — in the queue, so live frames wait behind it as on a connect (§7.2).
+    /// Correctness never depends on it; offline, it reconnects without waiting for the backoff.
+    func resync() async {
+        guard status == .online else {
+            reconnectNow()
+            return
+        }
+        let step = enqueue { [self] in
+            let bootstrap = try await api.bootstrap()
+            applyBootstrap(bootstrap)
+            await loadBrowsableChannels()
+            if let current = currentChannelId, store.channel(current)?.isMember == true {
+                do {
+                    try await catchUp(current)
+                } catch let error as ApiError where error.isRefused {
+                    // Left or removed in the meantime: the next bootstrap drops it.
+                }
+            }
+        }
+        do {
+            try await step.value
+        } catch let error as ApiError where error.isAuth {
+            signOut()
+        } catch {
+            // A failed refresh changes nothing: the socket and the next reconnect keep things right.
+        }
+    }
+
     // MARK: frames
 
     private func onRaw(_ text: String) {

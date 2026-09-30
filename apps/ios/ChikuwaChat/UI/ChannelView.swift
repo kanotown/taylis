@@ -1614,6 +1614,14 @@ struct ComposerView: View {
         .animation(.easeOut(duration: 0.15), value: canSend)
         .animation(.easeOut(duration: 0.2), value: typing)
         .background(Color(.systemBackground))
+        // M37 (6): chosen from 「新しいメッセージ」: the input takes the keyboard once the push has settled.
+        .task(id: parentId == nil && controller?.composerFocus == channelId) {
+            guard parentId == nil, let controller, controller.composerFocus == channelId else { return }
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            controller.composerFocus = nil
+            focused = true
+        }
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
         .sheet(isPresented: $showEmojiPicker) {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
