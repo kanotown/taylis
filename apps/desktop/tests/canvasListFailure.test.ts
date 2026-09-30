@@ -24,6 +24,12 @@ it("404: the server has no canvases yet", async () => {
   expect(store.canvasListFailure("c1")).toBe("unsupported");
 });
 
+it("404 channel_not_found is a conversation I cannot see, not an old server", async () => {
+  const { store, hub } = hubWith(async () => { throw new ApiError(404, "channel_not_found", "Channel not found"); });
+  await hub.loadList("c1");
+  expect(store.canvasListFailure("c1")).toBe("failed");
+});
+
 it("another failure can be retried; a list that loads clears it", async () => {
   let fail = true;
   const { store, hub } = hubWith(async () => {
