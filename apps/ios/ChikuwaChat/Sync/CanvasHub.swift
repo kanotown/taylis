@@ -1,5 +1,13 @@
 import Foundation
 
+/// Why a conversation's canvas list is not there.
+enum CanvasListFailure: Equatable {
+    /// The server has no canvas API yet (the list answers 404).
+    case unsupported
+    /// Anything else (the network, 5xx …): 再読み込み tries again.
+    case failed
+}
+
 /// M45: canvases on this device (CANVAS.md §4.4 / §4.6), as the desktop's CanvasHub (apps/desktop/src/sync/canvases.ts).
 /// The conversation's list lives in the store (loaded when it opens and after reconnecting, kept current by canvas.*
 /// events: the larger version wins); each canvas on screen, or with edits not saved yet, has a CanvasSaver. Unsaved edits
@@ -23,14 +31,24 @@ final class CanvasHub {
 
     var available: Bool { api != nil }
 
-    /// The conversation's canvases (when it opens, after reconnecting). A server without canvases leaves it unloaded.
+    /// The conversation's canvases (when it opens, after reconnecting). A failure is kept for the tab (a server from
+    /// before canvases, or 再読み込み) until the next try, which shows the spinner again; a list loaded before stays.
     func loadList(_ channelId: String) async {
         guard let api else { return }
+        store.setCanvasListFailure(channelId, nil)
         do {
             store.setCanvases(channelId, try await api.listCanvases(channelId: channelId, trashed: false))
         } catch {
             print("could not load the canvases: \(error)")
+            store.setCanvasListFailure(channelId, Self.listFailure(error))
         }
+    }
+
+    /// A 404 is the route missing (a server from before M45 says not_found), unless it is channel_not_found: a
+    /// conversation I cannot see on a server that has canvases.
+    static func listFailure(_ error: Error) -> CanvasListFailure {
+        if case ApiError.api(404, let code, _) = error, code != "channel_not_found" { return .unsupported }
+        return .failed
     }
 
     /// The saver of a canvas (made, and its unsaved edits restored, on first use).

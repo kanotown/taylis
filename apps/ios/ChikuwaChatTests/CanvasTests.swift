@@ -406,6 +406,11 @@ final class FakeCanvasApi: CanvasApi {
     var gets: [Int?] = []
     var fail: [Failure] = []
     var lists = 0
+    /// The next lists / reads fail with these, in turn.
+    var listFail: [Error] = []
+    var getFail: [Error] = []
+    /// Called as a list is asked for (what the screen shows meanwhile).
+    var onList: (() -> Void)?
     /// While set, saves wait for `release()`.
     var holding = false
     private var held: [CheckedContinuation<Void, Never>] = []
@@ -423,11 +428,14 @@ final class FakeCanvasApi: CanvasApi {
 
     func listCanvases(channelId: String, trashed: Bool) async throws -> [CanvasMeta] {
         lists += 1
+        onList?()
+        if !listFail.isEmpty { throw listFail.removeFirst() }
         return server.canvases.values.filter { $0.canvas.channelId == channelId && $0.deleted == trashed }.map(\.canvas.meta)
     }
 
     func getCanvas(id: String, knownVersion: Int?) async throws -> CanvasOut? {
         gets.append(knownVersion)
+        if !getFail.isEmpty { throw getFail.removeFirst() }
         let canvas = try server.get(userId, id)
         return knownVersion == canvas.version ? nil : canvas
     }
@@ -883,6 +891,74 @@ final class CanvasHubTests: XCTestCase {
         XCTAssertEqual(api2.calls.map(\.clientSaveId), [kept.inFlight!.clientSaveId])
         XCTAssertEqual(server.head(canvas.id).body, BODY + "\nオフラインで書いた")
         XCTAssertNil(relaunched.pendingCanvas(canvas.id))
+    }
+
+    func testAListThatFailsIsKeptForTheTabUntilALoadSucceeds() async throws {
+        let server = FakeCanvasServer()
+        let canvas = server.create(by: "alice", channelId: "lab", body: BODY)
+        let api = FakeCanvasApi(server: server, userId: "bob")
+        let store = Store()
+        member(store)
+        let hub = CanvasHub(api: api, store: store, clock: ManualCanvasClock(), options: options())
+        defer { hub.stop() }
+        // A server from before canvases: the route is missing (FastAPI's 404 not_found, or the proxy's own).
+        api.listFail = [ApiError.api(status: 404, code: "not_found", message: "Not Found")]
+        await hub.loadList("lab")
+        XCTAssertNil(store.canvasesOf("lab"))
+        XCTAssertEqual(store.canvasListFailure("lab"), .unsupported)
+        XCTAssertEqual(CanvasHub.listFailure(ApiError.api(status: 404, code: "http_404", message: "")), .unsupported)
+        // Anything else can be tried again; a conversation I cannot see is not an old server.
+        XCTAssertEqual(CanvasHub.listFailure(ApiError.api(status: 404, code: "channel_not_found", message: "")), .failed)
+        XCTAssertEqual(CanvasHub.listFailure(ApiError.api(status: 503, code: "http_503", message: "")), .failed)
+        api.listFail = [ApiError.network(URLError(.notConnectedToInternet))]
+        await hub.loadList("lab")
+        XCTAssertEqual(store.canvasListFailure("lab"), .failed)
+        // 再読み込み: no failure while it asks (the spinner), none after it loads.
+        var duringRetry: CanvasListFailure?? = .none
+        api.onList = { duringRetry = store.canvasListFailure("lab") }
+        await hub.loadList("lab")
+        XCTAssertEqual(duringRetry, .some(nil))
+        api.onList = nil
+        XCTAssertNil(store.canvasListFailure("lab"))
+        XCTAssertEqual(store.canvasesOf("lab")?.map(\.id), [canvas.id])
+        // A later failure leaves the loaded list as it is; leaving the conversation forgets the failure.
+        api.listFail = [ApiError.api(status: 503, code: "http_503", message: "")]
+        await hub.loadList("lab")
+        XCTAssertEqual(store.canvasesOf("lab")?.map(\.id), [canvas.id])
+        store.removeChannel("lab")
+        XCTAssertNil(store.canvasListFailure("lab"))
+    }
+
+    func testACanvasWhoseFirstReadFailsOffersAReloadInsteadOfAnEmptyCanvas() async throws {
+        let server = FakeCanvasServer()
+        let canvas = server.create(by: "alice", channelId: "lab", body: BODY)
+        let api = FakeCanvasApi(server: server, userId: "bob")
+        let store = Store()
+        member(store)
+        let hub = CanvasHub(api: api, store: store, clock: ManualCanvasClock(), options: options())
+        defer { hub.stop() }
+        api.getFail = [ApiError.api(status: 503, code: "http_503", message: ""), ApiError.api(status: 403, code: "not_a_member", message: "")]
+        let saver = try XCTUnwrap(hub.hold(canvas.id, channelId: "lab"))
+        await saver.settled()
+        XCTAssertTrue(saver.loadFailed)
+        XCTAssertEqual(saver.status, .offline)
+        XCTAssertEqual(saver.text, "")
+        await saver.reload() // refused this time
+        XCTAssertTrue(saver.loadFailed)
+        XCTAssertEqual(saver.status, .blocked)
+        await saver.reload()
+        XCTAssertFalse(saver.loadFailed)
+        XCTAssertEqual(saver.status, .saved)
+        XCTAssertEqual(saver.text, BODY)
+        await saver.reload() // loaded: nothing more
+        XCTAssertEqual(api.gets.count, 3)
+        // A canvas in the trash is not a load failure (.gone says it).
+        let trashed = server.create(by: "alice", channelId: "lab", body: "")
+        server.canvases[trashed.id]?.deleted = true
+        let gone = try XCTUnwrap(hub.hold(trashed.id, channelId: "lab"))
+        await gone.settled()
+        XCTAssertEqual(gone.status, .gone)
+        XCTAssertFalse(gone.loadFailed)
     }
 
     func testLeavingTheConversationDropsItsCanvasesAndUnsavedEdits() async throws {
