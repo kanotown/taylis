@@ -1523,27 +1523,6 @@ struct ComposerView: View {
             PendingAttachmentsView(items: pending, uploading: uploading, controller: controller) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }
-            .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
-                ForEach(Schedule.presets()) { preset in
-                    Button("\(preset.label) (\(Schedule.label(preset.at)))") { schedule(preset.at) }
-                }
-                Button("日時を指定…") { customSendAt = Date().addingTimeInterval(3600); showCustomSchedule = true }
-            }
-            .sheet(isPresented: $showCustomSchedule) {
-                NavigationStack {
-                    Form {
-                        DatePicker("送信日時", selection: $customSendAt, in: Date().addingTimeInterval(60)..., displayedComponents: [.date, .hourAndMinute])
-                        Text(Schedule.label(customSendAt) + " に送信します").font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .navigationTitle("後で送信")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { showCustomSchedule = false } }
-                        ToolbarItem(placement: .confirmationAction) { Button("予約") { showCustomSchedule = false; schedule(customSendAt) } }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
             if !emojiCandidates.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -1634,6 +1613,29 @@ struct ComposerView: View {
         .animation(.easeOut(duration: 0.15), value: canSend)
         .animation(.easeOut(duration: 0.2), value: typing)
         .background(Color(.systemBackground))
+        // On the composer itself: on the attachments strip (nothing drawn without attachments) the dialog never showed
+        // and 「後で送信」 did nothing (tester, 2026-09-30).
+        .confirmationDialog("後で送信", isPresented: $showSchedule, titleVisibility: .visible) {
+            ForEach(Schedule.presets()) { preset in
+                Button("\(preset.label) (\(Schedule.label(preset.at)))") { schedule(preset.at) }
+            }
+            Button("日時を指定…") { customSendAt = Date().addingTimeInterval(3600); showCustomSchedule = true }
+        }
+        .sheet(isPresented: $showCustomSchedule) {
+            NavigationStack {
+                Form {
+                    DatePicker("送信日時", selection: $customSendAt, in: Date().addingTimeInterval(60)..., displayedComponents: [.date, .hourAndMinute])
+                    Text(Schedule.label(customSendAt) + " に送信します").font(.footnote).foregroundStyle(.secondary)
+                }
+                .navigationTitle("後で送信")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { showCustomSchedule = false } }
+                    ToolbarItem(placement: .confirmationAction) { Button("予約") { showCustomSchedule = false; schedule(customSendAt) } }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         // M37 (6): chosen from 「新しいメッセージ」: the input takes the keyboard once the push has settled.
         .task(id: parentId == nil && controller?.composerFocus == channelId) {
             guard parentId == nil, let controller, controller.composerFocus == channelId else { return }
