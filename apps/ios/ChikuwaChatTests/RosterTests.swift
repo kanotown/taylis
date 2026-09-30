@@ -268,7 +268,10 @@ final class RosterSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(directory.size.width, 0)
         let profile = try render(ProfileSheet(controller: controller, userId: "me"), size: CGSize(width: 393, height: 600), name: "roster-profile.png")
         XCTAssertGreaterThan(profile.size.width, 0)
-        let settings = try render(SettingsView(controller: controller), size: CGSize(width: 393, height: 852), name: "roster-settings.png")
+        // M40: my roster fields are on 自分 → プロフィールを編集.
+        let settings = try render(NavigationStack { ProfileEditView(controller: controller) }, size: CGSize(width: 393, height: 852), name: "roster-settings.png")
         XCTAssertGreaterThan(settings.size.width, 0)
+        let you = try render(YouView(controller: controller, path: .constant([])), size: CGSize(width: 393, height: 852), name: "roster-you.png")
+        XCTAssertGreaterThan(you.size.width, 0)
     }
 }

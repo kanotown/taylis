@@ -22,8 +22,15 @@ struct ChikuwaChatApp: App {
 
 struct RootView: View {
     @Bindable var controller: AppController
+    /// M40: 端末に合わせる / ライト / ダーク (自分 → 表示), for every screen of the app on this device.
+    @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
 
     var body: some View {
+        screen.preferredColorScheme(theme.colorScheme)
+    }
+
+    @ViewBuilder
+    private var screen: some View {
         switch controller.screen {
         case .boot:
             ProgressView("起動中…")

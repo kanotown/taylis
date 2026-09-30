@@ -81,20 +81,17 @@ func expiryLabel(_ iso: String?) -> String? {
     return date.formatted(.dateTime.month().day()) + "まで"
 }
 
-/// Custom status editor (M11d): emoji + text + expiry, quick presets, clear.
+/// Custom status editor (M11d): emoji + text + expiry, quick presets, clear. M40: the status only (the pause and the
+/// quiet hours have their own rows on the 自分 tab); a screen on that tab's stack, a sheet from my profile card.
 struct StatusEditorView: View {
     @Bindable var controller: AppController
+    /// M40: pushed on the 自分 tab (the back button instead of キャンセル).
+    var pushed = false
     @Environment(\.dismiss) private var dismiss
     @State private var emoji = ""
     @State private var text = ""
     @State private var expiry: Expiry = .never
     @State private var busy = false
-    // M12c: a pause applies at once; quiet hours are saved with the form.
-    @State private var quietOn = false
-    @State private var quietStart = Date()
-    @State private var quietEnd = Date()
-    @State private var quietDays: Set<Int> = Set(0..<7)
-    @State private var quietLoaded = false
 
     enum Expiry: String, CaseIterable, Identifiable {
         case never, halfHour, hour, fourHours, today, week
@@ -134,135 +131,75 @@ struct StatusEditorView: View {
         activeStatus(controller.store.me.map { controller.store.users[$0.id] ?? $0.asPublic })
     }
 
-    private var meNow: UserPublic? { controller.store.me.map { controller.store.users[$0.id] ?? $0.asPublic } }
-    private var pausedUntil: String? {
-        guard let raw = meNow?.dndUntil, let until = parseIsoDate(raw), until > Date() else { return nil }
-        return raw
-    }
-    private var quietDraft: QuietHours? {
-        guard quietOn else { return nil }
-        let calendar = Calendar.current
-        let start = calendar.component(.hour, from: quietStart) * 60 + calendar.component(.minute, from: quietStart)
-        let end = calendar.component(.hour, from: quietEnd) * 60 + calendar.component(.minute, from: quietEnd)
-        return QuietHours(start: DND.hhmm(start), end: DND.hhmm(end), days: quietDays.sorted(), tz: TimeZone.current.identifier)
-    }
-    private var quietChanged: Bool {
-        let existing = meNow?.quietHours
-        if quietOn != (existing != nil) { return true }
-        guard let draft = quietDraft, let existing else { return false }
-        return draft.start != existing.start || draft.end != existing.end || Set(draft.days) != Set(existing.days) || draft.tz != existing.tz
-    }
-    private func loadQuiet() {
-        guard !quietLoaded else { return }
-        quietLoaded = true
-        let calendar = Calendar.current
-        if let hours = meNow?.quietHours {
-            quietOn = true
-            quietStart = calendar.date(bySettingHour: DND.minutes(hours.start) / 60, minute: DND.minutes(hours.start) % 60, second: 0, of: Date()) ?? Date()
-            quietEnd = calendar.date(bySettingHour: DND.minutes(hours.end) / 60, minute: DND.minutes(hours.end) % 60, second: 0, of: Date()) ?? Date()
-            quietDays = Set(hours.days.isEmpty ? Array(0..<7) : hours.days)
-        } else {
-            quietStart = calendar.date(bySettingHour: 22, minute: 0, second: 0, of: Date()) ?? Date()
-            quietEnd = calendar.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
-        }
+    private var isEmpty: Bool {
+        emoji.trimmingCharacters(in: .whitespaces).isEmpty && text.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        TextField("絵文字", text: $emoji).frame(width: 56).multilineTextAlignment(.center)
-                        TextField("今なにしてる？", text: $text)
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Self.presets, id: \.text) { preset in
-                                Button("\(preset.emoji) \(preset.text)") { emoji = preset.emoji; text = preset.text }
-                                    .buttonStyle(.bordered).controlSize(.small)
-                            }
-                        }
-                    }
+        if pushed {
+            form
+        } else {
+            NavigationStack {
+                form.toolbar { ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } } }
+            }
+        }
+    }
+
+    private var form: some View {
+        Form {
+            Section {
+                HStack {
+                    TextField("絵文字", text: $emoji).frame(width: 56).multilineTextAlignment(.center)
+                    TextField("今なにしてる？", text: $text)
                 }
-                Section("消えるタイミング") {
-                    Picker("消えるタイミング", selection: $expiry) {
-                        ForEach(Expiry.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                }
-                Section("通知を一時停止") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(DND.Pause.allCases) { pause in
-                                Button(pause.label) {
-                                    Task { busy = true; _ = await controller.updateProfile(dndUntil: .some(ISO8601DateFormatter().string(from: pause.until()))); busy = false }
-                                }
-                                .buttonStyle(.bordered).controlSize(.small).disabled(busy)
-                            }
-                        }
-                    }
-                    if let pausedUntil {
-                        Button("🔕 \(expiryLabel(pausedUntil) ?? "") · 解除") {
-                            Task { busy = true; _ = await controller.updateProfile(dndUntil: .some(nil)); busy = false }
-                        }
-                        .disabled(busy)
-                    }
-                }
-                Section("おやすみ時間") {
-                    Toggle("毎日この時間帯は通知を止める", isOn: $quietOn)
-                    if quietOn {
-                        DatePicker("開始", selection: $quietStart, displayedComponents: .hourAndMinute)
-                        DatePicker("終了", selection: $quietEnd, displayedComponents: .hourAndMinute)
-                        HStack(spacing: 6) {
-                            ForEach(0..<7, id: \.self) { day in
-                                Button(DND.dayLabels[day]) {
-                                    if quietDays.contains(day) { quietDays.remove(day) } else { quietDays.insert(day) }
-                                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Self.presets, id: \.text) { preset in
+                            Button("\(preset.emoji) \(preset.text)") { emoji = preset.emoji; text = preset.text }
                                 .buttonStyle(.bordered).controlSize(.small)
-                                .tint(quietDays.contains(day) ? .accentColor : .secondary)
-                            }
-                        }
-                        Text("タイムゾーン: \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if current != nil {
-                    Section {
-                        Button("ステータスをクリア", role: .destructive) {
-                            Task { busy = true; if await controller.updateProfile(statusText: .some(nil), statusEmoji: .some(nil), statusExpiresAt: .some(nil)) { dismiss() }; busy = false }
                         }
                     }
                 }
             }
-            .navigationTitle("ステータスを設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        let iso = expiry.date().map { ISO8601DateFormatter().string(from: $0) }
-                        Task {
-                            busy = true
-                            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let e = emoji.trimmingCharacters(in: .whitespaces)
-                            let hasStatus = !trimmed.isEmpty || !e.isEmpty
-                            let quiet: QuietHours?? = quietChanged ? .some(quietDraft) : nil
-                            let ok = await controller.updateProfile(
-                                statusText: hasStatus ? .some(trimmed.isEmpty ? nil : trimmed) : nil,
-                                statusEmoji: hasStatus ? .some(e.isEmpty ? nil : e) : nil,
-                                statusExpiresAt: hasStatus ? .some(iso) : nil,
-                                quietHours: quiet
-                            )
-                            if ok { dismiss() }
-                            busy = false
-                        }
+            Section("消えるタイミング") {
+                Picker("消えるタイミング", selection: $expiry) {
+                    ForEach(Expiry.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.menu)
+            }
+            if current != nil {
+                Section {
+                    Button("ステータスをクリア", role: .destructive) {
+                        Task { busy = true; if await controller.updateProfile(statusText: .some(nil), statusEmoji: .some(nil), statusExpiresAt: .some(nil)) { dismiss() }; busy = false }
                     }
-                    .disabled(busy || (emoji.trimmingCharacters(in: .whitespaces).isEmpty && text.trimmingCharacters(in: .whitespaces).isEmpty && !quietChanged))
+                    .disabled(busy)
                 }
             }
-            .onAppear {
-                if let current { emoji = current.emoji; text = current.text }
-                loadQuiet()
+        }
+        .navigationTitle("ステータスを更新")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("保存") {
+                    let iso = expiry.date().map { ISO8601DateFormatter().string(from: $0) }
+                    Task {
+                        busy = true
+                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let e = emoji.trimmingCharacters(in: .whitespaces)
+                        let ok = await controller.updateProfile(
+                            statusText: .some(trimmed.isEmpty ? nil : trimmed),
+                            statusEmoji: .some(e.isEmpty ? nil : e),
+                            statusExpiresAt: .some(iso)
+                        )
+                        if ok { dismiss() }
+                        busy = false
+                    }
+                }
+                .disabled(busy || isEmpty)
             }
+        }
+        .onAppear {
+            if let current { emoji = current.emoji; text = current.text }
         }
     }
 }

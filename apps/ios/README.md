@@ -31,7 +31,7 @@ ChikuwaChat/
   Sync/       SyncEngine (SYNC_PROTOCOL.md §5/§7/§8/§9)、Store (表示の唯一のソース、SQLite へ write-through)、Frames、WebSocketTransport
   Platform/   Keychain、SQLiteStore (SQLite3 ラッパと永続化)
   UI/         LoginView (最初のログイン / ワークスペースの追加 / 再ログイン)、ChangePasswordView、MainView (NavigationSplitView)、ChannelListView、
-              ChannelView、MessageBodyView、Sheets、WorkspaceViews (切り替えシート、タイル)、Search + SearchView (M16b: 候補、絞り込み、結果)
+              ChannelView、MessageBodyView、Sheets、WorkspaceViews (切り替えシート、タイル)、YouView + YouRules (M40: 「自分」タブと設定の画面、表示のテーマ)、Search + SearchView (M16b: 候補、絞り込み、結果)
 ChikuwaChatTests/
   FakeServer (プロトコルの模擬サーバ)、SyncEngineTests、ContractTests (server/tests/contract/*.json をバンドルして実行)、
   ApiClientTests (URLProtocol スタブ)、BodyTokenizerTests、LiveBackendTests (LIVE_URL 指定時のみ)

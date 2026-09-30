@@ -407,9 +407,9 @@ struct MessageBodyView: View {
             var attributed = AttributedString(label ?? url)
             attributed.link = URL(string: url)
             return Text(attributed)
-        case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(.blue)
-        case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? "グループ")).foregroundStyle(.blue)
-        case .mentionAll(let target): return Text("@" + target).foregroundStyle(.blue)
+        case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(Color.accentColor)
+        case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? "グループ")).foregroundStyle(Color.accentColor)
+        case .mentionAll(let target): return Text("@" + target).foregroundStyle(Color.accentColor)
         case .newline: return Text("\n")
         }
     }

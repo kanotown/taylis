@@ -89,6 +89,17 @@ struct DeviceOut: Codable, Equatable {
     let updatedAt: String
 }
 
+/// One signed-in device of mine (GET /auth/sessions, M40's ログイン中の端末): `current` is this device.
+struct SessionOut: Codable, Equatable, Identifiable {
+    let id: String
+    let device: DeviceOut
+    let current: Bool
+    let lastIp: String?
+    let createdAt: String
+    let lastUsedAt: String
+    let expiresAt: String
+}
+
 struct TokenResponse: Codable, Equatable {
     let accessToken: String
     let refreshToken: String

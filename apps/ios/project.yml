@@ -50,6 +50,8 @@ targets:
         # target universal ("1,2"), and App Store Connect then rejects the upload for lacking the iPad orientations.
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # M40: the brand colour #5b5bd6 (a lighter #7f7ff2 in dark mode, as the web) for every control and UIKit view.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
   ChikuwaChatTests:
     type: bundle.unit-test

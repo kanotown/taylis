@@ -5,6 +5,8 @@ struct MainView: View {
     /// M34 (MOBILE_UI.md §5): four tabs, each with its own stack of screens (the app is iPhone only: always tabs).
     @State private var tab: MainTab = .home
     @State private var paths: [MainTab: [MainRoute]] = [:]
+    /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
+    @State private var youPath: [YouRoute] = []
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
     @State private var homeSelection: String?
     /// A permalink into a channel I have not joined (M27): the preview opens around this message.
@@ -92,7 +94,10 @@ struct MainView: View {
     var body: some View {
         TabView(selection: Binding(get: { tab }, set: { selected in
             // Tapping the open tab again: back to its first screen.
-            if selected == tab { paths[selected] = [] }
+            if selected == tab {
+                paths[selected] = []
+                if selected == .you { youPath = [] }
+            }
             tab = selected
         })) {
             homeTab
@@ -107,7 +112,7 @@ struct MainView: View {
                 .tabItem { Label("アクティビティ", systemImage: "bell") }
                 .badge(activityBadge.count)
                 .tag(MainTab.activity)
-            SettingsView(controller: controller, embedded: true)
+            YouView(controller: controller, path: $youPath)
                 .tabItem { Label("自分", systemImage: "person.crop.circle") }
                 .tag(MainTab.you)
         }
@@ -436,7 +441,7 @@ struct ConnectionBanner: View {
     var body: some View {
         Group {
             switch shown {
-            case .connecting: strip("サーバに接続しています…", color: .blue)
+            case .connecting: strip("サーバに接続しています…", color: .accentColor)
             case .offline: strip("オフラインです。再接続を待っています…", color: .orange)
             default: EmptyView()
             }
