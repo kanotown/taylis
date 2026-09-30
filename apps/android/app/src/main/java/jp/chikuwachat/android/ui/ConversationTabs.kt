@@ -41,6 +41,8 @@ enum class ConversationTab(val label: String) {
     MESSAGES("メッセージ"),
     /** M46 (CANVAS.md §4.1): the conversation's canvas (its tab canvas, else the newest), and the others from its list. */
     CANVAS("キャンバス"),
+    /** M52 (CALENDAR.md §7): the channel's shared calendar (public and private channels only, never a DM). */
+    EVENTS("予定"),
     PINS("ピン留め"),
     FILES("ファイル"),
 }
@@ -62,6 +64,14 @@ object ConversationNav {
      * being looked at: no rows count as seen and nothing marks read (SYNC_PROTOCOL.md §10.1 2.).
      */
     fun conversationOnScreen(tab: ConversationTab, detailsOpen: Boolean): Boolean = tab == ConversationTab.MESSAGES && !detailsOpen
+
+    /** M52: the tabs of a conversation: 「予定」 only where there is a shared calendar (CALENDAR.md §9 5.: not in a DM). */
+    fun tabs(channel: ChannelState): List<ConversationTab> =
+        ConversationTab.entries.filter { it != ConversationTab.EVENTS || CalendarChannels.hasCalendar(channel.channel) }
+
+    /** A tab's name; 「予定 2」 with events today or tomorrow (CALENDAR.md §7). */
+    fun label(tab: ConversationTab, upcoming: Int): String =
+        if (tab == ConversationTab.EVENTS && upcoming > 0) "${tab.label} $upcoming" else tab.label
 }
 
 /**
@@ -70,7 +80,11 @@ object ConversationNav {
  * replaced by events).
  */
 @Composable
-fun ConversationTabRow(controller: AppController, channel: ChannelState, version: Int, tab: ConversationTab, onTab: (ConversationTab) -> Unit) {
+fun ConversationTabRow(
+    controller: AppController, channel: ChannelState, version: Int, tab: ConversationTab, onTab: (ConversationTab) -> Unit,
+    /** M52: the channel's events today and tomorrow (「予定 N」). */
+    upcoming: Int = 0,
+) {
     val links = remember(version, channel.id) { controller.store.linksOf(channel.id) }
     val editable = ChannelLinks.canEdit(channel, controller.store.me?.role)
     // The link editor (null link = add).
@@ -81,8 +95,8 @@ fun ConversationTabRow(controller: AppController, channel: ChannelState, version
         contentPadding = PaddingValues(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        items(ConversationTab.entries, key = { "tab:" + it.name }) { entry ->
-            ConversationTabItem(entry.label, selected = entry == tab) { onTab(entry) }
+        items(ConversationNav.tabs(channel), key = { "tab:" + it.name }) { entry ->
+            ConversationTabItem(ConversationNav.label(entry, upcoming), selected = entry == tab) { onTab(entry) }
         }
         if (links.isNotEmpty() || editable) {
             item(key = "divider") { VerticalDivider(Modifier.padding(horizontal = 6.dp).height(20.dp)) }

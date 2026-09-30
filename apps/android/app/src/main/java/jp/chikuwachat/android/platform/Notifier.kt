@@ -33,19 +33,23 @@ class Notifier(private val context: Context) {
      * both post the same message: the replacement does not ring a second time.
      */
     fun notifyMessage(
-        channelId: String, title: String, body: String, key: String = channelId, workspace: String? = null, subText: String? = null,
+        /** M52: null for an alarm of my own calendar (no conversation); `eventId` then says what the tap opens. */
+        channelId: String?, title: String, body: String, key: String = channelId ?: "", workspace: String? = null, subText: String? = null,
         /** M28c: the message and, for a reply, its thread: the tap opens the thread at the reply (as a permalink does). */
         messageId: String? = null, parentId: String? = null,
         /** M39: a reaction's notification: the tap reveals `messageId` itself (the push has no thread id for a reply). */
         reveal: Boolean = false,
         /** M28c: my unread count across the workspaces, for launchers that show a number on the app icon. */
         badge: Int? = null,
+        /** M52: a calendar alarm's event: the tap opens it (in its channel's 「予定」 tab, or the calendar for my own). */
+        eventId: String? = null,
     ) {
         if (!permitted) return
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            putExtra(EXTRA_CHANNEL_ID, channelId)
+            if (channelId != null) putExtra(EXTRA_CHANNEL_ID, channelId)
+            if (eventId != null) putExtra(EXTRA_EVENT_ID, eventId)
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
             if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
@@ -98,6 +102,8 @@ class Notifier(private val context: Context) {
         const val EXTRA_PARENT_ID = "parent_id"
         /** M39: open the message itself (a reaction's notification), not the conversation at its unread position. */
         const val EXTRA_REVEAL = "reveal"
+        /** M52: the calendar event of an alarm's notification. */
+        const val EXTRA_EVENT_ID = "event_id"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

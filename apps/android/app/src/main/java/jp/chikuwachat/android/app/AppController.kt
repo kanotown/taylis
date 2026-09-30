@@ -8,6 +8,8 @@ import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.platform.AvatarPhoto
 import jp.chikuwachat.android.ui.QuickReactions
 import jp.chikuwachat.android.ui.Dnd
+import jp.chikuwachat.android.ui.CalendarChannels
+import jp.chikuwachat.android.ui.CalendarDates
 import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
 import java.time.ZonedDateTime
@@ -146,6 +148,11 @@ class AppController(private val app: Application) {
     var pendingSettings by mutableStateOf<jp.chikuwachat.android.ui.SettingsPage?>(null)
     /** M46: a canvas to open once the main screen sees it (a `/c/<id>` link tapped in a body): its conversation and id. */
     var pendingCanvas by mutableStateOf<Pair<String, String>?>(null)
+    /** M52: a calendar event to open once the main screen sees it (a tapped alarm): its channel (null: my own) and id. */
+    data class PendingEvent(val channelId: String?, val eventId: String)
+    var pendingEvent by mutableStateOf<PendingEvent?>(null)
+    /** M52: the event form on screen (a row tapped, 「予定を追加」, an alarm); kept here so a rotation keeps it open. */
+    var calendarForm by mutableStateOf<jp.chikuwachat.android.ui.CalendarForm?>(null)
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -404,6 +411,8 @@ class AppController(private val app: Application) {
         messageFocus = null
         pendingReveal = null
         pendingCanvas = null
+        pendingEvent = null
+        calendarForm = null
         linkPreviews.clear()
         previewLoads.clear()
         emojiLoads.clear()
@@ -835,6 +844,12 @@ class AppController(private val app: Application) {
             notice = "⏰ $text"
             if (!dndActive(store)) notify(workspace(), row.channelId, "リマインダー", text, key = "reminder:${row.id}", messageId = row.messageId)
         }
+        // M52: my calendar alarm fired while the app is open (the server's push is not shown then), worded like that push.
+        engine.calendar.onAlarm = { event ->
+            val text = CalendarDates.alarmText(event)
+            notice = "📅 $text"
+            if (!dndActive(store)) notify(workspace(), event.channelId, "予定", text, key = "calendar:${event.id}", eventId = event.id)
+        }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
@@ -885,11 +900,14 @@ class AppController(private val app: Application) {
      * A local notification, for the workspace it belongs to (named when there are two or more, WORKSPACES.md §7). M28c:
      * with the message (and its thread for a reply), and my unread count across the workspaces as the icon's number.
      */
-    private fun notify(entry: Workspace?, channelId: String, title: String, body: String, key: String = channelId, messageId: String? = null, parentId: String? = null, reveal: Boolean = false) {
+    private fun notify(
+        entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
+        reveal: Boolean = false, eventId: String? = null,
+    ) {
         val named = workspaces.size >= 2
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
-            messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(),
+            messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId,
         )
     }
 
@@ -934,8 +952,9 @@ class AppController(private val app: Application) {
                 // over it (and alerts from there).
                 val live = appForeground && engineStatus == EngineStatus.ONLINE
                 val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
-                if (!message.isSilent && !live && !reading && message.channelId != null && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction)
+                // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
+                if (message.shown && !live && !reading && key != null) {
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -943,8 +962,8 @@ class AppController(private val app: Application) {
             }
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
-            if (!message.isSilent && message.channelId != null && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction)
+            if (message.shown && key != null) {
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId)
             }
         }
     }
@@ -969,6 +988,22 @@ class AppController(private val app: Application) {
         pendingReply = if (messageId != null && parentId != null) messageId to parentId else null
         // M39: a reaction's notification opens the message reacted to (in its thread when it is a reply).
         pendingRevealId = if (reveal && pendingReply == null) messageId else null
+        bringWorkspace { pendingChannelId = channelId }
+    }
+
+    /**
+     * M52: a tapped calendar alarm (CALENDAR.md §6): its workspace comes on screen, then the main screen opens the event, in
+     * its channel's 「予定」 tab (or the calendar for my own calendar's event).
+     */
+    fun openEventFromNotification(workspaceKey: String?, channelId: String?, eventId: String) {
+        pendingWorkspaceKey = workspaceKey
+        val target = PendingEvent(channelId, eventId)
+        pendingEvent = target
+        bringWorkspace { pendingEvent = target }
+    }
+
+    /** The pending workspace on screen (switching if needed); `after` restores what the switch cleared. */
+    private fun bringWorkspace(after: () -> Unit) {
         scope.launch {
             sessionLock.withLock {
                 if (!restored) return@withLock // startup opens the pending workspace itself
@@ -977,7 +1012,7 @@ class AppController(private val app: Application) {
                 if (workspaces.none { it.serverUrl == key }) return@withLock
                 if (key != activeKey || screen == Screen.LOGIN) {
                     switchLocked(key)
-                    pendingChannelId = channelId
+                    after()
                 }
             }
         }
@@ -1524,6 +1559,18 @@ class AppController(private val app: Application) {
     }.onFailure { error = describe(it) }
 
     val isAdmin: Boolean get() = me?.role == "admin"
+
+    // --- the calendar (M52, CALENDAR.md) -----------------------------------------------------------
+
+    /** The engine's calendar; null before sign-in. */
+    val calendar: jp.chikuwachat.android.sync.CalendarHub? get() = engine?.calendar
+
+    /** The channels whose calendars I see (and filter by): public and private ones I belong to (CALENDAR.md §3; not DMs). */
+    fun calendarChannels(): List<jp.chikuwachat.android.sync.ChannelState> = CalendarChannels.readable(store.channels.values)
+
+    /** The channels I may add events to: those I may post in, not archived (§3). */
+    fun writableCalendars(): List<jp.chikuwachat.android.sync.ChannelState> = CalendarChannels.writable(store.channels.values, isAdmin)
+
     /** M13e: confined to the channels they were added to; browsing and creation are hidden. */
     val isGuest: Boolean get() = me?.role == "guest"
 

@@ -374,6 +374,33 @@ fun MainScreen(controller: AppController) {
         focusManager.clearFocus()
         tabs = MainTabs.landCanvas(tabs, MainTabs.landingTab(channel), channelId, canvasId)
     }
+    // M52: a tapped calendar alarm: its channel's 「予定」 tab (once the store knows the channel), or the calendar for my own
+    // calendar's event, then the event's form over it (read from the server: it may be outside every range on screen).
+    LaunchedEffect(controller.pendingEvent, version) {
+        val target = controller.pendingEvent ?: return@LaunchedEffect
+        val channelId = target.channelId
+        if (channelId != null && store.channel(channelId)?.isMember != true) return@LaunchedEffect
+        controller.pendingEvent = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = if (channelId != null) MainTabs.landEvents(tabs, channelId) else MainTabs.landCalendar(tabs)
+        val hub = controller.calendar ?: return@LaunchedEffect
+        scope.launch {
+            runCatching { hub.get(target.eventId) }
+                .onSuccess { controller.calendarForm = CalendarForm(it, null) }
+                .onFailure { controller.report(it) }
+        }
+    }
+    // M52: 「予定 N」 on the open channel's tab (today and tomorrow, CALENDAR.md §7); read when it opens and when the
+    // connection comes back (the hub reads the counts it holds again after reconnecting, and when one of its events changes).
+    val calendarHub = controller.calendar
+    val calendarChanges = calendarVersion(calendarHub)
+    val upcomingChannel = selection?.takeIf { id -> store.channel(id)?.let { it.isMember && CalendarChannels.hasCalendar(it.channel) } == true }
+    LaunchedEffect(calendarHub, upcomingChannel, status == EngineStatus.ONLINE) {
+        if (calendarHub != null && upcomingChannel != null && status == EngineStatus.ONLINE) calendarHub.loadUpcoming(upcomingChannel)
+    }
+    val upcomingEvents = remember(calendarChanges, upcomingChannel) { upcomingChannel?.let { calendarHub?.upcomingOf(it)?.size } ?: 0 }
+    controller.calendarForm?.let { form -> CalendarEventForm(controller, form, onDismiss = { controller.calendarForm = null }) }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
@@ -471,6 +498,7 @@ fun MainScreen(controller: AppController) {
                             pane == Route.Drafts -> Text("下書き")
                             pane is Route.Files -> Text("ファイル")
                             pane == Route.Reminders -> Text("リマインダー")
+                            pane == Route.Calendar -> Text("カレンダー")
                             // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                             top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -604,7 +632,7 @@ fun MainScreen(controller: AppController) {
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
-                ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab)
+                ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
             }
             ConnectionBanner(status)
             val shownSearch = searchParams
@@ -669,6 +697,8 @@ fun MainScreen(controller: AppController) {
                                     stack = MainNav.selectCanvas(stack, id)
                                 })
                             }
+                            // M52 (CALENDAR.md §7): the channel's shared calendar, the next 60 days.
+                            conversationTab == ConversationTab.EVENTS -> CoveringPage { ChannelEventsPane(controller, selectedChannel, version) }
                             conversationTab == ConversationTab.FILES -> CoveringPage {
                                 FilesPane(controller, version, channelId = selectedChannel.id, onScopeChange = null) { messageId, channelId, parentId ->
                                     scope.launch {
@@ -680,6 +710,9 @@ fun MainScreen(controller: AppController) {
                     }
                 } else if (pane == Route.Reminders) {
                     RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
+                } else if (pane == Route.Calendar) {
+                    // M52 (CALENDAR.md §7): 一覧 and 月, filtered by calendar; a row opens the event's form.
+                    CalendarPane(controller, version)
                 } else if (pane == Route.Mentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (pane == Route.Drafts) {
@@ -744,6 +777,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.DRAFTS -> Route.Drafts
                                     HomeTile.SAVED -> Route.Saved
                                     HomeTile.REMINDERS -> Route.Reminders
+                                    HomeTile.CALENDAR -> Route.Calendar
                                     HomeTile.FILES -> Route.Files()
                                 },
                             )

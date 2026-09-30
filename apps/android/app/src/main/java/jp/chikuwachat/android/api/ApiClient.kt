@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.ActivityApi
+import jp.chikuwachat.android.sync.CalendarApi
 import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
@@ -61,7 +62,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -646,6 +647,33 @@ class ApiClient(
 
     /** An attachment's metadata (a canvas image knows only its id). */
     suspend fun attachment(attachmentId: String): AttachmentOut = request("GET", "/api/v1/attachments/$attachmentId")
+
+    // --- the calendar (CALENDAR.md §4, M52) -----------------------------------------------------
+
+    override suspend fun calendarEvents(from: String, to: String, channelId: String?): List<CalendarEventOut> =
+        request("GET", "/api/v1/calendar/events?from=" + Enc.encode(from, "UTF-8") + "&to=" + Enc.encode(to, "UTF-8") + (channelId?.let { "&channel_id=$it" } ?: ""))
+
+    override suspend fun calendarUpcoming(channelId: String?, days: Int, tz: String): List<CalendarEventOut> =
+        request("GET", "/api/v1/calendar/upcoming?days=$days&tz=" + Enc.encode(tz, "UTF-8") + (channelId?.let { "&channel_id=$it" } ?: ""))
+
+    override suspend fun calendarEvent(eventId: String): CalendarEventOut = request("GET", "/api/v1/calendar/events/$eventId")
+
+    override suspend fun createCalendarEvent(body: CalendarEventCreate): CalendarEventOut =
+        request("POST", "/api/v1/calendar/events", Codec.snake.encodeToJsonElement(CalendarEventCreate.serializer(), body))
+
+    override suspend fun updateCalendarEvent(eventId: String, patch: CalendarEventUpdate): CalendarEventOut =
+        request("PATCH", "/api/v1/calendar/events/$eventId", patch.toJson())
+
+    override suspend fun deleteCalendarEvent(eventId: String) {
+        requestRaw("DELETE", "/api/v1/calendar/events/$eventId", null, auth = true, retry401 = true)
+    }
+
+    override suspend fun setCalendarAlarm(eventId: String, minutesBefore: Int, tz: String): CalendarEventOut =
+        request("PUT", "/api/v1/calendar/events/$eventId/alarm", buildJsonObject { put("minutes_before", minutesBefore); put("tz", tz) })
+
+    override suspend fun clearCalendarAlarm(eventId: String) {
+        requestRaw("DELETE", "/api/v1/calendar/events/$eventId/alarm", null, auth = true, retry401 = true)
+    }
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
