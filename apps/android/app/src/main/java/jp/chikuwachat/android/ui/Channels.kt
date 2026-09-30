@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.SidebarSectionOut
+import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.NotificationLevels
@@ -51,27 +52,33 @@ object Channels {
         val custom: List<Pair<SidebarSectionOut, List<ChannelState>>> = emptyList(),
         /** M24: times channels I am in, mine first, then by name; left out of `channels`. */
         val times: List<ChannelState> = emptyList(),
+        /** M37: with 「未読をまとめる」, every unread conversation (DMs too), newest first; left out of every other section. */
+        val unread: List<ChannelState> = emptyList(),
     )
 
     /**
-     * List order: favorites, channels by name, times (M24), DMs by recency (my own DM first), joinable channels by name.
-     * The open one always stays. `meId` decides which times is mine (first, and never quiet) and which DM is my own.
+     * List order: [unread (M37, with `groupUnread`)], favorites, channels by name, times (M24), DMs by recency (my own DM
+     * first), joinable channels by name. `meId` decides which times is mine (first, and never quiet) and which DM is my
+     * own. M37: 「未読をまとめる」 replaced the 「未読のみ」 filter: nothing is hidden, the unread rows move to the top.
      */
     fun sections(
         all: Collection<ChannelState>,
-        unreadOnly: Boolean = false,
-        currentId: String? = null,
+        groupUnread: Boolean = false,
         now: Instant = Instant.now(),
         favorites: Set<String> = emptySet(),
         sidebar: List<SidebarSectionOut> = emptyList(),
         meId: String? = null,
     ): Sections {
-        fun keep(channel: ChannelState) = !unreadOnly || channel.id == currentId || hasUnread(channel, meId, now)
+        fun live(channel: ChannelState) = channel.isMember && (channel.channel.isDm || !channel.channel.archived)
+        fun grouped(channel: ChannelState) = groupUnread && live(channel) && hasUnread(channel, meId, now)
+        fun keep(channel: ChannelState) = !grouped(channel)
         fun starred(channel: ChannelState) = channel.id in favorites
         val placed = HashMap<String, String>()
         sidebar.forEach { section -> section.channelIds.forEach { placed[it] = section.id } }
         fun loose(channel: ChannelState) = !starred(channel) && channel.id !in placed
         return Sections(
+            unread = all.filter { grouped(it) }
+                .sortedWith(compareByDescending<ChannelState> { it.channel.lastMessageAt ?: "" }.thenBy { it.channel.name ?: "" }.thenBy { it.id }),
             favorites = all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }.sortedBy { it.channel.name ?: it.channel.lastMessageAt ?: "" },
             custom = sidebar.map { section ->
                 val members = all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id }
@@ -82,22 +89,85 @@ object Channels {
                 .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.thenBy { it.channel.name ?: "" }),
             dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }
                 .sortedWith(compareByDescending<ChannelState> { MainTabs.isSelfNotes(it, meId) }.thenByDescending { it.channel.lastMessageAt ?: "" }),
-            browse = if (unreadOnly) emptyList() else all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
+            browse = all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
         )
     }
 
     /** M26 (Slack): a folded section still shows what is unread, and the open conversation. */
     fun shown(rows: List<ChannelState>, collapsed: Boolean, meId: String?, currentId: String? = null, now: Instant = Instant.now()): List<ChannelState> =
         if (!collapsed) rows else rows.filter { it.id == currentId || hasUnread(it, meId, now) }
+
+    /** M37: the DMs the home list shows besides my own. */
+    const val HOME_DMS = 5
+
+    /** The home's 「ダイレクトメッセージ」 section: its rows, and whether 「すべての DM」 leads to the ones left out. */
+    data class DmSection(val rows: List<ChannelState>, val more: Boolean)
+
+    /**
+     * M37 (MOBILE_UI.md §6.1): my own DM first, then the [HOME_DMS] newest of the others (`dms` as [sections] orders
+     * them). An older one that is unread still shows (unread is never hidden, as in a folded section); `more` when some
+     * are left out, for 「すべての DM」 (the DM tab).
+     */
+    fun dmSection(dms: List<ChannelState>, meId: String?, now: Instant = Instant.now(), limit: Int = HOME_DMS): DmSection {
+        val (self, others) = dms.partition { MainTabs.isSelfNotes(it, meId) }
+        val newest = others.take(limit)
+        val olderUnread = others.drop(limit).filter { hasUnread(it, meId, now) }
+        return DmSection(self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
+    }
 }
 
-/** M28c: the list's 「未読のみ」 filter as it was left on this device (it came back off at every start), like the folds below. */
-object UnreadFilter {
-    private const val KEY = "sidebar.unreadOnly"
+/** M37: 「未読をまとめる」 (replacing M28c's 「未読のみ」 filter) as it was left on this device; off at first. */
+object GroupUnread {
+    private const val KEY = "sidebar.groupUnread"
+
+    /** The filter it replaced; forgotten at the first write. */
+    private const val OLD_KEY = "sidebar.unreadOnly"
 
     fun read(store: KeyValueStore): Boolean = store.getString(KEY) == "1"
 
-    fun write(store: KeyValueStore, on: Boolean) = store.putString(KEY, if (on) "1" else null)
+    fun write(store: KeyValueStore, on: Boolean) {
+        store.putString(KEY, if (on) "1" else null)
+        store.putString(OLD_KEY, null)
+    }
+}
+
+/** M37 (MOBILE_UI.md §6.1): the home's tiles, in the row's order. */
+enum class HomeTile(val label: String) {
+    THREADS("スレッド"),
+    DRAFTS("下書き"),
+    SAVED("保存"),
+    REMINDERS("リマインダー"),
+    FILES("ファイル"),
+}
+
+/** A tile's number (null: none shown), red when `alert`; a 0 is dimmed but still opens its list. */
+data class TileState(val tile: HomeTile, val count: Int?, val alert: Boolean = false) {
+    val dimmed: Boolean get() = count == 0
+}
+
+object HomeTiles {
+    /**
+     * The badge rules of the rows they replaced (§6.1): スレッド the followed threads' unread count, red with a mention;
+     * 下書き the drafts and scheduled messages; 保存 the saved messages; リマインダー the fired ones, red; ファイル no number.
+     */
+    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
+        TileState(HomeTile.THREADS, threads.unreadCount, alert = threads.unreadCount > 0 && threads.mentionCount > 0),
+        TileState(HomeTile.DRAFTS, drafts),
+        TileState(HomeTile.SAVED, saved),
+        TileState(HomeTile.REMINDERS, firedReminders, alert = firedReminders > 0),
+        TileState(HomeTile.FILES, null),
+    )
+
+    /** What TalkBack reads for a tile. */
+    fun description(state: TileState): String {
+        val count = state.count ?: return state.tile.label
+        val number = when (state.tile) {
+            HomeTile.THREADS -> "未読 $count 件"
+            HomeTile.REMINDERS -> "通知済み $count 件"
+            else -> "$count 件"
+        }
+        return "${state.tile.label}、$number" + if (state.alert && state.tile == HomeTile.THREADS) "、メンションあり" else ""
+    }
 }
 
 /**

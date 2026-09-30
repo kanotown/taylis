@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
@@ -94,6 +98,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -263,10 +268,14 @@ fun SearchTopBar(
     onSearch: (SearchParams) -> Unit,
     onBack: () -> Unit,
     placeholder: String,
+    /** M37: the home's 「移動・検索」 (MOBILE_UI.md §6.2): conversations and people to go to instead of search suggestions. */
+    jump: JumpTargets? = null,
 ) {
     val store = controller.store
-    val rows = remember(text, recent, version) {
-        Search.suggestions(text, store.users.values, store.channels.values, recent) { channelTitle(it, store) }
+    val rows = remember(text, recent, version, jump != null) {
+        // The jump screen's empty box keeps the recent searches and quick filters; typing lists conversations instead.
+        if (jump != null && text.isNotBlank()) emptyList()
+        else Search.suggestions(if (jump != null) "" else text, store.users.values, store.channels.values, recent) { channelTitle(it, store) }
     }
     // Opening the suggestions puts the cursor in the box (the bar only follows focus by itself).
     val focus = remember { FocusRequester() }
@@ -297,9 +306,121 @@ fun SearchTopBar(
             onExpandedChange = onExpandedChange,
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            SuggestionList(store, rows, text, onPick = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent)
+            if (jump != null) JumpList(store, version, text, rows, jump, onSearch = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent)
+            else SuggestionList(store, rows, text, onPick = onSearch, onRemoveRecent = onRemoveRecent, onClearRecent = onClearRecent)
         }
     }
+}
+
+/** M37: what the jump screen goes to: its recent conversations (newest first) and where a picked row leads. */
+class JumpTargets(
+    val recent: List<ChannelState>,
+    val onOpenConversation: (String) -> Unit,
+    /** A person: the DM with them (me: my own DM). */
+    val onOpenPerson: (String) -> Unit,
+)
+
+/**
+ * M37 (MOBILE_UI.md §6.2): empty, 「最近の会話」 then the recent searches and quick filters (`rows`); typing, 「会話」 (at
+ * most 20) and 「人」 (at most 10) by jump-match.json's rule, then 「"語" をメッセージ検索」 (the results screen).
+ */
+@Composable
+private fun ColumnScope.JumpList(
+    store: Store,
+    version: Int,
+    text: String,
+    rows: List<Suggestion>,
+    jump: JumpTargets,
+    onSearch: (SearchParams) -> Unit,
+    onRemoveRecent: (SearchParams) -> Unit,
+    onClearRecent: () -> Unit,
+) {
+    val query = text.trim()
+    val meId = store.me?.id
+    val userNames: (String) -> List<String> = { id ->
+        val user = store.users[id]
+        val me = store.me?.takeIf { it.id == id }
+        listOfNotNull(user?.displayName ?: me?.displayName, user?.username ?: me?.username)
+    }
+    val conversations = remember(query, version) {
+        if (query.isEmpty()) emptyList() else Jump.conversations(query, store.channels.values, meId, { channelTitle(it, store) }, userNames)
+    }
+    val people = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.people(query, store.users.values) }
+    // The last row (「"語" をメッセージ検索」) scrolls clear of the gesture bar.
+    LazyColumn(Modifier.fillMaxWidth().weight(1f).imePadding(), contentPadding = WindowInsets.navigationBars.asPaddingValues()) {
+        if (query.isEmpty()) {
+            if (jump.recent.isNotEmpty()) {
+                item(key = "h:recent-conversations") { SuggestionHeader("最近の会話") }
+                items(jump.recent, key = { "rc:" + it.id }) { channel -> JumpConversationRow(store, channel) { jump.onOpenConversation(channel.id) } }
+            }
+            itemsIndexed(rows, key = { index, row -> "s:" + suggestionKey(row, index) }) { index, row ->
+                val here = if (row is Suggestion.Recent) "recent" else "filter"
+                val before = rows.getOrNull(index - 1)?.let { if (it is Suggestion.Recent) "recent" else "filter" }
+                if (here != before) {
+                    if (here == "recent") SuggestionHeader("最近の検索", action = "履歴を消去" to onClearRecent) else SuggestionHeader("絞り込み")
+                }
+                SuggestionRow(store, row, onClick = { onSearch(row.toParams()) }, onRemove = (row as? Suggestion.Recent)?.let { { onRemoveRecent(it.params) } })
+            }
+        } else {
+            if (conversations.isNotEmpty()) {
+                item(key = "h:conversations") { SuggestionHeader("会話") }
+                items(conversations, key = { "c:" + it.id }) { channel -> JumpConversationRow(store, channel) { jump.onOpenConversation(channel.id) } }
+            }
+            if (people.isNotEmpty()) {
+                item(key = "h:people") { SuggestionHeader("人") }
+                items(people, key = { "u:" + it.id }) { user ->
+                    val mine = user.id == meId
+                    ListItem(
+                        headlineContent = { Text(user.displayName + if (mine) " (自分)" else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(if (mine) MainTabs.SELF_NOTES_HINT else "@" + user.username, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Avatar(user.id, user.displayName, size = 28.dp, presence = store.presenceOf(user.id)) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "DM を開く") { jump.onOpenPerson(user.id) },
+                    )
+                }
+            }
+            item(key = "search-words") {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            buildAnnotatedString {
+                                append("\"")
+                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(query) }
+                                append("\" をメッセージ検索")
+                            },
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.fillMaxWidth().clickable { onSearch(SearchParams(q = query)) },
+                )
+            }
+        }
+    }
+}
+
+/** A conversation on the jump screen: its glyph (a DM: the person), its name, bold when unread. */
+@Composable
+private fun JumpConversationRow(store: Store, channel: ChannelState, onClick: () -> Unit) {
+    val meId = store.me?.id
+    val unread = Channels.hasUnread(channel, meId)
+    val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
+    val title = channelTitle(channel, store).removePrefix("#")
+    ListItem(
+        headlineContent = { Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = if (channel.isMember) null else { { Text("未参加 (プレビュー)", color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+        leadingContent = {
+            when {
+                !channel.channel.isDm -> Icon(conversationIcon(channel), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                others.size > 1 -> Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> (others.firstOrNull() ?: meId ?: channel.id).let { id -> Avatar(id, store.users[id]?.displayName ?: title, size = 28.dp, presence = store.presenceOf(id)) }
+            }
+        },
+        trailingContent = if (unread) { { Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape).semantics { contentDescription = "未読" }) } } else null,
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    )
 }
 
 @Composable

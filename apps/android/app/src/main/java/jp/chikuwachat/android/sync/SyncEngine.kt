@@ -431,6 +431,23 @@ class SyncEngine(
     }
 
     /**
+     * M37 pull to refresh (MOBILE_UI.md §6.1): bootstrap again and catch the open conversation up, as after a reconnect
+     * (§7.5); returns when done. Offline or connecting, it reconnects now instead. Nothing depends on it for being
+     * correct (the socket and the reconnects are): it is for the reader's peace of mind.
+     */
+    suspend fun resync() {
+        if (_status.value != EngineStatus.ONLINE) {
+            reconnectNow()
+            return
+        }
+        enqueue {
+            applyBootstrap(api.bootstrap())
+            loadBrowsableChannels()
+            currentChannelId?.let { catchUp(it) }
+        }
+    }
+
+    /**
      * A push named a message (PUSH_NOTIFICATIONS.md §9): the push only says new data may exist, so its conversation
      * catches up as well when its row is not here yet (the socket may be half open and the heartbeat has not noticed),
      * besides what [reconnectNow] does. A row already here came over the socket: nothing to fetch. M28c.

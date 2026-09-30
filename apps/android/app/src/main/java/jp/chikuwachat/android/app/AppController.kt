@@ -57,6 +57,7 @@ import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.SearchOut
 import jp.chikuwachat.android.api.SearchRequest
 import jp.chikuwachat.android.api.ServerInfoOut
+import jp.chikuwachat.android.ui.RecentConversations
 import jp.chikuwachat.android.ui.RecentSearches
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -137,6 +138,12 @@ class AppController(private val app: Application) {
     val serverBase: String? get() = api?.baseUrl
     data class MessageFocus(val channelId: String, val messageId: String, val parentId: String?, val context: List<MessageState>)
     var messageFocus by mutableStateOf<MessageFocus?>(null)
+
+    /**
+     * M37 (MOBILE_UI.md §6.1 ✏️): the conversation whose composer takes the focus (and the keyboard) once it shows; the
+     * composer clears it. Another conversation opening first clears it too (MainScreen).
+     */
+    var composerFocus by mutableStateOf<String?>(null)
     suspend fun revealMessage(message: jp.chikuwachat.android.api.MessageOut): Boolean =
         revealMessage(message.id, message.channelId, message.parentId)
 
@@ -957,7 +964,10 @@ class AppController(private val app: Application) {
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         val leave = leaving.remove(serverUrl)
         if (leave) {
-            username?.let { RecentSearches.clear(prefs, RecentSearches.key(account(serverUrl, it))) }
+            username?.let {
+                RecentSearches.clear(prefs, RecentSearches.key(account(serverUrl, it)))
+                RecentConversations.clear(prefs, RecentConversations.key(account(serverUrl, it)))
+            }
             replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         } else {
             updateWorkspace(serverUrl) { it.copy(signedOut = true, badge = 0, hasUnread = false) }
@@ -984,10 +994,11 @@ class AppController(private val app: Application) {
         if (next != null) openWorkspace(next) else showLogin(null)
     }
 
-    /** An account's token, local store and recent searches (§11); its database must not be open. */
+    /** An account's token, local store, recent searches and conversations (§11); its database must not be open. */
     private suspend fun forgetAccountData(account: String) {
         secrets.putSecret(account, null)
         RecentSearches.clear(prefs, RecentSearches.key(account))
+        RecentConversations.clear(prefs, RecentConversations.key(account))
         withContext(Dispatchers.IO) { RoomPersistence.delete(app, account) }
     }
 
@@ -1195,6 +1206,12 @@ class AppController(private val app: Application) {
     suspend fun markAllRead() {
         val engine = engine ?: return
         try { engine.markAllRead() } catch (e: Exception) { report(e) }
+    }
+
+    /** M37 pull to refresh: the engine's bootstrap and catch-up again (a reconnect when offline); a failure is reported. */
+    suspend fun resync() {
+        val engine = engine ?: return
+        try { engine.resync() } catch (e: Exception) { report(e) }
     }
 
     /** M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device. */

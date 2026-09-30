@@ -70,6 +70,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -696,6 +698,16 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         if (value.text.isNotBlank()) controller.engine?.sendTyping(channelId, parentId) // §5.2, throttled by the engine
     }
     fun setText(value: String) = setField(TextFieldValue(value, TextRange(value.length)))
+    // M37: a conversation opened from ✏️ 新しいメッセージ starts with the cursor here (and the keyboard up).
+    val inputFocus = remember { FocusRequester() }
+    LaunchedEffect(controller.composerFocus, channelId, parentId) {
+        if (parentId != null || controller.composerFocus != channelId) return@LaunchedEffect
+        // After the picker's window has gone and the field is placed: a request before either does nothing. Cleared
+        // only then: clearing it is a change of this effect's key, which would cancel it.
+        kotlinx.coroutines.delay(COMPOSER_FOCUS_DELAY_MS)
+        runCatching { inputFocus.requestFocus() }
+        controller.composerFocus = null
+    }
     val channelState = store.channel(channelId)
     val templates = Templates.ordered(store.templates.values, inTimes = channelState?.channel?.isTimes == true)
     fun insertTemplate(template: TemplateOut) = setText(Templates.insertButton(draft, template.body, LocalDate.now()))
@@ -875,7 +887,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
             if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }
             OutlinedTextField(
-                field, { setField(it) }, modifier = Modifier.weight(1f), maxLines = 6,
+                field, { setField(it) }, modifier = Modifier.weight(1f).focusRequester(inputFocus), maxLines = 6,
                 placeholder = { Text(if (parentId == null) "メッセージ" else "スレッドに返信", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 trailingIcon = if (parentId != null || compact) null else { {
                     Box {
@@ -930,6 +942,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
 }
 
 /** The composer's layout at narrow widths (M28c). */
+/** M37: how long the composer waits before taking the focus it was asked for (the picker's window closing first). */
+private const val COMPOSER_FOCUS_DELAY_MS = 300L
+
 object ComposerLayout {
     /** Below this window width the schedule and priority controls move into the attachment menu (a 360 dp phone). */
     // M30: 460 (was 400) now that the template button joined the row: at 400-459 dp six buttons left the text about 100 dp.

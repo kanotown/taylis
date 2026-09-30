@@ -72,14 +72,18 @@ fun WorkspaceTile(entry: Workspace?, name: String, size: Dp, modifier: Modifier 
     }
 }
 
-/** The channel list's title: the workspace on screen; a dot when another one has something unread. Opens the switcher. */
+/**
+ * The channel list's title: the workspace on screen; a dot when another one has something unread. Opens the switcher;
+ * M37: on the phone's home only with two workspaces or more (`switchable`; with one, ⋮ offers 「ワークスペースを追加」).
+ */
 @Composable
-fun WorkspaceTitle(controller: AppController) {
+fun WorkspaceTitle(controller: AppController, switchable: Boolean = true) {
     val entry = controller.activeWorkspace
     val name = controller.workspaceName
     val othersUnread = controller.workspaces.any { it.serverUrl != controller.activeKey && !it.signedOut && (it.hasUnread || it.badge > 0) }
+    val tap = if (switchable) Modifier.clickable(onClickLabel = "ワークスペースを切り替える") { controller.openSwitcher() } else Modifier
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = "ワークスペースを切り替える") { controller.openSwitcher() }.padding(horizontal = 4.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(8.dp)).then(tap).padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
@@ -94,7 +98,7 @@ fun WorkspaceTitle(controller: AppController) {
         }
         Spacer(Modifier.width(10.dp))
         Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        Icon(Icons.Default.ExpandMore, contentDescription = "ワークスペースを切り替える", modifier = Modifier.padding(start = 2.dp))
+        if (switchable) Icon(Icons.Default.ExpandMore, contentDescription = "ワークスペースを切り替える", modifier = Modifier.padding(start = 2.dp))
     }
 }
 

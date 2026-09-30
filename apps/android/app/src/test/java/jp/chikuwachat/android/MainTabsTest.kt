@@ -141,13 +141,12 @@ class MainTabsTest {
     }
 
     @Test
-    fun theHomeDmSectionsPlaceholderIsNotShownFoldedOrUnreadOnly() {
+    fun theHomeDmSectionsPlaceholderIsNotShownFolded() {
         val others = listOf(dm("a"), channel("general"))
         val notes = channel("notes", "dm", users = listOf(me))
         assertTrue(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako"))
         assertFalse(MainTabs.showsSelfNotesInDmSection(others + notes, me, "Hanako")) // it exists (starred or in a section too)
         assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", collapsed = true))
-        assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", unreadOnly = true))
         assertTrue(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", query = " hana "))
         assertFalse(MainTabs.showsSelfNotesInDmSection(others, me, "Hanako", query = "alice"))
         assertFalse(MainTabs.showsSelfNotesInDmSection(others, null, "…"))
@@ -183,9 +182,10 @@ class MainTabsTest {
         assertEquals(listOf("notes", "group", "alice", "bob"), Channels.sections(all, now = now, meId = me).dms.map { it.id })
         // Nobody signed in: recency only.
         assertEquals(listOf("group", "alice", "notes", "bob"), Channels.sections(all, now = now).dms.map { it.id })
-        // Unread only: like any row, it stays out unless unread or open.
-        assertEquals(listOf("group"), Channels.sections(all, unreadOnly = true, now = now, meId = me).dms.map { it.id })
-        assertEquals(listOf("notes", "group"), Channels.sections(all, unreadOnly = true, currentId = "notes", now = now, meId = me).dms.map { it.id })
+        // M37 未読をまとめる: an unread DM moves to 未読; my own DM stays first among the rest.
+        val grouped = Channels.sections(all, groupUnread = true, now = now, meId = me)
+        assertEquals(listOf("group"), grouped.unread.map { it.id })
+        assertEquals(listOf("notes", "alice", "bob"), grouped.dms.map { it.id })
         // Starred: only among the favorites.
         val starred = Channels.sections(all, now = now, favorites = setOf("notes"), meId = me)
         assertEquals(listOf("notes"), starred.favorites.map { it.id })
