@@ -235,6 +235,18 @@ async def member_ids_of(db: AsyncSession, channel_id: uuid.UUID) -> list[uuid.UU
     return (await repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
 
 
+async def manager_ids_of(db: AsyncSession, channel_id: uuid.UUID) -> set[uuid.UUID]:
+    """The members who manage a channel's content: its owners and the administrators among its
+    members (the calendar's editors, CALENDAR.md §3)."""
+    members = await repo.list_members(db, channel_id)
+    owners = {m.user_id for m in members if m.role == "owner"}
+    others = [m.user_id for m in members if m.role != "owner"]
+    if not others:
+        return owners
+    admins = await db.execute(select(User.id).where(User.id.in_(others), User.role == "admin"))
+    return owners | set(admins.scalars().all())
+
+
 async def find_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
     """A channel row or None, for modules that own the access decision (M12h invites)."""
     return await repo.get_channel(db, channel_id)
@@ -518,8 +530,8 @@ async def set_archived_in_tx(db: AsyncSession, channel: Channel, archived: bool)
 
 
 async def conversations_of(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Channel, str]]:
-    """For the lab module (L7): the public and private channels someone belongs to, with their
-    role in each (DMs are left alone), by name."""
+    """For the lab module (L7) and the calendar (M51): the public and private channels someone
+    belongs to, with their role in each (DMs are left alone), by name."""
     return await repo.channel_memberships_of(db, user_id)
 
 

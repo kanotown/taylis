@@ -236,6 +236,9 @@
 | `canvas.created` | channel | — | `{ canvas: CanvasMeta }` (M41)。キャンバスの作成、ゴミ箱からの復元。本文は載せない。手順は §14 |
 | `canvas.updated` | channel | — | `{ canvas: CanvasMeta, change: "content" \| "title" \| "settings" \| "restore" }` (M41)。`version` が手元より大きければメタを差し替え、開いていて編集中でなければ本文を読み直す (§14) |
 | `canvas.deleted` | channel | — | `{ canvas_id, channel_id }` (M41)。ゴミ箱に移された。手元から消す |
+| `calendar.event.updated` | channel (自分用: user) | — | `{ event: CalendarEventData, editor_ids }` (M51)。予定の作成・変更。人ごとに違う `can_edit` と `alarm` は載せない: `can_edit` は `editor_ids` に自分がいるか、`alarm` は手元の値のまま。表示中の期間に重なる予定だけを差し替え、外れたら消す。手順は §15 |
+| `calendar.event.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M51)。手元から消す |
+| `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null }` (M51)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
@@ -980,3 +983,19 @@ base・送られた本文・head を 3-way マージする。
 - **整理**: 24 時間を過ぎた版は整理され (side と、同じ作者の 10 分以内の続き)、30 日ゴミ箱にあったキャンバスは消える。
   イベントは出ない。24 時間以上オフラインで編集した端末の保存は、元の版が無ければ `409 canvas_base_expired` (§14.2)。
   消えたキャンバスは `GET /channels/{id}/canvases?trashed=true` から外れ、`GET /canvases/{id}` は 404。
+
+## 15. カレンダー (M51、CALENDAR.md §5)
+
+予定はチャンネルの seq を使わない。端末は予定を長く保存せず、画面ごとに期間を読む。
+
+- **読む**: 画面 (カレンダーの月・週・一覧、チャンネルの「予定」タブ) が期間を開くたびに `GET /calendar/events?from&to[&channel_id]`
+  (最長 100 日)。`from` / `to` は端末のタイムゾーンの 0:00 を offset 付きで渡す (終日の予定はこの offset の日付で重なりを見る)。
+  チャンネルの見出しの件数は `GET /calendar/upcoming?channel_id&days=2&tz` (今日・明日のまだ終わっていない予定、最大 10 件)。
+- **イベント**: `calendar.event.updated` は予定を、開いている期間それぞれについて「重なれば入れ替え (無ければ足す)、重ならなければ
+  外す」。`can_edit` は `editor_ids` (作成者・チャンネルのオーナー・メンバーの管理者。アーカイブ済みなら空、自分用は本人) に
+  自分がいるか。`alarm` はイベントに無いので手元の値を残す (変わるときは `calendar.alarm.updated` が別に届く)。そのチャンネルの
+  件数を読んでいれば読み直す。`calendar.event.deleted` は外す。重ならないイベントは捨ててよい (次に開いたときに読む)。
+- **再接続**: 開いている期間と件数を全部読み直す。取りこぼしたイベントはこれで埋まる。チャンネルから抜けた (channel.member_removed が
+  自分) ら、そのチャンネルの予定を手元から外す。
+- **自分の変更**: POST / PATCH / PUT alarm の応答 (`CalendarEventOut`) をそのまま手元に入れる。後から届く自分の変更のイベントは
+  同じ内容なので二重にならない。作成の再送は `client_event_id` で同じ予定が返る (201 の代わりに 200)。

@@ -13,6 +13,8 @@ from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.modules.activity.events import REACTION_ADDED
+from app.modules.calendar import service as calendar
+from app.modules.calendar.events import CALENDAR_ALARM_UPDATED
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.groups import service as groups
@@ -47,6 +49,9 @@ class PushPlanner:
             return
         if event.event_type == REACTION_ADDED:
             await self.handle_reaction(db, event)
+            return
+        if event.event_type == CALENDAR_ALARM_UPDATED:
+            await self.handle_calendar(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -166,6 +171,51 @@ class PushPlanner:
                 collapse_key=str(payload["collapse_key"]),
                 channel_id=channel_id,
                 message_id=message_id,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_calendar(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """A fired calendar alarm (M51, CALENDAR.md §6) on its owner's devices; DND is honoured
+        like a reminder's. The text is read live (the event may have changed since)."""
+        alarm = event.payload.get("alarm") or {}
+        if alarm.get("status") != "fired":
+            return
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or dnd_active(user, now):
+            return
+        notice = await calendar.alarm_notice(db, uuid.UUID(str(event.payload["event_id"])), user_id)
+        if notice is None:
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        payload = PushPayload(
+            kind="calendar",
+            workspace_id=await workspace.workspace_id(db),
+            channel_id=notice.channel_id,
+            event_id=notice.event_id,
+            seq=None,
+            title="予定",
+            subtitle=None,
+            body=(notice.body if self.settings.push_include_content else "予定の時間です")[:240],
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"calendar:{notice.event_id}",
+            sent_at=now,
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=notice.channel_id,
+                message_id=None,
                 message_seq=None,
                 payload=payload,
                 expires_at=expires_at,

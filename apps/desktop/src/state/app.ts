@@ -1,6 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
+import { clock } from "../ui/calendarDates";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
@@ -1496,6 +1497,12 @@ export class AppController {
       onReminder: (reminder) => {
         if (this.quiet(session)) return;
         void notify(this.notificationTitle(session, "リマインダー"), (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
+      },
+      // M51: my calendar alarm (phones get the server's push; the open app says it too), worded like that push.
+      onCalendarAlarm: (event) => {
+        if (this.quiet(session)) return;
+        const when = event.all_day ? "終日" : clock(event.starts_at!);
+        void notify(this.notificationTitle(session, "予定"), `${when} ${event.title}${event.channel_name ? ` (#${event.channel_name})` : ""}`);
       },
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours

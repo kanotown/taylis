@@ -144,6 +144,8 @@ class APNsPushProvider:
             "seq": payload.get("seq"),
             # A reply's thread, so a tap opens it (M28d); None for a top-level post.
             "parent_id": payload.get("parent_id"),
+            # kind calendar (M51): the event to open.
+            "event_id": payload.get("event_id"),
         }
         return url, headers, body
 
@@ -263,6 +265,7 @@ class FCMPushProvider:
                 "channel_id",
                 "message_id",
                 "parent_id",
+                "event_id",
                 "seq",
                 "title",
                 "subtitle",

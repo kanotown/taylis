@@ -22,6 +22,7 @@ channels 1---* messages 1---* reactions
                         1---* attachments
                         1---* messages (parent_id: スレッド返信)
 channels 1---* canvases 1---* canvas_revisions   (M41。canvas_templates は独立)
+channels 0..1---* calendar_events 1---* calendar_event_alarms *---1 users   (M51。channel_id NULL = 自分用)
 outbox_events (独立。channel_id / audience で配信先を持つ)
 push_deliveries *---1 devices   (event_id は outbox_events.id を参照するが FK は張らない)
 audit_logs *---1 users (actor)
@@ -839,6 +840,65 @@ CREATE TABLE canvas_templates (
   つないだもの、自分との DM は自分の表示名) を 1 回だけ置き換える。ほかの `{{…}}` はそのまま。
 - **エクスポート**: `cli export-channel` の JSONL は、メッセージの後にキャンバスを 1 行ずつ `{"type": "canvas", …}` で出す
   (ゴミ箱を除く)。
+
+### calendar_events / calendar_event_alarms (カレンダー、M51、CALENDAR.md §2)
+
+```sql
+CREATE TABLE calendar_events (
+  id              uuid PRIMARY KEY,                          -- UUIDv7
+  channel_id      uuid REFERENCES channels(id),              -- NULL = 自分用 (owner_id の人だけ)。公開・非公開チャンネルだけ (DM は不可)
+  owner_id        uuid NOT NULL REFERENCES users(id),        -- 作った人
+  title           text NOT NULL,                             -- 1〜200 文字
+  all_day         boolean NOT NULL,
+  starts_at       timestamptz,                               -- 時刻の予定: [starts_at, ends_at)、最長 14 日
+  ends_at         timestamptz,
+  start_date      date,                                      -- 終日の予定: start_date..end_date (end を含む)、最長 60 日
+  end_date        date,
+  location        text,                                      -- ≤ 200
+  description     text,                                      -- ≤ 4000 (Markdown)
+  client_event_id uuid,                                      -- POST の冪等キー (再送は同じ予定を返す)
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  deleted_at      timestamptz,                               -- 論理削除 (calendar.event.deleted で端末に伝える)
+  CHECK (char_length(title) BETWEEN 1 AND 200),
+  CHECK (location IS NULL OR char_length(location) <= 200),
+  CHECK (description IS NULL OR char_length(description) <= 4000),
+  CHECK ((all_day AND starts_at IS NULL AND ends_at IS NULL AND start_date IS NOT NULL AND end_date IS NOT NULL
+          AND end_date >= start_date AND end_date - start_date < 60)
+      OR (NOT all_day AND start_date IS NULL AND end_date IS NULL AND starts_at IS NOT NULL AND ends_at IS NOT NULL
+          AND ends_at > starts_at AND ends_at - starts_at <= interval '14 days'))
+);
+CREATE INDEX calendar_events_channel_idx      ON calendar_events (channel_id, starts_at)  WHERE channel_id IS NOT NULL AND NOT all_day AND deleted_at IS NULL;
+CREATE INDEX calendar_events_personal_idx     ON calendar_events (owner_id, starts_at)    WHERE channel_id IS NULL AND NOT all_day AND deleted_at IS NULL;
+CREATE INDEX calendar_events_channel_day_idx  ON calendar_events (channel_id, start_date) WHERE channel_id IS NOT NULL AND all_day AND deleted_at IS NULL;
+CREATE INDEX calendar_events_personal_day_idx ON calendar_events (owner_id, start_date)   WHERE channel_id IS NULL AND all_day AND deleted_at IS NULL;
+CREATE UNIQUE INDEX calendar_events_client_uniq ON calendar_events (owner_id, client_event_id) WHERE client_event_id IS NOT NULL;
+
+CREATE TABLE calendar_event_alarms (
+  event_id        uuid NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+  user_id         uuid NOT NULL REFERENCES users(id),        -- 通知を受ける人 (共有の予定でも、付けた人だけ)
+  minutes_before  integer NOT NULL,                          -- 0/5/10/15/30/60/1440。終日は 1440 (前日 8:00) か -480 (当日 8:00)
+  tz              varchar(64) NOT NULL,                      -- 付けた端末の IANA ゾーン (終日の 8:00 と、通知文の時刻を読む)
+  fire_at         timestamptz NOT NULL,                      -- 計算した送る時刻
+  status          varchar(16) NOT NULL DEFAULT 'pending',    -- pending → fired、または cancelled
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (event_id, user_id),
+  CHECK (minutes_before IN (0, 5, 10, 15, 30, 60, 1440, -480)),
+  CHECK (status IN ('pending', 'fired', 'cancelled'))
+);
+CREATE INDEX calendar_event_alarms_due_idx  ON calendar_event_alarms (fire_at) WHERE status = 'pending';
+CREATE INDEX calendar_event_alarms_user_idx ON calendar_event_alarms (user_id) WHERE status = 'pending';
+```
+
+- **期間の読み出し** (`GET /calendar/events`): 時刻の予定は `starts_at < to AND ends_at > from`、終日は `from` の日付と `to` の
+  直前の日付 (どちらも渡された offset で読む) に重なるもの。予定の長さに上限があるので、開始の下限 (`from - 14 日` / `first - 59 日`)
+  を付けて索引の範囲で読む。1 回 1000 件まで。
+- **通知の時刻**: 時刻の予定は `starts_at - minutes_before`。終日は `tz` の 8:00 (1440 は前日、-480 は当日)。予定の時刻が変わると
+  全員の分を計算し直し (終日 ↔ 時刻の切り替えでは 1440 はそのまま、ほかは -480 / 60 に置き換える)、時刻が過ぎていれば cancelled
+  (送らない)。予定を消すと pending は cancelled。チャンネルから抜けると、その人の通知の行を消す (outbox の channel.member_removed を
+  受ける CalendarLeaveHandler)。worker は送る直前にも、予定が残っているか・まだ見られるか・終わっていないかを確かめる。
+- 予定はチャンネルの seq を使わない (メッセージの同期規則に影響しない)。
 
 ### drafts (端末間で共有する下書き、M15d)
 

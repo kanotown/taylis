@@ -33,6 +33,18 @@ function write(key: string, value: string | null): void {
   }
 }
 
+const CALENDAR_MODE = "chikuwa.prefs.calendarMode";
+
+/** M51: the calendar's last mode on this device (月 by default). */
+export function readCalendarMode(): "month" | "week" | "list" {
+  const value = read(CALENDAR_MODE);
+  return value === "week" || value === "list" ? value : "month";
+}
+
+export function writeCalendarMode(mode: "month" | "week" | "list"): void {
+  write(CALENDAR_MODE, mode);
+}
+
 /** Default: Enter inserts a newline, ⌘+Enter (Ctrl+Enter) sends. A choice made before keeps. */
 export function readSendKey(): SendKey {
   const value = read(SEND_KEY);

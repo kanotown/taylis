@@ -6,25 +6,33 @@ import { cn } from "./primitives";
 
 /**
  * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
- * §4.1), which the wide layout has too (in the header).
+ * §4.1), which the wide layout has too (in the header). M51: 「予定」, a channel's calendar (CALENDAR.md §7; not in a DM).
  */
-export type ConversationTab = "messages" | "canvas" | "pins" | "files";
+export type ConversationTab = "messages" | "canvas" | "events" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   ["messages", "メッセージ"],
   ["canvas", "キャンバス"],
+  ["events", "予定"],
   ["pins", "ピン留め"],
   ["files", "ファイル"],
 ];
+
+/** M51: 「予定」 with a subtle count of today's and tomorrow's events, when there are some. */
+export function eventsTabLabel(count: number): string {
+  return count > 0 ? `予定 ${count}` : "予定";
+}
 
 /**
  * M29: one horizontally scrolling row under a conversation's header on a phone: the tabs, then the conversation's links
  * (the M15f bar, which lives in this row there) and 「＋ リンク」 for those who may edit them.
  */
-export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, onEditLink }: {
+export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, onEditLink, upcoming = 0 }: {
   controller: AppController;
   channel: ChannelState;
   tab: ConversationTab;
+  /** M51: the channel's events today and tomorrow (the 「予定」 tab's count). */
+  upcoming?: number;
   onTab: (tab: ConversationTab) => void;
   onAddLink: () => void;
   onEditLink: (link: ChannelLinkOut) => void;
@@ -33,7 +41,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   return (
     <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none]">
       <div role="tablist" aria-label="会話の表示" className="flex shrink-0 items-center">
-        {TABS.map(([value, label]) => (
+        {TABS.filter(([value]) => value !== "events" || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -45,7 +53,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
               tab === value ? "text-ink after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent" : "text-muted hover:text-ink",
             )}
           >
-            {label}
+            {value === "events" ? eventsTabLabel(upcoming) : label}
           </button>
         ))}
       </div>

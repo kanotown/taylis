@@ -172,6 +172,7 @@ server/
       channel_links/     # 会話の上部のリンク (channel.links_updated) (M15f)
       templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
       canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ merge.py、テンプレート templates.py、canvas.*) (M41)
+      calendar/          # カレンダー (自分用とチャンネルの予定、人ごとの通知と fire_due、calendar.*、抜けた人の通知を消す outbox ハンドラ) (M51)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync

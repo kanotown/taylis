@@ -16,7 +16,8 @@ import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { CanvasPane } from "./CanvasPane";
-import { type ConversationTab, ConversationTabs } from "./ConversationTabs";
+import { type ConversationTab, ConversationTabs, eventsTabLabel } from "./ConversationTabs";
+import { CalendarView, ChannelEvents, useCalendarHub } from "./CalendarView";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
@@ -57,8 +58,8 @@ import { SettingsDialog } from "./Settings";
 import { YouView } from "./YouView";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
-// "canvases" (M44): the canvases of all my conversations.
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases";
+// "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar";
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -555,7 +556,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -753,6 +754,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const overall = overallLevel(store.me ?? controller.me);
   const silenced = !!current && (effectiveNotificationLevel(current, store.me?.id ?? null, overall) === "none" || isMutedChannel(current));
   const isChannel = current?.type === "public" || current?.type === "private";
+  // M51: the channel's events today and tomorrow, for the 「予定」 tab's count (read when it opens, kept by the hub).
+  const calendar = useCalendarHub(controller);
+  const upcomingChannelId = current && current.isMember && isChannel && view === "channel" ? current.id : null;
+  useEffect(() => {
+    if (calendar && upcomingChannelId && engine?.status === "online") void calendar.loadUpcoming(upcomingChannelId);
+  }, [calendar, upcomingChannelId, engine?.status]);
+  const upcomingCount = upcomingChannelId ? (calendar?.upcomingOf(upcomingChannelId)?.length ?? 0) : 0;
   const canManage = !!current && (controller.isAdmin || current.membership?.role === "owner");
   const [busyAction, setBusyAction] = useState(false);
 
@@ -797,6 +805,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       filesActive={view === "files"}
       onCanvases={() => openView("canvases")}
       canvasesActive={view === "canvases"}
+      onCalendar={() => openView("calendar")}
+      calendarActive={view === "calendar"}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -837,7 +847,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const showDetails = tabbed && detailsOpen && view === "channel";
   // M43: the wide layout has 「メッセージ | キャンバス」 in the header (its pins and files stay a pane and a view).
   const canvasTab = !!current && current.isMember && !previewing;
-  const shownTab: ConversationTab = tabbed ? tab : canvasTab && tab === "canvas" ? "canvas" : "messages";
+  const shownTab: ConversationTab = tabbed
+    ? tab === "events" && !isChannel ? "messages" : tab
+    : canvasTab && (tab === "canvas" || (tab === "events" && isChannel)) ? tab : "messages";
   // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
   const conversationOnScreen = shownTab === "messages" && (!compact || (!showDetails && !sidePane));
   const openDetails = () => {
@@ -900,6 +912,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             setSearchTab("canvases");
           }}
         />
+      ) : view === "calendar" ? (
+        <CalendarView controller={controller} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -947,7 +961,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {current.archived && <Badge>アーカイブ済み</Badge>}
               {canvasTab && !compact && (
                 <div role="tablist" aria-label="会話の表示" className="ml-1 flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
-                  {([["messages", "メッセージ"], ["canvas", "キャンバス"]] as const).map(([value, label]) => (
+                  {([["messages", "メッセージ"], ["canvas", "キャンバス"], ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const] : [])] as const).map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
@@ -1079,7 +1093,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
             </div>
           </header>
           {tabbed ? (
-            <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} />
+            <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} upcoming={upcomingCount} />
           ) : (
             <ChannelLinksBar controller={controller} channel={current} onAdd={addLink} onEdit={editLink} />
           )}
@@ -1117,6 +1131,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   onSelect={(id) => setCanvasChoice((choice) => ({ ...choice, [current.id]: id }))}
                   onOpenThread={openCanvasThread}
                 />
+              </div>
+            )}
+            {shownTab === "events" && (
+              <div role="tabpanel" aria-label="予定" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <ChannelEvents controller={controller} channel={current} />
               </div>
             )}
             {shownTab === "pins" && (
@@ -1224,6 +1243,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onReminders={() => openView("reminders")}
           onFiles={() => openFiles(null)}
           onCanvases={() => openView("canvases")}
+          onCalendar={() => openView("calendar")}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}
