@@ -80,14 +80,35 @@ class ApiClient(
         val body = buildJsonObject {
             put("username", username)
             put("password", password)
-            put("device", buildJsonObject {
-                put("platform", platform)
-                put("device_name", deviceName?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("app_version", appVersion?.let { JsonPrimitive(it) } ?: JsonNull)
-            })
+            put("device", device(platform, deviceName, appVersion))
             if (!totpCode.isNullOrEmpty()) put("totp_code", totpCode)
         }
         val tokens: TokenResponse = request("POST", "/api/v1/auth/login", body, auth = false)
+        apply(tokens)
+        return tokens
+    }
+
+    /** The `device` of a sign-in (DeviceCreate): the same for a password login, an invite and a Google sign-in. */
+    private fun device(platform: String, deviceName: String?, appVersion: String?): JsonObject = buildJsonObject {
+        put("platform", platform)
+        put("device_name", deviceName?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("app_version", appVersion?.let { JsonPrimitive(it) } ?: JsonNull)
+    }
+
+    /** M48 (docs/SSO.md §3): GET /auth/methods, no sign-in. 404 on a server before M48. */
+    suspend fun authMethods(): AuthMethodsOut = request("GET", "/api/v1/auth/methods", auth = false)
+
+    /**
+     * M48: the one-time ticket the browser brought back and the verifier this app made when it opened the start URL →
+     * the same tokens as a login. 401 invalid_ticket (unknown, used, expired, wrong verifier) or account_disabled.
+     */
+    suspend fun ssoExchange(ticket: String, verifier: String, platform: String, deviceName: String?, appVersion: String?): TokenResponse {
+        val body = buildJsonObject {
+            put("ticket", ticket)
+            put("verifier", verifier)
+            put("device", device(platform, deviceName, appVersion))
+        }
+        val tokens: TokenResponse = request("POST", "/api/v1/auth/sso/exchange", body, auth = false)
         apply(tokens)
         return tokens
     }
@@ -681,11 +702,7 @@ class ApiClient(
             put("username", username)
             put("display_name", displayName)
             put("password", password)
-            put("device", buildJsonObject {
-                put("platform", platform)
-                put("device_name", deviceName?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("app_version", appVersion?.let { JsonPrimitive(it) } ?: JsonNull)
-            })
+            put("device", device(platform, deviceName, appVersion))
         }
         val tokens: TokenResponse = request("POST", "/api/v1/invites/$token/accept", body, auth = false)
         apply(tokens)

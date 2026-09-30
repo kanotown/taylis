@@ -659,14 +659,16 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
 
 /**
  * 「アカウント」: the password (its own screen), two-factor authentication (M12i, its setup and disable dialogs), and the
- * devices signed in (GET /auth/sessions): this one marked, the others signed out with confirmation.
+ * devices signed in (GET /auth/sessions): this one marked, the others signed out with confirmation. An account without a
+ * password (Google sign-in only, M48 docs/SSO.md §4) has neither the password nor two-factor rows.
  */
 @Composable
 private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> Unit) {
     val scope = rememberCoroutineScope()
+    val hasPassword = meOf(controller)?.hasPassword != false
     var totp by remember { mutableStateOf<TotpStatusOut?>(null) }
     var totpDialog by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { totp = controller.totpStatus() }
+    LaunchedEffect(hasPassword) { if (hasPassword) totp = controller.totpStatus() }
     when (totpDialog) {
         "setup" -> TotpSetupDialog(controller, onDismiss = { totpDialog = null }, onEnabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } })
         "disable" -> TotpDisableDialog(controller, onDismiss = { totpDialog = null }, onDisabled = { totpDialog = null; scope.launch { totp = controller.totpStatus() } })
@@ -688,23 +690,27 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
             Column {
                 val me = meOf(controller)
                 if (me != null) Hint("ユーザー名: @${me.username}")
-                SectionTitle("パスワード")
-                ListItem(
-                    headlineContent = { Text("パスワードを変更") },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.fillMaxWidth().clickable { onOpen(SettingsPage.PASSWORD) },
-                )
-                SectionTitle("2 要素認証")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val status = totp
-                    Column(Modifier.weight(1f)) {
-                        Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
-                        if (status != null) Hint(
-                            if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
-                        )
+                if (hasPassword) {
+                    SectionTitle("パスワード")
+                    ListItem(
+                        headlineContent = { Text("パスワードを変更") },
+                        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.fillMaxWidth().clickable { onOpen(SettingsPage.PASSWORD) },
+                    )
+                    SectionTitle("2 要素認証")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val status = totp
+                        Column(Modifier.weight(1f)) {
+                            Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
+                            if (status != null) Hint(
+                                if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
+                            )
+                        }
+                        if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
                     }
-                    if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
+                } else {
+                    Hint("Google でログインするアカウントです (パスワードはありません)", Modifier.padding(top = 4.dp))
                 }
                 SectionTitle("ログイン中の端末" + (list?.let { " (${it.size})" } ?: ""))
                 when {

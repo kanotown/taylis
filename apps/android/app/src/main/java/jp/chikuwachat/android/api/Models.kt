@@ -62,6 +62,11 @@ data class UserMe(
      * activity tab lists the reactions either way. Absent from servers before M39 (off).
      */
     val notifyReactions: Boolean = false,
+    /**
+     * M48 (docs/SSO.md §4): false for an account that signs in with Google only; settings then offer no password change
+     * and no two-factor setup. Absent from servers before M48 (true).
+     */
+    val hasPassword: Boolean = true,
 ) {
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
@@ -618,6 +623,13 @@ data class SearchFilters(
 /** GET /server (M16c, no sign-in): which ChikuwaChat deployment a URL is (WORKSPACES.md §3.1). */
 @Serializable
 data class ServerInfoOut(val product: String, val workspaceId: String, val name: String, val apiVersion: String = "")
+
+/** GET /auth/methods (M48, docs/SSO.md §3): which sign-in buttons the login screen shows. */
+@Serializable
+data class AuthMethodsOut(val password: Boolean = true, val google: ProviderMethod = ProviderMethod())
+
+@Serializable
+data class ProviderMethod(val enabled: Boolean = false)
 
 /** GET /sync/summary (M16c): the unread marks of a workspace that is not open (WORKSPACES.md §3.2). */
 @Serializable

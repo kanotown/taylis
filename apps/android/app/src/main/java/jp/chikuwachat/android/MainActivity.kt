@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
         // re-delivers the same intent, and a launch from Recents replays the old one.
         val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
         if (savedInstanceState == null && !fromHistory) takeConversation(intent)
+        // A restore after process death may carry the browser's return; a rotation finds its data cleared.
+        if (!fromHistory) takeSsoReturn(intent)
         // The notification permission is asked once the main screen is up (MainScreen, M28c), not at every start.
         setContent { ChikuwaTheme(controller.appearance) { AppRoot(controller) } }
     }
@@ -27,6 +29,19 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         takeConversation(intent)
+        takeSsoReturn(intent)
+    }
+
+    /**
+     * M48: the browser's return from Google sign-in (`chikuwachat://sso?…`). singleTask brings this activity back and
+     * closes the Custom Tab above it; after process death the link arrives here too. The controller ignores a return
+     * when no sign-in is pending (a replay).
+     */
+    private fun takeSsoReturn(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val data = intent.dataString ?: return
+        intent.data = null
+        controller.handleSsoCallback(data)
     }
 
     private fun takeConversation(intent: Intent?) {
