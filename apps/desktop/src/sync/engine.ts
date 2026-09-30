@@ -411,6 +411,27 @@ export class SyncEngine {
     if (this.status === "offline" && !this.ws) void this.connect();
   }
 
+  /**
+   * M37 「再読み込み」 (pull to refresh): what a reconnect does over the live connection — bootstrap again, then catch the
+   * open conversation up (SYNC_PROTOCOL.md §7.5). Offline, it skips the backoff instead. Correctness never depends on it.
+   */
+  async resync(): Promise<void> {
+    if (this.status !== "online" || !this.ws) {
+      this.reconnectNow();
+      return;
+    }
+    const connection = this.connection;
+    const live = () => this.connection === connection && this.status === "online";
+    await this.enqueue(async () => {
+      if (!live()) return;
+      const bootstrap = await this.deps.api.bootstrap();
+      if (!live()) return;
+      this.applyBootstrap(bootstrap);
+      await this.loadBrowsableChannels();
+      if (this.currentChannelId && live()) await this.catchUp(this.currentChannelId);
+    });
+  }
+
   // --- frames ---------------------------------------------------------------------------
 
   private onRaw(ws: WsLike, raw: string): void {
