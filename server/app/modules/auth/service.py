@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, not_found, unauthorized
+from app.core.errors import AppError, conflict, not_found, unauthorized
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -22,6 +22,7 @@ from app.modules.audit import service as audit
 from app.modules.auth import repository as repo
 from app.modules.auth.models import Device, UserSession
 from app.modules.auth.schemas import (
+    DeviceCreate,
     DeviceOut,
     DeviceUpdate,
     LoginRequest,
@@ -100,11 +101,23 @@ async def login(
     await totp.check_login(
         db, user.id, data.totp_code, now
     )  # M12i: 401 totp_required / invalid_totp
+    return await open_session(db, user, data.device, settings, ip, now)
+
+
+async def open_session(
+    db: AsyncSession,
+    user: User,
+    device_data: DeviceCreate,
+    settings: Settings,
+    ip: str | None,
+    now: datetime,
+) -> TokenResponse:
+    """A new device and session for an authenticated user, committed (password login, M48 SSO)."""
     device = Device(
         user_id=user.id,
-        platform=data.device.platform,
-        device_name=data.device.device_name,
-        app_version=data.device.app_version,
+        platform=device_data.platform,
+        device_name=device_data.device_name,
+        app_version=device_data.app_version,
         last_seen_at=now,
         created_at=now,
         updated_at=now,
@@ -255,6 +268,9 @@ async def change_password(
             details={"min_length": settings.password_min_length},
         )
     context = await _lock_current(db, context)
+    if context.user.password_hash is None:
+        # M48: an account made by Google sign-in has no password to change (docs/SSO.md §4).
+        raise conflict("password_not_set", "This account signs in with Google and has no password")
     if not await verify_password(context.user.password_hash, data.current_password):
         # 422, not 401: clients end the session on any other 401 during an authenticated call.
         raise AppError(422, "invalid_password", "Invalid current password")

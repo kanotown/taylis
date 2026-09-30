@@ -27,6 +27,9 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test"
 )
 TABLES = [
+    "sso_tickets",
+    "sso_requests",
+    "user_identities",
     "canvas_revisions",
     "canvases",
     "import_refs",
@@ -97,6 +100,7 @@ def test_settings() -> Settings:
         login_rate_limit_per_ip=100_000,
         login_rate_limit_per_account=100_000,
         invite_rate_limit_per_ip=100_000,
+        sso_rate_limit_per_ip=100_000,
         webhook_rate_limit_per_hook=100_000,
         upload_rate_limit_per_user=100_000,
         search_rate_limit_per_user=100_000,

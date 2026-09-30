@@ -1,5 +1,9 @@
 # SSO: Google でログイン (M48)
 
+**状態 (2026-09-30)**: サーバと Web (ブラウザ版のログイン画面) は実装済み (`server/app/modules/sso/`)。Desktop
+(Tauri の deep link)・iOS・Android は次。実装で決めた細部 (既定のチャンネルの設定、レートリミットの枠、
+仮パスワードの人の結び付け、アドレスの先取りの防止) は下の各節に書いた。
+
 大学の Google Workspace のアカウントでログインできるようにする。サーバごとの設定で有効にし、許可したドメインの
 アカウントだけを受け付ける。2026-09-30 に利用者と決めたこと:
 
@@ -31,10 +35,19 @@
 | `SSO_GOOGLE_CLIENT_SECRET_FILE` | client secret を置いたファイルのパス (秘密はリポジトリにも環境変数の一覧にも書かない。`SSO_GOOGLE_CLIENT_SECRET` も可) |
 | `SSO_GOOGLE_ALLOWED_DOMAINS` | 受け付ける Workspace のドメイン (カンマ区切り、例 `example.ac.jp`)。**空なら SSO は無効** (誤ってすべての Google アカウントを受け付けないため) |
 | `SSO_AUTO_PROVISION` | `true` で案B (初回ログインで作成)。既定 `false`: 管理者が作った (メールアドレスが一致する) 人だけ |
+| `SSO_DEFAULT_CHANNELS` | 案B で作った人が入る公開チャンネルの名前 (カンマ区切り、例 `general,お知らせ`)。無い名前・非公開・アーカイブ済みは飛ばす (ログに警告)。既定は空 (どこにも入らない) |
+| `SSO_RATE_LIMIT_PER_IP` | 開始・callback・交換の IP ごとの回数 / 分 (既定 30。1 回のログインで 3 回) |
 | `PUBLIC_BASE_URL` | このサーバの公開 URL (例 `https://chat.example.ac.jp`)。callback の URL と Web への戻り先に使う |
 
 3 つ (ID・secret・ドメイン) と `PUBLIC_BASE_URL` がそろったときだけ有効。どれかが欠けたら起動時にログへ理由を出し、
-SSO は無効のまま起動する (パスワードは使える)。
+SSO は無効のまま起動する (パスワードは使える)。何も設定していないサーバはログにも何も出さない。
+
+Docker Compose では client secret を `infra/secrets/google_client_secret` に置くと `/run/secrets/google_client_secret`
+にマウントされる (`infra/.env` の `GOOGLE_CLIENT_SECRET_FILE`)。`SSO_GOOGLE_CLIENT_SECRET_FILE=/run/secrets/google_client_secret`
+とする (infra/.env.example)。
+
+アプリは開始 URL を `PUBLIC_BASE_URL` と同じホストで開くこと (callback は Google から `PUBLIC_BASE_URL` に戻り、
+開始時の Cookie はそのホストにしか送られない。ホストが違うと `expired` になる)。
 
 Google Cloud 側の準備 (管理者の作業):
 
@@ -46,7 +59,9 @@ Google Cloud 側の準備 (管理者の作業):
 
 ## 3. API
 
-すべて `/api/v1` の下。認証は不要 (チケットと verifier が認証の代わり)。レートリミットは IP ごと (ログインと同じ枠)。
+すべて `/api/v1` の下。認証は不要 (チケットと verifier が認証の代わり)。開始・callback・交換のレートリミットは
+IP ごとに 30 回 / 分 (`SSO_RATE_LIMIT_PER_IP`。ログインと別の枠: 1 回のログインで 3 回数えるため)。
+SSO が無効なら 3 つとも 404 `sso_disabled`。
 
 ### `GET /auth/methods`
 
@@ -74,35 +89,60 @@ Google Cloud 側の準備 (管理者の作業):
 6. 戻す: Web は `<PUBLIC_BASE_URL>/#sso_ticket=<ticket>`、ほかは `chikuwachat://sso?ticket=<ticket>` へ 302。
    フラグメントにするのは、チケットがサーバのアクセスログやリファラに残らないため。
 
-失敗したら同じ戻り先に `sso_error=<code>` を付けて戻す。コードは `cancelled` (Google で取り消し)、`expired`
-(state が無い・期限切れ・Cookie 不一致)、`domain_not_allowed`、`email_not_verified`、`not_registered`
-(自動作成が無効で、一致する人がいない)、`account_disabled`、`provider_error` (Google との通信・検証の失敗)。
+失敗したら同じ戻り先に `sso_error=<code>` を付けて戻す。コードは `cancelled` (Google で取り消し、`error=access_denied`)、`expired`
+(state が無い・期限切れ・使用済み・Cookie 不一致)、`domain_not_allowed`、`email_not_verified`、`not_registered`
+(自動作成が無効で、一致する人がいない)、`account_disabled`、`provider_error` (Google との通信・検証の失敗、
+`nonce` の不一致、`access_denied` 以外の Google のエラー)。
 アプリはこれを日本語の文 (`apps/shared/errors.json`) で出す。
+
+- `state` の行がまったく無いときは、どのアプリが始めたか分からないので Web の戻り先 (`#sso_error=expired`) に戻す。
+- `state` の行は、見つかった時点で (以降の検査が失敗しても) 使用済みにして commit する。Google との通信はその後で、
+  DB のロックを持たない。
+- callback の応答は `chikuwa_sso` Cookie を消し、`Cache-Control: no-store`・`Referrer-Policy: no-referrer` を付ける。
 
 ### `POST /auth/sso/exchange`
 
 `{"ticket": "...", "verifier": "...", "device": DeviceCreate}` → `TokenResponse` (`/auth/login` と同じ。Web は
 refresh token を Cookie に移す)。チケットが無い・期限切れ・使用済み・`SHA-256(verifier)` が一致しない・
 `platform` が違う → 401 `invalid_ticket`。1 回だけ使える (成功しても失敗しても使用済みにする)。
+callback と交換のあいだに無効化された人は 401 `account_disabled`。`verifier` の形 (base64url 43〜128 文字) が
+違えば 422。
 
 ## 4. ユーザーの決め方
 
 1. `user_identities (provider='google', subject=<sub>)` があれば、その人。
 2. 無ければ、メールアドレス (大文字小文字を区別しない) が一致するユーザーがいれば、その人に結び付ける
    (管理者が先に作った人、または以前パスワードで作られた人)。
+   - その人がまだ仮パスワードのまま (`must_change_password = true`、本人が一度もパスワードを決めていない) なら、
+     仮パスワードを消して Google だけの人にする (`password_hash` NULL、`must_change_password = false`)。
+     そうしないと、アプリは知らされていない仮パスワードの変更を求める画面を出してしまう。管理者は必要なら
+     パスワードのリセットで改めてパスワードを渡せる。
 3. それも無く `SSO_AUTO_PROVISION=true` なら作る (案B): 招待の受諾と同じ `create_user_in_tx` を使い、
-   既定のチャンネルに入れる。
-   - ユーザー名: メールアドレスの @ の前を、ユーザー名に使える文字 (`USERNAME_PATTERN`) に直したもの。
-     重複すれば `-2`、`-3` … を付ける。
+   `SSO_DEFAULT_CHANNELS` の公開チャンネルに入れる (サーバに「既定のチャンネル」の仕組みは無いので設定で決める)。
+   - ユーザー名: メールアドレスの @ の前を小文字にし、ユーザー名に使えない文字 (`USERNAME_PATTERN` の外) の並びを
+     `-` に替え、前後の `-` を落としたもの (32 文字まで。3 文字に満たなければ `-user` を付ける)。
+     ユーザー・グループの名前と重複するか `@here` などの予約語なら `-2`、`-3` … を付ける。
    - 表示名: ID トークンの `name` (80 文字まで)、無ければユーザー名。
    - ロール `member`、`must_change_password = false`、パスワードは無し (パスワードでのログインはできない)。
+   - 同じ人の同時の初回ログインなどで一意制約にぶつかったら、1 回だけやり直す (それでもだめなら `provider_error`)。
 4. それも無ければ `not_registered`。
-5. 無効化された人は `account_disabled`。
+5. 無効化された人 (と bot) は `account_disabled`。
 
 2 要素認証 (TOTP) は SSO のログインでは求めない (Google 側の 2 段階認証に任せる)。作成・結び付け・ログインは
-監査ログに残す (チケット・トークンは載せない)。
+監査ログに残す (チケット・トークンは載せない): `admin.user_created` (`details.via = "sso"`、actor なし)、
+`auth.sso_linked` (結び付け)、`auth.sso_login` (交換でセッションを作ったとき)。
 
-`UserMe` に `has_password` (bool) を足す。false の人には、設定の「パスワードを変更」を出さない。
+`UserMe` に `has_password` (bool) を足す。false の人には、設定の「パスワードを変更」(と 2 要素認証) を出さない。
+パスワードの無い人の `PUT /users/me/password` と `POST /auth/totp/setup` は `409 password_not_set`。
+
+**アドレスの先取り (2026-09-30 の実装時に追加)**: 2 の結び付けはメールアドレスだけを頼りにするが、`PATCH /users/me`
+では本人が確かめられていないアドレスを設定できる。メンバーが後輩の大学のアドレスを先に自分に設定しておくと、
+その後輩が初めて Google でログインしたとき、そのメンバーのアカウントに入ってしまう (後輩の投稿がメンバーの
+アカウントから出る)。そこで SSO が有効な間は、本人が許可ドメインのアドレスを新しく設定するのを
+`403 email_domain_reserved` で拒む (今のアドレスのままの更新は通す)。許可ドメインのアドレスを付けられるのは
+管理者 (作成時) だけ。既存のアカウントを後から Google に結び付ける画面 (ログイン中に「Google と連携」) は今は作らない。
+
+匿名化 (管理者) では `user_identities` と未使用のチケットも消す。
 
 ## 5. データ
 
@@ -110,7 +150,8 @@ refresh token を Cookie に移す)。チケットが無い・期限切れ・使
   一意: (`provider`, `subject`)。
 - `sso_requests`: `state` (主キー)、`nonce`、`code_verifier`、`challenge`、`platform`、`created_at`、`expires_at`、`used_at`。
 - `sso_tickets`: `ticket_hash` (主キー)、`user_id`、`challenge`、`platform`、`created_at`、`expires_at`、`used_at`。
-- 期限切れの `sso_requests` / `sso_tickets` は既存の定期掃除で消す。
+- 期限切れの `sso_requests` / `sso_tickets` は既存の定期掃除 (1 時間ごと) で消す (期限から 1 時間後)。
+- マイグレーションは `0048_sso`。
 - `users.password_hash` は SSO で作った人では NULL を許す (パスワードの照合は必ず失敗する)。
 
 ## 6. クライアント
@@ -121,7 +162,7 @@ Google が有効なら「Google でログイン」を出す。`verifier` を作�
 
 | 端末 | 開き方 | 戻り方 |
 |---|---|---|
-| Web | 同じタブで開始 URL へ | `/#sso_ticket=` を読み、交換してからフラグメントを消す |
+| Web | 同じタブで開始 URL へ | `/#sso_ticket=` を読んだらすぐフラグメントを消し (`history.replaceState`)、それから交換する。`#sso_error=` はログイン画面に日本語の文で出す。sessionStorage に `verifier` が無ければ (別のタブで始めた等) 交換せず `invalid_ticket` の文を出す |
 | Desktop (Tauri) | 既定のブラウザ | `chikuwachat://sso` を deep link で受ける (`tauri-plugin-deep-link`、macOS / Windows にスキームを登録) |
 | iOS | `ASWebAuthenticationSession` (callbackURLScheme `chikuwachat`) | セッションの完了ハンドラ。トークンは今までどおり Keychain |
 | Android | Custom Tabs (無ければ既定のブラウザ) | `chikuwachat://sso` の intent filter (singleTask) |

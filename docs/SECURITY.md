@@ -135,6 +135,29 @@ refresh(token):
   クライアントは認証済みリクエストの 401 (token_expired 以外) でセッションを捨てるため、401 にしない。
   同じ理由でパスワード変更の現在のパスワード誤りも 422 `invalid_password` に改めた。
 
+### 2.8 Google でログイン (SSO、M48)
+
+仕様は docs/SSO.md。要点:
+
+- Google とやり取りするのはサーバだけ (OpenID Connect の認可コード + PKCE。client secret はサーバのファイルか
+  環境変数)。ID トークンは Google の JWKS で署名を確かめ、`iss`・`aud`・`exp`・`nonce`・`email_verified`、
+  `hd` が許可ドメインでメールアドレスのドメインとも一致することを確かめる。許可ドメインが空なら SSO は無効。
+- ログイン CSRF: 開始 (`/auth/sso/google/start`) が置く Cookie `chikuwa_sso` (HttpOnly、SameSite=Lax、
+  Path=`/api/v1/auth/sso`、10 分) と callback の `state` が一致しなければ `expired`。`state` は 1 回だけ
+  (失敗しても使用済み)。
+- チケットと verifier: callback はトークンではなく 32 バイトの使い捨てチケット (2 分、DB には SHA-256) を
+  Web はフラグメント (`/#sso_ticket=`)、アプリは `chikuwachat://sso?ticket=` で返す。カスタムスキームは
+  他のアプリも登録できるので、交換 (`POST /auth/sso/exchange`) には開始時の `challenge` の元の `verifier` と
+  同じ `platform` が要る (RFC 7636 と同じ考え方)。チケットは最初の交換で使用済み (失敗でも)。誤りは
+  `401 invalid_ticket` だけを返す。
+- 2 要素認証 (§2.7) は SSO のログインでは求めない (Google の 2 段階認証に任せる)。Google で作られた人は
+  パスワードを持たず (`password_hash` NULL、`UserMe.has_password = false`)、パスワードでのログインは必ず失敗し、
+  パスワード変更と TOTP の設定は `409 password_not_set`。
+- アドレスでの結び付け (初回、docs/SSO.md §4) を悪用されないよう、SSO が有効な間は本人が `PATCH /users/me` で
+  許可ドメインのアドレスを設定できない (`403 email_domain_reserved`)。設定できるのは管理者 (作成時) だけ。
+- 作成・結び付け・ログインは監査ログに残る (`admin.user_created` の `via: sso`、`auth.sso_linked`、
+  `auth.sso_login`。チケット・トークンは載せない)。開始・callback・交換は IP ごとに 30 回 / 分。
+
 ## 3. 認可
 
 ### 3.1 ロール
@@ -312,7 +335,7 @@ M42: キャンバスの画像 (`attachments.canvas_id`) も会話のメンバー
 
 ## 7. 秘密情報
 
-- `SECRET_KEY`、DB パスワード、versitygw のルート認証情報 (`ROOT_ACCESS_KEY_ID` / `ROOT_SECRET_ACCESS_KEY`)、APNs の `.p8` 鍵、FCM サービスアカウント、Team ID /
+- `SECRET_KEY`、DB パスワード、versitygw のルート認証情報 (`ROOT_ACCESS_KEY_ID` / `ROOT_SECRET_ACCESS_KEY`)、APNs の `.p8` 鍵、FCM サービスアカウント、Google でログインの client secret (M48)、Team ID /
   Key ID / Bundle ID は環境変数またはマウントしたファイル (`/run/secrets/...`) で渡す。
   リポジトリにはコミットしない (`.env.example` のみ。`.gitignore` で `.env` と `*.p8` を除外)。
 - `SECRET_KEY` のローテーション: 変更すると access token が無効になるだけ (最大 15 分の影響)。

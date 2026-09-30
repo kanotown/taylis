@@ -1183,7 +1183,7 @@ export class FakeServer {
       bootstrap: async (): Promise<BootstrapOut> => {
         maybeFail();
         const user = this.users.get(userId)!;
-        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId) };
+        const me: UserMe = { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), has_password: true };
         const channels = [...this.channels.values()]
           .filter((r) => r.members.has(userId))
           .map((r) => ({

@@ -3,6 +3,7 @@ import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
+import { challengeFor, newVerifier, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
@@ -14,7 +15,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -217,6 +218,8 @@ export class AppController {
    */
   async boot(): Promise<void> {
     try {
+      // M48: back from Google sign-in (`/#sso_ticket=` / `#sso_error=`); the fragment is removed at once.
+      const sso = isWeb() ? takeSsoReturn() : null;
       if (isWeb()) this.takeEntryPath();
       const saved = loadWorkspaces();
       // A browser serves one workspace: the page's own origin (§9).
@@ -226,12 +229,19 @@ export class AppController {
         if (username) this.workspaces = [{ serverUrl: location.origin, workspaceId: null, name: location.host, username, userId: null }];
       }
       this.activeServer = this.workspaces.find((e) => e.serverUrl === saved.active)?.serverUrl ?? this.workspaces[0]?.serverUrl ?? null;
+      if (sso?.kind === "ticket") {
+        const failure = await this.completeSso(sso.ticket);
+        if (failure !== null) this.setScreen("login", failure);
+        return;
+      }
+      const ssoError = sso?.kind === "error" ? ssoErrorText(sso.code) : null;
       const entry = this.activeEntry;
       if (!entry) {
-        this.setScreen("login");
+        this.setScreen("login", ssoError);
         return;
       }
       await this.restoreWorkspace(entry, true);
+      if (ssoError !== null && this.screen === "login") this.setScreen("login", ssoError);
       if (this.multiWorkspace) {
         for (const other of this.workspaces) {
           if (other.serverUrl !== entry.serverUrl && !other.signedOut) void this.restoreWorkspace(other, false).catch((err) => console.error("could not restore a workspace", err));
@@ -379,6 +389,63 @@ export class AppController {
       return null;
     } catch (err) {
       return inviteErrorText(err);
+    }
+  }
+
+  // --- Google sign-in (M48, docs/SSO.md §6): the browser build; the Tauri app's deep link comes later ----------
+
+  /** GET /auth/methods of the login form's server; null when it cannot tell (an older server, offline). */
+  async authMethods(server: string): Promise<AuthMethodsOut | null> {
+    const normalized = isWeb() ? location.origin : normalizeServerUrl(server);
+    if (!normalized) return null;
+    try {
+      return await new ApiClient(normalized).authMethods();
+    } catch {
+      return null;
+    }
+  }
+
+  /** Where 「Google でログイン」 sends the tab (tests replace it). */
+  navigate: (url: string) => void = (url) => location.assign(url);
+
+  /** 「Google でログイン」: a fresh verifier kept in this tab, and off to the server's start URL with its challenge. */
+  async startGoogleSignIn(server: string): Promise<void> {
+    const serverUrl = isWeb() ? location.origin : normalizeServerUrl(server);
+    if (!serverUrl) {
+      this.setScreen("login", "サーバ URL が正しくありません");
+      return;
+    }
+    const verifier = newVerifier();
+    if (!saveSsoPending({ serverUrl, verifier })) {
+      this.setScreen("login", "このブラウザの設定では Google でログインできません (サイトのデータの保存を許可してください)");
+      return;
+    }
+    this.navigate(ssoStartUrl(serverUrl, this.deviceInfo().platform, await challengeFor(verifier)));
+  }
+
+  /** The ticket Google sign-in returned → a session, as after a password login; returns the failure text, if any. */
+  private async completeSso(ticket: string): Promise<string | null> {
+    const pending = takeSsoPending();
+    if (!pending) return ssoErrorText("invalid_ticket"); // started in another tab, or storage was cleared
+    const normalized = isWeb() ? location.origin : pending.serverUrl;
+    const server = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
+    try {
+      const tokens = await new ApiClient(server).ssoExchange(ticket, pending.verifier, this.deviceInfo());
+      const username = tokens.user.username;
+      const api = this.createApi(server, username);
+      api.adoptTokens(tokens);
+      let info: ServerInfoOut | null = null;
+      try {
+        const answer: unknown = await api.serverInfo();
+        info = isServerInfo(answer) ? answer : null;
+      } catch {
+        // the name follows when the workspace opens
+      }
+      this.totpRequired = false;
+      await this.enterNewSession(api, username, tokens.user, info);
+      return null;
+    } catch (err) {
+      return describe(err);
     }
   }
 

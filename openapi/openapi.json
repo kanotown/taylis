@@ -410,6 +410,24 @@
         "title": "AttachmentOut",
         "type": "object"
       },
+      "AuthMethodsOut": {
+        "description": "Which sign-in buttons the login screen shows (M48).",
+        "properties": {
+          "google": {
+            "$ref": "#/components/schemas/ProviderMethod"
+          },
+          "password": {
+            "default": true,
+            "title": "Password",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "google"
+        ],
+        "title": "AuthMethodsOut",
+        "type": "object"
+      },
       "Body_add_emoji_api_v1_emoji_post": {
         "properties": {
           "file": {
@@ -4164,6 +4182,19 @@
         "title": "PresenceEntry",
         "type": "object"
       },
+      "ProviderMethod": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ProviderMethod",
+        "type": "object"
+      },
       "QuietHours": {
         "additionalProperties": false,
         "description": "A daily window (in the user's zone) during which pushes are held back (M12c).",
@@ -5536,6 +5567,32 @@
         "title": "SidebarSectionOut",
         "type": "object"
       },
+      "SsoExchange": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "$ref": "#/components/schemas/DeviceCreate"
+          },
+          "ticket": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket",
+            "type": "string"
+          },
+          "verifier": {
+            "pattern": "^[A-Za-z0-9_-]{43,128}$",
+            "title": "Verifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "verifier",
+          "device"
+        ],
+        "title": "SsoExchange",
+        "type": "object"
+      },
       "TemplateCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6121,6 +6178,11 @@
               }
             ],
             "title": "Email"
+          },
+          "has_password": {
+            "default": true,
+            "title": "Has Password",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -8086,6 +8148,28 @@
         ]
       }
     },
+    "/api/v1/auth/methods": {
+      "get": {
+        "description": "Which sign-in buttons the login screen shows.",
+        "operationId": "auth_methods_api_v1_auth_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMethodsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Methods",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/refresh": {
       "post": {
         "operationId": "refresh_api_v1_auth_refresh_post",
@@ -8193,6 +8277,178 @@
           }
         ],
         "summary": "Auth:Revoke Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sso/exchange": {
+      "post": {
+        "description": "The ticket and the app's verifier → the same tokens as POST /auth/login (web: the refresh\ntoken moves into the cookie). 401 invalid_ticket; a ticket is spent by its first use.",
+        "operationId": "sso_exchange_api_v1_auth_sso_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoExchange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Exchange",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sso/google/callback": {
+      "get": {
+        "description": "Google's redirect. Web: `<PUBLIC_BASE_URL>/#sso_ticket=…` (or `#sso_error=`); the apps:\n`chikuwachat://sso?ticket=…` (or `?sso_error=`).",
+        "operationId": "sso_google_callback_api_v1_auth_sso_google_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Back to the app with a ticket or sso_error"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Google Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sso/google/start": {
+      "get": {
+        "description": "Opened in a browser by the app: `challenge` = base64url(SHA-256(verifier)) of a secret the\napp keeps until it exchanges the ticket. 404 sso_disabled when Google sign-in is off.",
+        "operationId": "sso_google_start_api_v1_auth_sso_google_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "enum": [
+                "web",
+                "desktop",
+                "ios",
+                "android"
+              ],
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "challenge",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{43}$",
+              "title": "Challenge",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To Google's sign-in page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Google Start",
         "tags": [
           "auth"
         ]

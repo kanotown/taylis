@@ -216,6 +216,18 @@ it("「アカウント」 lists the signed-in devices (this one first, marked �
   w.engine.stop();
 });
 
+it("「アカウント」 of an account made by Google sign-in (M48) has no password change and no 2FA, only the devices", async () => {
+  const { w } = await setup();
+  act(() => w.store.setMe({ ...w.store.me!, has_password: false }));
+  await tap("you");
+  await openRow("アカウント");
+  expect(within(you()).queryByText("パスワードの変更")).toBeNull();
+  expect(within(you()).queryByText("2 要素認証")).toBeNull();
+  expect(within(you()).getByText(/このアカウントは Google でログインします/)).toBeTruthy();
+  expect(within(you()).getByRole("list", { name: "ログイン中の端末" })).toBeTruthy();
+  w.engine.stop();
+});
+
 it("「表示」: ライト / ダーク pin the colours on <html> and are kept on this device; 端末に合わせる lets the OS decide", async () => {
   const { w } = await setup();
   await tap("you");

@@ -17,7 +17,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(CITEXT, unique=True)
     display_name: Mapped[str] = mapped_column(String(80))
     email: Mapped[str | None] = mapped_column(CITEXT, unique=True)
-    password_hash: Mapped[str] = mapped_column(Text)
+    # NULL for an account made by Google sign-in (M48): password login always fails for it.
+    password_hash: Mapped[str | None] = mapped_column(Text)
     must_change_password: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     role: Mapped[str] = mapped_column(String(16), default="member", server_default="member")
     # Profile card (M11d): job title and a custom status that may expire.
