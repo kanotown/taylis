@@ -8,9 +8,12 @@ nothing is overwritten silently (§4.4). Every change writes an outbox row in th
 transaction: canvas.created / canvas.updated / canvas.deleted to the conversation's members, with
 the metadata only (§4.6). Canvases do not use the channel's seq.
 
-Hooks for M42 (not here yet): the search index and /search/canvases, images (attachments bound
-to a canvas), the revision pruning and the 30-day purge of the trash in the periodic job, and
-sharing to the conversation with a /c/ permalink (share_message_id).
+M42 added the rest of the server (CANVAS.md §11 "M42"): images and files referred to by the body
+(`attachment:<uuid>`) are bound to the canvas when the uploader saves them (§4.10); sharing posts
+an ordinary message with the permalink `<server>/c/<id>` whose thread holds the comments (§4.13);
+and `housekeeping` (run by the hourly purge loop) thins old versions (§4.9), purges the trash
+after 30 days (audited as canvas.purge) and lets go of images no version refers to any more.
+Search lives in the search module (read-only access to canvases, ARCHITECTURE.md §5).
 """
 
 import asyncio
@@ -18,7 +21,7 @@ import re
 import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 from zoneinfo import ZoneInfo
 
@@ -29,6 +32,7 @@ from app.core.errors import AppError, bad_request, conflict, forbidden, not_foun
 from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.attachments import service as attachments
 from app.modules.audit import service as audit
 from app.modules.canvases import merge
 from app.modules.canvases import repository as repo
@@ -68,6 +72,8 @@ from app.modules.canvases.schemas import (
 )
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel, ChannelMember
+from app.modules.messages import service as messages
+from app.modules.messages.schemas import MessageCreate
 from app.modules.users.models import User
 
 DEFAULT_TITLE = "無題のキャンバス"
@@ -78,6 +84,24 @@ _merge_pool: ThreadPoolExecutor | None = None
 
 # `- [ ] item` / `* [x] item`, nested with leading spaces (CANVAS.md §4.2).
 TASK_LINE = re.compile(r"^([ \t]*[-*] \[)([ xX])(\](?: .*)?)$")
+# An image or file in the body: `![説明](attachment:<uuid>)` (CANVAS.md §4.2, §4.10). Any case:
+# a client may print the id in capitals (Swift's uuidString).
+ATTACHMENT_REF = re.compile(
+    r"attachment:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+)
+
+# CANVAS.md §4.9 / §4.14: every version of the last day stays (the bases of editing devices);
+# after that side versions go and a run of one author's versions keeps the last of every ten
+# minutes. The trash is purged after `trash_days` (settings.canvas_trash_retention_days).
+KEEP_ALL_REVISIONS = timedelta(hours=24)
+THIN_BUCKET = timedelta(minutes=10)
+# Versions are thinned once, soon after they pass KEEP_ALL_REVISIONS: only this far back is read
+# again each hour (a server that was down longer leaves a few extra versions, never fewer).
+THIN_LOOKBACK = timedelta(days=7)
+# An image no version refers to any more is let go this long after it was bound (by then every
+# version that could refer to it is older than KEEP_ALL_REVISIONS or still kept).
+IMAGE_GRACE = timedelta(hours=24)
+PURGE_BATCH = 100
 
 
 # --- body helpers --------------------------------------------------------------------------------
@@ -133,6 +157,16 @@ def line_changes(before: str, after: str) -> tuple[int, int]:
     """(added, removed) lines, counted as multisets: cheap and good enough for a history list."""
     old, new = Counter(before.split("\n")), Counter(after.split("\n"))
     return sum((new - old).values()), sum((old - new).values())
+
+
+def attachment_refs(body: str) -> list[uuid.UUID]:
+    """The attachments the body refers to, in order, each once."""
+    return list(dict.fromkeys(uuid.UUID(m.group(1)) for m in ATTACHMENT_REF.finditer(body)))
+
+
+def permalink(base_url: str, canvas_id: uuid.UUID) -> str:
+    """`<server>/c/<canvas_id>` (CANVAS.md §4.13), like a message's `<server>/m/<id>`."""
+    return f"{base_url.rstrip('/')}/c/{canvas_id}"
 
 
 async def _merge(base: str, ours: str, theirs: str, resolve: merge.Resolve) -> merge.MergeResult:
@@ -349,9 +383,12 @@ def _constraint(exc: IntegrityError) -> str:
 
 
 async def create(
-    db: AsyncSession, actor: User, channel_id: uuid.UUID, data: CanvasCreate
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, data: CanvasCreate, *, base_url: str
 ) -> tuple[CanvasOut, bool]:
-    """(canvas, created). A retry with the same client_save_id returns the first one."""
+    """(canvas, created). A retry with the same client_save_id returns the first one.
+
+    `share_to_channel` posts the permalink (built on `base_url`, the server's address as the
+    client reached it) to the conversation in the same transaction (CANVAS.md §4.13)."""
     existing = await _existing_create(db, actor, channel_id, data.client_save_id)
     if existing is not None:
         return existing, False
@@ -431,9 +468,72 @@ async def create(
         if again is None:
             raise
         return again, False
+    await _bind_images(db, actor, canvas)
+    if data.share_to_channel:
+        canvas.share_message_id = await _post_share(db, actor, canvas, base_url)
+        await db.flush()
     await _emit_created(db, canvas)
     await db.commit()
     return to_out(canvas), True
+
+
+# --- images and sharing (CANVAS.md §4.10, §4.13) -------------------------------------------------
+
+
+async def _bind_images(db: AsyncSession, actor: User, canvas: Canvas) -> None:
+    """The actor's pending uploads that the body now refers to become the canvas's."""
+    refs = attachment_refs(canvas.body)
+    if refs:
+        await attachments.bind_to_canvas_in_tx(
+            db,
+            actor.id,
+            canvas_id=canvas.id,
+            channel_id=canvas.channel_id,
+            attachment_ids=refs,
+        )
+
+
+def share_body(canvas: Canvas, base_url: str) -> str:
+    """The shared message: the title and the permalink (the apps show it as a card). `<` is
+    made harmless so that a title never mentions anyone (`<!channel>`, `<@id>`) in the name of
+    whoever shares it."""
+    title = canvas.title.replace("<", "\uff1c")  # the full-width form
+    return f"📄 {title}\n{permalink(base_url, canvas.id)}"
+
+
+async def _post_share(db: AsyncSession, actor: User, canvas: Canvas, base_url: str) -> uuid.UUID:
+    """An ordinary message in the conversation (unread, pushes and search as for any post),
+    written in the caller's transaction."""
+    message, _ = await messages.create_message(
+        db,
+        actor,
+        canvas.channel_id,
+        MessageCreate(client_msg_id=uuid.uuid4(), body=share_body(canvas, base_url)),
+        commit=False,
+    )
+    return message.id
+
+
+async def share(db: AsyncSession, actor: User, canvas_id: uuid.UUID, *, base_url: str) -> CanvasOut:
+    """Share to the conversation, or nothing if its shared message still exists (idempotent: the
+    row lock orders two at once). The comments are that message's thread, so a client opening
+    the comments of a canvas that was never shared calls this first."""
+    canvas, channel, _ = await _load(db, actor, canvas_id, lock=True)
+    if canvas.share_message_id is not None and (
+        await messages.live_bodies(db, [canvas.share_message_id])
+    ):
+        out = to_out(canvas)
+        await db.commit()
+        return out
+    channels.require_writable(channel)
+    canvas.share_message_id = await _post_share(db, actor, canvas, base_url)
+    # Not an edit: updated_by / updated_at stay, only the version moves (the metadata changed).
+    canvas.version += 1
+    await db.flush()
+    await _emit_updated(db, canvas, "settings")
+    out = to_out(canvas)
+    await db.commit()
+    return out
 
 
 # --- saving (CANVAS.md §4.4) ---------------------------------------------------------------------
@@ -515,6 +615,7 @@ async def _set_body(
     canvas.head_rev_id = revision.id
     canvas.task_total, canvas.task_done = count_tasks(body)
     await db.flush()
+    await _bind_images(db, actor, canvas)
     await _emit_updated(db, canvas, change)
     return revision
 
@@ -834,6 +935,80 @@ async def erase_revision(
     out = to_revision_meta(revision)
     await db.commit()
     return out
+
+
+# --- housekeeping (CANVAS.md §4.9, §4.10, §4.14): the hourly purge loop ------------------------
+
+
+async def prune_revisions(db: AsyncSession, *, now: datetime) -> int:
+    """Versions older than a day: side versions go, runs of one author's versions keep the last
+    of every ten minutes. create / restore / erased / labelled / head versions stay."""
+    cutoff = now - KEEP_ALL_REVISIONS
+    removed = await repo.delete_side_revisions(db, cutoff)
+    removed += await repo.thin_revisions(
+        db, before=cutoff, since=cutoff - THIN_LOOKBACK, bucket=THIN_BUCKET
+    )
+    await db.commit()
+    return removed
+
+
+async def purge_trash(db: AsyncSession, *, now: datetime, trash_days: int) -> int:
+    """Canvases in the trash for `trash_days`: gone for good with their versions, their images
+    marked deleted (the attachment GC removes the bytes), one canvas.purge audit entry each. The
+    shared message stays in the conversation (the apps show 「表示できないキャンバス」)."""
+    purged = 0
+    while True:
+        rows = await repo.trashed_before(db, now - timedelta(days=trash_days), PURGE_BATCH)
+        if not rows:
+            break
+        ids = [row.id for row in rows]
+        counts = await repo.revision_counts(db, ids)
+        for row in rows:
+            await audit.record_in_tx(
+                db,
+                actor_id=None,
+                action="canvas.purge",
+                target_type="canvas",
+                target_id=row.id,
+                details={
+                    "channel_id": str(row.channel_id),
+                    "title": row.title,
+                    "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
+                    "deleted_by": str(row.deleted_by) if row.deleted_by else None,
+                    "revisions": counts.get(row.id, 0),
+                },
+            )
+        await attachments.mark_canvases_deleted_in_tx(db, ids)
+        await repo.delete_canvases(db, ids)
+        await db.commit()
+        db.expunge_all()
+        purged += len(rows)
+        if len(rows) < PURGE_BATCH:
+            break
+    return purged
+
+
+async def release_unreferenced_images(db: AsyncSession, *, now: datetime) -> int:
+    """Images bound more than a day ago that neither the body nor any kept version refers to
+    (removed from the body and the versions that had them thinned or erased)."""
+    released = 0
+    while True:
+        ids = await repo.unreferenced_images(db, bound_before=now - IMAGE_GRACE, limit=500)
+        if not ids:
+            break
+        released += await attachments.mark_ids_deleted_in_tx(db, ids)
+        await db.commit()
+        if len(ids) < 500:
+            break
+    return released
+
+
+async def housekeeping(db: AsyncSession, *, now: datetime, trash_days: int) -> tuple[int, int, int]:
+    """(versions pruned, canvases purged, images released), each step committed on its own."""
+    pruned = await prune_revisions(db, now=now)
+    purged = await purge_trash(db, now=now, trash_days=trash_days)
+    released = await release_unreferenced_images(db, now=now)
+    return pruned, purged, released
 
 
 # --- templates (CANVAS.md §4.12) -----------------------------------------------------------------

@@ -90,11 +90,13 @@ async def create_message(
     data: MessageCreate,
     *,
     advance_read: bool = True,
+    commit: bool = True,
 ) -> tuple[Message, bool]:
     """Returns (message, created). Retrying with the same client_msg_id returns the same message.
 
     `advance_read=False` for posts nobody is looking at (scheduled sends): the sender's read
-    position stays where it was.
+    position stays where it was. `commit=False` leaves the transaction open for a caller that
+    writes more in it (M42: a canvas shared to its conversation).
     """
     # A retry of a message that is already stored gets that message back, whatever happened to
     # the channel since (archived, restricted, left): otherwise the client would mark a delivered
@@ -195,7 +197,8 @@ async def create_message(
             raise
         return _same_channel(existing, channel_id), False
 
-    await db.commit()
+    if commit:
+        await db.commit()
     return message, True
 
 

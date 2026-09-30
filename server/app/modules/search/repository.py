@@ -1,4 +1,5 @@
-"""PGroonga queries. Read-only access to messages / attachments (ARCHITECTURE.md §5 exception)."""
+"""PGroonga queries. Read-only access to messages / attachments / canvases (ARCHITECTURE.md §5
+exception)."""
 
 import uuid
 from collections.abc import Sequence
@@ -6,11 +7,25 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import Select, Subquery, exists, func, literal_column, or_, select, union_all
+from sqlalchemy import (
+    Select,
+    Subquery,
+    Text,
+    cast,
+    exists,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+    union_all,
+)
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.modules.attachments.models import Attachment
+from app.modules.canvases.models import Canvas
 from app.modules.messages.models import Message, Reaction
 
 _LINK = r"https?://"
@@ -223,3 +238,125 @@ async def extract_keywords(db: AsyncSession, query: str, *, escaped: bool) -> li
     result = await db.execute(select(func.pgroonga_query_extract_keywords(_needle(query, escaped))))
     keywords: list[str] | None = result.scalar_one()
     return [str(k) for k in (keywords or [])]
+
+
+# --- canvases (M42, CANVAS.md §4.8): read-only access to canvases -------------------------------
+
+
+@dataclass(frozen=True)
+class CanvasScope:
+    """Where to look: the caller's conversations, and who / when (on the last update)."""
+
+    channel_ids: list[uuid.UUID]
+    from_user_id: uuid.UUID | None = None
+    after: datetime | None = None
+    before: datetime | None = None
+
+
+def canvas_document() -> Any:
+    """`ARRAY[title::text, body]`: the expression canvases_search_idx is built on (migration
+    0047). One expression, one index: `title &@~ q OR body &@~ q` used no index at all (1,374 ms
+    on 5,000 canvases, CANVAS.md §7)."""
+    return postgresql.array([cast(Canvas.title, Text), Canvas.body])
+
+
+def _text_needle(query: str, escaped: bool) -> Any:
+    needle = literal(query, type_=Text)
+    return func.pgroonga_query_escape(needle, type_=Text) if escaped else needle
+
+
+def _canvas_within(stmt: Select[Any], scope: CanvasScope, row: Any) -> Select[Any]:
+    stmt = stmt.where(row.channel_id.in_(scope.channel_ids), row.deleted_at.is_(None))
+    if scope.from_user_id is not None:
+        stmt = stmt.where(
+            or_(row.created_by == scope.from_user_id, row.updated_by == scope.from_user_id)
+        )
+    if scope.after is not None:
+        stmt = stmt.where(row.updated_at >= scope.after)
+    if scope.before is not None:
+        stmt = stmt.where(row.updated_at < scope.before)
+    return stmt
+
+
+def _canvas_hits(query: str, scope: CanvasScope, escaped: bool) -> Subquery:
+    """Canvases whose title or body matches, with their PGroonga score. As for messages (_hits),
+    the words alone go into a materialized step, so the index is the only way in and every hit
+    is scored; the scope is applied to what it found."""
+    matched = (
+        select(
+            Canvas.id.label("id"),
+            Canvas.channel_id.label("channel_id"),
+            Canvas.created_by.label("created_by"),
+            Canvas.updated_by.label("updated_by"),
+            Canvas.updated_at.label("updated_at"),
+            Canvas.deleted_at.label("deleted_at"),
+            func.pgroonga_score(
+                literal_column("canvases.tableoid"), literal_column("canvases.ctid")
+            ).label("score"),
+        )
+        # The needle typed as text: next to an array, SQLAlchemy would bind it as one.
+        .where(canvas_document().op("&@~")(_text_needle(query, escaped)))
+        .cte("canvas_hits")
+        .prefix_with("MATERIALIZED")
+    )
+    stmt = _canvas_within(select(matched.c.id, matched.c.score), scope, matched.c)
+    return stmt.subquery("canvas_scored")
+
+
+async def search_canvases(
+    db: AsyncSession,
+    *,
+    query: str,
+    scope: CanvasScope,
+    sort: Sort,
+    limit: int,
+    offset: int,
+    escaped: bool,
+) -> list[tuple[Canvas, float]]:
+    """Ranked (score, then the most recently updated), or the most recently updated first."""
+    if not scope.channel_ids:
+        return []
+    stmt = canvas_search_statement(
+        query, scope, sort=sort, limit=limit, offset=offset, escaped=escaped
+    )
+    rows = (await db.execute(stmt)).all()
+    return [(row[0], float(row[1] or 0.0)) for row in rows]
+
+
+def canvas_search_statement(
+    query: str, scope: CanvasScope, *, sort: Sort, limit: int, offset: int, escaped: bool
+) -> Select[Any]:
+    """The query search_canvases runs (the tests EXPLAIN it: canvases_search_idx must be used)."""
+    hits = _canvas_hits(query, scope, escaped)
+    order = (
+        (hits.c.score.desc(), Canvas.updated_at.desc())
+        if sort == "relevance"
+        else (Canvas.updated_at.desc(),)
+    )
+    stmt = select(Canvas, hits.c.score).join(hits, hits.c.id == Canvas.id)
+    return stmt.order_by(*order, Canvas.id).limit(limit).offset(offset)
+
+
+async def list_canvases(
+    db: AsyncSession, *, scope: CanvasScope, limit: int, offset: int
+) -> list[Canvas]:
+    """Modifier-only searches: the most recently updated canvases in scope."""
+    if not scope.channel_ids:
+        return []
+    stmt = _canvas_within(select(Canvas), scope, Canvas).order_by(
+        Canvas.updated_at.desc(), Canvas.id
+    )
+    return list((await db.execute(stmt.limit(limit).offset(offset))).scalars().all())
+
+
+async def count_canvases(
+    db: AsyncSession, *, query: str | None, scope: CanvasScope, escaped: bool
+) -> int:
+    """How many canvases match, counting at most TOTAL_CAP + 1 of them."""
+    if not scope.channel_ids:
+        return 0
+    if query:
+        stmt = select(_canvas_hits(query, scope, escaped).c.id).limit(TOTAL_CAP + 1)
+    else:
+        stmt = _canvas_within(select(Canvas.id), scope, Canvas).limit(TOTAL_CAP + 1)
+    return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())

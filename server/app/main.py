@@ -116,6 +116,19 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 log.info("disabled %d devices whose sessions expired", expired)
             if sessions or devices:
                 log.info("purged %d sessions and %d devices", sessions, devices)
+            async with app.state.db.session_factory() as session:
+                # CANVAS.md §4.9 / §4.14 (M42): thin old versions, purge the trash after 30 days,
+                # let go of images no version refers to (the attachment GC removes the bytes).
+                pruned, purged_canvases, released = await canvases.housekeeping(
+                    session, now=utcnow(), trash_days=settings.canvas_trash_retention_days
+                )
+            if pruned or purged_canvases or released:
+                log.info(
+                    "canvases: %d versions pruned, %d purged from the trash, %d images released",
+                    pruned,
+                    purged_canvases,
+                    released,
+                )
         except Exception:
             log.exception("outbox purge failed")
         try:

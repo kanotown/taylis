@@ -694,7 +694,7 @@ CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, 
     時刻が読めない・終わりが先、のどれかなら何も作らずに使い方を出す。
   - `/日程` だけなら投票の作成画面を開き、質問「日程調整」、複数選択、今日の翌日からの平日 5 日を選択肢に入れておく。
 
-### canvases / canvas_revisions / canvas_templates (キャンバス、M41、CANVAS.md §4)
+### canvases / canvas_revisions / canvas_templates (キャンバス、M41・M42、CANVAS.md §4)
 
 ```sql
 CREATE TABLE canvases (
@@ -707,7 +707,7 @@ CREATE TABLE canvases (
   is_channel_tab   boolean NOT NULL DEFAULT false,          -- 会話の「キャンバス」タブ (1 会話 1 つ)
   edit_policy      varchar(16) NOT NULL DEFAULT 'members',  -- 'members' | 'owners' (DM では無視)
   template_key     varchar(40),                             -- 作成に使ったテンプレート
-  share_message_id uuid REFERENCES messages(id),            -- 会話に共有したメッセージ (M42 で使う)
+  share_message_id uuid REFERENCES messages(id),            -- 会話に共有したメッセージ (そのスレッドがコメント、M42)
   task_total       integer NOT NULL DEFAULT 0,              -- 保存時に数える (一覧の「3/8」)
   task_done        integer NOT NULL DEFAULT 0,
   created_by       uuid NOT NULL REFERENCES users(id),
@@ -720,6 +720,8 @@ CREATE TABLE canvases (
 );
 CREATE INDEX canvases_channel_idx ON canvases (channel_id, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX canvases_tab_uniq ON canvases (channel_id) WHERE is_channel_tab AND deleted_at IS NULL;
+-- M42 (0047): 題名と本文を 1 つの式で。`title &@~ q OR body &@~ q` の形は索引を使わない (CANVAS.md §7、§4.8)
+CREATE INDEX canvases_search_idx ON canvases USING pgroonga ((ARRAY[title::text, body]));
 
 CREATE TABLE canvas_revisions (
   id              uuid PRIMARY KEY,                         -- UUIDv7
@@ -761,8 +763,23 @@ CREATE TABLE canvas_templates (
   残す。これがその端末の次の保存の base になる (CANVAS.md §4.4、SYNC_PROTOCOL.md §14)。履歴の一覧 (`GET
   /canvases/{id}/revisions`) は side を出さない。消去 (`DELETE …/revisions/{rev}`) は本文を '' にして kind を erased にする。
   現在の版は消去できない (`409 canvas_revision_is_head`)。erased の版は base にも復元元にもならない。
-- **版の整理** (M42 で周期ジョブに追加する予定、CANVAS.md §4.9): 24 時間以内の版はすべて残す。24 時間を過ぎたら side を消し、
-  同じ作者の連続した版は 10 分ごとの最後の 1 つだけ残す。create・restore・ラベル付き・現在の版は常に残す。
+- **版の整理** (M42、1 時間ごとの `_purge_loop`、CANVAS.md §4.9): 24 時間以内の版はすべて残す。24 時間を過ぎたら side を消し、
+  同じ作者の連続した save / merge は 10 分ごと (`date_bin('10 minutes', created_at)`) の最後の 1 つだけ残す。create・restore・
+  erased・ラベル付き・現在の版は常に残し、連続を区切る (別の作者の版も区切る)。読み直すのは 24 時間〜8 日前の版だけ
+  (整理は版が 24 時間を過ぎた直後の 1 回で済む。サーバが 7 日以上止まっていたら、その間の版が少し多く残るだけ)。
+- **ゴミ箱の完全削除** (M42、同じ周期ジョブ): ゴミ箱に 30 日 (`canvas_trash_retention_days`) あったキャンバスは、画像を deleted に
+  してから行ごと消す (版は ON DELETE CASCADE)。1 件ごとに監査 `canvas.purge` (actor なし。会話・題名・削除者・版の数)。
+  共有メッセージは会話に残る (リンクは「表示できないキャンバス」になる)。
+- **画像** (M42、CANVAS.md §4.10): 本文の `attachment:<uuid>` (大文字・小文字どちらも) が指す、保存した本人の pending の
+  アップロードを、作成・保存・版の復元のたびに bind する (`attachments.canvas_id`、下記)。他人の添付・別のキャンバスの添付・
+  メッセージの添付は bind しない (本文には残り、端末は「表示できない画像」)。1 キャンバス 100 件まで (`400 too_many_canvas_images`)。
+  本文から消しても版が参照しているあいだは残す。bind から 24 時間を過ぎ、本文にも残っている版のどれにも id が無くなった
+  画像 (整理された版・消去された版にだけあったもの) は、同じ周期ジョブが deleted にする。バイト列は添付の GC が消す。
+- **共有** (M42、CANVAS.md §4.13): `share_to_channel` (作成時) と `POST /canvases/{id}/share` は、題名とパーマリンク
+  `<server>/c/<id>` だけの**普通のメッセージ** (`📄 題名\n<URL>`) を同じトランザクションで投稿し、`share_message_id` に入れる。
+  URL の `<server>` は要求の届いた先 (Host と X-Forwarded-Proto)。題名の `<` は全角の `＜` に替える (題名で `<!channel>` などの
+  メンションが起きないように)。共有メッセージが残っていれば何もしない (冪等)。消されていれば新しく投稿する。
+- **検索** (M42、CANVAS.md §4.8): 下の「代表的なクエリ」。
 - **タスク**: `- [ ] 項目` / `- [x] 項目` (`*` も、先頭の空白による入れ子も) を保存時に数える。``` の囲みの中は数えない。
 - **テンプレート**: 組み込みの 5 つはマイグレーション 0046 が入れ、起動時に欠けていれば入れ直す (削除はできないので、通常は何も
   しない)。作成 API の中でサーバが `tz` の日付で `{{date}}` (`2026-10-01 (木)`)、`{{week}}` (ISO 週 `2026-W40`、投稿テンプレート
@@ -993,6 +1010,12 @@ CREATE INDEX attachments_gc_idx      ON attachments (status, created_at);
 (メッセージに紐付け。チャンネルメンバーが参照可) → `deleted` (メッセージ削除。GC がバイト列を消す)。
 `pending` のまま 24 時間経過したものは GC が削除する。1 メッセージあたり最大 10 件。
 
+M42: `canvas_id uuid REFERENCES canvases(id) ON DELETE SET NULL` (部分索引 `attachments_canvas_idx`)。キャンバスの本文の画像は
+`message_id` が NULL、`channel_id` がキャンバスの会話、`canvas_id` がそのキャンバス。`canvas_id` のある添付は、公開チャンネルでも
+**会話のメンバーだけ**が読める (キャンバスと同じ。メッセージの添付の「参加前のプレビュー」(M27) は当てはまらない)。
+ファイル一覧 (`GET /files`) とメッセージ検索のファイル名の枝は messages と結合するので、キャンバスの画像を含まない。
+キャンバスの完全削除では deleted にしてから行を消す (SET NULL は行を消せるようにするためだけ)。1 キャンバス最大 100 件。
+
 ### outbox_events
 
 ```sql
@@ -1199,6 +1222,27 @@ M15h で内容の条件を足した (Slack と同じ語): `has:file` (`has:attac
 理解した条件は `filters.has` / `filters.is_thread` に返し、知らない語 (`has:video` など) は `unresolved` に入れる。
 投票の無いメッセージの `poll` は JSON の null (SQL の NULL ではない) なので、`has:poll` は `jsonb_typeof(poll) = 'object'` で判定する。
 
+キャンバスの検索 (`GET /search/canvases`、M42、CANVAS.md §4.8)。メッセージと同じく語だけを条件にした MATERIALIZED の段から入り、
+索引 `canvases_search_idx` を必ず使う (テストで EXPLAIN を確かめる):
+
+```sql
+WITH canvas_hits AS MATERIALIZED (
+  SELECT id, channel_id, created_by, updated_by, updated_at, deleted_at, pgroonga_score(tableoid, ctid) AS score
+  FROM canvases WHERE ARRAY[title::text, body] &@~ $q::text     -- 語は text として渡す (配列の隣で配列に化けないように)
+)
+SELECT c.*, h.score FROM canvases c JOIN (
+  SELECT id, score FROM canvas_hits
+  WHERE channel_id IN (自分がメンバーの会話。DM を含み、参加していない公開チャンネルは含まない)
+    AND deleted_at IS NULL AND 修飾子 (from: = 作成者か最終更新者、after / before / on = updated_at)
+) h ON h.id = c.id
+ORDER BY h.score DESC, c.updated_at DESC, c.id                -- sort=newest なら c.updated_at DESC
+LIMIT $limit OFFSET $offset;
+```
+
+抜粋 (`snippet`) は LIMIT の後、返すページの分だけ Python で作る: 本文の空白・改行を 1 つの空白にまとめ、最初に現れる
+`keywords` の前後 60 字 (切ったところに「…」)。題名だけに当たったときは本文の先頭 120 字。`has:` / `is:` はキャンバスには
+無いので `filters.unresolved` に返す (結果は空)。同時実行数・時間切れ・レート制限はメッセージ検索と共有する。
+
 検索画面の絞り込みメニュー (2026-09-27) は語を書き換えずに構造化パラメータで送る: `channel_id`、`from_user_id`、
 `after` / `before` (タイムゾーン付き)、`has` (繰り返し可: file / link / pin / reaction / poll)、`is_thread`、
 `sort` (`relevance` 既定 / `newest`)。語の修飾子と AND で合わさり、`q` は空でもよい (条件が 1 つも無ければ
@@ -1213,7 +1257,7 @@ M15h で内容の条件を足した (Slack と同じ語): `has:file` (`has:attac
 | outbox_events | 1 日数千行 | 処理済みは 7 日で削除 |
 | push_deliveries | 1 日数千行 | 7 日で削除 |
 | sessions / devices | ユーザー × 端末 | 失効 / 無効化から 30 日で削除 |
-| canvases / canvas_revisions | 版 1 つ ≈ 本文の圧縮後 (約 1 万字で 9.6 KB)。1 時間の自動保存で約 700 版 | キャンバスは無期限 (ゴミ箱は 30 日)。版は 24 時間後に整理 (M42) |
+| canvases / canvas_revisions | 版 1 つ ≈ 本文の圧縮後 (約 1 万字で 9.6 KB)。1 時間の自動保存で約 700 版 | キャンバスは無期限 (ゴミ箱は 30 日で完全削除)。版は 24 時間後に整理 (M42) |
 
 ## 6. 将来の追加候補 (スキーマ上の置き場所だけ決めておく)
 

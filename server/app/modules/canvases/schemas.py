@@ -88,6 +88,9 @@ class CanvasCreate(BaseModel):
     # The client's IANA zone, for the template's {{date}} / {{week}}; UTC when left out.
     tz: str | None = Field(default=None, max_length=64)
     as_tab: bool = False
+    # Post the permalink to the conversation as an ordinary message (its thread holds the
+    # comments; share_message_id), in the same transaction.
+    share_to_channel: bool = False
     # Idempotency key: a retry returns the canvas made by the first request (200).
     client_save_id: UUID
 
