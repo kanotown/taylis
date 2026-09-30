@@ -65,6 +65,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/canvas-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin List Canvas Templates
+         * @description All templates, hidden ones too (administrators).
+         */
+        get: operations["admin_list_canvas_templates_api_v1_admin_canvas_templates_get"];
+        put?: never;
+        /** Admin Create Canvas Template */
+        post: operations["admin_create_canvas_template_api_v1_admin_canvas_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/canvas-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Delete Canvas Template
+         * @description Only templates added by an administrator; built-in ones are hidden instead.
+         */
+        delete: operations["admin_delete_canvas_template_api_v1_admin_canvas_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Admin Update Canvas Template
+         * @description Edit, reorder or hide (`hidden`) a template, built-in ones too.
+         */
+        patch: operations["admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/groups": {
         parameters: {
             query?: never;
@@ -536,6 +581,181 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/canvas-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Canvas Templates
+         * @description Templates to start a canvas from (hidden ones left out).
+         */
+        get: operations["list_canvas_templates_api_v1_canvas_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/canvases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Canvases
+         * @description The canvases of all my conversations, most recently updated first.
+         */
+        get: operations["list_my_canvases_api_v1_canvases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Canvas
+         * @description Metadata, body and head_rev_id. ETag is the version; If-None-Match → 304.
+         */
+        get: operations["get_canvas_api_v1_canvases__canvas_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Canvas
+         * @description To the trash.
+         */
+        delete: operations["delete_canvas_api_v1_canvases__canvas_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Canvas
+         * @description Title, edit_policy, the conversation's tab.
+         */
+        patch: operations["update_canvas_api_v1_canvases__canvas_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Canvas Content
+         * @description Save the whole body written on `base_rev_id`; merged with saves made since (CANVAS.md
+         *     §4.4). 409 canvas_conflict when the same words changed on both sides (on_conflict=fail),
+         *     409 canvas_base_expired when the base version is gone.
+         */
+        put: operations["save_canvas_content_api_v1_canvases__canvas_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Canvas
+         * @description Back from the trash.
+         */
+        post: operations["restore_canvas_api_v1_canvases__canvas_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Canvas Revisions
+         * @description The history without bodies, newest first.
+         */
+        get: operations["list_canvas_revisions_api_v1_canvases__canvas_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Canvas Revision */
+        get: operations["get_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Erase Canvas Revision
+         * @description Erase a version's body (owners and administrators; in a DM its creator). Audited.
+         */
+        delete: operations["erase_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Label Canvas Revision
+         * @description Name a version (「提出版」); null removes the name.
+         */
+        patch: operations["label_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/canvases/{canvas_id}/revisions/{revision_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Canvas Revision
+         * @description That version's body as a new version.
+         */
+        post: operations["restore_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels": {
         parameters: {
             query?: never;
@@ -603,6 +823,30 @@ export interface paths {
         put?: never;
         /** Archive Channel */
         post: operations["archive_channel_api_v1_channels__channel_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/canvases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Channel Canvases
+         * @description The conversation's canvases without bodies, most recently updated first.
+         */
+        get: operations["list_channel_canvases_api_v1_channels__channel_id__canvases_get"];
+        put?: never;
+        /**
+         * Create Canvas
+         * @description A new canvas, empty or from a template (placeholders put in with `tz`).
+         */
+        post: operations["create_canvas_api_v1_channels__channel_id__canvases_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2341,6 +2585,254 @@ export interface components {
             /** Users */
             users: components["schemas"]["UserPublic"][];
         };
+        /** CanvasConflictDetails */
+        CanvasConflictDetails: {
+            /** Conflicts */
+            conflicts?: components["schemas"]["ConflictOut"][];
+            head: components["schemas"]["CanvasOut"];
+            /**
+             * Timed Out
+             * @default false
+             */
+            timed_out: boolean;
+        };
+        /** CanvasConflictError */
+        CanvasConflictError: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "canvas_conflict" | "canvas_base_expired";
+            details: components["schemas"]["CanvasConflictDetails"];
+            /** Message */
+            message: string;
+        };
+        /**
+         * CanvasConflictResponse
+         * @description 409 from PUT /canvases/{id}/content.
+         */
+        CanvasConflictResponse: {
+            error: components["schemas"]["CanvasConflictError"];
+        };
+        /** CanvasCreate */
+        CanvasCreate: {
+            /**
+             * As Tab
+             * @default false
+             */
+            as_tab: boolean;
+            /** Body */
+            body?: string | null;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /** Template Key */
+            template_key?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * CanvasMeta
+         * @description A canvas without its body: lists and the canvas.* events (CANVAS.md §4.6).
+         */
+        CanvasMeta: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Edit Policy
+             * @enum {string}
+             */
+            edit_policy: "members" | "owners";
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Channel Tab */
+            is_channel_tab: boolean;
+            /** Share Message Id */
+            share_message_id: string | null;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Template Key */
+            template_key: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /** CanvasOut */
+        CanvasOut: {
+            /** Body */
+            body: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Edit Policy
+             * @enum {string}
+             */
+            edit_policy: "members" | "owners";
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Channel Tab */
+            is_channel_tab: boolean;
+            /** Share Message Id */
+            share_message_id: string | null;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Template Key */
+            template_key: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /** CanvasPage */
+        CanvasPage: {
+            /** Items */
+            items: components["schemas"]["CanvasMeta"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CanvasTemplateCreate */
+        CanvasTemplateCreate: {
+            /** Body */
+            body: string;
+            /** Description */
+            description?: string | null;
+            /** Key */
+            key?: string | null;
+            /** Name */
+            name: string;
+            /** Position */
+            position?: number | null;
+            /** Title */
+            title: string;
+        };
+        /** CanvasTemplateOut */
+        CanvasTemplateOut: {
+            /** Body */
+            body: string;
+            /** Builtin */
+            builtin: boolean;
+            /** Description */
+            description: string | null;
+            /** Hidden */
+            hidden: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** CanvasTemplateUpdate */
+        CanvasTemplateUpdate: {
+            /** Body */
+            body?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Hidden */
+            hidden?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** CanvasUpdate */
+        CanvasUpdate: {
+            /** Edit Policy */
+            edit_policy?: ("members" | "owners") | null;
+            /** Is Channel Tab */
+            is_channel_tab?: boolean | null;
+            /** Title */
+            title?: string | null;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /** Name */
@@ -2384,6 +2876,8 @@ export interface components {
         ChannelOut: {
             /** Archived */
             archived: boolean;
+            /** Canvas Tab Id */
+            canvas_tab_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2465,6 +2959,47 @@ export interface components {
             topic?: string | null;
             /** Type */
             type?: ("public" | "private") | null;
+        };
+        /**
+         * ConflictOut
+         * @description A region both sides changed differently. `ours_line` / `theirs_line`: its first line
+         *     (0-based) in the submitted body and in the head.
+         */
+        ConflictOut: {
+            /** Base */
+            base: string;
+            /** Ours */
+            ours: string;
+            /** Ours Line */
+            ours_line: number;
+            /** Theirs */
+            theirs: string;
+            /** Theirs Line */
+            theirs_line: number;
+        };
+        /**
+         * ContentSave
+         * @description PUT /canvases/{id}/content (CANVAS.md §4.4).
+         */
+        ContentSave: {
+            /**
+             * Base Rev Id
+             * Format: uuid
+             */
+            base_rev_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /**
+             * On Conflict
+             * @default fail
+             * @enum {string}
+             */
+            on_conflict: "fail" | "ours" | "theirs" | "both";
         };
         /** CustomEmojiOut */
         CustomEmojiOut: {
@@ -3398,6 +3933,108 @@ export interface components {
              */
             status: "pending" | "fired" | "done" | "cancelled";
         };
+        /** RevisionMeta */
+        RevisionMeta: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Canvas Id
+             * Format: uuid
+             */
+            canvas_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased";
+            /** Label */
+            label: string | null;
+            /** Lines Added */
+            lines_added: number;
+            /** Lines Removed */
+            lines_removed: number;
+            /** Parent Rev Id */
+            parent_rev_id: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number | null;
+        };
+        /** RevisionOut */
+        RevisionOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Canvas Id
+             * Format: uuid
+             */
+            canvas_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased";
+            /** Label */
+            label: string | null;
+            /** Lines Added */
+            lines_added: number;
+            /** Lines Removed */
+            lines_removed: number;
+            /** Parent Rev Id */
+            parent_rev_id: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number | null;
+        };
+        /** RevisionPage */
+        RevisionPage: {
+            /** Items */
+            items: components["schemas"]["RevisionMeta"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** RevisionRestore */
+        RevisionRestore: {
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+        };
+        /** RevisionUpdate */
+        RevisionUpdate: {
+            /** Label */
+            label?: string | null;
+        };
         /** RolloverApply */
         RolloverApply: {
             /** Academic Year */
@@ -3501,6 +4138,17 @@ export interface components {
             applied_at: string | null;
             /** Items */
             items: components["schemas"]["RolloverPreviewItem"][];
+        };
+        /** SaveOut */
+        SaveOut: {
+            canvas: components["schemas"]["CanvasOut"];
+            /** Merged */
+            merged: boolean;
+            /**
+             * Submitted Rev Id
+             * Format: uuid
+             */
+            submitted_rev_id: string;
         };
         /** ScheduledCreate */
         ScheduledCreate: {
@@ -4235,6 +4883,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+        };
+    };
+    admin_list_canvas_templates_api_v1_admin_canvas_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasTemplateOut"][];
+                };
+            };
+        };
+    };
+    admin_create_canvas_template_api_v1_admin_canvas_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_delete_canvas_template_api_v1_admin_canvas_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_canvas_template_api_v1_admin_canvas_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5153,6 +5918,407 @@ export interface operations {
             };
         };
     };
+    list_canvas_templates_api_v1_canvas_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasTemplateOut"][];
+                };
+            };
+        };
+    };
+    list_my_canvases_api_v1_canvases_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canvas_api_v1_canvases__canvas_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description If-None-Match matched the version (ETag) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_canvas_api_v1_canvases__canvas_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_canvas_api_v1_canvases__canvas_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_canvas_content_api_v1_canvases__canvas_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasConflictResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_canvas_api_v1_canvases__canvas_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_canvas_revisions_api_v1_canvases__canvas_id__revisions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                canvas_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    erase_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionMeta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    label_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionMeta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_canvas_revision_api_v1_canvases__canvas_id__revisions__revision_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                canvas_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_channels_api_v1_channels_get: {
         parameters: {
             query?: {
@@ -5321,6 +6487,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_channel_canvases_api_v1_channels__channel_id__canvases_get: {
+        parameters: {
+            query?: {
+                /** @description The trash instead (restorable) */
+                trashed?: boolean;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasMeta"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_canvas_api_v1_channels__channel_id__canvases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasCreate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the canvas made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasOut"];
                 };
             };
             /** @description Validation Error */

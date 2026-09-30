@@ -10,6 +10,7 @@ from app.core.time import utcnow
 from app.modules.activity import service as activity
 from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.bookmarks import service as bookmarks
+from app.modules.canvases import service as canvases
 from app.modules.channels import service as channels
 from app.modules.drafts import service as drafts
 from app.modules.emoji import service as emoji
@@ -47,6 +48,7 @@ async def bootstrap(
     visible = await channels.visible_user_ids(db, actor)  # M13e: None = everyone
     prefs = await notifications.preferences_for(db, actor.id)
     read_states = await reads.states_for_user(db, actor.id, [c.id for c in listed])
+    canvas_tabs = await canvases.tab_ids(db, [c.id for c in listed])
     with_prefs = [
         c.model_copy(
             update={
@@ -58,6 +60,7 @@ async def bootstrap(
                     overall=actor.notification_default,
                 ),
                 "read_state": read_states.get(c.id),
+                "canvas_tab_id": canvas_tabs.get(c.id),
             }
         )
         for c in listed

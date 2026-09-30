@@ -1,0 +1,9 @@
+{
+  "description": "Both append; one appended more: the longer one, once.",
+  "resolve": "fail",
+  "base": "## TODO\n",
+  "ours": "## TODO\n- [ ] a\n- [ ] b\n",
+  "theirs": "## TODO\n- [ ] a\n",
+  "expected": "## TODO\n- [ ] a\n- [ ] b\n",
+  "conflicts": []
+}

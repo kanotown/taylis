@@ -226,6 +226,15 @@ async def shared_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid.UU
     return {uid for ids in members.values() for uid in ids} | {user_id}
 
 
+async def member_channel_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every conversation the user belongs to, DMs included (canvases: GET /canvases)."""
+    return [channel.id for channel, _ in await repo.list_user_channels(db, user_id)]
+
+
+async def member_ids_of(db: AsyncSession, channel_id: uuid.UUID) -> list[uuid.UUID]:
+    return (await repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
+
+
 async def find_channel(db: AsyncSession, channel_id: uuid.UUID) -> Channel | None:
     """A channel row or None, for modules that own the access decision (M12h invites)."""
     return await repo.get_channel(db, channel_id)

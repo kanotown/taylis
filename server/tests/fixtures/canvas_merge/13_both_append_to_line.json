@@ -1,0 +1,9 @@
+{
+  "description": "Both add a word at the end of the same line, after a space: both kept.",
+  "resolve": "fail",
+  "base": "出席: 加納",
+  "ours": "出席: 加納 海老",
+  "theirs": "出席: 加納 田中",
+  "expected": "出席: 加納 田中 海老",
+  "conflicts": []
+}

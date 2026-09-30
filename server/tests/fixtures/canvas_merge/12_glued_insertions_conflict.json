@@ -1,0 +1,17 @@
+{
+  "description": "Different words typed into the same spot and glued to a neighbour (@ + name): a conflict rather than a mangled word.",
+  "resolve": "fail",
+  "base": "- [ ] 担当 @ / 期限",
+  "ours": "- [ ] 担当 @kano / 期限",
+  "theirs": "- [ ] 担当 @ebi / 期限",
+  "expected": "- [ ] 担当 @ebi / 期限",
+  "conflicts": [
+    {
+      "base": "- [ ] 担当 @ / 期限",
+      "ours": "- [ ] 担当 @kano / 期限",
+      "theirs": "- [ ] 担当 @ebi / 期限",
+      "ours_line": 0,
+      "theirs_line": 0
+    }
+  ]
+}

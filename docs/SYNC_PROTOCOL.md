@@ -231,6 +231,9 @@
 | `roster.updated` | all (guest を除く) | — | `{ user_id, profile: LabProfileOut \| null }` (M23)。名簿の行の追加 / 変更 / 削除 (`profile` が null なら外れた)。クライアントは user_id の表を差し替える。管理グループのメンバーの変化は別に `group.updated` で届く |
 | `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut] }` (M14f)。自分のサイドバーのセクション一覧全体。クライアントは差し替える |
 | `channel.links_updated` | channel | — | `{ channel_id, links: [ChannelLinkOut] }` (M15f)。会話の上部のリンク全体。クライアントは差し替える (bootstrap には含めず、会話を開いたときに `GET /channels/{id}/links` で読む) |
+| `canvas.created` | channel | — | `{ canvas: CanvasMeta }` (M41)。キャンバスの作成、ゴミ箱からの復元。本文は載せない。手順は §14 |
+| `canvas.updated` | channel | — | `{ canvas: CanvasMeta, change: "content" \| "title" \| "settings" \| "restore" }` (M41)。`version` が手元より大きければメタを差し替え、開いていて編集中でなければ本文を読み直す (§14) |
+| `canvas.deleted` | channel | — | `{ canvas_id, channel_id }` (M41)。ゴミ箱に移された。手元から消す |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
@@ -844,3 +847,72 @@ X の作成と 👍 は 1 行にまとまって届く (状態ベース)。イベ
     届いているフレームをすべて適用し終えるまで進めるので、イベントと後続の `read.updated` の間の状態を見られない。
     予約送信・システム行・追いつきの途中は操作が無い)。参照クライアント (`contract_client.py`) はこれらの規則どおりに
     動き、各端末は §10.4 のベクトルをテストにする
+
+## 14. キャンバス (M41、CANVAS.md §4.4・§4.6)
+
+キャンバスは会話に属する Markdown の文書。書き込みは REST だけで、WS の `canvas.*` は「新しい版がある」ことだけを
+知らせる (本文は載せない)。channel の seq は使わない (未読を増やさない)。3 端末は同じ手順に従う。
+マージのコードはサーバにしかなく、端末は「送った本文」と「サーバが返した本文」を比べるだけでよい。
+
+### 14.1 状態と読み込み
+
+- メタ (`CanvasMeta`) は「`version` が大きい方が勝つ」。会話を開いたとき・再接続の後に `GET /channels/{id}/canvases` を
+  読み直す (取りこぼした `canvas.*` はこれで回復する)。一覧全体は `GET /canvases?cursor=` (更新の新しい順)。
+- 会話のタブは bootstrap の `ChannelOut.canvas_tab_id` (bootstrap だけが埋める。ほかの応答では null)。その後は
+  `canvas.*` の `is_channel_tab` で追う。
+- 本文は `GET /canvases/{id}`。ETag は `"v<version>"` で、`If-None-Match` が一致すれば 304。
+- `channel.member_removed` で自分が外れたら、その会話のキャンバスと保存待ちを手元から消す。アーカイブされた会話は閲覧だけ。
+
+### 14.2 保存
+
+端末の状態 (キャンバスごと): `base_rev_id`、`editor_text`、`dirty`、`in_flight {client_save_id, sent, base} | null`。
+Tauri・iOS・Android は保存待ちを端末のストアに持つ (落ちても・オフラインでも同じ key で再送する)。
+
+```
+編集したら dirty。入力が 2 秒止まったとき、画面を閉じるとき、背面に回るときに save()
+save():
+  送信中なら終わってからもう一度。sent = editor_text。in_flight を保存
+  PUT /canvases/{id}/content {base_rev_id, body: sent, client_save_id (新しい UUIDv4), on_conflict: "fail"}
+  200 {canvas, submitted_rev_id, merged}:
+    editor_text == sent なら: base_rev_id = canvas.head_rev_id。canvas.body が sent と違えば (他の人の変更が
+      マージされた) エディタを canvas.body に差し替える (カーソルは前後で共通する先頭・末尾の長さで保つ)
+    そうでなければ (送信中に入力が続いた): base_rev_id = submitted_rev_id (送った本文そのものの版)。次の保存でマージされる
+  409 canvas_conflict: details.head (今の版) と details.conflicts [{base, ours, theirs, ours_line, theirs_line}] で
+    競合パネル (自分の版 / 相手の版 / 両方残す) → 同じ base_rev_id・新しい key・on_conflict = ours | theirs | both で再送
+    (details.timed_out なら文書全体が 1 つの競合)
+  409 canvas_base_expired: 元の版が無い (整理された・消去された)。details.head と手元の本文を並べて見せる
+  403 (canvas_edit_restricted / guest_restricted / posting_restricted / not_a_member) / 404: 編集を止めて理由を出す
+    (手元の本文は残す)。409 channel_archived も同じ
+  401 token_expired: refresh して 1 回だけ再試行
+  429 / 5xx / 通信エラー: in_flight を保ったまま、バックオフして同じ key で再送 (版は増えない)
+閲覧中 (dirty でない) に canvas.updated で大きい version が来たら GET /canvases/{id} (0.5 秒デバウンス、If-None-Match)
+編集中に来たら何もしない。次の保存でマージされ、入力が止まった時点で相手の変更が現れる
+```
+
+- **チェックの切り替え**に専用の API は無い。表示中の版の該当行の `[ ]` を `[x]` にして、その版を base に `PUT` する。
+  隣り合う項目を 2 人が同時にチェックしても両方残る。`edit_policy = owners` でもメンバー (guest 以外) はチェックだけは
+  変えられるが、その保存では `on_conflict` に `ours` / `both` を使えない (`403`)。
+- **冪等**: 同じ `client_save_id` の再送は、その保存が作った版を `submitted_rev_id` に、今の状態を `canvas` に入れて 200 を返す
+  (もう一度マージはしない)。別のキャンバスで使った key は `409 idempotency_conflict`。作成 (`POST
+  /channels/{id}/canvases`) と版の復元も `client_save_id` を取り、再送は最初の結果を返す (作成の再送は 200)。
+- 本文が変わらない保存では版もイベントも作らない (`submitted_rev_id` は head)。
+
+### 14.3 マージの規則 (サーバ、CANVAS.md §4.4)
+
+保存は `canvases` の行ロックで 1 つずつ処理する。`base_rev_id` が head ならそのまま新しい版にする。そうでなければ
+base・送られた本文・head を 3-way マージする。
+
+1. 行単位で base↔自分、base↔相手を対応させる (共通の先頭・末尾を除き、小さい区間は difflib、大きい区間は 1 回だけ
+   現れる行 (無ければ両側で同じ回数だけ現れる行) を目印に分割)。
+2. 片側だけが変えた区間はその側、両側が同じに変えた区間は 1 回。
+3. 同じ位置への挿入は両方 (相手 → 自分)。片方がもう片方を先頭か末尾に含むなら長い方だけ。
+4. 両側が変えた区間は、行数が同じなら 1 行ずつ、違えば区間全体を、語句に分けて同じ規則で比べる。語句は改行、空白の並び、
+   区切りの記号 1 字 (。、，．！？「」『』()[] など)、同じ文字種 (漢字 / ひらがな / カタカナ / 英数字 / その他) の並び。
+   日本語は空白が無くても文字種の境目で分かれるので、同じ文の別の句を 2 人が直してもマージできる。
+   語句の単位で同じ位置に別々の語句を足した場合は、どちらも前後の語句から空白・記号で離れているときだけ両方を残す
+   (`@` の直後に別々の名前を入れた、のような「くっつく」挿入は競合)。
+5. それでも重なる箇所が競合。`on_conflict` は競合した区間 (1 行、または区間全体) ごとに効く: `ours` は自分の版、`theirs` は
+   相手の版、`both` は相手の版の後に自分の版を `> ` で引用して残す。
+6. 所要時間は 200 ms まで (スレッドプールで実行)。超えたら文書全体を 1 つの競合として扱う (`timed_out`)。
+
+規則は `server/tests/fixtures/canvas_merge/*.json` のフィクスチャで固定している。

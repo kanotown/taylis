@@ -1,0 +1,9 @@
+{
+  "description": "Both add an item at the end of the same list: both kept, theirs first.",
+  "resolve": "fail",
+  "base": "# 議事録 2026-10-01 (木)\n## 出席\n加納、海老\n\n## 決定事項\n- 次回は 10/8\n\n## TODO\n- [ ] 予稿を提出 @kano\n- [ ] 旅費申請 @ebi\n",
+  "ours": "# 議事録 2026-10-01 (木)\n## 出席\n加納、海老\n\n## 決定事項\n- 次回は 10/8\n\n## TODO\n- [ ] 予稿を提出 @kano\n- [ ] 旅費申請 @ebi\n- [ ] 発表練習 @kano\n",
+  "theirs": "# 議事録 2026-10-01 (木)\n## 出席\n加納、海老\n\n## 決定事項\n- 次回は 10/8\n\n## TODO\n- [ ] 予稿を提出 @kano\n- [ ] 旅費申請 @ebi\n- [ ] ポスター印刷 @ebi\n",
+  "expected": "# 議事録 2026-10-01 (木)\n## 出席\n加納、海老\n\n## 決定事項\n- 次回は 10/8\n\n## TODO\n- [ ] 予稿を提出 @kano\n- [ ] 旅費申請 @ebi\n- [ ] ポスター印刷 @ebi\n- [ ] 発表練習 @kano\n",
+  "conflicts": []
+}

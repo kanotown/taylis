@@ -30,6 +30,8 @@ from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
+from app.modules.canvases import service as canvases
+from app.modules.canvases.router import router as canvases_router
 from app.modules.channel_links.router import router as channel_links_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
@@ -186,6 +188,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await workspace.ensure(session)
     except Exception:  # readiness reports the database
         log.exception("could not read the workspace identity at startup")
+    try:
+        async with app.state.db.session_factory() as session:
+            await canvases.ensure_builtin_templates(session)
+    except Exception:
+        log.exception("could not check the built-in canvas templates at startup")
     if settings.run_background_tasks:
         tasks.append(asyncio.create_task(app.state.relay.run(stop), name="outbox-relay"))
         tasks.append(asyncio.create_task(_purge_loop(app, stop), name="outbox-purge"))
@@ -223,6 +230,7 @@ def build_api_router() -> APIRouter:
     api.include_router(sidebar_router)
     api.include_router(drafts_router)
     api.include_router(channel_links_router)
+    api.include_router(canvases_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)
@@ -274,6 +282,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "search": RateLimiter(settings.search_rate_limit_per_user),
         "link_preview": RateLimiter(settings.link_preview_rate_limit_per_user),
         "message": RateLimiter(settings.message_rate_limit_per_user),
+        "canvas_save": RateLimiter(settings.canvas_save_rate_limit_per_user),
         "ws_connect": RateLimiter(settings.ws_connect_rate_limit_per_ip),
     }
     app.state.blobs = build_blobstore(settings)

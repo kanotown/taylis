@@ -171,6 +171,7 @@ server/
       drafts/            # 端末間で共有する下書き (本文のみ、draft.updated) (M15d)
       channel_links/     # 会話の上部のリンク (channel.links_updated) (M15f)
       templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
+      canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ merge.py、テンプレート templates.py、canvas.*) (M41)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync
@@ -199,7 +200,7 @@ server/
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。
    同一トランザクション内での付随更新も service 呼び出しでよい。例: `messages` → `reads.advance_in_tx()`。
 4. 依存方向は一方向に保つ:
-   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups, channels` (名簿の対象、管理グループのメンバー、指導教員を学生の times に加える M24)、`channels` の `POST /times` は指導教員の一覧を `main.py` が注入した関数で得る (channels は lab に依存しない)、`admin → lab` (匿名化で名簿の行を消す)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
+   `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups, channels` (名簿の対象、管理グループのメンバー、指導教員を学生の times に加える M24)、`channels` の `POST /times` は指導教員の一覧を `main.py` が注入した関数で得る (channels は lab に依存しない)、`admin → lab` (匿名化で名簿の行を消す)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`canvases → channels, audit` (メンバーシップ・権限・DM の相手の名前。M42 で `attachments`、共有メッセージの `messages` が加わる)、`sync → canvases` (bootstrap の `canvas_tab_id`)、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。
@@ -327,6 +328,7 @@ CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpoo
 | Sync | `GET /sync/bootstrap`, `GET /sync/summary` (開いていないワークスペースのバッジ), `WS /ws` |
 | Server | `GET /server` (認証不要。ワークスペース名と `workspace_id`。WORKSPACES.md) |
 | Attachments | `POST /attachments` (multipart), `GET /attachments/{id}`, `GET /attachments/{id}/content`, `GET /attachments/{id}/thumbnail` |
+| Canvases (M41、CANVAS.md §4.5) | `GET/POST /channels/{id}/canvases` (`?trashed=true` でゴミ箱), `GET /canvases` (自分の会話すべて、cursor), `GET/PATCH/DELETE /canvases/{id}` (GET は ETag / If-None-Match), `PUT /canvases/{id}/content` (保存: `base_rev_id` + 冪等キー、サーバ側マージ、409 `canvas_conflict` / `canvas_base_expired`), `POST /canvases/{id}/restore`, `GET /canvases/{id}/revisions`, `GET/PATCH/DELETE /canvases/{id}/revisions/{rev}`, `POST /canvases/{id}/revisions/{rev}/restore`, `GET /canvas-templates`, `GET/POST/PATCH/DELETE /admin/canvas-templates[/{id}]` |
 | Search | `GET /search/messages` (`q`, `channel_id`, `from_user_id`, `after`, `before`, `limit`, `offset`。ランキング結果なので offset。応答は `hits[].message` と `keywords`) |
 | Health | `GET /healthz` (プロセス生存), `GET /readyz` (DB / オブジェクトストレージ到達性) |
 
@@ -445,3 +447,4 @@ RealtimeHub だけ**。永続的な処理は必ず outbox の永続ハンドラ�
 | D21 | 本番への自動デプロイはタグ → GitHub Actions → GHCR → SSH の強制コマンド → `docker compose` の入れ替え | 1 台の VPS に数十人規模なら compose のままで足りる。イメージをレジストリに置くとサーバでビルドせずに済み、タグで戻せる。デプロイ前のバックアップと /readyz による確認・自動ロールバックを `infra/deploy.sh` に持たせる (2026-09-27) | Kubernetes / Argo CD (過剰)、サーバ上で git pull してビルド (サーバに Git の権限とビルド環境が要る)、Watchtower (イメージの自動更新が DB バックアップやマイグレーションと連携しない) |
 | D22 | 他のサイトの nginx が 80 / 443 と証明書 (certbot) を持つ共用サーバーでは、nginx が TLS を終端し、Caddy は `127.0.0.1:18080` の HTTP だけを受ける (`docker-compose.behind-proxy.yml`) | 既存のサイトに手を入れずに同居できる。Caddyfile (配信するもの、本文サイズ、CSP) は両方の構成で同じものを使う。利用者のアドレスと https は nginx が上書きした `X-Forwarded-For` / `-Proto` を、この構成でだけ Caddy が信用して (`trusted_proxies`) アプリに渡す (2026-09-27) | nginx から app へ直接 (Web クライアントの配信と CSP を nginx 側に二重に持つ)、Caddy に 443 を譲る (既存のサイトが止まる) |
 | D23 | iOS の会話 (チャンネル・スレッド) は上下を反転した一覧 (スクロールビューを反転し、各行を元の向きに戻す。`UpsideDownList.swift`) | 最新の行がスクロールの原点に来るので、スクロールビューが原点を保つだけで「最新は入力欄のすぐ上」が成り立つ。キーボード・候補バー・入力欄の伸び縮み、送信・受信 (行の移動をアニメーションで)、短い会話が下に寄ること、古いページ (遠い端に入る) が、位置を補正するコードなしで正しくなる。途中を読んでいるときの受信は SwiftUI の `scrollPosition(id:)` が見ている行を保つ。上から並べて下端に合わせ続ける方式では、アンカー・キーボード追従・スライド・補正が 700 行を超え、補正どうしがぶつかって送信のたびにガクついた (ビルド 21〜30、2026-09-30) | 下端合わせの補正を続ける (場合ごとにずれが残る)、UICollectionView に書き直す (反転で足りた。行は SwiftUI のまま) |
+| D24 | キャンバスは Markdown 全体 + 版 (`base_rev_id`) + サーバ側の 3-way マージ (行 → 語句)。CRDT は保留 (M41、CANVAS.md §3) | 3 端末ともネイティブのエディタのまま作れ、マージのコードはサーバ (Python、標準の difflib) の 1 か所で済む。数人がときどき同時に書く規模なら、自動保存 (約 2 秒) とマージで十分。保存は行ロックで直列化し、重なりは黙って消さず競合として本人に見せる | ブロック型 (エディタを 3 つ作る費用)、Yjs / Automerge (バインディングが 1.0 前、モバイルが WebView になる、WS 受信専用 D7 の例外が要る) |

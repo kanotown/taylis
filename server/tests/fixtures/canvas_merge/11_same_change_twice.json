@@ -1,0 +1,9 @@
+{
+  "description": "Both made the same change (a resend): it appears once.",
+  "resolve": "fail",
+  "base": "a\nb\n",
+  "ours": "a\nb2\n",
+  "theirs": "a\nb2\n",
+  "expected": "a\nb2\n",
+  "conflicts": []
+}

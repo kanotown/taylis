@@ -1,0 +1,9 @@
+{
+  "description": "Words at both ends of a line, and one side adds a line after it.",
+  "resolve": "fail",
+  "base": "締切は 10/15 です。提出先は教員です。\n",
+  "ours": "締切は 10/20 です。提出先は教員です。\n",
+  "theirs": "締切は 10/15 です。提出先は事務です。\n追記: 印刷して持参\n",
+  "expected": "締切は 10/20 です。提出先は事務です。\n追記: 印刷して持参\n",
+  "conflicts": []
+}

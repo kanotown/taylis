@@ -1,0 +1,9 @@
+{
+  "description": "The same line, different words (English): merged word by word.",
+  "resolve": "fail",
+  "base": "The quick brown fox jumps over the lazy dog.",
+  "ours": "The slow brown fox jumps over the lazy dog.",
+  "theirs": "The quick brown fox jumps over the sleepy dog.",
+  "expected": "The slow brown fox jumps over the sleepy dog.",
+  "conflicts": []
+}

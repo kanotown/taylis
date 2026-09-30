@@ -221,7 +221,9 @@ def cmd_anonymize_user(args: argparse.Namespace) -> int:
 
 
 async def export_channel_lines(session: Any, channel_id: uuid.UUID) -> list[str]:
-    """JSONL lines (one message each) for a channel: messages, reactions, attachment metadata."""
+    """JSONL lines for a channel: one per message (with reactions and attachment metadata), then
+    one per canvas (`"type": "canvas"`, M41)."""
+    from app.modules.canvases import service as canvases
     from app.modules.messages import service as messages
     from app.modules.users import service as users
 
@@ -230,6 +232,11 @@ async def export_channel_lines(session: Any, channel_id: uuid.UUID) -> list[str]
     for message in await messages.export_rows(session, channel_id):
         record = message.model_dump(mode="json")
         record["sender_username"] = names.get(message.sender_id)
+        lines.append(json.dumps(record, ensure_ascii=False))
+    # M41 (CANVAS.md §4.14): the conversation's canvases after its messages, marked by "type".
+    for canvas in await canvases.export_rows(session, channel_id):
+        record = {"type": "canvas", **canvas.model_dump(mode="json")}
+        record["created_by_username"] = names.get(canvas.created_by)
         lines.append(json.dumps(record, ensure_ascii=False))
     return lines
 

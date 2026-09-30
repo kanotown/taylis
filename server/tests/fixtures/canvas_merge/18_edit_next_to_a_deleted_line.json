@@ -1,0 +1,9 @@
+{
+  "description": "One edits a line while the other deletes the line after it: the region's line counts differ, so it is merged word by word (newlines are words) and both happen.",
+  "resolve": "fail",
+  "base": "intro\nkeep this line\ndrop this line\noutro\n",
+  "ours": "intro\nkeep this edited line\ndrop this line\noutro\n",
+  "theirs": "intro\nkeep this line\noutro\n",
+  "expected": "intro\nkeep this edited line\noutro\n",
+  "conflicts": []
+}
