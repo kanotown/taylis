@@ -30,7 +30,7 @@ async function harness(options: { restored?: CanvasPendingState | null; body?: s
   const bob = server.addUser("bob");
   const channelId = server.createChannel("lab", alice.id).id;
   server.join(channelId, bob.id);
-  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), as_tab: true, body: options.body ?? BODY, title: "議事録" });
+  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: options.body ?? BODY, title: "議事録" });
   const inner = server.apiFor(bob.id);
   const api: Harness["api"] = {
     calls: [],

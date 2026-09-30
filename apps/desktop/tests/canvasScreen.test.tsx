@@ -123,7 +123,7 @@ it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a
 it("phone: 「キャンバス」 in the conversation's tab row; someone else's save shows up while reading", async () => {
   compact = true;
   const { server, alice, channelId } = await setup();
-  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), as_tab: true, body: TASKS, title: "学会準備" });
+  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
   fireEvent.click(screen.getByTitle("#lab"));
   await settle(20);
   expect(within(screen.getByRole("tablist", { name: "会話の表示" })).getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "ピン留め", "ファイル"]);
@@ -144,7 +144,7 @@ it("phone: 「キャンバス」 in the conversation's tab row; someone else's s
 
 it("a member who may only tick (edit_policy owners): no editor, the reason, and a tick is saved", async () => {
   const { server, alice, channelId } = await setup();
-  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), as_tab: true, body: TASKS, title: "学会準備" });
+  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body: TASKS, title: "学会準備" });
   server.updateCanvas(alice.id, canvas.id, { edit_policy: "owners" });
   await openCanvasTab();
   expect(screen.queryByRole("tab", { name: "編集" })).toBeNull();
@@ -162,7 +162,7 @@ it("a member who may only tick (edit_policy owners): no editor, the reason, and 
 it("the same words changed by someone else: 自分の版 / 相手の版 / 両方残す, and 自分の版 wins", async () => {
   const { server, alice, channelId } = await setup();
   const body = "# 議事録\n来週までに研究計画を提出する。\n";
-  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), as_tab: true, body, title: "議事録" });
+  const canvas = server.createCanvas(alice.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: true, body, title: "議事録" });
   await openCanvasTab();
   expect(editor()!.value).toBe(body);
   server.holdEvents = true; // alice's save arrives while bob types (its event later)
@@ -185,7 +185,7 @@ it("the same words changed by someone else: 自分の版 / 相手の版 / 両方
 
 it("to the trash from ⋯ and back from 「ゴミ箱」", async () => {
   const { server, bob, channelId } = await setup();
-  const canvas = server.createCanvas(bob.id, channelId, { client_save_id: crypto.randomUUID(), as_tab: false, body: "メモ", title: "自分のメモ" });
+  const canvas = server.createCanvas(bob.id, channelId, { client_save_id: crypto.randomUUID(), share_to_channel: false, as_tab: false, body: "メモ", title: "自分のメモ" });
   await openCanvasTab();
   fireEvent.keyDown(screen.getByRole("button", { name: "キャンバスの操作" }), { key: "Enter" });
   await settle();

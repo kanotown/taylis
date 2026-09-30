@@ -1448,6 +1448,7 @@ export class AppController {
     const body = {
       client_save_id: crypto.randomUUID(),
       as_tab: options.asTab ?? false,
+      share_to_channel: false, // M42: posting it to the conversation is its own action
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       ...(options.templateKey ? { template_key: options.templateKey } : {}),
       ...(options.title ? { title: options.title } : {}),
