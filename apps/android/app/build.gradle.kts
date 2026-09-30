@@ -50,6 +50,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     // Play services (via Firebase) pulls an old androidx.fragment; ActivityResult needs 1.3+.
     implementation(libs.androidx.fragment)
+    // Custom Tabs for Google sign-in (M48, docs/SSO.md §6): Jetpack; falls back to the default browser by itself.
+    implementation(libs.androidx.browser)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)

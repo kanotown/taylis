@@ -86,10 +86,12 @@ import jp.chikuwachat.android.ui.channelTitle
 import jp.chikuwachat.android.ui.formatSize
 import jp.chikuwachat.android.ui.messageLine
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
@@ -201,6 +203,8 @@ class AppController(private val app: Application) {
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val secrets = SecretStore(app)
+    /** M48: the Google sign-in waiting for the browser, encrypted like the refresh tokens (it survives process death). */
+    private val ssoPending = PendingSsoStore({ secrets.secret(SSO_PENDING_KEY) }, { secrets.putSecret(SSO_PENDING_KEY, it) })
     private val notifier = Notifier(app)
     /** Plain settings on this device: the workspace list (M16c) and recent searches (M16b). */
     val prefs: KeyValueStore = SharedPrefsStore(app)
@@ -237,6 +241,8 @@ class AppController(private val app: Application) {
     private var workspacesLoaded = false
     /** Startup has chosen and opened a workspace; before that a tapped notification only records its choice. */
     private var restored = false
+    /** Completed with [restored]: a sign-in that returns from the browser waits for startup (it may have started the app). */
+    private val bootDone = CompletableDeferred<Unit>()
     /** The workspace a tapped notification asked for (WORKSPACES.md §7). */
     private var pendingWorkspaceKey: String? = null
     /** Workspaces being signed out on purpose: their end removes them from the list instead of marking them signed out. */
@@ -257,9 +263,11 @@ class AppController(private val app: Application) {
 
     private fun account(server: String, username: String) = "$server|$username"
 
-    private fun makeApi(server: String, username: String): ApiClient {
+    private fun makeApi(server: String, username: String): ApiClient = wire(ApiClient(server, http), server, username)
+
+    /** Saves the client's rotated refresh tokens under its account and ends the workspace when it signs out. */
+    private fun wire(api: ApiClient, server: String, username: String): ApiClient {
         val account = account(server, username)
-        val api = ApiClient(server, http)
         api.onTokens = { tokens -> scope.launch { secrets.putSecret(account, tokens.refreshToken) } }
         api.onSignedOut = { scope.launch { clientSignedOut(server, api) } }
         return api
@@ -334,8 +342,10 @@ class AppController(private val app: Application) {
                     ?: workspaces.firstOrNull()
                 if (chosen == null) showLogin(null) else openWorkspace(chosen)
                 restored = true
+                bootDone.complete(Unit)
             }
         }.join()
+        ssoPending.purgeExpired()
         push.refresh() // WORKSPACES.md §8: at startup the token goes to every signed-in workspace
     }
 
@@ -515,38 +525,9 @@ class AppController(private val app: Application) {
             error = "サーバ URL が正しくありません"
             return
         }
-        // A registered address keeps its spelling: it names the saved token and the local store.
-        var key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
         busy = true
         try {
-            val info = try {
-                ApiClient(key, http).serverInfo().takeIf { it.product == Workspaces.PRODUCT }
-            } catch (e: ApiException.Network) {
-                error = describe(e)
-                return
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (addingWorkspace && e is ApiException.Api && e.status >= 500) {
-                    error = describe(e)
-                    return
-                }
-                null
-            }
-            if (addingWorkspace && info == null) {
-                error = NOT_CHIKUWA
-                return
-            }
-            val known = info?.let { Workspaces.findRegistered(workspaces, it.workspaceId, key) }
-            if (known != null && !known.signedOut && (addingWorkspace || known.serverUrl != activeKey)) {
-                // Registered and signed in already: that workspace opens instead.
-                error = null
-                totpRequired = false
-                sessionLock.withLock { switchLocked(known.serverUrl) }
-                notice = "${known.name} は登録済みです"
-                return
-            }
-            if (known != null) key = known.serverUrl // registered but signed out: sign in to it again
+            val (key, info) = signInTarget(normalized) ?: return
             val api = makeApi(key, username)
             val tokens = api.login(username, password, "android", Build.MODEL, BuildConfig.VERSION_NAME, totpCode?.let(Totp::normalize))
             secrets.putSetting(SERVER_KEY, key)
@@ -560,6 +541,140 @@ class AppController(private val app: Application) {
                 "invalid_totp" -> { totpRequired = true; error = Totp.errorText(e.code) }
                 else -> { totpRequired = false; error = describe(e) }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            report(e)
+        } finally {
+            busy = false
+        }
+    }
+
+    /**
+     * The server a sign-in form goes to (password or Google): GET /server checked; when adding, a server that is not
+     * ChikuwaChat is refused. Null when the form stops: a failure in [error], or an already registered and signed-in
+     * workspace (same workspace_id) opened instead of signing in twice (one account per server).
+     */
+    private suspend fun signInTarget(normalized: String): Pair<String, ServerInfoOut?>? {
+        // A registered address keeps its spelling: it names the saved token and the local store.
+        var key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        val info = try {
+            ApiClient(key, http).serverInfo().takeIf { it.product == Workspaces.PRODUCT }
+        } catch (e: ApiException.Network) {
+            error = describe(e)
+            return null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (addingWorkspace && e is ApiException.Api && e.status >= 500) {
+                error = describe(e)
+                return null
+            }
+            null
+        }
+        if (addingWorkspace && info == null) {
+            error = NOT_CHIKUWA
+            return null
+        }
+        val known = info?.let { Workspaces.findRegistered(workspaces, it.workspaceId, key) }
+        if (known != null && !known.signedOut && (addingWorkspace || known.serverUrl != activeKey)) {
+            // Registered and signed in already: that workspace opens instead.
+            error = null
+            totpRequired = false
+            sessionLock.withLock { switchLocked(known.serverUrl) }
+            notice = "${known.name} は登録済みです"
+            return null
+        }
+        if (known != null) key = known.serverUrl // registered but signed out: sign in to it again
+        return key to info
+    }
+
+    // --- Google sign-in (M48, docs/SSO.md §6) -----------------------------------------------------
+
+    /** Whether the login form offers 「Google でログイン」 for this address (false for a server before M48 or offline). */
+    suspend fun googleSignInAvailable(server: String): Boolean {
+        val normalized = Workspaces.normalizeServerUrl(server) ?: return false
+        val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        return Sso.googleEnabled(ApiClient(key, http))
+    }
+
+    /**
+     * 「Google でログイン」: checks the server as the password form does, keeps a new verifier with the server it is for
+     * (a previous pending sign-in is replaced), and returns the start URL for the browser; null when the form stops.
+     */
+    suspend fun beginGoogleSignIn(server: String): String? = scope.async { beginGoogleSignInNow(server) }.await()
+
+    private suspend fun beginGoogleSignInNow(server: String): String? {
+        val normalized = Workspaces.normalizeServerUrl(server)
+        if (normalized == null) {
+            error = "サーバ URL が正しくありません"
+            return null
+        }
+        busy = true
+        try {
+            val (key, _) = signInTarget(normalized) ?: return null
+            val verifier = Sso.newVerifier()
+            ssoPending.save(key, verifier)
+            // Deleted after ten minutes even when the browser never comes back (and at the next start otherwise).
+            scope.launch { delay(Sso.PENDING_TTL_MS); ssoPending.purgeExpired() }
+            error = null
+            totpRequired = false
+            return Sso.startUrl(key, Sso.challenge(verifier))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            report(e)
+            return null
+        } finally {
+            busy = false
+        }
+    }
+
+    /** The browser could not be opened: the sign-in it would have finished is dropped. */
+    fun googleSignInNotOpened() {
+        scope.launch { ssoPending.take() }
+        error = "ブラウザを開けませんでした"
+    }
+
+    /**
+     * `chikuwachat://sso?ticket=…` (or `?sso_error=`) from the browser (MainActivity). Ignored unless a sign-in is pending:
+     * a replayed or foreign link finds none. The pending verifier is used once, whatever the outcome; the ticket is
+     * exchanged with the server the sign-in started on (not the workspace on screen).
+     */
+    fun handleSsoCallback(url: String?) {
+        val callback = Sso.parseCallback(url) ?: return
+        scope.launch {
+            bootDone.await()
+            val pending = ssoPending.take() ?: return@launch
+            when (callback) {
+                is Sso.Callback.Failure -> error = Sso.errorText(callback.code)
+                is Sso.Callback.Ticket -> exchangeSsoTicket(pending, callback.ticket)
+            }
+        }
+    }
+
+    private suspend fun exchangeSsoTicket(pending: PendingSso, ticket: String) {
+        val key = pending.serverUrl
+        busy = true
+        try {
+            // The account (and so where its refresh token is kept) is known from the answer only.
+            val client = ApiClient(key, http)
+            val tokens = client.ssoExchange(ticket, pending.verifier, Sso.PLATFORM, Build.MODEL, BuildConfig.VERSION_NAME)
+            val username = tokens.user.username
+            wire(client, key, username)
+            secrets.putSecret(account(key, username), tokens.refreshToken)
+            val info = try {
+                client.serverInfo().takeIf { it.product == Workspaces.PRODUCT }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null // the name follows when the workspace opens
+            }
+            secrets.putSetting(SERVER_KEY, key)
+            secrets.putSetting(USERNAME_KEY, username)
+            error = null
+            totpRequired = false
+            sessionLock.withLock { adoptSession(client, username, tokens.user, info) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1895,6 +2010,8 @@ class AppController(private val app: Application) {
         const val NOT_CHIKUWA = "ChikuwaChat のサーバーではありません"
         const val SERVER_KEY = "server"
         const val USERNAME_KEY = "username"
+        /** M48: the pending Google sign-in's secret name (never an account's `server|username`). */
+        const val SSO_PENDING_KEY = "sso.pending"
         // 10.0.2.2 is the host machine from the Android emulator.
         const val DEFAULT_SERVER = "http://10.0.2.2:8000"
     }
