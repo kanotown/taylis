@@ -29,6 +29,15 @@ class MentionsTest {
         assertEquals("<@${alice.id}>", Mentions.encode("@Alice", users))
     }
 
+    /** Right after Japanese text or punctuation too (M46: 「まとめます。@android2」 was left as text); e-mail and tokens stay. */
+    @Test fun mentionsRightAfterJapaneseText() {
+        assertEquals("まとめます。<@${bob.id}>", Mentions.encode("まとめます。@bob.k", users))
+        assertEquals("田中さん<@${alice.id}> よろしく", Mentions.encode("田中さん@alice よろしく", users))
+        assertEquals("alice@example.jp", Mentions.encode("alice@example.jp", users))
+        assertEquals("<@${alice.id}>", Mentions.encode("<@${alice.id}>", users))
+        assertEquals("al", Mentions.query("確認。@al"))
+    }
+
     @Test fun decodesTokensToHandles() {
         val byId = users.associateBy { it.id }
         assertEquals("hi @bob.k <!unknown> @here", Mentions.decode("hi <@${bob.id}> <!unknown> <!here>", byId))

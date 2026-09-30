@@ -253,6 +253,7 @@ export function CanvasEditor({ controller, saver, className, autoFocus = false }
         }}
         onCompositionEnd={() => {
           composing.current = false;
+          saver.compositionEnded();
         }}
         onBlur={(event) => {
           lastCaret.current = event.currentTarget.selectionStart ?? null;

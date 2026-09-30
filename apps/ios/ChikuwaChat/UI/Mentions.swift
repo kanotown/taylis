@@ -11,11 +11,12 @@ enum Mentions {
         var id: String { username }
     }
 
-    private static let handle = try! NSRegularExpression(pattern: #"(^|[\s(])@([A-Za-z0-9._-]+)"#)
+    /// After anything but an ASCII handle character, @ or <: 「まとめます。@kano」 is a mention, a@b.jp and <@uuid> are not.
+    private static let handle = try! NSRegularExpression(pattern: #"(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)"#)
     private static let userToken = try! NSRegularExpression(pattern: #"<@([0-9a-f-]{36})>"#)
     private static let allToken = try! NSRegularExpression(pattern: #"<!(channel|here)>"#)
     private static let groupToken = try! NSRegularExpression(pattern: #"<@group:([0-9a-f-]{36})>"#)
-    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(])@([\p{L}\p{M}\p{N}._-]*)$"#)
+    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[^A-Za-z0-9._@<-])@([\p{L}\p{M}\p{N}._-]*)$"#)
 
     static func encode(_ text: String, users: some Collection<UserPublic>, groups: [GroupOut] = []) -> String {
         var byName = Dictionary(users.map { ($0.username.lowercased(), "<@\($0.id)>") }, uniquingKeysWith: { first, _ in first })

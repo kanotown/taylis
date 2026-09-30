@@ -232,7 +232,7 @@ object CanvasText {
     }
 
     /** `@name` after anything but a letter, digit, `.`, `_`, `-` or `@` (an e-mail address stays text). */
-    private val CANVAS_HANDLE = Regex("""(^|[^A-Za-z0-9._@-])@([A-Za-z0-9._-]+)""")
+    private val CANVAS_HANDLE = Regex("""(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)""")
 
     /**
      * The editor's `@username` back to the stored `<@uuid>` (§4.2). Unlike the composer's [Mentions.encode] (a mention
