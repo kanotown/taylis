@@ -14,6 +14,12 @@ enum Schedule {
         return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
     }
 
+    /// A choice's text: its name, and its time when that says more (「1 時間後 (今日 21:20)」); 「明日 9:00」 once, not twice.
+    static func choice(_ preset: Preset, now: Date = Date()) -> String {
+        let when = label(preset.at, now: now)
+        return when == preset.label ? preset.label : "\(preset.label) (\(when))"
+    }
+
     /// Slack-like choices that are always in the future relative to `now`.
     static func presets(now: Date = Date(), calendar: Calendar = .current) -> [Preset] {
         var list: [Preset] = []

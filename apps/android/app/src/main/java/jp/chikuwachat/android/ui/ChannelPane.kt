@@ -1021,7 +1021,7 @@ private fun TemplateMenu(expanded: Boolean, templates: List<TemplateOut>, onDism
 private fun ScheduleMenu(expanded: Boolean, onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit, onCustom: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Schedule.presets().forEach { preset ->
-            DropdownMenuItem(text = { Text(preset.label + "  " + Schedule.label(preset.at)) }, onClick = { onDismiss(); onPick(preset.at) })
+            DropdownMenuItem(text = { Text(Schedule.choice(preset)) }, onClick = { onDismiss(); onPick(preset.at) })
         }
         HorizontalDivider()
         DropdownMenuItem(text = { Text("日時を指定…") }, onClick = { onDismiss(); onCustom() })

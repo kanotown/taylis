@@ -27,6 +27,14 @@ class ScheduleTest {
         assertEquals(Instant.parse("2026-11-01T05:30:00Z"), Schedule.atDateTime(LocalDate.of(2026, 11, 1), LocalTime.of(1, 30), ny)?.toInstant())
     }
 
+    @Test fun aChoiceShowsItsTimeOnlyWhenThatSaysMore() {
+        val now = local(2026, 10, 2, 19, 30)
+        val tomorrow = Schedule.presets(now).first { it.key == "tomorrow9" }
+        assertEquals("明日 9:00", Schedule.choice(tomorrow, now))
+        val inAnHour = Schedule.presets(now).first { it.key == "1h" }
+        assertEquals("1 時間後  今日 20:30", Schedule.choice(inAnHour, now))
+    }
+
     @Test fun presetsAreInTheFutureAndNextMondayIsNeverToday() {
         val friday = local(2026, 10, 2, 19, 30)
         val presets = Schedule.presets(friday)

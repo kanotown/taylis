@@ -24,6 +24,12 @@ object Schedule {
         return local.atZone(zone)
     }
 
+    /** A choice's text: its name, and its time when that says more (「1 時間後  今日 21:20」); 「明日 9:00」 once, not twice. */
+    fun choice(preset: Preset, now: ZonedDateTime = ZonedDateTime.now()): String {
+        val whenLabel = label(preset.at, now)
+        return if (whenLabel == preset.label) preset.label else preset.label + "  " + whenLabel
+    }
+
     /** Slack-like choices that are always in the future relative to `now`. */
     fun presets(now: ZonedDateTime = ZonedDateTime.now()): List<Preset> {
         val list = ArrayList<Preset>()
