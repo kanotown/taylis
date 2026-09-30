@@ -29,7 +29,7 @@ import { browserConnector } from "../sync/ws";
 import { plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
-import { readSendKey, type SendKey, writeSendKey } from "../ui/prefs";
+import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -91,6 +91,16 @@ export class AppController {
   setSendKey(value: SendKey): void {
     this.sendKey = value;
     writeSendKey(value);
+    this.emit();
+  }
+  /**
+   * M47 「連続した投稿をまとめる」: consecutive posts from one person grouped in the timelines and threads. Stored per
+   * device; kept here too, so the open views follow a change at once (and it holds without storage).
+   */
+  groupPosts: boolean = readGroupPosts();
+  setGroupPosts(value: boolean): void {
+    this.groupPosts = value;
+    writeGroupPosts(value);
     this.emit();
   }
   /** Message in inline edit mode (Timeline / ThreadPane); ↑ in an empty composer sets it. */

@@ -4,6 +4,7 @@ export type SendKey = "enter" | "shift-enter";
 const SEND_KEY = "chikuwa.prefs.sendKey";
 const SIDEBAR_WIDTH = "chikuwa.prefs.sidebarWidth";
 const PANE_WIDTH = "chikuwa.prefs.paneWidth";
+const GROUP_POSTS = "chikuwa.prefs.groupPosts";
 /** The right-hand pane (thread, pins): dragged by its left edge. */
 export const PANE_MIN = 320;
 export const PANE_MAX = 760;
@@ -36,6 +37,15 @@ export function readSendKey(): SendKey {
 
 export function writeSendKey(value: SendKey): void {
   write(SEND_KEY, value);
+}
+
+/** M47 「連続した投稿をまとめる」. Default off: a picture and name on every post (channels, DMs and threads). */
+export function readGroupPosts(): boolean {
+  return read(GROUP_POSTS) === "1";
+}
+
+export function writeGroupPosts(value: boolean): void {
+  write(GROUP_POSTS, value ? "1" : null);
 }
 
 export function readSidebarWidth(): number {

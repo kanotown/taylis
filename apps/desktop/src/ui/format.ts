@@ -104,12 +104,30 @@ export type TimelineItem =
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 /**
+ * M47: whether `message` goes on under `previous` as a compact row, in a timeline or a thread: the same sender, within
+ * five minutes, on the same day (a date separator comes between otherwise), neither a system post. The callers cut the
+ * run at their dividers; the timeline also at a reply sent to the channel. Pending messages group like sent ones: my
+ * second message must not show the header until the server confirms it and then drop it (the jolt when sending several
+ * in a row).
+ */
+export function continuesGroup(previous: MessageState, message: MessageState, now = new Date()): boolean {
+  return (
+    (previous.type ?? "user") === "user" &&
+    (message.type ?? "user") === "user" &&
+    previous.sender_id === message.sender_id &&
+    dayKey(previous.created_at, now) === dayKey(message.created_at, now) &&
+    Math.abs(new Date(message.created_at).getTime() - new Date(previous.created_at).getTime()) < GROUP_WINDOW_MS
+  );
+}
+
+/**
  * Timeline rows: date separators, one "new messages" divider before the first message the reader has
- * not seen, and consecutive messages from the same sender within five minutes collapsed into compact rows.
+ * not seen, and, with `group` (M47 「連続した投稿をまとめる」), consecutive messages from the same sender within
+ * five minutes collapsed into compact rows.
  */
 export function buildTimeline(
   messages: MessageState[],
-  options: { firstUnreadAfterSeq?: number | null; meId?: string | null; now?: Date } = {},
+  options: { firstUnreadAfterSeq?: number | null; meId?: string | null; now?: Date; group?: boolean } = {},
 ): TimelineItem[] {
   const now = options.now ?? new Date();
   const items: TimelineItem[] = [];
@@ -137,13 +155,11 @@ export function buildTimeline(
       previous = null;
     }
     const compact =
+      !!options.group &&
       previous !== null &&
-      previous.sender_id === message.sender_id &&
       !previous.parent_id && // a reply also sent to the channel (M15c) keeps its own header
       !message.parent_id &&
-      // Pending messages group like sent ones: my second message must not show the header until the server
-      // confirms it and then drop it (the jolt when sending several in a row).
-      Math.abs(new Date(message.created_at).getTime() - new Date(previous.created_at).getTime()) < GROUP_WINDOW_MS;
+      continuesGroup(previous, message, now);
     items.push({ kind: "message", key: message.id, message, compact });
     previous = message;
   }

@@ -24,7 +24,8 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
   const messages: MessageState[] = useMemo(() => (focus ? focus.context.filter((m) => !m.deleted) : (preview?.messages ?? [])), [focus, preview?.messages]);
   const meId = controller.store.me?.id ?? null;
   const today = new Date().toDateString();
-  const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: null, meId }), [messages, meId, today]);
+  const group = controller.groupPosts;
+  const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: null, meId, group }), [messages, meId, today, group]);
   const container = useRef<HTMLDivElement>(null);
   const [tapHandlers] = useState(() => tapClosesKeyboard());
   /** Older rows were put above: the reader stays on what they were looking at. */

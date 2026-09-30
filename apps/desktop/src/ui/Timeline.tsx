@@ -80,7 +80,8 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   const mark = focus ? null : dividerMark(heldUnread, unreadMark.current.seq, channel.oldestLoadedSeq);
   // Rebuilt when the rows, the divider or the day change, not on every render of the app (M21).
   const today = new Date().toDateString();
-  const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: mark, meId: me?.id ?? null }), [messages, mark, me?.id, today]);
+  const group = controller.groupPosts;
+  const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: mark, meId: me?.id ?? null, group }), [messages, mark, me?.id, today, group]);
   // The rows are memoized (M21): one function for the life of the view, calling the latest prop (MainScreen passes a new
   // one on every render).
   const openThreadRef = useRef(onOpenThread);

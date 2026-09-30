@@ -7,7 +7,7 @@ import { firstUnreadRow, passedUnseen } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { tapClosesKeyboard } from "../platform/viewport";
 import { Composer } from "./Composer";
-import { rowKey } from "./format";
+import { continuesGroup, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button } from "./primitives";
@@ -169,6 +169,9 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   // 「新しい返信」: the divider sits before the first reply from someone else past my read position; only once the
   // whole thread is held (the newest replies alone would put it in the wrong place).
   const firstUnread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me)?.id : undefined;
+  // M47 「連続した投稿をまとめる」: replies group by the timeline's rule; the parent above always has its picture, and
+  // 「新しい返信」 starts a new run.
+  const group = controller.groupPosts;
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
@@ -201,7 +204,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
               <span className="h-px flex-1 bg-line" />
             </div>
             <div data-replies="">
-              {replies.map((reply) => (
+              {replies.map((reply, index) => (
                 <div key={rowKey(reply)}>
                   {reply.id === firstUnread && (
                     <div ref={divider} className="my-1 flex items-center gap-2 text-[11px] font-semibold text-rose-500">
@@ -209,7 +212,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
                       新しい返信
                     </div>
                   )}
-                  <MessageRow thread message={reply} controller={controller} />
+                  <MessageRow thread message={reply} controller={controller} compact={group && index > 0 && reply.id !== firstUnread && continuesGroup(replies[index - 1]!, reply)} />
                 </div>
               ))}
             </div>
