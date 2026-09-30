@@ -81,17 +81,26 @@ struct ChannelLinkChips: View {
 
 /// M29: what a conversation's body shows (Slack's tabs under the header).
 enum ChannelTab: Hashable, CaseIterable {
-    /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1).
-    case messages, canvas, pins, files
+    /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1). M52: 「予定」 third (CALENDAR.md §7).
+    case messages, canvas, events, pins, files
 
     var title: String {
         switch self {
         case .messages: "メッセージ"
         case .canvas: "キャンバス"
+        case .events: "予定"
         case .pins: "ピン留め"
         case .files: "ファイル"
         }
     }
+
+    /// The conversation's tabs: 「予定」 only in public and private channels (a DM has no shared calendar, §9 5.).
+    static func tabs(for channel: ChannelState) -> [ChannelTab] {
+        allCases.filter { $0 != .events || AppController.hasCalendar(channel) }
+    }
+
+    /// The tab's name: 「予定 2」 while the channel has events today or tomorrow.
+    func label(upcoming: Int) -> String { self == .events ? CalendarDates.eventsTabLabel(upcoming) : title }
 }
 
 /// M29: one row under the header: the tabs, then the conversation's links (the link bar moved in here).
@@ -99,6 +108,8 @@ struct ChannelTabsRow: View {
     @Bindable var controller: AppController
     let channel: ChannelState
     @Binding var tab: ChannelTab
+    /// M52: the channel's events today and tomorrow (「予定 N」).
+    var upcoming = 0
     let onAddLink: () -> Void
     let onEditLink: (ChannelLinkOut) -> Void
 
@@ -108,9 +119,9 @@ struct ChannelTabsRow: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(ChannelTab.allCases, id: \.self) { item in
+                    ForEach(ChannelTab.tabs(for: channel), id: \.self) { item in
                         Button { tab = item } label: {
-                            Text(item.title)
+                            Text(item.label(upcoming: upcoming))
                                 .font(.subheadline.weight(tab == item ? .semibold : .regular))
                                 .foregroundStyle(tab == item ? Color.primary : Color.secondary)
                                 .padding(.horizontal, 6)

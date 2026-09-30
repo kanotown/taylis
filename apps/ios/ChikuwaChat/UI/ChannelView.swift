@@ -364,6 +364,7 @@ struct ChannelView: View {
                 if channel.isMember {
                     // M29: the tabs, then the links (the link bar of M15f moved into this row).
                     ChannelTabsRow(controller: controller, channel: channel, tab: $tab,
+                                   upcoming: controller.calendarHub?.upcomingOf(channel.id)?.count ?? 0,
                                    onAddLink: { sheet = .link(nil) }, onEditLink: { sheet = .link($0) })
                 } else {
                     ChannelLinksRow(controller: controller, channel: channel, onAdd: { sheet = .link(nil) }, onEdit: { sheet = .link($0) })  // M15f
@@ -558,6 +559,8 @@ struct ChannelView: View {
                     Group {
                         if tab == .canvas, let channel {
                             CanvasPane(controller: controller, channel: channel)  // M45
+                        } else if tab == .events, let channel {
+                            ChannelEventsPane(controller: controller, channel: channel)  // M52
                         } else if tab == .pins {
                             PinsView(controller: controller, channelId: channelId) { message in
                                 Task { if await controller.revealMessage(message) { showMessage(parentId: message.parentId) } }
@@ -628,6 +631,10 @@ struct ChannelView: View {
         }
         .messageSheets(controller, sheet: $messageSheet, openThread: { thread = ThreadTarget(id: $0.parentId ?? $0.id) },
                        markUnread: markUnreadAction, onClosed: sheetClosed)
+        .onChange(of: controller.calendarOpen, initial: true) { _, open in
+            // M52: a notification of this channel's event: its 「予定」 tab, which shows the event.
+            if let open, open.channelId == channelId, channel.map(AppController.hasCalendar) == true { tab = .events }
+        }
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {
                 thread = ThreadTarget(id: id)

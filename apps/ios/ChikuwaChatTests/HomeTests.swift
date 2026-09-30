@@ -90,13 +90,15 @@ final class HomeTests: XCTestCase {
 
     func testTiles() {
         let tiles = HomeTile.tiles(threads: ThreadSummary(unreadCount: 3, mentionCount: 1), drafts: 0, saved: 5, firedReminders: 2)
-        XCTAssertEqual(tiles.map(\.kind), [.threads, .drafts, .saved, .reminders, .files])
-        XCTAssertEqual(tiles.map(\.count), [3, 0, 5, 2, nil])
-        XCTAssertEqual(tiles.map(\.alert), [true, false, false, true, false])
-        XCTAssertEqual(tiles.map(\.dimmed), [false, true, false, false, false])
+        XCTAssertEqual(tiles.map(\.kind), [.threads, .drafts, .saved, .reminders, .calendar, .files]) // M52: カレンダー after リマインダー
+        XCTAssertEqual(tiles.map(\.count), [3, 0, 5, 2, nil, nil])
+        XCTAssertEqual(tiles.map(\.alert), [true, false, false, true, false, false])
+        XCTAssertEqual(tiles.map(\.dimmed), [false, true, false, false, false, false])
+        XCTAssertEqual(tiles[4].title, "カレンダー")
+        XCTAssertEqual(tiles[4].selectionId, CalendarView.selectionId)
         let quiet = HomeTile.tiles(threads: ThreadSummary(unreadCount: 2, mentionCount: 0), drafts: 1, saved: 0, firedReminders: 0)
-        XCTAssertEqual(quiet.map(\.alert), [false, false, false, false, false])
-        XCTAssertEqual(quiet.map(\.dimmed), [false, false, true, true, false])
+        XCTAssertEqual(quiet.map(\.alert), [false, false, false, false, false, false])
+        XCTAssertEqual(quiet.map(\.dimmed), [false, false, true, true, false, false])
         XCTAssertEqual(quiet[0].selectionId, ThreadsListView.selectionId)
     }
 }

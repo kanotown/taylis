@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -816,6 +816,47 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func canvasRevision(id: String, revisionId: String) async throws -> CanvasRevisionOut {
         try await request("GET", "/api/v1/canvases/\(id)/revisions/\(revisionId)")
+    }
+
+    // MARK: calendar (CALENDAR.md §4, M52)
+
+    /// The events overlapping [from, to) (at most 100 days): mine and my channels' (or one channel's). The range goes
+    /// out with the device's offset: the server reads all-day dates in it.
+    func calendarEvents(from: Date, to: Date, channelId: String?) async throws -> [CalendarEventOut] {
+        var items = [URLQueryItem(name: "from", value: CalendarDates.isoLocal(from)), URLQueryItem(name: "to", value: CalendarDates.isoLocal(to))]
+        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/calendar/events", items))
+    }
+
+    /// Today and the next days (in `tz`), not over yet, earliest first (at most 10).
+    func calendarUpcoming(channelId: String?, days: Int, tz: String) async throws -> [CalendarEventOut] {
+        var items = [URLQueryItem(name: "days", value: String(days)), URLQueryItem(name: "tz", value: tz)]
+        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/calendar/upcoming", items))
+    }
+
+    func calendarEvent(id: String) async throws -> CalendarEventOut { try await request("GET", "/api/v1/calendar/events/\(id)") }
+
+    /// A retry with the same client_event_id returns the first event (200 instead of 201).
+    func createCalendarEvent(_ body: CalendarEventCreate) async throws -> CalendarEventOut {
+        try await request("POST", "/api/v1/calendar/events", body: body.json)
+    }
+
+    func updateCalendarEvent(id: String, _ patch: CalendarEventPatch) async throws -> CalendarEventOut {
+        try await request("PATCH", "/api/v1/calendar/events/\(id)", body: patch.json)
+    }
+
+    func deleteCalendarEvent(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/calendar/events/\(id)", body: nil, auth: true, retry401: true)
+    }
+
+    /// My alarm on the event (`tz`: the zone its 8:00 and its words are read in); the event comes back with it.
+    func setCalendarAlarm(id: String, minutesBefore: Int, tz: String) async throws -> CalendarEventOut {
+        try await request("PUT", "/api/v1/calendar/events/\(id)/alarm", body: .object(["minutes_before": .number(Double(minutesBefore)), "tz": .string(tz)]))
+    }
+
+    func clearCalendarAlarm(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/calendar/events/\(id)/alarm", body: nil, auth: true, retry401: true)
     }
 
     // MARK: transport

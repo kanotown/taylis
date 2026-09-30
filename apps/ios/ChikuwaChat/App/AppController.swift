@@ -22,6 +22,8 @@ final class AppController {
     var messageFocus: MessageFocus?
     /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
     var canvasLink: CanvasLinkTarget?
+    /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
+    var calendarOpen: CalendarOpen?
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
@@ -461,6 +463,8 @@ final class AppController {
         engine.onReminder = { [weak self] reminder in
             self?.notice = "⏰ " + ((reminder.note?.isEmpty == false ? reminder.note! + " — " : "") + reminder.preview)
         }
+        // M52: my calendar alarm while the app is open (the server's push covers the background), worded like that push.
+        engine.onCalendarAlarm = { [weak self] event in self?.notice = "📅 " + CalendarDates.alarmText(event) }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
             self.activeBadgeChanged(count)
@@ -624,6 +628,12 @@ final class AppController {
             engine?.reconnectNow()
             await openPermalink(messageId)
             return
+        }
+        if payload.opensEvent, let eventId = payload.eventId {
+            // M52 (PUSH_NOTIFICATIONS.md §4, kind = calendar): the event, in its channel's 「予定」 tab once the store knows
+            // the channel (as a message's conversation), or in the calendar for my own (no channel).
+            calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
+            if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
         }
         PushCenter.shared.pendingChannelId = payload.channelId
         PushCenter.shared.pendingParentId = payload.parentId // a reply: its thread opens too (M28d)
