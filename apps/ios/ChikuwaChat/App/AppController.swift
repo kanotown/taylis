@@ -20,6 +20,8 @@ final class AppController {
         var context: [MessageState]
     }
     var messageFocus: MessageFocus?
+    /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
+    var canvasLink: CanvasLinkTarget?
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
@@ -205,6 +207,7 @@ final class AppController {
         api = nil
         me = nil
         messageFocus = nil
+        canvasLink = nil
         linkPreviews = [:]
         previewLoads = []
         emojiLoads = []
@@ -441,6 +444,8 @@ final class AppController {
     /// the activity window (PUSH_NOTIFICATIONS.md §4.1); iOS suspends the socket soon after.
     func didEnterBackground() {
         engine?.reportActivity()
+        // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
+        if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
     }
 
     // MARK: workspaces that are not open (WORKSPACES.md §6, §7, §8)
@@ -1316,7 +1321,10 @@ final class AppController {
     /// its pushes), then nothing of the account stays here. One already signed out just leaves the list.
     func signOutWorkspace(_ serverUrl: String) async {
         guard let workspace = workspaces.first(where: { $0.serverUrl == serverUrl }) else { return }
-        if serverUrl == activeServerUrl { engine?.stop() }
+        if serverUrl == activeServerUrl {
+            await engine?.canvases.flushAll() // M45: a canvas typed in the last seconds too
+            engine?.stop()
+        }
         // Out of the clients first: its own signed-out callback must not mark the entry instead of removing it.
         var api = clients.removeValue(forKey: serverUrl)
         if api == nil, workspace.isSignedIn, let token = Keychain.get(account: workspace.account) {

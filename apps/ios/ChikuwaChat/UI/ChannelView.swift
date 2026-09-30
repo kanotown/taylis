@@ -554,7 +554,9 @@ struct ChannelView: View {
                 // (its place, the read anchor, the draft), not seen while covered (§10.1 2.).
                 if tab != .messages {
                     Group {
-                        if tab == .pins {
+                        if tab == .canvas, let channel {
+                            CanvasPane(controller: controller, channel: channel)  // M45
+                        } else if tab == .pins {
                             PinsView(controller: controller, channelId: channelId) { message in
                                 Task { if await controller.revealMessage(message) { showMessage(parentId: message.parentId) } }
                             }
@@ -939,6 +941,10 @@ struct MessageRow: View {
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
                                     onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [])
                         .environment(\.openURL, OpenURLAction { url in
+                            if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
+                                controller.canvasLink = CanvasLinkTarget(id: id)
+                                return .handled
+                            }
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }
                             Task { await controller.openPermalink(id) }
                             return .handled
@@ -953,7 +959,8 @@ struct MessageRow: View {
                     AttachmentsView(attachments: message.attachments, controller: controller,
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
                 }
-                if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil {
+                if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
+                   CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil {
                     LinkPreviewCard(controller: controller, url: link)
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b

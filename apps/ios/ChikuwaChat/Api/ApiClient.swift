@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -694,10 +694,106 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
         return tokens
     }
 
+    // MARK: canvases (CANVAS.md §4.5, M45)
+
+    /// The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead).
+    func listCanvases(channelId: String, trashed: Bool) async throws -> [CanvasMeta] {
+        try await request("GET", "/api/v1/channels/\(channelId)/canvases" + (trashed ? "?trashed=true" : ""))
+    }
+
+    /// A new canvas (a retry with the same client_save_id returns the first one). The server puts in a template's
+    /// {{date}} and the rest in `tz`.
+    func createCanvas(channelId: String, clientSaveId: String, title: String?, templateKey: String?, asTab: Bool, tz: String?) async throws -> CanvasOut {
+        var fields: [String: JSONValue] = [
+            "client_save_id": .string(clientSaveId),
+            "as_tab": .bool(asTab),
+            "share_to_channel": .bool(false), // posting it to the conversation is its own action (M42)
+        ]
+        if let title, !title.isEmpty { fields["title"] = .string(title) }
+        if let templateKey { fields["template_key"] = .string(templateKey) }
+        if let tz { fields["tz"] = .string(tz) }
+        return try await request("POST", "/api/v1/channels/\(channelId)/canvases", body: .object(fields))
+    }
+
+    /// Metadata, body and head_rev_id; nil when `knownVersion` is still the current one (304, If-None-Match).
+    func getCanvas(id: String, knownVersion: Int?) async throws -> CanvasOut? {
+        let headers = knownVersion.map { ["If-None-Match": "\"v\($0)\""] } ?? [:]
+        do {
+            return try await request("GET", "/api/v1/canvases/\(id)", headers: headers)
+        } catch ApiError.api(let status, _, _) where status == 304 {
+            return nil
+        }
+    }
+
+    /// §4.4: the whole body written on `baseRevId`. 409 canvas_conflict / canvas_base_expired and 429 come back as
+    /// CanvasSaveFailure with what their `details` carry.
+    func saveCanvas(id: String, _ save: CanvasSaveIn) async throws -> CanvasSaveOut {
+        let body: JSONValue = .object([
+            "base_rev_id": .string(save.baseRevId),
+            "body": .string(save.body),
+            "client_save_id": .string(save.clientSaveId),
+            "on_conflict": .string(save.onConflict.rawValue),
+        ])
+        return try await request("PUT", "/api/v1/canvases/\(id)/content", body: body, onError: Self.canvasSaveFailure)
+    }
+
+    /// The error body of a save, read for its details (nil: the usual ApiError).
+    static func canvasSaveFailure(status: Int, data: Data) -> Error? {
+        struct Envelope: Decodable {
+            struct Inner: Decodable { let code: String; let details: JSONValue? }
+            let error: Inner
+        }
+        guard let envelope = try? JSON.plainDecoder.decode(Envelope.self, from: data) else { return nil }
+        let details = envelope.error.details
+        switch (status, envelope.error.code) {
+        case (409, "canvas_conflict"):
+            return (try? details?.decode(CanvasConflictDetails.self)).map { CanvasSaveFailure.conflict($0) }
+        case (409, "canvas_base_expired"):
+            return (try? details?.decode(CanvasConflictDetails.self)).map { CanvasSaveFailure.expired($0.head) }
+        case (429, _):
+            if case .number(let seconds)? = details?["retry_after_seconds"] { return CanvasSaveFailure.rateLimited(seconds: seconds) }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// Title, who may edit, the conversation's tab (§4.7: the creator, owners and administrators; anyone in a DM).
+    func updateCanvas(id: String, title: String? = nil, editPolicy: String? = nil, isChannelTab: Bool? = nil) async throws -> CanvasOut {
+        var fields: [String: JSONValue] = [:]
+        if let title { fields["title"] = .string(title) }
+        if let editPolicy { fields["edit_policy"] = .string(editPolicy) }
+        if let isChannelTab { fields["is_channel_tab"] = .bool(isChannelTab) }
+        return try await request("PATCH", "/api/v1/canvases/\(id)", body: .object(fields))
+    }
+
+    /// To the trash (restorable for 30 days).
+    func deleteCanvas(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/canvases/\(id)", body: nil, auth: true, retry401: true)
+    }
+
+    func restoreCanvas(id: String) async throws -> CanvasOut {
+        try await request("POST", "/api/v1/canvases/\(id)/restore", body: .object([:]))
+    }
+
+    func canvasTemplates() async throws -> [CanvasTemplateOut] { try await request("GET", "/api/v1/canvas-templates") }
+
+    /// The history without bodies, newest first.
+    func canvasRevisions(id: String, cursor: String? = nil) async throws -> CanvasRevisionPage {
+        var items = [URLQueryItem(name: "limit", value: "50")]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/canvases/\(id)/revisions", items))
+    }
+
+    func canvasRevision(id: String, revisionId: String) async throws -> CanvasRevisionOut {
+        try await request("GET", "/api/v1/canvases/\(id)/revisions/\(revisionId)")
+    }
+
     // MARK: transport
 
-    private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil) async throws -> T {
-        let (data, _) = try await requestRaw(method, path, body: body, auth: auth, retry401: true, timeout: timeout)
+    private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil,
+                                       headers: [String: String] = [:], onError: ((Int, Data) -> Error?)? = nil) async throws -> T {
+        let (data, _) = try await requestRaw(method, path, body: body, auth: auth, retry401: true, timeout: timeout, headers: headers, onError: onError)
         do {
             return try JSON.snakeDecoder.decode(T.self, from: data)
         } catch {
@@ -705,7 +801,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
         }
     }
 
-    private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool, timeout: TimeInterval? = nil) async throws -> (Data, Int) {
+    /// `headers`: extra request headers (If-None-Match). `onError`: a call that reads an error's `details` turns the status
+    /// and body into its own error (nil: the usual ApiError).
+    private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool, timeout: TimeInterval? = nil,
+                            headers: [String: String] = [:], onError: ((Int, Data) -> Error?)? = nil) async throws -> (Data, Int) {
         if auth, accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
@@ -716,6 +815,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
             request.httpBody = try JSON.plainEncoder.encode(body)
         }
         if auth, let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
 
         let data: Data
         let response: HTTPURLResponse
@@ -733,9 +833,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
                                  message: envelope?.error.message ?? "Request failed")
         if auth, response.statusCode == 401, error.code == "token_expired", retry401 {
             _ = try await refresh()
-            return try await requestRaw(method, path, body: body, auth: auth, retry401: false)
+            return try await requestRaw(method, path, body: body, auth: auth, retry401: false, timeout: timeout, headers: headers, onError: onError)
         }
         if auth, response.statusCode == 401, error.code != "token_expired" { signOut() }
+        if let onError, let own = onError(response.statusCode, data) { throw own }
         throw error
     }
 }

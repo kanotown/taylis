@@ -148,6 +148,10 @@ struct MainView: View {
                 land(id)
             }
         }
+        // M45: a canvas link tapped in a message (CANVAS.md §4.13).
+        .sheet(item: $controller.canvasLink) { target in
+            CanvasLinkSheet(controller: controller, canvasId: target.id)
+        }
         .onChange(of: homeSelection) { _, id in
             guard let id else { return }
             homeSelection = nil

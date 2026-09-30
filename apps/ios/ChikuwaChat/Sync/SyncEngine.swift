@@ -61,6 +61,9 @@ struct EngineOptions {
     var typingTtl: TimeInterval = 5
     /// M15d: a draft is saved on the server this long after typing pauses.
     var draftSave: TimeInterval = 1
+    /// M45: the canvas save loop's pauses (CANVAS.md §4.4) and its clock (nil: the real one).
+    var canvasSave = CanvasSaverOptions()
+    var canvasClock: CanvasClock? = nil
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -138,6 +141,8 @@ final class SyncEngine {
     private var reconnectAttempt = 0
     /// M15d: my drafts across devices.
     @ObservationIgnored private(set) var drafts: DraftSync!
+    /// M45: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6).
+    @ObservationIgnored private(set) var canvases: CanvasHub!
 
     /// error frame codes that mean the auth frame was refused (a close 4001 follows).
     private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
@@ -157,6 +162,7 @@ final class SyncEngine {
         self.options = options
         drafts = DraftSync(api: api as? DraftApi, store: store, isOnline: { [weak self] in self?.status == .online }, delay: options.draftSave)
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
+        canvases = CanvasHub(api: api as? CanvasApi, store: store, clock: options.canvasClock, options: options.canvasSave)
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
     }
 
@@ -197,6 +203,7 @@ final class SyncEngine {
 
     func stop() {
         stopped = true
+        canvases.stop()
         clearTimers()
         ws?.close()
         ws = nil
@@ -279,6 +286,7 @@ final class SyncEngine {
         Task { await flushOutbox() }
         Task { await resendReads() } // §10: marks that could not be sent before
         Task { await drafts.flush() } // edited while offline (M15d)
+        canvases.online() // M45: canvas saves that failed, open canvases read again, edits kept from before a relaunch
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         if let current = currentChannelId { Task { await openChannel(current) } }
@@ -489,6 +497,7 @@ final class SyncEngine {
     /// connection does not try to catch it up (§7.6).
     private func channelRemoved(_ channelId: String) {
         if currentChannelId == channelId { currentChannelId = nil }
+        canvases.removeChannel(channelId)
         forgetThreads(of: channelId)
         unreadHold[channelId] = nil
         pendingReads[channelId]?.cancel()
@@ -593,6 +602,8 @@ final class SyncEngine {
             store.setChannelLinks(payload.channelId, payload.links)
         case "draft.updated":
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
+        case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
+            canvases.applyEvent(frame.event, frame.data)
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }
             store.replaceSidebar(try frame.data.decode(Payload.self).sections)
@@ -889,6 +900,7 @@ final class SyncEngine {
         // A public channel I only browse has no timeline to catch up (its content needs membership).
         guard status == .online, store.channel(channelId)?.isMember == true else { return }
         Task { await loadLinks(channelId) }
+        Task { await canvases.loadList(channelId) } // M45 (CANVAS.md §4.6)
         _ = try? await enqueue { [self] in
             guard let channel = store.channel(channelId), channel.isMember else { return }
             if channel.syncedSeq == nil || channel.oldestLoadedSeq == nil || (channel.syncedSeq ?? 0) < channel.lastSeq { try await catchUp(channelId) }

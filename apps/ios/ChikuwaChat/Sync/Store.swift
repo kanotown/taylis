@@ -373,6 +373,57 @@ final class Store {
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 
+    /// M45 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated
+    /// first. Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger
+    /// version wins). Not persisted.
+    private(set) var canvasLists: [String: [CanvasMeta]] = [:]
+    /// nil: not loaded yet.
+    func canvasesOf(_ channelId: String) -> [CanvasMeta]? { canvasLists[channelId] }
+    func canvasMeta(_ canvasId: String) -> CanvasMeta? {
+        for list in canvasLists.values { if let found = list.first(where: { $0.id == canvasId }) { return found } }
+        return nil
+    }
+
+    func setCanvases(_ channelId: String, _ list: [CanvasMeta]) {
+        let known = canvasLists[channelId] ?? []
+        // A newer version from an event that overtook the list keeps its place.
+        let merged = list.map { meta in known.first(where: { $0.id == meta.id }).flatMap { $0.version > meta.version ? $0 : nil } ?? meta }
+        canvasLists[channelId] = Self.sortedCanvases(merged)
+    }
+
+    /// canvas.created / canvas.updated, or an answer of mine: the larger version wins.
+    func applyCanvasMeta(_ meta: CanvasMeta) {
+        guard let list = canvasLists[meta.channelId] else { return } // loaded with the list when the conversation opens
+        if let existing = list.first(where: { $0.id == meta.id }), existing.version >= meta.version { return }
+        var live = meta
+        live.deletedAt = nil
+        canvasLists[meta.channelId] = Self.sortedCanvases(list.filter { $0.id != meta.id } + [live])
+    }
+
+    func removeCanvas(channelId: String, canvasId: String) {
+        guard let list = canvasLists[channelId], list.contains(where: { $0.id == canvasId }) else { return }
+        canvasLists[channelId] = list.filter { $0.id != canvasId }
+    }
+
+    static func sortedCanvases(_ list: [CanvasMeta]) -> [CanvasMeta] {
+        list.sorted { a, b in a.updatedAt != b.updatedAt ? a.updatedAt > b.updatedAt : a.id > b.id }
+    }
+
+    /// M45: unsaved canvas edits, kept in SQLite under "canvas:<id>", so a restart sends them (same key, §4.4).
+    @ObservationIgnored private var canvasPending: [String: CanvasPendingState] = [:]
+    private static let canvasPrefix = "canvas:"
+    func pendingCanvas(_ canvasId: String) -> CanvasPendingState? { canvasPending[canvasId] }
+    func pendingCanvases() -> [(id: String, state: CanvasPendingState)] {
+        canvasPending.keys.sorted().compactMap { id in canvasPending[id].map { (id, $0) } }
+    }
+
+    func setPendingCanvas(_ canvasId: String, _ state: CanvasPendingState?) {
+        if canvasPending[canvasId] == state { return }
+        canvasPending[canvasId] = state
+        let encoded = state.flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.canvasPrefix + canvasId, value: encoded) }
+    }
+
     private func draftKey(_ channelId: String, _ parentId: String?) -> String { "draft:\(channelId):\(parentId ?? "")" }
     func draft(_ channelId: String, parentId: String? = nil) -> Draft { drafts[draftKey(channelId, parentId)] ?? Draft() }
     /// M15d: told about every local text change (the engine saves it on the server a moment later).
@@ -481,6 +532,11 @@ final class Store {
     private func apply(_ snapshot: Snapshot) {
         for (key, value) in snapshot.meta where key.hasPrefix("draft:") {
             if let data = value.data(using: .utf8), let draft = try? JSON.plainDecoder.decode(Draft.self, from: data) { drafts[key] = draft }
+        }
+        for (key, value) in snapshot.meta where key.hasPrefix(Self.canvasPrefix) {
+            if let data = value.data(using: .utf8), let state = try? JSON.plainDecoder.decode(CanvasPendingState.self, from: data) {
+                canvasPending[String(key.dropFirst(Self.canvasPrefix.count))] = state
+            }
         }
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
         if let raw = snapshot.meta[Self.activityKey], let data = raw.data(using: .utf8) {
@@ -801,6 +857,9 @@ final class Store {
     func removeChannel(_ id: String) {
         channels[id] = nil
         buckets[id]?.byId = [:]
+        // §4.6: its canvases and their unsaved edits leave this device too.
+        canvasLists[id] = nil
+        for (canvasId, state) in canvasPending where state.channelId == id { setPendingCanvas(canvasId, nil) }
         persist {
             try $0.clearMessages(channelId: id)
             try $0.deleteChannel(id: id)
@@ -984,6 +1043,9 @@ final class Store {
         var snapshot = Snapshot()
         for (key, value) in drafts {
             if let data = try? JSON.plainEncoder.encode(value) { snapshot.meta[key] = String(data: data, encoding: .utf8) }
+        }
+        for (id, state) in canvasPending {
+            if let data = try? JSON.plainEncoder.encode(state) { snapshot.meta[Self.canvasPrefix + id] = String(data: data, encoding: .utf8) }
         }
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
         if let activity, let data = try? JSON.plainEncoder.encode(activity) { snapshot.meta[Self.activityKey] = String(data: data, encoding: .utf8) }
