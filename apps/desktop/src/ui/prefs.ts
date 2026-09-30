@@ -1,5 +1,6 @@
 /** Per-device UI preferences (browser storage; not synced). */
-export type SendKey = "enter" | "shift-enter";
+/** "mod-enter": ⌘+Enter on a Mac, Ctrl+Enter elsewhere (the default since 2026-09-30, as the tester asked). */
+export type SendKey = "mod-enter" | "shift-enter" | "enter";
 
 const SEND_KEY = "chikuwa.prefs.sendKey";
 const SIDEBAR_WIDTH = "chikuwa.prefs.sidebarWidth";
@@ -30,9 +31,10 @@ function write(key: string, value: string | null): void {
   }
 }
 
-/** Default: Enter inserts a newline, Shift+Enter sends. */
+/** Default: Enter inserts a newline, ⌘+Enter (Ctrl+Enter) sends. A choice made before keeps. */
 export function readSendKey(): SendKey {
-  return read(SEND_KEY) === "enter" ? "enter" : "shift-enter";
+  const value = read(SEND_KEY);
+  return value === "enter" || value === "shift-enter" ? value : "mod-enter";
 }
 
 export function writeSendKey(value: SendKey): void {
@@ -67,11 +69,20 @@ export function writePaneWidth(value: number): void {
 }
 
 /** True when this keyboard event should send, given the preference. */
-export function isSendKey(event: { key: string; shiftKey: boolean }, sendKey: SendKey): boolean {
+export function isSendKey(event: { key: string; shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean }, sendKey: SendKey): boolean {
   if (event.key !== "Enter") return false;
+  const mod = Boolean(event.metaKey || event.ctrlKey);
+  if (sendKey === "mod-enter") return mod;
+  if (mod) return false;
   return sendKey === "enter" ? !event.shiftKey : event.shiftKey;
 }
 
+/** ⌘ on a Mac, Ctrl elsewhere. */
+export function modKeyName(): string {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+}
+
 export function sendKeyLabel(sendKey: SendKey): { send: string; newline: string } {
+  if (sendKey === "mod-enter") return { send: `${modKeyName()}+Enter`, newline: "Enter" };
   return sendKey === "enter" ? { send: "Enter", newline: "Shift+Enter" } : { send: "Shift+Enter", newline: "Enter" };
 }

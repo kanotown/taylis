@@ -13,7 +13,7 @@ import { OVERALL_LEVEL_LABELS, OVERALL_LEVEL_NOTE, overallLevel } from "./channe
 import { customPauseAt, DAY_LABELS, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
-import { type SendKey } from "./prefs";
+import { modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
@@ -507,6 +507,7 @@ function InputSection({ controller }: { controller: AppController }) {
         <div className="flex gap-2 max-sm:flex-col">
           {(
             [
+              ["mod-enter", `${modKeyName()}+Enter で送信`, "Enter は改行"],
               ["shift-enter", "Shift+Enter で送信", "Enter は改行"],
               ["enter", "Enter で送信", "Shift+Enter は改行"],
             ] as Array<[SendKey, string, string]>
