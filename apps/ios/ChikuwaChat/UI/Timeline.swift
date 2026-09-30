@@ -90,9 +90,11 @@ enum Timeline {
     static let groupingKey = "groupConsecutivePosts"
 
     /// Whether `message` (posted at `at`) goes under `previous` without its header: the same sender within
-    /// `groupWindow`. Callers pass nil for `previous` where a run is cut (a day separator, the unread divider).
+    /// `groupWindow`, both posted by a person (a system row keeps its header and cuts the run). Callers pass nil for
+    /// `previous` where a run is cut (a day separator, the unread divider).
     static func continues(_ message: MessageState, at: Date, after previous: MessageState?) -> Bool {
-        guard let previous, previous.senderId == message.senderId, let previousAt = parseIsoDate(previous.createdAt) else { return false }
+        guard let previous, previous.senderId == message.senderId, previous.type == "user", message.type == "user",
+              let previousAt = parseIsoDate(previous.createdAt) else { return false }
         return abs(at.timeIntervalSince(previousAt)) < groupWindow
     }
 

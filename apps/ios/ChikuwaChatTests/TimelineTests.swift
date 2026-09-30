@@ -68,6 +68,17 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shape(true), ["date", "a", "b*", "date", "d", "unread", "e"])
     }
 
+    /// M47: a system row keeps its header and cuts a run, as on Android and the desktop.
+    func testSystemRowCutsARun() {
+        var system = message("s", sender: "u1", at: "2026-09-25T01:01:00Z", seq: 2)
+        system.type = "system"
+        let rows = [message("a", sender: "u1", at: "2026-09-25T01:00:00Z", seq: 1), system,
+                    message("b", sender: "u1", at: "2026-09-25T01:02:00Z", seq: 3)]
+        let compact = Timeline.build(rows, firstUnreadAfterSeq: nil, meId: "u1", grouping: true, now: now, calendar: calendar)
+            .compactMap { item -> Bool? in if case .message(_, let compact) = item { return compact } else { return nil } }
+        XCTAssertEqual(compact, [false, false, false])
+    }
+
     /// M47: a thread's replies group by the channel's rule when on: the same sender within the window, cut by a new day
     /// and by the 「新しい返信」 divider; the first reply keeps its header. Off, none groups.
     func testThreadRepliesGroupOnlyWhenOn() {
