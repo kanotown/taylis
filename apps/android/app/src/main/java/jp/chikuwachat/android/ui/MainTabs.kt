@@ -82,7 +82,8 @@ object MainTabs {
     fun barShown(stack: List<Route>): Boolean = when (val top = MainNav.top(stack)) {
         is Route.Root, is Route.Pane -> true
         is Route.Search -> !top.expanded
-        is Route.Channel, is Route.Thread -> false
+        // M40: a settings screen is a page of its own (its fields take the keyboard); the wide list shows the bar itself.
+        is Route.Channel, is Route.Thread, is Route.Settings -> false
     }
 
     // --- transitions ---
@@ -137,6 +138,13 @@ object MainTabs {
      */
     fun landFromHome(state: TabStacks, tab: MainTab, channelId: String): TabStacks =
         land(withStack(state, MainTab.HOME, rootStack(MainTab.HOME)), tab, channelId)
+
+    /**
+     * M40: a 自分 screen opened from elsewhere (my profile card's 「ステータスを設定」): the 自分 tab shows it over its
+     * list; what that tab had open goes.
+     */
+    fun openSettings(state: TabStacks, page: SettingsPage): TabStacks =
+        withStack(state, MainTab.YOU, listOf(Route.You, Route.Settings(page))).copy(selected = MainTab.YOU)
 
     /** The activity tab's switch. */
     fun selectSegment(state: TabStacks, segment: ActivitySegment): TabStacks {

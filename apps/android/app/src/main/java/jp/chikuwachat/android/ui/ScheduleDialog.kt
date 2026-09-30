@@ -25,10 +25,19 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
-/** Local calendar/time selection. Conversion to UTC still happens in the existing send path. */
+/**
+ * Local calendar/time selection. Conversion to UTC still happens in the existing send path. M40: also 「通知を一時停止」's
+ * 「日時を指定」 (`title`, `confirm` and `describe` say what the time is for).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
+fun ScheduleDialog(
+    onDismiss: () -> Unit,
+    title: String = "後で送信",
+    confirm: String = "予約",
+    describe: (ZonedDateTime) -> String = { Schedule.label(it) + " に送信します" },
+    onPick: (ZonedDateTime) -> Unit,
+) {
     val initial = remember { ZonedDateTime.now().plusHours(1) }
     var dateText by rememberSaveable { mutableStateOf(initial.toLocalDate().toString()) }
     var hour by rememberSaveable { mutableIntStateOf(initial.hour) }
@@ -41,7 +50,7 @@ fun ScheduleDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
     val valid = at != null && at.isAfter(ZonedDateTime.now().plusMinutes(1))
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("後で送信") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = { picker = "date" }, modifier = Modifier.fillMaxWidth()) {
@@ -54,7 +63,7 @@ fun ScheduleDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
                 Text(
                     if (at == null) "この地域に存在しない時刻です。別の時刻を選んでください"
                     else if (!valid || tooSoon) "1 分以上先の時刻を選んでください"
-                    else Schedule.label(at) + " に送信します",
+                    else describe(at),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (valid && !tooSoon) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 )
@@ -64,7 +73,7 @@ fun ScheduleDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
             TextButton(enabled = valid, onClick = {
                 // The dialog may have remained open past the selected time.
                 if (at != null && at.isAfter(ZonedDateTime.now().plusMinutes(1))) onPick(at) else tooSoon = true
-            }) { Text("予約") }
+            }) { Text(confirm) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
     )
@@ -88,23 +97,30 @@ fun ScheduleDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit) {
         ) { DatePicker(state = state) }
     }
     if (picker == "time") {
-        val state = rememberTimePickerState(initialHour = hour, initialMinute = minute, is24Hour = true)
-        var input by rememberSaveable { mutableStateOf(false) }
-        Dialog(onDismissRequest = { picker = null }) {
-            Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
-                Column(Modifier.widthIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("時刻を選択", style = MaterialTheme.typography.titleLarge)
-                    if (input) TimeInput(state = state) else TimePicker(state = state)
-                    TextButton(onClick = { input = !input }) { Text(if (input) "時計で選択" else "数字で入力") }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { picker = null }) { Text("キャンセル") }
-                        TextButton(onClick = {
-                            hour = state.hour
-                            minute = state.minute
-                            tooSoon = false
-                            picker = null
-                        }) { Text("決定") }
-                    }
+        TimePickDialog(hour, minute, onDismiss = { picker = null }) { h, m ->
+            hour = h
+            minute = m
+            tooSoon = false
+            picker = null
+        }
+    }
+}
+
+/** A 24-hour time picker (dial or digits) in a dialog; M40: also the quiet hours' start and end. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickDialog(hour: Int, minute: Int, title: String = "時刻を選択", onDismiss: () -> Unit, onPick: (Int, Int) -> Unit) {
+    val state = rememberTimePickerState(initialHour = hour, initialMinute = minute, is24Hour = true)
+    var input by rememberSaveable { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
+            Column(Modifier.widthIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                if (input) TimeInput(state = state) else TimePicker(state = state)
+                TextButton(onClick = { input = !input }) { Text(if (input) "時計で選択" else "数字で入力") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("キャンセル") }
+                    TextButton(onClick = { onPick(state.hour, state.minute) }) { Text("決定") }
                 }
             }
         }

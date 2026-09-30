@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -126,39 +127,68 @@ fun WorkspaceSheet(controller: AppController, onDismiss: () -> Unit) {
                     onLeave = { leaving = entry },
                 )
             }
-            item(key = "add") {
-                ListItem(
-                    headlineContent = { Text("ワークスペースを追加") },
-                    leadingContent = {
-                        Box(
-                            Modifier.size(40.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Default.Add, contentDescription = null) }
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.fillMaxWidth().clickable { close { controller.beginAddWorkspace() } },
-                )
-            }
+            item(key = "add") { AddWorkspaceItem(onClick = { close { controller.beginAddWorkspace() } }) }
         }
     }
-    leaving?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { leaving = null },
-            title = { Text("${entry.name} からサインアウトしますか？") },
-            text = {
-                Text(
-                    "${entry.username} @ ${Workspaces.hostLabel(entry.serverUrl)}\n\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    leaving = null
-                    scope.launch { controller.signOutWorkspace(entry.serverUrl) }
-                }) { Text("サインアウト", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { leaving = null }) { Text("キャンセル") } },
-        )
+    leaving?.let { entry -> SignOutWorkspaceDialog(controller, entry, onDismiss = { leaving = null }) }
+}
+
+/**
+ * M40: 自分 → 「ワークスペース」, the switcher's list as a screen: every workspace with its marks, a tap on another one
+ * switches to it, サインアウト per row (confirmed), 「ワークスペースを追加」 last.
+ */
+@Composable
+fun WorkspacesPane(controller: AppController) {
+    var leaving by remember { mutableStateOf<Workspace?>(null) }
+    LaunchedEffect(Unit) { controller.refreshSummaries() }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(controller.workspaces, key = { it.serverUrl }) { entry ->
+            WorkspaceRow(
+                controller, entry,
+                onOpen = { if (entry.serverUrl != controller.activeKey) controller.switchWorkspace(entry.serverUrl) },
+                onLeave = { leaving = entry },
+            )
+        }
+        item(key = "add") { AddWorkspaceItem(onClick = { controller.beginAddWorkspace() }) }
     }
+    leaving?.let { entry -> SignOutWorkspaceDialog(controller, entry, onDismiss = { leaving = null }) }
+}
+
+@Composable
+private fun AddWorkspaceItem(onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text("ワークスペースを追加") },
+        leadingContent = {
+            Box(
+                Modifier.size(40.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Default.Add, contentDescription = null) }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    )
+}
+
+/** サインアウト of one workspace, confirmed: its local data goes, the server keeps everything. */
+@Composable
+private fun SignOutWorkspaceDialog(controller: AppController, entry: Workspace, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${entry.name} からサインアウトしますか？") },
+        text = {
+            Text(
+                "${entry.username} @ ${Workspaces.hostLabel(entry.serverUrl)}\n\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                // In the controller's scope: the dialog (and the screen under it) goes away before the work is done.
+                controller.scope.launch { controller.signOutWorkspace(entry.serverUrl) }
+            }) { Text("サインアウト", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    )
 }
 
 @Composable

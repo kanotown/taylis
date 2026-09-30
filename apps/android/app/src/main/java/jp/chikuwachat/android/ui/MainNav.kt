@@ -31,9 +31,13 @@ sealed interface Route {
     @Serializable @SerialName("activity")
     data class Activity(val segment: ActivitySegment = ActivitySegment.ALL) : Root
 
-    /** M34: the 自分 tab (the settings as a page, §6.5). */
+    /** M34: the 自分 tab; M40: its list, the settings' screens pushed over it ([Settings], §6.5). */
     @Serializable @SerialName("you")
     data object You : Root
+
+    /** M40: a screen of the 自分 tab (a settings page), over its list or over another one ([SettingsPage.PASSWORD]). */
+    @Serializable @SerialName("settings")
+    data class Settings(val page: SettingsPage) : Route
 
     /** A conversation, on one of its tabs (M29), with or without its details page over it. */
     @Serializable @SerialName("channel")
@@ -207,9 +211,25 @@ object MainNav {
             // The result itself: to the results (a newer search replaced them: to its conversation).
             ThreadFrom.SEARCH -> if (stack.any { it is Route.Search }) returnToSearch(stack) else pop(stack)
         }
-        is Route.Pane -> pop(stack)
+        is Route.Pane, is Route.Settings -> pop(stack)
         is Route.Root -> stack
     }
+
+    // --- the 自分 tab's screens (M40) ---
+
+    /** The settings screen on screen, if any. */
+    fun settingsPage(stack: List<Route>): SettingsPage? = (top(stack) as? Route.Settings)?.page
+
+    /** The list's row the screens on the stack were opened from (highlighted beside them on a wide screen). */
+    fun settingsRow(stack: List<Route>): SettingsPage? = stack.firstNotNullOfOrNull { (it as? Route.Settings)?.page }
+
+    /** A row of the list (or a screen's own link, e.g. アカウント → パスワード): pushed over what shows. */
+    fun openSettings(stack: List<Route>, page: SettingsPage): List<Route> =
+        if (settingsPage(stack) == page) stack else stack + Route.Settings(page)
+
+    /** A row of the list beside the screens (wide): its screen replaces the ones shown. */
+    fun selectSettings(stack: List<Route>, page: SettingsPage): List<Route> =
+        stack.filterNot { it is Route.Settings } + Route.Settings(page)
 
     /** The search bar (M16b), over whatever is on screen; a search kept behind a conversation is replaced by it. */
     fun openSearch(stack: List<Route>): List<Route> = stack.filterNot { it is Route.Search } + Route.Search()

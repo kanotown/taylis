@@ -152,6 +152,10 @@ fun MainScreen(controller: AppController) {
     var groupUnread by remember { mutableStateOf(GroupUnread.read(controller.prefs)) }
     // M37: the home's ⋮ 「すべて既読にする」 asks first; ✏️ 新しいメッセージ's picker.
     var confirmReadAll by rememberSaveable { mutableStateOf(false) }
+    // M40: 「ログアウト」 asks first (the 自分 list's red row and the ⋮ menus).
+    var confirmLogout by rememberSaveable { mutableStateOf(false) }
+    // M40: from this width the 自分 tab shows its list and the chosen screen side by side.
+    val youTwoPane = with(LocalDensity.current) { YouSettings.twoPane(LocalWindowInfo.current.containerSize.width.toDp().value) }
     var composing by rememberSaveable { mutableStateOf(false) }
     // M37 (MOBILE_UI.md §6.2): the conversations last opened on this device, for the jump screen.
     val recentConversationsKey = controller.accountKey?.let { RecentConversations.key(it) }
@@ -354,6 +358,13 @@ fun MainScreen(controller: AppController) {
     val previewing = selectedChannel?.isMember == false
 
     // A permalink tapped in a body (M12b): the controller fetched the message; show it in its conversation.
+    // M40: my profile card's 「ステータスを設定」 opens the 自分 tab's status screen.
+    LaunchedEffect(controller.pendingSettings) {
+        val page = controller.pendingSettings ?: return@LaunchedEffect
+        controller.pendingSettings = null
+        focusManager.clearFocus()
+        tabs = MainTabs.openSettings(tabs, page)
+    }
     LaunchedEffect(controller.pendingReveal) {
         val message = controller.pendingReveal ?: return@LaunchedEffect
         controller.pendingReveal = null
@@ -362,7 +373,10 @@ fun MainScreen(controller: AppController) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
-        bottomBar = { if (MainTabs.barShown(stack)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab) },
+        // M40: wide, the 自分 tab's list stays beside its screens, and so does the bar.
+        bottomBar = {
+            if (MainTabs.barShown(stack) || (youTwoPane && top is Route.Settings)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab)
+        },
         // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
         floatingActionButton = {
             if (top == Route.ChannelList) {
@@ -429,7 +443,7 @@ fun MainScreen(controller: AppController) {
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
                             val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
-                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
+                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
                         }
                     },
                 )
@@ -456,6 +470,7 @@ fun MainScreen(controller: AppController) {
                             top == Route.DmList -> Text("ダイレクトメッセージ", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
                         }
                     },
@@ -537,7 +552,7 @@ fun MainScreen(controller: AppController) {
                             }
                         }
                         // The 自分 tab is the settings page: no search or menu over it.
-                        if (top != Route.You) {
+                        if (top != Route.You && top !is Route.Settings) {
                             IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
                             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
                         }
@@ -594,7 +609,7 @@ fun MainScreen(controller: AppController) {
                             DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
                             // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
                             val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
-                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; scope.launch { controller.logout() } })
+                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
                         }
                     },
                 )
@@ -707,8 +722,18 @@ fun MainScreen(controller: AppController) {
                             stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
                         },
                     )
-                } else if (top == Route.You) {
-                    YouScreen(controller, version, youScrollState)
+                } else if (top == Route.You || top is Route.Settings) {
+                    // M40 (MOBILE_UI.md §6.5): the list and its screens; wide, the list with the chosen screen beside it.
+                    YouTab(
+                        controller, version, stack, youTwoPane, youScrollState,
+                        onSelect = { page ->
+                            focusManager.clearFocus()
+                            stack = if (youTwoPane) MainNav.selectSettings(stack, page) else MainNav.openSettings(stack, page)
+                        },
+                        onOpen = { page -> focusManager.clearFocus(); stack = MainNav.openSettings(stack, page) },
+                        onClose = { focusManager.clearFocus(); goBack() },
+                        onLogout = { confirmLogout = true },
+                    )
                 } else {
                     // M37 (MOBILE_UI.md §6.1): 移動・検索, the tiles and the sections. 「メンション」 is the activity tab's (M34).
                     HomeScreen(
@@ -754,6 +779,7 @@ fun MainScreen(controller: AppController) {
             openPicked(id, focusComposer = true)
         })
     }
+    if (confirmLogout) LogoutConfirmDialog(controller, onDismiss = { confirmLogout = false })
     if (confirmReadAll) {
         AlertDialog(
             onDismissRequest = { confirmReadAll = false },
