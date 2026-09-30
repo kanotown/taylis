@@ -685,6 +685,26 @@ final class SyncEngineTests: XCTestCase {
         w.engine.stop()
     }
 
+    func testPullToRefreshBootstrapsAgainAndCatchesUpTheOpenConversation() async throws {  // M37 (5)
+        let w = makeWorld()
+        await w.engine.start()
+        await w.engine.openChannel(w.channel.id)
+        await settle(w.engine)
+        w.server.sockets(of: w.bob.id).first?.dropNext = 2 // lost without a later event to show the gap
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m1")
+        try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "m2")
+        await settle(w.engine)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), [])
+        let bootstraps = w.api.calls.filter { $0 == "bootstrap" }.count
+        await w.engine.resync()
+        await settle(w.engine)
+        XCTAssertEqual(w.api.calls.filter { $0 == "bootstrap" }.count, bootstraps + 1)
+        XCTAssertEqual(w.store.messages(w.channel.id).map(\.body), ["m1", "m2"])
+        XCTAssertEqual(w.store.channel(w.channel.id)?.syncedSeq, 2)
+        XCTAssertEqual(w.engine.status, .online)
+        w.engine.stop()
+    }
+
     func testSessionRevocationSignsOut() async throws {
         let w = makeWorld()
         var signedOut = false

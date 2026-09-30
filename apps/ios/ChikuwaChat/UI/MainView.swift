@@ -13,6 +13,11 @@ struct MainView: View {
     /// A thread to open over a conversation once it shows (a reply's notification, a revealed reply…); only that
     /// conversation takes it, not another one lower on a stack.
     @State private var pendingThread: PendingThread?
+    /// M37: 「移動・検索」 over the whole screen.
+    @State private var jumpShown = false
+    /// M37: the home's ⋯ 「すべて既読にする」 asks first.
+    @State private var confirmMarkAll = false
+    @AppStorage(ChannelListView.groupUnreadKey) private var groupUnread = false
 
     struct PendingThread: Equatable {
         let channelId: String
@@ -20,8 +25,19 @@ struct MainView: View {
     }
 
     enum Sheet: Identifiable {
-        case newDm, newChannel, search, browse, directory, workspaces, newSection
-        var id: Int { switch self { case .newDm: 0; case .newChannel: 1; case .search: 2; case .browse: 4; case .directory: 5; case .workspaces: 6; case .newSection: 7 } }
+        case newDm, newChannel, search, browse, directory, workspaces, newSection, compose
+        var id: Int {
+            switch self {
+            case .newDm: 0
+            case .newChannel: 1
+            case .search: 2
+            case .browse: 4
+            case .directory: 5
+            case .workspaces: 6
+            case .newSection: 7
+            case .compose: 8
+            }
+        }
     }
 
     private var status: EngineStatus { controller.engine?.status ?? .idle }
@@ -107,6 +123,17 @@ struct MainView: View {
             case .browse: ChannelBrowserView(controller: controller) { id in land(id) }
             case .workspaces: WorkspaceSwitcherSheet(controller: controller)
             case .newSection: SectionFormView(controller: controller, section: nil)
+            case .compose:
+                NewMessageView(controller: controller) { id, focus in
+                    if focus { controller.composerFocus = id }
+                    land(id)
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $jumpShown) {
+            JumpView(controller: controller) { id in
+                jumpShown = false
+                land(id)
             }
         }
         .onChange(of: homeSelection) { _, id in
@@ -116,6 +143,8 @@ struct MainView: View {
         }
         .onChange(of: frontChannelId, initial: true) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
+            // M37: 「最近の会話」 of 移動・検索, whichever tab it opened on.
+            if let id { RecentConversations.push(id, key: controller.recentConversationKey) }
             if let id, let engine = controller.engine {
                 Task { await engine.openChannel(id) }
             } else {
@@ -126,6 +155,7 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
             if let id = note.userInfo?["id"] as? String {
                 if sheet == .search { sheet = nil } // a conversation opened from a search result's profile or link
+                jumpShown = false // …or from the message search of 移動・検索
                 previewMessageId = note.userInfo?["messageId"] as? String
                 land(id, parentId: note.userInfo?["parentId"] as? String)
             }
@@ -150,41 +180,63 @@ struct MainView: View {
 
     private var homeTab: some View {
         NavigationStack(path: path(.home)) {
-            ChannelListView(controller: controller, selection: $homeSelection)
-                .navigationTitle(controller.workspaceName)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    // M16c: the workspace on screen; with two or more, a tap opens the switcher.
-                    ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { tab = .you } label: {
-                            if let me = store.me {
-                                AvatarView(id: me.id, name: me.displayName, size: 30)
-                            } else {
-                                Image(systemName: "person.crop.circle")
-                            }
-                        }
-                        .accessibilityLabel("自分")
-                    }
-                    ToolbarItem(placement: .topBarLeading) { StatusBadge(status: status) }
-                    ToolbarItem(placement: .topBarTrailing) { Button("検索", systemImage: "magnifyingglass") { sheet = .search } }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("ダイレクトメッセージ", systemImage: "person.2") { sheet = .newDm }
-                            Button("メンバー", systemImage: "person.3") { sheet = .directory }
-                            if !controller.isGuest {
-                                Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
-                                Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
-                            }
-                            Button("新しいセクション", systemImage: "folder.badge.plus") { sheet = .newSection }
-                            Divider()
-                            Button("すべて既読にする", systemImage: "checkmark.circle") { Task { await controller.markAllRead() } }
-                        } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("新規")
-                    }
-                }
-                .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
+            ChannelListView(controller: controller, selection: $homeSelection, onJump: { jumpShown = true }, onAllDms: {
+                paths[.dms] = []
+                tab = .dms
+            })
+            .overlay(alignment: .bottomTrailing) { composeButton }
+            .navigationTitle(controller.workspaceName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
+                ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
+                ToolbarItem(placement: .topBarLeading) { StatusBadge(status: status) }
+                ToolbarItem(placement: .topBarTrailing) { homeMenu }
+            }
+            .alert("すべて既読にしますか？", isPresented: $confirmMarkAll) {
+                Button("既読にする") { Task { await controller.markAllRead() } }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("すべてのチャンネルと DM の未読がなくなります。")
+            }
+            .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
         }
+    }
+
+    /// M37 (1): the home's ⋯ (MOBILE_UI.md §6.1), with what the old ＋ menu had.
+    private var homeMenu: some View {
+        Menu {
+            Button("すべて既読にする", systemImage: "checkmark.circle") { confirmMarkAll = true }
+            Toggle(isOn: $groupUnread) { Label("未読をまとめる", systemImage: "tray.full") }
+            Divider()
+            if !controller.isGuest {
+                Button("チャンネルを探す", systemImage: "safari") { sheet = .browse }
+                Button("チャンネルを作成", systemImage: "number") { sheet = .newChannel }
+            }
+            Button("メンバー一覧", systemImage: "person.3") { sheet = .directory }
+            Divider()
+            Button("ダイレクトメッセージ", systemImage: "person.2") { sheet = .newDm }
+            Button("新しいセクション", systemImage: "folder.badge.plus") { sheet = .newSection }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        .accessibilityLabel("その他")
+    }
+
+    /// M37 (6): ✏️ 新しいメッセージ, bottom right over the list (the tab bar is below it).
+    private var composeButton: some View {
+        Button { sheet = .compose } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Color.accentColor, in: Circle())
+                .shadow(color: .black.opacity(0.22), radius: 6, y: 3)
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 16)
+        .padding(.bottom, 16)
+        .accessibilityLabel("新しいメッセージ")
     }
 
     private var dmTab: some View {

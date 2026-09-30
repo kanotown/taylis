@@ -1,9 +1,15 @@
 import SwiftUI
 
+/// The home tab's first screen (M37, MOBILE_UI.md §6.1): 「移動・検索」, the tiles, then the sections.
 struct ChannelListView: View {
     @Bindable var controller: AppController
     @Binding var selection: String?
-    @AppStorage("sidebar.unreadOnly") private var unreadOnly = false
+    /// M37: 「移動・検索」 and 「すべての DM」 (the DM tab), which MainView shows.
+    var onJump: () -> Void = {}
+    var onAllDms: () -> Void = {}
+    /// M37 「未読をまとめる」 (replaces M12's 「未読だけ」 filter): unread conversations gather in a section of their own.
+    @AppStorage(Self.groupUnreadKey) private var groupUnread = false
+    static let groupUnreadKey = "home.groupUnread"
     @State private var showBrowser = false
     /// M26: making (no section) or editing one of my sections; the conversation a long-press 「新しいセクション…」 ticks.
     private struct SectionFormTarget: Identifiable {
@@ -25,109 +31,83 @@ struct ChannelListView: View {
         withAnimation(.easeInOut(duration: 0.3)) { foldedShown = Self.foldedKeys(next) }
         foldedRaw = next
     }
-    private func shown(_ rows: [ChannelState], _ collapsed: Bool) -> [ChannelState] {
-        Self.shown(rows, collapsed: collapsed, meId: meId, selection: selection)
-    }
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
-    /// The unread filter keeps the open conversation so the selection never disappears.
-    private func keep(_ channel: ChannelState) -> Bool { !unreadOnly || channel.id == selection || channel.hasUnread(meId: meId) }
     private func starred(_ channel: ChannelState) -> Bool { controller.store.favorites.contains(channel.id) }
-    /// 「お気に入り」 (M12a): starred conversations, out of the other sections.
-    private var favorites: [ChannelState] {
-        channels.filter { $0.isMember && !$0.channel.archived && starred($0) && keep($0) }
-            .sorted { channelTitle($0, store: controller.store) < channelTitle($1, store: controller.store) }
-    }
-    private func placed(_ channel: ChannelState) -> Bool { controller.store.sectionOf(channel.id) != nil }
-    private var channelAndTimes: (channels: [ChannelState], times: [ChannelState]) {
-        Self.channelSections(channels, meId: meId) { !starred($0) && !placed($0) && keep($0) }
-    }
     /// M24: the row to make my times stays until I have one; guests cannot have one.
     private var canMakeTimes: Bool {
         guard let meId, !controller.isGuest else { return false }
         return !channels.contains { $0.channel.timesOwnerId == meId }
     }
-    /// My DM with myself first (as in Slack), then the newest.
-    private var dms: [ChannelState] {
-        channels.filter { $0.isMember && $0.channel.isDm && !starred($0) && !placed($0) && keep($0) }.sorted { a, b in
-            let selfA = DMList.isNotesToSelf(a, meId: meId), selfB = DMList.isNotesToSelf(b, meId: meId)
-            if selfA != selfB { return selfA }
-            return (a.channel.lastMessageAt ?? "") > (b.channel.lastMessageAt ?? "")
-        }
-    }
-    /// Until my DM with myself exists, its row stands first all the same; a tap makes it.
-    private var showsNotesRow: Bool { !unreadOnly && DMList.notesMissing(channels, meId: meId) }
     @State private var openingNotes = false
-    private var browse: [ChannelState] { unreadOnly ? [] : channels.filter { !$0.isMember && $0.channel.type == "public" && !$0.channel.archived }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") } }
+
+    private var layout: HomeSections.Layout {
+        let store = controller.store
+        return HomeSections.build(HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, sections: store.sidebarSections,
+                                                     groupUnread: groupUnread, folded: folded, title: { channelTitle($0, store: store) }))
+    }
 
     var body: some View {
+        let layout = layout
         // M34: a tap sets the selection, which the home tab turns into a screen on its stack (MainView).
         List {
-            // The unread filter and the lists (threads, mentions, drafts, reminders, files, saved) in one row of chips
-            // (testers, 2026-09-29: the home screen took a lot of room before the first channel).
-            shortcutChips
-                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 10, trailing: 0))
+            jumpBar
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-            // M26: a folded section keeps its unread rows (and the open one); its hints and actions go.
-            if !favorites.isEmpty {
+            tiles
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            if !layout.unread.isEmpty {
+                Section {
+                    ForEach(layout.unread) { row($0) }
+                } header: { plainHeader("未読") }
+            }
+            // M26: a folded section keeps its unread rows; its hints and actions go.
+            if !layout.favorites.isEmpty {
                 let fold = folded.contains("favorites")
                 Section {
-                    ForEach(shown(favorites, fold)) { row($0) }
+                    ForEach(layout.favorites.rows) { row($0) }
                 } header: { foldHeader("お気に入り", folded: fold) { toggleFold("favorites") } }
             }
-            customSections
-            let sections = channelAndTimes
+            customSections(layout.custom)
             let channelsFolded = folded.contains("channels")
             Section {
-                ForEach(shown(sections.channels, channelsFolded)) { row($0) }
+                ForEach(layout.channels.rows) { row($0) }
                 if !channelsFolded {
-                    if sections.channels.isEmpty { hint(unreadOnly ? "未読のチャンネルはありません。" : "参加中のチャンネルはありません。＋ から作成できます。") }
-                    if !unreadOnly && !controller.isGuest { browseRow }
+                    if layout.channels.isEmpty && !groupUnread { hint("参加中のチャンネルはありません。") }
+                    if !controller.isGuest { addChannelRow }
                 }
             } header: { foldHeader("チャンネル", folded: channelsFolded) { toggleFold("channels") } }
-            if !sections.times.isEmpty || (canMakeTimes && !unreadOnly) {
+            if !layout.times.isEmpty || canMakeTimes {
                 let timesFolded = folded.contains("times")
                 Section {
-                    ForEach(shown(sections.times, timesFolded)) { row($0) }
-                    if canMakeTimes && !unreadOnly && !timesFolded { makeTimesRow }
+                    ForEach(layout.times.rows) { row($0) }
+                    if canMakeTimes && !timesFolded { makeTimesRow }
                 } header: { foldHeader("Times", folded: timesFolded) { toggleFold("times") } }
             }
             let dmsFolded = folded.contains("dms")
             Section {
-                if showsNotesRow && !dmsFolded { notesRow }
-                ForEach(shown(dms, dmsFolded)) { row($0) }
-                if dms.isEmpty && !dmsFolded && !showsNotesRow { hint(unreadOnly ? "未読の DM はありません。" : "＋ の「ダイレクトメッセージ」から相手を選べます。") }
-            } header: { foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") } }
-            if !browse.isEmpty {
-                Section("参加できるチャンネル") {
-                    ForEach(browse) { channel in
-                        // M27: a tap reads the channel first (Slack); 「参加」 joins at once.
-                        HStack(spacing: 10) {
-                            Button { selection = channel.id } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "number").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
-                                    Text(rowTitle(channel)).foregroundStyle(Color.primary.opacity(0.72))
-                                    Spacer()
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.borderless)
-                            Button("参加") { join(channel.id) }
-                                .font(.footnote)
-                                .buttonStyle(.borderless)
-                                .frame(minWidth: 44, minHeight: 40) // a finger's target (audit 2026-09-29)
-                        }
-                        .listRowInsets(Self.rowInsets)
-                        .listRowSeparator(.hidden)
-                    }
+                if layout.notesRow { notesRow }
+                ForEach(layout.dms.rows) { row($0) }
+                if !dmsFolded {
+                    if layout.dms.isEmpty && !layout.notesRow && !groupUnread { hint("右下の ✏️ から相手を選べます。") }
+                    if layout.moreDms { allDmsRow }
                 }
-            }
+            } header: { foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") } }
+            // Room under the last row for the ✏️ button.
+            Color.clear.frame(height: 64)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .accessibilityHidden(true)
         }
-        // Plain and compact like Slack's (testers, 2026-09-29: widely spaced rows were hard to scan with many channels).
+        // Plain and compact like Slack's; a row is 44 pt, a finger's target (MOBILE_UI.md §6.1).
         .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 40)
+        .environment(\.defaultMinListRowHeight, 44)
+        // M37 (5): the engine's resync (bootstrap, and the open conversation's catch-up); the protocol keeps things right.
+        .refreshable { await controller.engine?.resync() }
         .onAppear(perform: loadFolds)
         .sheet(item: $sectionForm) { target in
             SectionFormView(controller: controller, section: target.section, preselected: target.preselected)
@@ -186,25 +166,89 @@ struct ChannelListView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    // MARK: sidebar sections (M14f)
-
-    private func members(of section: SidebarSectionOut) -> [ChannelState] {
-        let rows = channels.filter { $0.isMember && !$0.channel.archived && !starred($0) && keep($0) && section.channelIds.contains($0.id) }
-        let named = rows.filter { !$0.channel.isDm }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") }
-        let direct = rows.filter { $0.channel.isDm }.sorted { ($0.channel.lastMessageAt ?? "") > ($1.channel.lastMessageAt ?? "") }
-        return named + direct
+    /// 「未読」: gathered while 「未読をまとめる」 is on, never folded (it holds only what is unread).
+    private func plainHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
     }
 
+    // MARK: 移動・検索 and the tiles (M37)
+
+    /// Opens the full-screen jump view (MOBILE_UI.md §6.2).
+    private var jumpBar: some View {
+        Button(action: onJump) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Text("移動・検索…").foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .font(.body)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 40)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("移動・検索")
+        .accessibilityHint("会話や人に移動するか、メッセージを検索します")
+    }
+
+    private var tiles: some View {
+        let store = controller.store
+        let row = HomeTile.tiles(threads: store.threadSummary, drafts: store.listDrafts().count + store.scheduled.count,
+                                 saved: store.bookmarks.count, firedReminders: store.firedReminderCount)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(row) { tile in
+                    Button { selection = tile.selectionId } label: { tileLabel(tile) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(tile.title)
+                        .accessibilityValue(tile.accessibilityValue)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    /// An icon over the name, the number beside the icon (red for a mention or a fired reminder).
+    private func tileLabel(_ tile: HomeTile) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: tile.icon).font(.system(size: 17, weight: .medium)).frame(height: 22)
+                if let count = tile.count, count > 0 {
+                    Text(count > 99 ? "99+" : "\(count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(tile.alert ? Color.white : Color.primary)
+                        .padding(.horizontal, tile.alert ? 6 : 0)
+                        .padding(.vertical, tile.alert ? 1 : 0)
+                        .background(tile.alert ? Color.red : Color.clear, in: Capsule())
+                }
+            }
+            Text(tile.title).font(.subheadline.weight(.medium)).lineLimit(1)
+        }
+        .foregroundStyle(Color.primary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(minWidth: 84, alignment: .leading)
+        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .opacity(tile.dimmed ? 0.5 : 1)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: sidebar sections (M14f)
+
     @ViewBuilder
-    private var customSections: some View {
-        let sections = controller.store.sidebarSections
-        ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+    private func customSections(_ sections: [HomeSections.Custom]) -> some View {
+        ForEach(Array(sections.enumerated()), id: \.element.section.id) { index, entry in
             Section {
-                let rows = members(of: section)
-                ForEach(shown(rows, section.collapsed)) { row($0) }
-                if rows.isEmpty && !unreadOnly && !section.collapsed { hint("会話を長押し →「セクションに移動」で追加できます。") }
+                ForEach(entry.rows.rows) { row($0) }
+                if entry.rows.isEmpty && !groupUnread && !entry.section.collapsed { hint("会話を長押し →「セクションに移動」で追加できます。") }
             } header: {
-                sectionHeader(section, index: index, count: sections.count)
+                sectionHeader(entry.section, index: index, count: sections.count)
             }
         }
     }
@@ -223,7 +267,7 @@ struct ChannelListView: View {
                 Button("新しいセクション…", systemImage: "plus") { sectionForm = SectionFormTarget(section: nil) }
                 Button("セクションを削除", systemImage: "trash", role: .destructive) { Task { _ = await controller.deleteSection(section.id) } }
             } label: {
-                Image(systemName: "ellipsis").padding(.horizontal, 4)
+                Image(systemName: "ellipsis").padding(.horizontal, 4).frame(minWidth: 32, minHeight: 32)
             }
             .accessibilityLabel("\(section.name) のメニュー")
         }
@@ -255,19 +299,33 @@ struct ChannelListView: View {
         }
     }
 
-    /// 「チャンネルを探す」 (M11h): the browser with member counts, join / leave and create.
-    private var browseRow: some View {
-        Button { showBrowser = true } label: {
+    /// An action at the end of a section: a glyph where the rows have theirs, and a name.
+    private func actionRow(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: "safari").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 22)
-                Text("チャンネルを探す").foregroundStyle(Color.primary.opacity(0.72))
+                Image(systemName: icon).font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
+                Text(title).foregroundStyle(Color.primary.opacity(0.72))
+                Spacer(minLength: 0)
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
     }
 
-    /// 「自分の times を作る」 (M24): POST /times, then open it.
+    /// 「チャンネルを追加」: the browser (M11h), where a channel is joined or created.
+    private var addChannelRow: some View {
+        actionRow("チャンネルを追加", icon: "plus") { showBrowser = true }
+    }
+
+    /// 「すべての DM」: the home shows the newest few, the DM tab all of them.
+    private var allDmsRow: some View {
+        actionRow("すべての DM", icon: "chevron.right", action: onAllDms)
+            .accessibilityHint("DM タブを開きます")
+    }
+
     /// My DM with myself before it exists, like a DM row: my picture and my name.
     private var notesRow: some View {
         Button {
@@ -283,7 +341,7 @@ struct ChannelListView: View {
                 Text(controller.store.me?.displayName ?? "…").foregroundStyle(Color.primary.opacity(0.72)).lineLimit(1)
                 Spacer(minLength: 4)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -292,63 +350,9 @@ struct ChannelListView: View {
         .listRowSeparator(.hidden)
     }
 
+    /// 「自分の times を作る」 (M24): POST /times, then open it.
     private var makeTimesRow: some View {
-        Button { makeTimes() } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "plus").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 22)
-                Text("自分の times を作る (作業ログ)").foregroundStyle(Color.primary.opacity(0.72))
-            }
-        }
-        .listRowInsets(Self.rowInsets)
-        .listRowSeparator(.hidden)
-    }
-
-    /// One chip of the top row: an icon, a name and a count or a badge; `active` fills it.
-    private func chip(_ title: String, icon: String, count: Int = 0, badge: Int = 0, alert: Bool = false, active: Bool = false,
-                      action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.footnote.weight(.semibold))
-                Text(title).font(.subheadline.weight(badge > 0 ? .semibold : .regular))
-                if badge > 0 {
-                    Text("\(badge)").font(.caption2.bold()).foregroundStyle(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(alert ? Color.red : Color.accentColor, in: Capsule())
-                } else if count > 0 {
-                    Text("\(count)").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .foregroundStyle(active ? Color.white : Color.primary)
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(active ? Color.accentColor : Color(.secondarySystemFill), in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// The top row: the unread filter, then スレッド, メンション, 下書き and リマインダー (while any), ファイル, 保存済み.
-    private var shortcutChips: some View {
-        let store = controller.store
-        let threads = store.threadSummary
-        let drafts = store.listDrafts().count + store.scheduled.count
-        let reminders = store.reminders.count, fired = store.firedReminderCount
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                chip("未読", icon: "line.3.horizontal.decrease", active: unreadOnly) { unreadOnly.toggle() }
-                    .accessibilityValue(unreadOnly ? "オン" : "オフ")
-                chip("スレッド", icon: "bubble.left.and.text.bubble.right",
-                     badge: selection == ThreadsListView.selectionId ? 0 : threads.unreadCount, alert: threads.mentionCount > 0) {
-                    selection = ThreadsListView.selectionId
-                }
-                // M34: mentions moved to the activity tab.
-                if drafts > 0 { chip("下書き", icon: "doc.text", count: drafts) { selection = DraftsView.selectionId } }
-                if reminders > 0 {
-                    chip("リマインダー", icon: "alarm", count: fired > 0 ? 0 : reminders, badge: fired, alert: true) { selection = RemindersView.selectionId }
-                }
-                chip("ファイル", icon: "doc.on.doc") { selection = FilesView.selectionId }
-                chip("保存済み", icon: "bookmark", count: store.bookmarks.count) { selection = SavedView.selectionId }
-            }
-            .padding(.horizontal, 16)
-        }
+        actionRow("自分の times を作る (作業ログ)", icon: "plus") { makeTimes() }
     }
 
     /// The glyph already says "#", so rows show the bare channel name.
@@ -358,22 +362,12 @@ struct ChannelListView: View {
     }
 
     private func hint(_ text: String) -> some View {
-        Text(text).font(.footnote).foregroundStyle(.secondary).listRowInsets(Self.rowInsets).listRowSeparator(.hidden)
+        Text(text).font(.footnote).foregroundStyle(.secondary).listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowSeparator(.hidden)
     }
 
-    /// A compact row, like Slack's sidebar (a little more room than at first: testers found 34 pt too tight).
-    static let rowInsets = EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
-
-    private func join(_ id: String) {
-        Task {
-            guard let api = controller.api else { return }
-            do {
-                let joined = try await api.joinChannel(id: id)
-                controller.store.upsertChannel(joined, isMember: true)
-                selection = joined.id
-            } catch { controller.error = controller.describe(error) }
-        }
-    }
+    /// A row's insets: the row itself is 44 pt high (MOBILE_UI.md §6.1: one line, no topic).
+    static let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
 
     private func makeTimes() {
         Task { if let id = await controller.ensureTimes() { selection = id } }
@@ -393,7 +387,7 @@ struct ChannelListView: View {
                     AvatarView(id: other, name: store.users[other]?.displayName ?? store.me?.displayName ?? "?", size: 22, presence: store.presenceOf(other))
                 } else {
                     Image(systemName: channel.channel.type == "private" ? "lock" : "number")
-                        .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
+                        .font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary)
                         .frame(width: 22).accessibilityHidden(true)
                 }
                 Text(rowTitle(channel))
@@ -404,23 +398,25 @@ struct ChannelListView: View {
                 if channel.channel.isDm, let other = (channel.channel.dmUserIds ?? []).first(where: { $0 != store.me?.id }) {
                     StatusEmojiView(user: store.users[other])
                 }
-                if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary) }
+                if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                 if unread && badge > 0 {
                     Text("\(badge)")
                         .font(.caption2).bold().foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Color.accentColor, in: Capsule())
+                        .background(channel.channel.isDm ? Color.accentColor : Color.red, in: Capsule())
+                        .accessibilityLabel(channel.channel.isDm ? "未読 \(badge) 件" : "メンション \(badge) 件")
                 } else if unread {
-                    Circle().fill(Color.accentColor).frame(width: 8, height: 8)
+                    Circle().fill(Color.accentColor).frame(width: 8, height: 8).accessibilityLabel("未読")
                 } else if quietUnread {
-                    Circle().fill(Color.secondary.opacity(0.5)).frame(width: 6, height: 6)
+                    Circle().fill(Color.secondary.opacity(0.5)).frame(width: 6, height: 6).accessibilityHidden(true)
                 }
             }
-            .opacity(muted && !unread ? 0.6 : 1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(muted && !unread ? 0.55 : 1)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
         .contextMenu { rowMenu(channel) }

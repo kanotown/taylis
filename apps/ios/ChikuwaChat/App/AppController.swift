@@ -82,6 +82,11 @@ final class AppController {
 
     /// M16b: where the open account's recent searches are kept on this device.
     var recentSearchKey: String { RecentSearches.key(account: activeWorkspace?.account ?? "") }
+    /// M37: where the open account's 「最近の会話」 are kept on this device.
+    var recentConversationKey: String { RecentConversations.key(account: activeWorkspace?.account ?? "") }
+    /// M37 (6): a conversation chosen from 「新しいメッセージ」, whose input takes the keyboard once it shows; its composer
+    /// clears this.
+    var composerFocus: String?
 
     /// The API client of a workspace, made from its saved refresh token the first time.
     private func client(for workspace: Workspace) -> ApiClient {

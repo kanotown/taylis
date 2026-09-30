@@ -1,0 +1,169 @@
+import Foundation
+
+/// M37 (MOBILE_UI.md §6.1): what the phone's home lists, section by section. Pure over the store's conversations; the
+/// unread rule itself is ChannelState.hasUnread.
+enum HomeSections {
+    /// 「ダイレクトメッセージ」 shows my DM with myself and this many others (the newest); the DM tab has all.
+    static let dmLimit = 5
+
+    /// A section's rows after folding, and whether it has any at all (its hint and its trailing rows show only then).
+    struct Rows: Equatable {
+        var rows: [ChannelState] = []
+        var isEmpty = true
+        var ids: [String] { rows.map(\.id) }
+    }
+
+    struct Custom: Equatable {
+        let section: SidebarSectionOut
+        let rows: Rows
+    }
+
+    struct Layout: Equatable {
+        /// 「未読」: only while 「未読をまとめる」 is on; these rows are out of their own sections.
+        var unread: [ChannelState] = []
+        var favorites = Rows()
+        var custom: [Custom] = []
+        var channels = Rows()
+        var times = Rows()
+        var dms = Rows()
+        /// More DMs than the home shows: 「すべての DM」 leads to the DM tab.
+        var moreDms = false
+        /// My DM with myself does not exist yet: a row stands in for it (made on the first tap).
+        var notesRow = false
+    }
+
+    struct Input {
+        var channels: [ChannelState]
+        var meId: String?
+        var favorites: Set<String> = []
+        var sections: [SidebarSectionOut] = []
+        /// 「未読をまとめる」.
+        var groupUnread = false
+        /// The default sections folded on this device ("favorites", "channels", "times", "dms"); my own sections fold
+        /// by their `collapsed`.
+        var folded: Set<String> = []
+        /// The name the favorites are ordered by.
+        var title: (ChannelState) -> String = { $0.channel.name ?? "" }
+        var now = Date()
+    }
+
+    static func build(_ input: Input) -> Layout {
+        let meId = input.meId, now = input.now
+        let unread = { (channel: ChannelState) in channel.hasUnread(meId: meId, now: now) }
+        let live = input.channels.filter { $0.isMember && !$0.channel.archived }
+        var layout = Layout()
+        var pool = live
+        if input.groupUnread {
+            layout.unread = live.filter(unread).sorted(by: newestFirst)
+            pool = live.filter { !unread($0) }
+        }
+        let starred = { (channel: ChannelState) in input.favorites.contains(channel.id) }
+        let placed = Set(input.sections.flatMap(\.channelIds))
+        // A folded section still shows what is unread (M26, as in Slack).
+        let fold = { (rows: [ChannelState], folded: Bool) in
+            Rows(rows: folded ? rows.filter(unread) : rows, isEmpty: rows.isEmpty)
+        }
+
+        layout.favorites = fold(pool.filter(starred).sorted { input.title($0) < input.title($1) }, input.folded.contains("favorites"))
+        layout.custom = input.sections.map { section in
+            let rows = pool.filter { !starred($0) && section.channelIds.contains($0.id) }
+            let named = rows.filter { !$0.channel.isDm }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") }
+            let direct = rows.filter(\.channel.isDm).sorted(by: newestFirst)
+            return Custom(section: section, rows: fold(named + direct, section.collapsed))
+        }
+        let sections = ChannelListView.channelSections(pool, meId: meId) { !starred($0) && !placed.contains($0.id) }
+        layout.channels = fold(sections.channels, input.folded.contains("channels"))
+        layout.times = fold(sections.times, input.folded.contains("times"))
+
+        let dmsFolded = input.folded.contains("dms")
+        let dms = pool.filter { $0.channel.isDm && !starred($0) && !placed.contains($0.id) }
+        let notes = dms.filter { DMList.isNotesToSelf($0, meId: meId) }
+        let others = dms.filter { !DMList.isNotesToSelf($0, meId: meId) }.sorted(by: newestFirst)
+        if dmsFolded {
+            layout.dms = fold(notes + others, true)
+        } else {
+            // The newest few, and any unread one further down (an unread conversation never hides).
+            let shown = others.enumerated().filter { $0.offset < dmLimit || unread($0.element) }.map(\.element)
+            layout.dms = Rows(rows: notes + shown, isEmpty: dms.isEmpty)
+            layout.moreDms = shown.count < others.count
+            layout.notesRow = DMList.notesMissing(input.channels, meId: meId)
+        }
+        return layout
+    }
+
+    /// The newest message first (a conversation without one by when it was made).
+    static func newestFirst(_ a: ChannelState, _ b: ChannelState) -> Bool {
+        let lastA = a.channel.lastMessageAt ?? a.channel.createdAt, lastB = b.channel.lastMessageAt ?? b.channel.createdAt
+        return lastA != lastB ? lastA > lastB : a.id < b.id
+    }
+}
+
+/// M37 (MOBILE_UI.md §6.1): the row of tiles over the home's sections. A tile with nothing to count is dimmed but
+/// still opens its list.
+struct HomeTile: Identifiable, Equatable {
+    enum Kind: String {
+        case threads, drafts, saved, reminders, files
+    }
+
+    let kind: Kind
+    /// nil: the tile shows no number (files).
+    let count: Int?
+    /// The number is red (a mention in a followed thread; reminders that fired).
+    let alert: Bool
+
+    var id: String { kind.rawValue }
+    var dimmed: Bool { count == 0 }
+
+    var title: String {
+        switch kind {
+        case .threads: "スレッド"
+        case .drafts: "下書き"
+        case .saved: "保存"
+        case .reminders: "リマインダー"
+        case .files: "ファイル"
+        }
+    }
+
+    var icon: String {
+        switch kind {
+        case .threads: "bubble.left.and.text.bubble.right"
+        case .drafts: "square.and.pencil"
+        case .saved: "bookmark"
+        case .reminders: "alarm"
+        case .files: "doc.on.doc"
+        }
+    }
+
+    /// The list the tile opens (MainView's routes).
+    var selectionId: String {
+        switch kind {
+        case .threads: ThreadsListView.selectionId
+        case .drafts: DraftsView.selectionId
+        case .saved: SavedView.selectionId
+        case .reminders: RemindersView.selectionId
+        case .files: FilesView.selectionId
+        }
+    }
+
+    /// What VoiceOver says after the title.
+    var accessibilityValue: String {
+        guard let count else { return "" }
+        switch kind {
+        case .threads: return count == 0 ? "未読なし" : alert ? "未読 \(count) 件、メンションあり" : "未読 \(count) 件"
+        case .reminders: return count == 0 ? "通知済みなし" : "通知済み \(count) 件"
+        default: return "\(count) 件"
+        }
+    }
+
+    /// スレッド: followed threads with unread replies, red with a mention; 下書き: drafts and scheduled messages; 保存: saved
+    /// messages; リマインダー: the reminders that fired, red; ファイル: no number.
+    static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
+        [
+            HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
+            HomeTile(kind: .drafts, count: drafts, alert: false),
+            HomeTile(kind: .saved, count: saved, alert: false),
+            HomeTile(kind: .reminders, count: firedReminders, alert: firedReminders > 0),
+            HomeTile(kind: .files, count: nil, alert: false),
+        ]
+    }
+}
