@@ -553,6 +553,13 @@ final class AppController {
            target.serverUrl != activeServerUrl || screen != .main {
             await switchTo(target.serverUrl)
         }
+        if payload.opensMessage, let messageId = payload.messageId {
+            // M39: a reaction to my message (PUSH_NOTIFICATIONS.md §4): that message, not the conversation's unread
+            // position (it may be old), in its thread when it is a reply.
+            engine?.reconnectNow()
+            await openPermalink(messageId)
+            return
+        }
         PushCenter.shared.pendingChannelId = payload.channelId
         PushCenter.shared.pendingParentId = payload.parentId // a reply: its thread opens too (M28d)
         engine?.reconnectNow()
@@ -954,9 +961,10 @@ final class AppController {
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
-                       presenceHidden: Bool? = nil, notificationDefault: String? = nil) async -> Bool {
+                       presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
         // M35: channels that follow the default show the new level at once (they resolve with store.me).
         if let notificationDefault { fields["notification_default"] = .string(notificationDefault) }
         if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
@@ -979,6 +987,16 @@ final class AppController {
             me = updated
             store.setMe(updated)
             store.upsertUser(updated.asPublic)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// M39: the activity is read up to `readAt` (「すべて既読」, or the newest item the list showed). The badge takes the
+    /// server's answer; my other devices follow through activity.read. Whether it went through (the reason is shown).
+    func markActivityRead(_ readAt: String) async -> Bool {
+        guard let engine else { return false }
+        do {
+            try await engine.markActivityRead(readAt)
             return true
         } catch { self.error = describe(error); return false }
     }

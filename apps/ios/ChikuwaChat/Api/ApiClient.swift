@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -398,6 +398,24 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi {
         var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         return try await request("GET", Self.pathWithQuery("/api/v1/mentions", items))
+    }
+
+    // MARK: activity (M39, MOBILE_UI.md §7.2)
+
+    /// Mentions of me, reactions to my messages and replies in threads I follow, newest first; `cursor` is the previous
+    /// page's next_cursor. `filter`: all / mentions / threads / reactions.
+    func listActivity(filter: String = "all", cursor: String? = nil, limit: Int = 50) async throws -> ActivityListOut {
+        var items = [URLQueryItem(name: "filter", value: filter), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/activity", items))
+    }
+
+    /// The activity badge: the items after my read position (at most 99), and whether a mention is among them.
+    func activitySummary() async throws -> ActivitySummary { try await request("GET", "/api/v1/activity/summary") }
+
+    /// Everything up to `readAt` is read (the server only moves it forward, never past its own now).
+    func markActivityRead(readAt: String) async throws -> ActivitySummary {
+        try await request("PUT", "/api/v1/activity/read", body: .object(["read_at": .string(readAt)]))
     }
 
     func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {

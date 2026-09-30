@@ -616,6 +616,16 @@ struct SettingsView: View {
                 } footer: {
                     Text("チャンネルごとの設定が優先されます。DM は「なし」以外なら常に通知されます。")
                 }
+                // M39: reactions to my messages as banners; a server before M39 has no such setting.
+                if let notifyReactions = controller.store.me?.notifyReactions {
+                    Section {
+                        Toggle("リアクションのバナー", isOn: Binding(get: { notifyReactions }, set: { on in
+                            Task { _ = await controller.updateProfile(notifyReactions: on) }
+                        }))
+                    } footer: {
+                        Text("オフでもアクティビティに表示されます")
+                    }
+                }
                 // L4 (M31): nobody else sees whether I am here.
                 Section {
                     Toggle("在席を隠す", isOn: Binding(get: { controller.store.me?.presenceHidden ?? false }, set: { on in

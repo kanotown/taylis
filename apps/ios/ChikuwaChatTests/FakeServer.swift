@@ -69,7 +69,18 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi, DraftApi, ChannelLinksApi {
+    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+        func activitySummary() async throws -> ActivitySummary {
+            try maybeFail("activitySummary")
+            guard let summary = server.activity[userId] else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+            return summary
+        }
+
+        func markActivityRead(readAt: String) async throws -> ActivitySummary {
+            try maybeFail("markActivityRead")
+            return try server.markActivityRead(userId, readAt: readAt)
+        }
+
         func channelLinks(channelId: String) async throws -> [ChannelLinkOut] {
             try maybeFail("channelLinks")
             guard server.channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
@@ -401,6 +412,37 @@ final class FakeServer {
         emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("scheduled.updated"), "ts": .string(now()),
                                 "channel_id": .string(row.channelId), "seq": .null,
                                 "data": .object(["scheduled": try! JSONValue.from(row)])]))
+    }
+
+    /// M39: each user's activity summary (bootstrap `activity`); none = a server before M39. Tests set the counts.
+    var activity: [String: ActivitySummary] = [:]
+
+    /// PUT /activity/read: the position only moves forward; activity.read to the user's devices when it moved. Every
+    /// item up to it is read here (the fake keeps no items: the count drops to 0).
+    func markActivityRead(_ userId: String, readAt: String) throws -> ActivitySummary {
+        guard var summary = activity[userId] else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+        let moved = (parseIsoDate(readAt) ?? .distantPast) > (parseIsoDate(summary.readAt) ?? .distantPast)
+        if moved {
+            summary = ActivitySummary(readAt: readAt, unreadCount: 0, mentionUnread: false)
+            activity[userId] = summary
+            emitActivityRead(userId, readAt: readAt)
+        }
+        return summary
+    }
+
+    func emitActivityRead(_ userId: String, readAt: String) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("activity.read"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null, "data": .object(["read_at": .string(readAt)])]))
+    }
+
+    /// reaction.added to the message's author (the reaction itself is `react`; the tests set the summary's counts).
+    func emitReactionAdded(to authorId: String, channelId: String, messageId: String, by userId: String, emoji: String) {
+        eventId += 1
+        emit([authorId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reaction.added"), "ts": .string(now()),
+                                  "channel_id": .string(channelId), "seq": .null,
+                                  "data": .object(["channel_id": .string(channelId), "message_id": .string(messageId), "user_id": .string(userId),
+                                                   "emoji": .string(emoji), "at": .string(now())])]))
     }
 
     /// "user" → starred channel ids (M12a).
@@ -877,7 +919,8 @@ final class FakeServer {
                             presence: Array(Set(sockets.filter(\.authed).map(\.userId))).sorted().map { PresenceEntry(userId: $0, status: presenceOf($0)) },
                             bookmarks: bookmarks[userId] ?? [],
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
-                            customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId))
+                            customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId),
+                            activity: activity[userId])
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {
