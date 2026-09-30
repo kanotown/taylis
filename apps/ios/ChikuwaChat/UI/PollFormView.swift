@@ -10,7 +10,7 @@ enum PollForm {
         let filled = options.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if question.trimmingCharacters(in: .whitespaces).isEmpty { return "質問を入れてください" }
         if filled.count < 2 { return "選択肢を 2 つ以上入れてください" }
-        if Set(filled.map { $0.lowercased() }).count != filled.count { return "同じ選択肢が重なっています" }
+        if Set(filled.map { $0.lowercased() }).count != filled.count { return "同じ選択肢が複数あります" }
         return nil
     }
 }

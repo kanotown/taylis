@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,9 +55,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.platform.KeyValueStore
@@ -248,13 +253,16 @@ fun ReactionChips(
 
 @Composable
 fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    // Saveable (M28c): a rotation while editing kept the dialog but lost what was typed.
-    var text by rememberSaveable { mutableStateOf(initial) }
+    // Saveable (M28c): a rotation while editing kept the dialog but lost what was typed. The cursor starts at the end.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
+    // Editing means typing: the keyboard is up as the dialog opens (testers, 2026-09-30).
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("メッセージを編集") },
-        text = { OutlinedTextField(text, { text = it }, maxLines = 8, enabled = !saving) },
-        confirmButton = { TextButton(enabled = text.isNotBlank() && !saving, onClick = { onSave(text.trim()) }) { Text(if (saving) "保存中…" else "保存") } },
+        text = { OutlinedTextField(field, { field = it }, maxLines = 8, enabled = !saving, modifier = Modifier.focusRequester(focus)) },
+        confirmButton = { TextButton(enabled = field.text.isNotBlank() && !saving, onClick = { onSave(field.text.trim()) }) { Text(if (saving) "保存中…" else "保存") } },
         dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("キャンセル") } },
     )
 }
