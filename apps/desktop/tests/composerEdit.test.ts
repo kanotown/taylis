@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
+import { changedRange, continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
 
 describe("composer markdown helpers", () => {
   it("wraps, unwraps and inserts empty marker pairs", () => {
@@ -44,5 +44,25 @@ describe("composer markdown helpers", () => {
     expect(indentListLine({ text: "- a", start: 3, end: 3 }, false)).toEqual({ text: "  - a", start: 5, end: 5 });
     expect(indentListLine({ text: "  - a", start: 5, end: 5 }, true)).toEqual({ text: "- a", start: 3, end: 3 });
     expect(indentListLine({ text: "plain", start: 2, end: 2 }, false)).toBeNull();
+  });
+
+  it("finds the smallest replaced range, so a format goes through the browser's editing (and its undo) as one step", () => {
+    const apply = (before: string, r: { start: number; end: number; text: string }) => before.slice(0, r.start) + r.text + before.slice(r.end);
+    const cases: Array<[string, string]> = [
+      ["ab", "a****b"],
+      ["make it bold", "make it **bold**"],
+      ["a\nb", "> a\n> b"],
+      ["- item", "- item\n- "],
+      ["- ", ""],
+      ["same", "same"],
+      ["😀", "😃"], // the same high surrogate: the whole emoji is replaced, never half of it
+      ["x😀y", "x😀😀y"],
+    ];
+    for (const [before, after] of cases) expect(apply(before, changedRange(before, after))).toBe(after);
+    expect(changedRange("ab", "a****b")).toEqual({ start: 1, end: 1, text: "****" });
+    expect(changedRange("- item", "- item\n- ")).toEqual({ start: 6, end: 6, text: "\n- " });
+    expect(changedRange("same", "same")).toEqual({ start: 4, end: 4, text: "" });
+    expect(changedRange("😀", "😃")).toEqual({ start: 0, end: 2, text: "😃" });
+    expect(changedRange("a😀", "a😀b😀")).toEqual({ start: 3, end: 3, text: "b😀" });
   });
 });

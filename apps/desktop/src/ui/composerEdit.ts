@@ -121,3 +121,22 @@ export function indentListLine(state: EditState, outdent: boolean): EditState | 
   }
   return { text: text.slice(0, lineStart) + "  " + line + text.slice(lineEnd), start: start + 2, end: end + 2 };
 }
+
+/**
+ * The part of `before` that `after` replaces (their common start and end left out), so the composer can make a
+ * change as one small edit of the text area, which the browser's undo then takes back (tester, 2026-09-30).
+ * Never cuts between the two halves of a surrogate pair (an emoji).
+ */
+export function changedRange(before: string, after: string): { start: number; end: number; text: string } {
+  const limit = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < limit && before.charCodeAt(start) === after.charCodeAt(start)) start++;
+  if (start > 0 && isHighSurrogate(before.charCodeAt(start - 1))) start--;
+  let tail = 0;
+  while (tail < limit - start && before.charCodeAt(before.length - 1 - tail) === after.charCodeAt(after.length - 1 - tail)) tail++;
+  if (tail > 0 && isLowSurrogate(before.charCodeAt(before.length - tail))) tail--;
+  return { start, end: before.length - tail, text: after.slice(start, after.length - tail) };
+}
+
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;

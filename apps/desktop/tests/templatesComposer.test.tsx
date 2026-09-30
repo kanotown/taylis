@@ -27,6 +27,15 @@ const template = (patch: Partial<TemplateOut> & Pick<TemplateOut, "id" | "name" 
   ...patch,
 });
 
+/** The template list is in the 「＋」 menu (tester, 2026-09-30). */
+async function openTemplates() {
+  await act(async () => { fireEvent.keyDown(screen.getByRole("button", { name: /^ファイルを添付・その他/ }), { key: "Enter" }); });
+  await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: "テンプレート…" })); });
+  // It opens once the menu has closed and handed focus back (Radix does that on the next task).
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(screen.getByLabelText("テンプレートの一覧")).toBeTruthy();
+}
+
 function world() {
   const server = new FakeServer();
   const me = server.addUser("alice");
@@ -95,9 +104,9 @@ describe("templates in the composer (M30)", () => {
     expect(items.slice(14)).toEqual(["/日報日報 {date}", "/週報週報 {week}", "/メモメモ ({weekday})個人"]);
   });
 
-  it("the 「テンプレート」 button inserts: the body into an empty input, else after a blank line", async () => {
+  it("「＋」 → 「テンプレート…」 inserts: the body into an empty input, else after a blank line", async () => {
     const w = world();
-    await act(async () => { fireEvent.click(screen.getByLabelText("テンプレート")); });
+    await openTemplates();
     await act(async () => { fireEvent.click(screen.getByText("週報")); });
     expect(w.box().value).toBe("週報 2026-W40");
     // The caret goes to the end on the next frame (focus back in the input).
@@ -105,7 +114,7 @@ describe("templates in the composer (M30)", () => {
     expect(document.activeElement).toBe(w.box());
     expect(w.box().selectionStart).toBe(w.box().value.length);
     w.type("書きかけ");
-    await act(async () => { fireEvent.click(screen.getByLabelText("テンプレート")); });
+    await openTemplates();
     await act(async () => { fireEvent.click(screen.getByText("メモ")); });
     expect(w.box().value).toBe("書きかけ\n\nメモ (火)");
     expect(w.send).not.toHaveBeenCalled();
