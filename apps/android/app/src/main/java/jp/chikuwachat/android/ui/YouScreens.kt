@@ -7,9 +7,9 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsPaused
@@ -77,12 +78,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.time.ZoneId
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.QuietHours
 import jp.chikuwachat.android.api.SessionOut
@@ -98,7 +102,6 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
-import java.time.ZoneId
 
 /**
  * M40 (MOBILE_UI.md §6.5): the 自分 tab. On a phone its list, or the screen pushed over it ([Route.Settings]); from
@@ -363,10 +366,22 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
     var text by rememberSaveable { mutableStateOf(current?.second ?: "") }
     var expiry by rememberSaveable { mutableStateOf("never") }
     var busy by remember { mutableStateOf(false) }
+    // The emoji comes from the picker: a text field there only brought up the keyboard (testers, 2026-09-30).
+    var pickingEmoji by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val store = controller.store
+    if (pickingEmoji) {
+        EmojiPickerDialog(custom = store.customEmoji.values.toList(), images = store.emojiImages, animations = store.emojiAnimations,
+            onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; emoji = it })
+    }
     ScreenColumn {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(emoji, { emoji = it.take(8) }, modifier = Modifier.width(100.dp), label = { Text("絵文字", maxLines = 1) }, singleLine = true)
+            OutlinedButton(onClick = { pickingEmoji = true }, modifier = Modifier.size(56.dp), contentPadding = PaddingValues(0.dp),
+                shape = RoundedCornerShape(12.dp)) {
+                if (emoji.isEmpty()) Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字を選ぶ")
+                else Text(emoji, fontSize = 24.sp, modifier = Modifier.semantics { contentDescription = "絵文字を変更" })
+            }
+            if (emoji.isNotEmpty()) TextButton(onClick = { emoji = "" }) { Text("外す") }
             Spacer(Modifier.width(8.dp))
             OutlinedTextField(text, { text = it.take(100) }, modifier = Modifier.weight(1f), label = { Text("今なにしてる？") }, singleLine = true)
         }

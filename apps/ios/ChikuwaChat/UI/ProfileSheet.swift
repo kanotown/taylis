@@ -92,6 +92,8 @@ struct StatusEditorView: View {
     @State private var text = ""
     @State private var expiry: Expiry = .never
     @State private var busy = false
+    /// The emoji is chosen from the picker: a text field there only brought up the keyboard (testers, 2026-09-30).
+    @State private var pickingEmoji = false
 
     enum Expiry: String, CaseIterable, Identifiable {
         case never, halfHour, hour, fourHours, today, week
@@ -149,7 +151,20 @@ struct StatusEditorView: View {
         Form {
             Section {
                 HStack {
-                    TextField("絵文字", text: $emoji).frame(width: 56).multilineTextAlignment(.center)
+                    Button { pickingEmoji = true } label: {
+                        Group {
+                            if emoji.isEmpty {
+                                Image(systemName: "face.smiling").font(.title2).foregroundStyle(.secondary)
+                            } else {
+                                SectionIcon(controller: controller, emoji: emoji, size: 26)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(emoji.isEmpty ? "絵文字を選ぶ" : "絵文字を変更")
+                    .contextMenu { if !emoji.isEmpty { Button("絵文字を外す", systemImage: "xmark.circle") { emoji = "" } } }
                     TextField("今なにしてる？", text: $text)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -178,6 +193,11 @@ struct StatusEditorView: View {
         }
         .navigationTitle("ステータスを更新")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $pickingEmoji) {
+            let store = controller.store
+            EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
+                            onNeedImage: { controller.loadEmojiImage($0) }) { glyph in emoji = glyph }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") {

@@ -173,7 +173,10 @@ it("「ステータスを更新」 is the status only (no pause, no quiet hours)
   const view = you().querySelector<HTMLElement>('[data-you-section="status"]')!;
   expect(within(view).queryByText("通知を一時停止")).toBeNull();
   expect(within(view).queryByText("おやすみ時間")).toBeNull();
-  fireEvent.change(within(view).getByLabelText("絵文字"), { target: { value: "📚" } });
+  // The emoji comes from the picker (a text field only brought up the keyboard).
+  fireEvent.click(within(view).getByRole("button", { name: "絵文字を選ぶ" }));
+  fireEvent.change(await screen.findByPlaceholderText("検索 (例: tada、乾杯)"), { target: { value: "books" } });
+  fireEvent.click(await screen.findByTitle(":books:"));
   fireEvent.change(within(view).getByLabelText("ステータス"), { target: { value: "論文執筆中" } });
   fireEvent.click(within(view).getByRole("button", { name: "保存" }));
   await flush();
