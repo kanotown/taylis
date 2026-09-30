@@ -1180,6 +1180,8 @@ struct ComposerView: View {
     let users: [UserPublic]
     var placeholder = "メッセージを入力"
     var controller: AppController? = nil
+    /// A line of the composer's own above the input (the thread's 「#… にも送信」), inside its top edge.
+    var accessory: AnyView? = nil
     let onSend: (String, [String], SendOptions) -> Void
     private var text: String { controller?.store.draft(channelId, parentId: parentId).text ?? "" }
     private var pending: [AttachmentOut] { controller?.store.draft(channelId, parentId: parentId).attachments ?? [] }
@@ -1500,6 +1502,7 @@ struct ComposerView: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
+            if let accessory { accessory }
             PendingAttachmentsView(items: pending, uploading: uploading, controller: controller) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }

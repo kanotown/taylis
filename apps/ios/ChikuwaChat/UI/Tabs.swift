@@ -49,6 +49,14 @@ enum DMList {
         (channel.channel.dmUserIds ?? []).allSatisfy { $0 == meId }
     }
 
+    /// M38: whose status emoji (and presence) a DM row shows: the other person's, mine in my DM with myself (as other
+    /// rows show theirs; testers, 2026-09-30), nobody's in a group DM.
+    static func statusUserId(_ channel: ChannelState, meId: String?) -> String? {
+        let others = (channel.channel.dmUserIds ?? []).filter { $0 != meId }
+        if others.count == 1 { return others[0] }
+        return others.isEmpty ? meId : nil
+    }
+
     /// No DM with only me is mine yet: the lists show a row for it first all the same, made on its first open.
     static func notesMissing(_ channels: [ChannelState], meId: String?) -> Bool {
         meId != nil && !channels.contains { $0.isMember && $0.channel.isDm && isNotesToSelf($0, meId: meId) }
@@ -130,8 +138,9 @@ struct DMListView: View {
     /// My DM with myself before it exists: a row like the others.
     private func notesRow(_ meId: String) -> some View {
         HStack(spacing: 12) {
-            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: nil)
+            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: 36, presence: store.presenceOf(meId))
             Text(store.me?.displayName ?? "…").lineLimit(1)
+            StatusEmojiView(user: store.me?.asPublic)
             Spacer(minLength: 4)
         }
         .padding(.vertical, 6)
@@ -142,15 +151,16 @@ struct DMListView: View {
     private func row(_ channel: ChannelState, meId: String?) -> some View {
         let others = (channel.channel.dmUserIds ?? []).filter { $0 != meId }
         let avatarId = others.first ?? meId ?? channel.id
+        let statusId = DMList.statusUserId(channel, meId: meId)
         let unread = channel.hasUnread(meId: meId)
         let badge = channel.badgeContribution
         return HStack(spacing: 12) {
             AvatarView(id: avatarId, name: store.users[avatarId]?.displayName ?? store.me?.displayName ?? "?", size: 36,
-                       presence: others.count == 1 ? store.presenceOf(avatarId) : nil)
+                       presence: statusId.map { store.presenceOf($0) })
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
-                    if others.count == 1 { StatusEmojiView(user: store.users[avatarId]) }
+                    if let statusId { StatusEmojiView(user: store.statusUser(statusId)) }
                     if channel.isMuted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                     Spacer(minLength: 4)
                     if let time = DMList.timeLabel(channel.channel.lastMessageAt) {

@@ -190,7 +190,10 @@ struct MainView: View {
             .toolbar {
                 // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
                 ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
-                ToolbarItem(placement: .topBarLeading) { StatusBadge(status: status) }
+                // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down.
+                ToolbarItem(placement: .topBarLeading) {
+                    HomeAvatarButton(controller: controller, status: status) { tab = .you }
+                }
                 ToolbarItem(placement: .topBarTrailing) { homeMenu }
             }
             .alert("すべて既読にしますか？", isPresented: $confirmMarkAll) {
@@ -318,15 +321,86 @@ private extension String {
     }
 }
 
-struct StatusBadge: View {
+/// What the badge on my picture at the home's top left says (M38): my presence as others see it while connected (DND
+/// over it, as the 🔕 beside names), else the connection, which the green dot it replaced stood for alone.
+enum HomeAvatarBadge: Equatable {
+    case online, away, dnd, connecting, offline, none
+
+    static func of(status: EngineStatus, presence: String, dnd: Bool) -> HomeAvatarBadge {
+        switch status {
+        case .offline: return .offline
+        case .connecting: return .connecting
+        case .online:
+            if dnd { return .dnd }
+            return presence == "online" ? .online : presence == "away" ? .away : .none
+        case .idle, .signedOut: return .none
+        }
+    }
+
+    /// What VoiceOver says after 「自分」.
+    var spoken: String? {
+        switch self {
+        case .online: "オンライン"
+        case .away: "離席中"
+        case .dnd: "通知を一時停止中"
+        case .connecting: "接続中"
+        case .offline: "オフライン、再接続中"
+        case .none: nil
+        }
+    }
+
+    /// The picture fades while the connection is down.
+    var disconnected: Bool { self == .offline || self == .connecting }
+}
+
+/// M38: the home's top left: my picture, a tap to the 自分 tab, and a badge at its bottom right (HomeAvatarBadge).
+/// While the connection is down the picture fades and the badge is an orange ring; the strip at the top
+/// (ConnectionBanner) says it in words after 2 s.
+struct HomeAvatarButton: View {
+    @Bindable var controller: AppController
     let status: EngineStatus
+    let action: () -> Void
+    static let size: CGFloat = 30
 
     var body: some View {
-        switch status {
-        case .online: Label("接続中", systemImage: "circle.fill").foregroundStyle(.green).labelStyle(.iconOnly).imageScale(.small)
-        case .connecting: ProgressView().controlSize(.small)
-        case .offline: Label("再接続中", systemImage: "circle").foregroundStyle(.orange).labelStyle(.iconOnly).imageScale(.small)
-        default: EmptyView()
+        let store = controller.store
+        let meId = store.me?.id ?? ""
+        let badge = HomeAvatarBadge.of(status: status, presence: store.presenceOf(meId), dnd: DND.isActive(store.me?.asPublic))
+        Button(action: action) {
+            AvatarView(id: meId, name: store.me?.displayName ?? "?", size: Self.size)
+                .opacity(badge.disconnected ? 0.5 : 1)
+                .overlay(alignment: .bottomTrailing) { dot(badge).offset(x: 3, y: 3) }
+                .padding(3)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(["自分", badge.spoken].compactMap { $0 }.joined(separator: "、"))
+    }
+
+    @ViewBuilder
+    private func dot(_ badge: HomeAvatarBadge) -> some View {
+        let side: CGFloat = 11
+        switch badge {
+        case .online, .away:
+            Circle().fill(badge == .online ? Color.green : Color.orange)
+                .frame(width: side, height: side)
+                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        case .dnd:
+            Image(systemName: "bell.slash.fill")
+                .font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
+                .frame(width: side + 2, height: side + 2)
+                .background(Color.gray, in: Circle())
+                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        case .offline:
+            Circle().strokeBorder(Color.orange, lineWidth: 2.5)
+                .background(Circle().fill(Color(.systemBackground)))
+                .frame(width: side, height: side)
+        case .connecting:
+            Circle().fill(Color.gray)
+                .frame(width: side, height: side)
+                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        case .none:
+            EmptyView()
         }
     }
 }

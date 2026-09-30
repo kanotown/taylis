@@ -700,6 +700,13 @@ final class Store {
 
     func presenceOf(_ userId: String) -> String { presence[userId] ?? "offline" }
 
+    /// Whose status emoji to show for this user: my own profile as I last saved it for me (M38: my DM with myself), else
+    /// the directory's.
+    func statusUser(_ userId: String) -> UserPublic? {
+        if let me, me.id == userId { return me.asPublic }
+        return users[userId]
+    }
+
     func setPresence(_ userId: String, status: String) {
         if status == "offline" { presence[userId] = nil } else { presence[userId] = status }
     }
