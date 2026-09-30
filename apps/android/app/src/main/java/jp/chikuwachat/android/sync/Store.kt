@@ -20,6 +20,7 @@ import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.HistoryOut
+import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
 import jp.chikuwachat.android.api.ParentThread
@@ -30,6 +31,9 @@ import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
+// M49: the preview's rule is plain text work shared with the rows that show it (DmPreview.kt).
+import jp.chikuwachat.android.ui.lastMessageOf
+import jp.chikuwachat.android.ui.sameLastMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -564,8 +568,12 @@ class Store(private val persistence: Persistence? = null) {
 
     fun channel(id: String): ChannelState? = channels[id]
 
-    /** Merge server fields into the local channel, keeping the local cursor. */
-    fun upsertChannel(channel: ChannelOut, isMember: Boolean? = null): ChannelState {
+    /**
+     * Merge server fields into the local channel, keeping the local cursor. `replaceLastMessage` (bootstrap, M49): its
+     * `last_message` is the truth, null too ("no message yet"); anywhere else null means "not said" and the held one
+     * stays (SYNC_PROTOCOL.md §7.8).
+     */
+    fun upsertChannel(channel: ChannelOut, isMember: Boolean? = null, replaceLastMessage: Boolean = false): ChannelState {
         val existing = channels[channel.id]
         val read = channel.readState
         val merged = ChannelState(
@@ -575,6 +583,7 @@ class Store(private val persistence: Persistence? = null) {
                 notification = channel.notification ?: existing?.channel?.notification,
                 membership = channel.membership ?: existing?.channel?.membership,
                 memberCount = channel.memberCount ?: existing?.channel?.memberCount,
+                lastMessage = if (replaceLastMessage) channel.lastMessage else channel.lastMessage ?: existing?.channel?.lastMessage,
             ),
             isMember = isMember ?: existing?.isMember ?: (channel.membership != null),
             syncedSeq = existing?.syncedSeq,
@@ -607,6 +616,54 @@ class Store(private val persistence: Persistence? = null) {
         persist { it.saveChannel(updated) }
         emit()
         return updated
+    }
+
+    /** M49: a preview emptied by a deletion the rows held could not replace; the engine fetches the server's. */
+    var onStalePreview: ((channelId: String) -> Unit)? = null
+
+    /**
+     * M49 (SYNC_PROTOCOL.md §7.8): a timeline message of one of my conversations moves its preview. A newer one takes
+     * its place; the one shown, edited, brings its new text; the one shown, deleted, falls back to the newest live row
+     * held below it. When the rows held cannot say (no contiguous timeline down to it), the preview empties and
+     * [onStalePreview] asks the server (GET /channels/{id}). Thread-only replies, pending sends and older rows (history
+     * pages, search hits) leave it. `quiet`: the caller bumps the version itself ([upsertMessage]).
+     */
+    fun applyLastMessage(message: MessageState, quiet: Boolean = false) {
+        val seq = message.seq ?: return
+        if (message.pending || !message.inTimeline) return
+        val channel = channels[message.channelId] ?: return
+        if (!channel.isMember) return
+        val current = channel.channel.lastMessage
+        if (message.deleted) {
+            if (current?.id != message.id) return
+            // The loaded range is contiguous up to syncedSeq (§7.3): its newest live row below is the newest there is.
+            val timeline = if (channel.syncedSeq == null) emptyList() else messages(channel.id)
+            val below = timeline.lastOrNull { row -> row.seq != null && row.seq < seq && !row.deleted && !row.pending }
+            writeLastMessage(channel.id, below?.let { lastMessageOf(it, users, groups) }, quiet)
+            if (below == null && (channel.syncedSeq == null || channel.hasOlder)) onStalePreview?.invoke(channel.id)
+            return
+        }
+        if (current != null && current.id != message.id && current.seq >= seq) return
+        val next = lastMessageOf(message, users, groups)
+        if (!sameLastMessage(current, next)) writeLastMessage(channel.id, next, quiet)
+    }
+
+    /**
+     * M49: the server's preview fetched after a deletion the rows held could not replace (GET /channels/{id}). A newer
+     * one that came in the meantime (an event after the answer was made) stays.
+     */
+    fun setFetchedLastMessage(channelId: String, last: LastMessageOut?) {
+        val current = channels[channelId]?.channel?.lastMessage
+        if (current != null && (last == null || current.seq > last.seq)) return
+        if (!sameLastMessage(current, last)) writeLastMessage(channelId, last, quiet = false)
+    }
+
+    private fun writeLastMessage(channelId: String, value: LastMessageOut?, quiet: Boolean) {
+        val existing = channels[channelId] ?: return
+        val updated = existing.copy(channel = existing.channel.copy(lastMessage = value))
+        channels[channelId] = updated
+        persist { it.saveChannel(updated) }
+        if (!quiet) emit()
     }
 
     /** L4 (M31): bumped by channel.member_updated, so an open member list loads again (not persisted). */
@@ -948,6 +1005,7 @@ class Store(private val persistence: Persistence? = null) {
             bucket[message.id] = stored
             persist { it.saveMessage(stored) }
         }
+        applyLastMessage(message, quiet = true) // M49: events, catch-up pages and my own edits / deletes alike
         emit()
         return true
     }

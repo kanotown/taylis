@@ -2,6 +2,7 @@ package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.CanvasApi
+import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
@@ -60,7 +61,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -210,8 +211,8 @@ class ApiClient(
 
     override suspend fun publicChannels(): List<ChannelOut> = channels(includePublic = true).filter { it.membership == null }
 
-    /** One channel: mine, or any public one (a link into a channel not in the browse list, M27 preview). */
-    suspend fun channel(id: String): ChannelOut = request("GET", "/api/v1/channels/$id")
+    /** One channel: mine (with `last_message`, M49), or any public one (a link into a channel not in the browse list, M27 preview). */
+    override suspend fun channel(id: String): ChannelOut = request("GET", "/api/v1/channels/$id")
 
     suspend fun createChannel(name: String, type: String): ChannelOut =
         request("POST", "/api/v1/channels", buildJsonObject { put("name", name); put("type", type) })

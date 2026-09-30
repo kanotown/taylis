@@ -162,6 +162,18 @@ class SyncEngine(
 
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
+        store.onStalePreview = { channelId -> post { refreshLastMessage(channelId) } }
+    }
+
+    /**
+     * M49 (SYNC_PROTOCOL.md §7.8): the preview's message was deleted and the rows held do not say which one is last now:
+     * the server's answer (GET /channels/{id}). A failure leaves it empty until the next bootstrap.
+     */
+    suspend fun refreshLastMessage(channelId: String) {
+        val channelApi = api as? ChannelApi ?: return
+        runCatching { channelApi.channel(channelId) }
+            .onSuccess { store.setFetchedLastMessage(channelId, it.lastMessage) }
+            .onFailure { Log.w("SyncEngine", "could not refresh the conversation's last message", it) }
     }
 
     /** M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap). */
@@ -533,7 +545,8 @@ class SyncEngine(
         val seen = HashSet<String>()
         bootstrap.channels.forEach { channel ->
             seen.add(channel.id)
-            store.upsertChannel(channel, isMember = true)
+            // M49: the preview too (null here does mean "no message yet", unlike other responses').
+            store.upsertChannel(channel, isMember = true, replaceLastMessage = true)
         }
         store.channels.values.toList().filter { it.isMember && it.id !in seen }.forEach { dropChannel(it.id) }
         reapplyUnsentReads()
@@ -757,6 +770,8 @@ class SyncEngine(
                 if (holds(channelId, message)) {
                     store.upsertMessage(message)
                     if (thread != null) store.applyParentThread(channelId, thread)
+                } else {
+                    store.applyLastMessage(MessageState.from(message)) // M49: the DM list's preview moves without a timeline too (§7.8)
                 }
                 store.updateChannel(channelId) { it.advancedTo(seq, message, isNew) }
                 if (isNew) { countUnread(message); maybeNotify(message, channel, thread) }

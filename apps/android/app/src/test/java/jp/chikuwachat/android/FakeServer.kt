@@ -13,7 +13,10 @@ import jp.chikuwachat.android.api.DraftOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ActivitySummaryOut
+import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.sync.ActivityApi
+import jp.chikuwachat.android.sync.ChannelApi
+import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
@@ -114,7 +117,15 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi {
+        /** M49: GET /channels/{id} calls made (the preview asked again after a deletion). */
+        val channelCalls = ArrayList<String>()
+        override suspend fun channel(id: String): ChannelOut {
+            maybeFail()
+            channelCalls.add(id)
+            return memberView(userId, requireMember(id, userId))
+        }
+
         /** M39: GET /activity/summary calls made (the badge refreshes the events trigger). */
         var activitySummaryCalls = 0
         override suspend fun activitySummary(): ActivitySummaryOut {
@@ -793,9 +804,7 @@ class FakeServer {
     fun bootstrap(userId: String): BootstrapOut {
         val user = users.getValue(userId)
         val me = UserMe(user.id, user.username, user.displayName, user.role, null, user.createdAt, user.updatedAt, null, false, notifyKeywords = keywords[userId] ?: emptyList(), notificationDefault = notificationDefaults[userId] ?: "mentions")
-        val mine = channels.values.filter { userId in it.members }.map { record ->
-            record.channel.copy(membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id), memberCount = record.members.size)
-        }
+        val mine = channels.values.filter { userId in it.members }.map { record -> memberView(userId, record) }
         val connected = sockets.filter { it.authed }.map { it.userId }.distinct().sorted()
         return BootstrapOut(
             now(), me, users.values.toList(), mine, Limits(20000, 1, 10), threadSummary(userId), connected.map { PresenceEntry(it, presenceOf(it) ) },
@@ -805,6 +814,22 @@ class FakeServer {
             roster = roster.values.toList(),
             drafts = draftsOf(userId),
             activity = activity[userId],
+        )
+    }
+
+    /** A channel as its member sees it (bootstrap, GET /channels/{id}): membership, read state, size and, M49, the last message. */
+    private fun memberView(userId: String, record: ChannelRecord): ChannelOut =
+        record.channel.copy(
+            membership = MembershipOut(if (record.channel.createdBy == userId) "owner" else "member", now()), readState = readState(userId, record.channel.id),
+            memberCount = record.members.size, lastMessage = lastMessage(record),
+        )
+
+    /** M49: the newest live timeline row, its excerpt by the push body's rule (the server's messages/service.py). */
+    fun lastMessage(record: ChannelRecord): LastMessageOut? {
+        val last = record.messages.filter { !it.deleted && (it.parentId == null || it.alsoInChannel) }.maxByOrNull { it.seq } ?: return null
+        return LastMessageOut(
+            last.id, last.senderId, last.type, last.seq, previewExcerpt(last.body, last.attachments.map { it.contentType }, users),
+            last.attachments.isNotEmpty(), last.createdAt,
         )
     }
 
