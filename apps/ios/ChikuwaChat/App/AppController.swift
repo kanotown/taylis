@@ -38,7 +38,8 @@ final class AppController {
             return true
         } catch { self.error = describe(error); return false }
     }
-    private(set) var api: ApiClient?
+    /// The open workspace's client; the sign-in and workspace flows set it (a view test sets a stubbed one).
+    var api: ApiClient?
     private(set) var store = Store()
     private(set) var engine: SyncEngine?
 

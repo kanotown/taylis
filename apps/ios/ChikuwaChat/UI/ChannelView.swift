@@ -869,6 +869,13 @@ struct MessageRow: View {
         onOpenThread()
     }
 
+    /// The link a preview card is shown for (M11g): the body's first, unless it opens a message or a canvas here.
+    private var previewLink: String? {
+        guard !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
+              CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
+        return link
+    }
+
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
@@ -961,9 +968,8 @@ struct MessageRow: View {
                     AttachmentsView(attachments: message.attachments, controller: controller,
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
                 }
-                if !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
-                   CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil {
-                    LinkPreviewCard(controller: controller, url: link)
+                if let link = previewLink, let preview = controller.linkPreviews[link] ?? nil {
+                    LinkPreviewCard(preview: preview, url: link)
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
                 if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly, present: present) }  // M15e
@@ -1036,6 +1042,10 @@ struct MessageRow: View {
         // pressed, then toggled as the finger lifted; the name opened the profile). Their taps still come once the
         // press is too short to be this one.
         .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in openActions(haptic: true) })
+        // The link's preview is asked for by the row, which is always there. The card asked for it itself, but it is
+        // empty until the preview has come, and an empty view has nothing to run a task on: it never started, and no
+        // card ever showed (audit 2026-09-30).
+        .task(id: previewLink) { if let previewLink { await controller.loadLinkPreview(previewLink) } }
         // Slack: a tap opens the thread (in the channel); the links, buttons, name and pictures in the row keep their
         // own taps.
         .onTapGesture(perform: tapped)
