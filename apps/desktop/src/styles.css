@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Semantic tokens: light by default, dark follows the OS (prefers-color-scheme). */
+/* Semantic tokens: light by default, dark follows the OS (prefers-color-scheme) unless 「表示」 (M40, ui/theme.ts)
+   pins one with <html data-theme="light" | "dark">. The brand colour is #5b5bd6 (lighter on dark to stay readable). */
 :root {
   --canvas: #ffffff;
   --panel: #f6f6f9;
@@ -21,7 +22,7 @@
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --canvas: #17181d;
     --panel: #1e1f26;
     --panel-2: #2a2b34;
@@ -36,6 +37,22 @@
     --sidebar-fg: #b7b1c7;
   }
 }
+:root[data-theme="dark"] {
+  --canvas: #17181d;
+  --panel: #1e1f26;
+  --panel-2: #2a2b34;
+  --ink: #e9e9ef;
+  --muted-fg: #9b9baa;
+  --line: #2f3039;
+  --accent: #7f7ff2;
+  --accent-soft: #2a2a4a;
+  --danger: #ff6b70;
+  --mark: #6b5a1a;
+  --sidebar: #14111c;
+  --sidebar-fg: #b7b1c7;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 @theme inline {
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;

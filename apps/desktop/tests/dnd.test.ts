@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dndActive, dndUntilAt, inQuietHours, quietHoursLabel } from "../src/ui/dnd";
+import { customPauseAt, DND_OPTIONS, dndActive, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, quietHoursLabel, quietHoursValue } from "../src/ui/dnd";
 
 describe("do not disturb (M12c)", () => {
   const at = (iso: string) => new Date(iso);
@@ -28,5 +28,30 @@ describe("do not disturb (M12c)", () => {
     expect(tomorrow.getDate()).toBe(29);
     expect(quietHoursLabel({ start: "22:00", end: "07:00", days: [0, 1, 2, 3, 4], tz: "Asia/Tokyo" })).toBe("22:00〜07:00 (月火水木金)");
     expect(quietHoursLabel({ start: "22:00", end: "07:00", tz: "Asia/Tokyo" })).toBe("22:00〜07:00");
+  });
+});
+
+describe("「自分」's values (M40)", () => {
+  const now = new Date(2026, 8, 30, 14, 0);
+  it("「通知を一時停止」: オフ, 〜 HH:mm まで today, 〜 M/D HH:mm まで on another day", () => {
+    expect(pauseValue(null, now)).toBe("オフ");
+    expect(pauseValue(new Date(2026, 8, 30, 13, 0).toISOString(), now)).toBe("オフ"); // already over
+    expect(pauseValue(new Date(2026, 8, 30, 15, 5).toISOString(), now)).toBe("〜 15:05 まで");
+    expect(pauseValue(new Date(2026, 9, 1, 8, 0).toISOString(), now)).toBe("〜 10/1 08:00 まで");
+    expect(pauseValue("garbage", now)).toBe("オフ");
+    expect(pausedUntil({ dnd_until: new Date(2026, 8, 30, 15, 0).toISOString() }, now)).not.toBeNull();
+    expect(pausedUntil({ dnd_until: new Date(2026, 8, 30, 13, 0).toISOString() }, now)).toBeNull();
+    expect(pausedUntil(null, now)).toBeNull();
+    expect(DND_OPTIONS.map(([, label]) => label)).toEqual(["30 分", "1 時間", "2 時間", "明日 8:00"]);
+  });
+  it("「おやすみ時間」: the window (with its days) or オフ", () => {
+    expect(quietHoursValue(null)).toBe("オフ");
+    expect(quietHoursValue({ start: "22:00", end: "07:00", days: [0, 1, 2, 3, 4], tz: "Asia/Tokyo" })).toBe("22:00〜07:00 (月火水木金)");
+  });
+  it("「日時を指定」 takes a time ahead only; the picker starts from a local value", () => {
+    expect(customPauseAt("", now)).toBeNull();
+    expect(customPauseAt("2026-09-30T13:59", now)).toBeNull();
+    expect(customPauseAt("2026-10-02T09:30", now)).toBe(new Date(2026, 9, 2, 9, 30).toISOString());
+    expect(localInputValue(new Date(2026, 0, 5, 7, 3))).toBe("2026-01-05T07:03");
   });
 });

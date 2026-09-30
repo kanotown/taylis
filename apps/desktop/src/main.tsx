@@ -5,7 +5,11 @@ import { App } from "./ui/App";
 import { AppController } from "./state/app";
 import { watchIdle } from "./platform/idle";
 import { followVisualViewport } from "./platform/viewport";
+import { applyTheme, readTheme } from "./ui/theme";
 import "./styles.css";
+
+// M40 「表示」: this device's light / dark choice, before the first paint.
+applyTheme(readTheme());
 
 const controller = new AppController();
 createRoot(document.getElementById("root")!).render(

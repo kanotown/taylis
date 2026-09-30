@@ -17,7 +17,8 @@ import { Store } from "../src/sync/store";
 import type { ChannelState, MessageState } from "../src/sync/types";
 import { ChannelDetails } from "../src/ui/ChannelDetails";
 import { canMakePublic } from "../src/ui/channels";
-import { MembersDialog, SettingsDialog } from "../src/ui/Dialogs";
+import { MembersDialog } from "../src/ui/Dialogs";
+import { SettingsDialog } from "../src/ui/Settings";
 import { RemindersView } from "../src/ui/RemindersView";
 import { AcksDialog } from "../src/ui/WhoDialogs";
 import { FakeServer } from "./fakeServer";
@@ -247,6 +248,8 @@ describe("在席を隠す (L4)", () => {
       return <SettingsDialog controller={controller} onClose={() => {}} />;
     }
     render(<View />);
+    // M40: under 「プロフィールを編集」 in the settings' list.
+    fireEvent.click(within(screen.getByRole("navigation", { name: "設定の項目" })).getByRole("button", { name: /^プロフィールを編集/ }));
     const toggle = screen.getByRole("switch", { name: /在席を隠す/ }) as HTMLInputElement;
     expect(screen.getByText("ほかの人からは常にオフラインに見えます")).toBeTruthy();
     expect(toggle.checked).toBe(false);

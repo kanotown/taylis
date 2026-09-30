@@ -14,7 +14,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1002,6 +1002,24 @@ export class AppController {
       const me = await this.api.updateMe({ display_name: displayName.trim() });
       this.me = me;
       this.store.setMe(me);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M40 「ログイン中の端末」: GET /auth/sessions (throws; the account screen says why inline). */
+  async listSessions(): Promise<SessionOut[]> {
+    if (!this.api) throw new Error("ログインしていません");
+    return this.api.sessions();
+  }
+
+  /** M40: signs another device of mine out (DELETE /auth/sessions/{id}); false when refused (the toast says why). */
+  async revokeSession(sessionId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.revokeSession(sessionId);
       return true;
     } catch (error) {
       this.setError(error);

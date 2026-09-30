@@ -104,6 +104,8 @@ export type InviteAccept = components["schemas"]["InviteAccept"];
 export type TotpStatusOut = components["schemas"]["TotpStatusOut"];
 export type TotpSetupOut = components["schemas"]["TotpSetupOut"];
 export type TotpEnabledOut = components["schemas"]["TotpEnabledOut"];
+/** M40: GET /auth/sessions — my signed-in devices, `current` = this one. */
+export type SessionOut = components["schemas"]["SessionOut"];
 
 /** User groups (M12k). */
 export type GroupOut = components["schemas"]["GroupOut"];

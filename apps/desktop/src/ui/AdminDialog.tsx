@@ -17,11 +17,23 @@ type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" |
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("users");
   return (
     // One height for every tab (the body scrolls): sized to its content, the dialog jumped and re-centred on each switch.
     <Modal onClose={onClose} title="管理" className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
-      <div className="mt-3 flex shrink-0 gap-1 overflow-x-auto border-b border-line">
+      <AdminBody controller={controller} className="mt-3" />
+    </Modal>
+  );
+}
+
+/**
+ * The administration tabs: in the dialog above, and as 「管理」 in the settings (M40: the phone's 「自分」 → 管理 and the
+ * wide settings dialog's section), every item as it was.
+ */
+export function AdminBody({ controller, className }: { controller: AppController; className?: string }) {
+  const [tab, setTab] = useState<Tab>("users");
+  return (
+    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+      <div role="tablist" aria-label="管理" className="flex shrink-0 gap-1 overflow-x-auto border-b border-line">
         {(
           [
             ["users", "ユーザー"],
@@ -48,7 +60,7 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
-    </Modal>
+    </div>
   );
 }
 
