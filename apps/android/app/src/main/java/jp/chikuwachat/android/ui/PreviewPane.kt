@@ -49,7 +49,8 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
     val preview = remember(version, channelId) { store.preview?.takeIf { it.channelId == channelId } }
     val me = remember(version) { store.me?.id }
     val messages = remember(preview, focus) { focus?.context?.filter { !it.deleted } ?: preview?.messages ?: emptyList() }
-    val items = remember(messages, me) { Timeline.build(messages, null, me).asReversed() }
+    val grouping = controller.groupPosts
+    val items = remember(messages, me, grouping) { Timeline.build(messages, null, me, grouping = grouping).asReversed() }
     val listState = rememberLazyListState()
     var loadingOlder by remember(channelId) { mutableStateOf(false) }
     // M28c: a failed older page offers 「再読み込み」 instead of spinning for good (the effect only ran again on a new row).

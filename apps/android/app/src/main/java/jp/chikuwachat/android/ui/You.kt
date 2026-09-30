@@ -67,6 +67,15 @@ enum class Appearance(val label: String, val stored: String?) {
     }
 }
 
+/** M47: 「連続した投稿をまとめる」, kept on this device (not on the server); off leaves no key behind. */
+object PostGrouping {
+    private const val KEY = "group_posts"
+
+    fun read(store: KeyValueStore): Boolean = store.getString(KEY) == "on"
+
+    fun write(store: KeyValueStore, on: Boolean) = store.putString(KEY, if (on) "on" else null)
+}
+
 /** M40: the pure parts of the 自分 tab (tested in YouTest). */
 object YouSettings {
     /** From this width (dp) the tab is two panes: the list, and the chosen screen beside it. */
