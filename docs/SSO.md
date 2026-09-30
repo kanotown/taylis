@@ -1,7 +1,7 @@
 # SSO: Google でログイン (M48)
 
-**状態 (2026-09-30)**: サーバと Web (ブラウザ版のログイン画面) は実装済み (`server/app/modules/sso/`)。Desktop
-(Tauri の deep link)・iOS・Android は次。実装で決めた細部 (既定のチャンネルの設定、レートリミットの枠、
+**状態 (2026-09-30)**: サーバ・Web・Desktop (Tauri の deep link)・iOS (ASWebAuthenticationSession)・Android
+(Custom Tabs) まで実装済み。本物の Google を通した確認は、SSO を有効にしたサーバで行う (まだ)。実装で決めた細部 (既定のチャンネルの設定、レートリミットの枠、
 仮パスワードの人の結び付け、アドレスの先取りの防止) は下の各節に書いた。
 
 大学の Google Workspace のアカウントでログインできるようにする。サーバごとの設定で有効にし、許可したドメインの
