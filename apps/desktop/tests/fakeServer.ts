@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, BootstrapOut, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import type { Persistence, Snapshot } from "../src/sync/store";
@@ -839,6 +839,31 @@ export class FakeServer {
     this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "channel.created", ts: now(), channel_id: channelId, seq: null, data: { channel: { ...record.channel, member_count: memberIds.length, membership: null }, member_ids: memberIds } });
   }
 
+  /** M40: each user's signed-in sessions, newest sign-in first (GET /auth/sessions); `current` = the device apiFor speaks for. */
+  readonly sessions = new Map<string, SessionOut[]>();
+
+  addSession(userId: string, device: { device_name: string | null; platform: string }, options: { current?: boolean; lastUsedAt?: string } = {}): SessionOut {
+    const at = now();
+    const session: SessionOut = {
+      id: nextId(),
+      created_at: at,
+      expires_at: new Date(Date.parse(at) + 30 * 86_400_000).toISOString(),
+      last_used_at: options.lastUsedAt ?? at,
+      last_ip: null,
+      current: options.current ?? false,
+      device: { id: nextId(), platform: device.platform, device_name: device.device_name, app_version: null, created_at: at, updated_at: at, last_seen_at: at, enabled: true, disabled_reason: null, push_provider: "none", push_environment: null, push_registered: false },
+    };
+    this.sessions.set(userId, [session, ...(this.sessions.get(userId) ?? [])]);
+    return session;
+  }
+
+  /** DELETE /auth/sessions/{id}: only one of the user's own (else 404 session_not_found, like the server). */
+  revokeSessionById(userId: string, sessionId: string): void {
+    const list = this.sessions.get(userId) ?? [];
+    if (!list.some((s) => s.id === sessionId)) throw new ApiError(404, "session_not_found", "Session not found");
+    this.sessions.set(userId, list.filter((s) => s.id !== sessionId));
+  }
+
   revokeSession(userId: string): void {
     for (const socket of [...this.sockets]) {
       if (socket.userId !== userId) continue;
@@ -858,7 +883,7 @@ export class FakeServer {
 
   // --- the API as seen by one user ------------------------------------------------------
 
-  apiFor(userId: string): SyncApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut> } {
+  apiFor(userId: string): SyncApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
       if (pendingFailure) {
@@ -923,6 +948,14 @@ export class FakeServer {
               throw new ApiError(404, "not_found", "Not Found");
             },
           }),
+      sessions: async (): Promise<SessionOut[]> => {
+        maybeFail();
+        return [...(this.sessions.get(userId) ?? [])];
+      },
+      revokeSession: async (sessionId: string): Promise<void> => {
+        maybeFail();
+        this.revokeSessionById(userId, sessionId);
+      },
       channelLinks: async (channelId) => {
         maybeFail();
         this.requireMember(channelId, userId);

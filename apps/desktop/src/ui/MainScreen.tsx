@@ -8,7 +8,7 @@ import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types
 import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
-import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, SettingsDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
+import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
 import { formatMuted } from "./format";
 import { PANE_DEFAULT, PANE_MAX, PANE_MIN, readPaneWidth, readSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, writePaneWidth, writeSidebarWidth } from "./prefs";
 import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
@@ -51,6 +51,7 @@ import { ActivityView } from "./ActivityView";
 import { DmListView } from "./DmListView";
 import { MobileTabBar } from "./MobileTabBar";
 import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
+import { SettingsDialog } from "./Settings";
 import { YouView } from "./YouView";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
@@ -149,6 +150,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // M34, phones only: the bottom tab, and the other tabs' screens as they were left (the selected tab's are live above).
   const [mobileTab, setMobileTab] = useState<MobileTab>(() => (controller.messageFocus ? landingTab(store.getChannel(controller.messageFocus.channelId)) : "home"));
   const [savedTabs, setSavedTabs] = useState<Partial<Record<MobileTab, Nav>>>({});
+  const [youPopToRoot, setYouPopToRoot] = useState(0);
   const navigation = { currentId, view, threadId, threadChannelId, pinsOpen, pane, filesChannelId, search, searchTab, backToSearch, tab, details: detailsOpen };
   const focus = controller.messageFocus;
   /** Put a screen on (a history entry coming back, a tab's screens coming back or landing). */
@@ -206,6 +208,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   /** A tap on the bottom bar (MOBILE_UI.md §5): another tab brings its screens back; the selected one pops to its root, or scrolls it up. */
   const selectTab = (target: MobileTab, live: Nav = currentNav()) => {
     const result = tapTab({ tab: mobileTab, saved: savedTabs }, live, target, rootNav, isRootNav);
+    // M40: 「自分」 again from one of its screens returns to its list (the tab's own stack, kept in YouView).
+    if (result.scrollTop && target === "you") setYouPopToRoot((value) => value + 1);
     if (result.scrollTop) {
       for (const element of tabRoots.current[target]?.querySelectorAll<HTMLElement>("*") ?? []) {
         if (element.scrollTop <= 0) continue;
@@ -1059,7 +1063,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         />
       )}
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
-      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} onStatus={() => setDialog("status")} />}
+      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "admin" && <AdminDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "browse" && <ChannelBrowserDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} onCreate={() => setDialog("channel")} />}
@@ -1126,7 +1130,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       ) : value === "activity" ? (
         <ActivityView controller={controller} active={atRoot && mobileTab === "activity"} onOpen={openActivityItem} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
       ) : (
-        <YouView controller={controller} onStatus={() => setDialog("status")} onAdmin={() => setDialog("admin")} />
+        <YouView controller={controller} popToRoot={youPopToRoot} />
       );
     return (
       <BackToList.Provider value={back}>

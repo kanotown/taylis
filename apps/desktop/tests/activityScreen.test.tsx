@@ -255,6 +255,9 @@ it("a server before M39: the wide sidebar keeps 「メンション」 (the menti
 it("「自分」: 「リアクションのバナー」 (off at first, 「オフでもアクティビティに表示されます」) is saved with PATCH /users/me", async () => {
   const { w, updates } = await setup();
   await tap("you");
+  // M40: 「自分」 → 「通知」.
+  fireEvent.click(within(root("you")).getByRole("button", { name: "通知" }));
+  await flush();
   const you = root("you");
   const toggle = within(you).getByRole("switch", { name: /リアクションのバナー/ }) as HTMLInputElement;
   expect(within(you).getByText("オフでもアクティビティに表示されます")).toBeTruthy();

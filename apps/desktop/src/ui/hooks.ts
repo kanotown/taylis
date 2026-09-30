@@ -70,3 +70,13 @@ export function useConnectionBanner(status: EngineStatus, graceMs = CONNECTION_B
   }, [status, graceMs]);
   return shown;
 }
+
+/** The time now, renewed every `intervalMs` (values that run out on their own: 「〜 15:30 まで」). */
+export function useNow(intervalMs: number): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}

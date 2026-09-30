@@ -6,7 +6,7 @@ import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { notificationPermission, notify, requestNotificationPermission } from "../src/platform/notify";
 import { Store } from "../src/sync/store";
-import { SettingsDialog } from "../src/ui/Dialogs";
+import { SettingsDialog } from "../src/ui/Settings";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => {
@@ -52,7 +52,7 @@ describe("browser notifications (M28b: the permission is asked for from the sett
     const store = new Store();
     store.setMe(me);
     store.upsertUser(me);
-    const controller = { store, me, totpStatus: async () => ({ enabled: false, recovery_codes_left: 0 }), sendKey: "shift-enter", setSendKey: vi.fn() } as unknown as AppController;
+    const controller = { store, me, totpStatus: async () => ({ enabled: false, recovery_codes_left: 0 }), sendKey: "shift-enter", setSendKey: vi.fn(), workspaces: [], subscribe: () => () => {} } as unknown as AppController;
     render(<SettingsDialog controller={controller} onClose={() => {}} />);
     expect(await screen.findByText("未設定")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "通知を許可" }));
@@ -63,7 +63,7 @@ describe("browser notifications (M28b: the permission is asked for from the sett
   it("says so when the browser blocked them, with no button to press", async () => {
     browserNotifications("denied");
     const store = new Store();
-    const controller = { store, me: null, totpStatus: async () => null, sendKey: "shift-enter", setSendKey: vi.fn() } as unknown as AppController;
+    const controller = { store, me: null, totpStatus: async () => null, sendKey: "shift-enter", setSendKey: vi.fn(), workspaces: [], subscribe: () => () => {} } as unknown as AppController;
     render(<SettingsDialog controller={controller} onClose={() => {}} />);
     expect(await screen.findByText("ブロック中")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "通知を許可" })).toBeNull();

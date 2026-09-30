@@ -12,7 +12,7 @@ import type { ApiClient } from "../src/api/client";
 import type { NotificationLevel, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { ChannelDetails } from "../src/ui/ChannelDetails";
-import { SettingsDialog } from "../src/ui/Dialogs";
+import { SettingsDialog } from "../src/ui/Settings";
 import { MainScreen } from "../src/ui/MainScreen";
 import { world, type World } from "./unreadWorld";
 
