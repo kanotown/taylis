@@ -1,4 +1,4 @@
-import { Bell, Check, EyeOff, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck } from "lucide-react";
+import { Bell, Check, EyeOff, Hash, ImagePlus, Lock, LogOut, NotebookPen, ShieldCheck, SmilePlus } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { MemberOut, TotpStatusOut, UserPublic } from "../api/types";
@@ -595,6 +595,23 @@ export function SettingsBody({ controller, onClose, onStatus, className }: { con
             ))}
           </div>
           <p className="text-xs text-muted">{OVERALL_LEVEL_NOTE}</p>
+          {/* M39: reactions to my messages as banners (and pushes); a server before M39 has no such setting. */}
+          {typeof me?.notify_reactions === "boolean" && (
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2">
+              <SmilePlus size={18} className="text-muted" />
+              <span className="min-w-0 flex-1 text-sm">
+                リアクションのバナー <span className="ml-1 text-xs text-muted">オフでもアクティビティに表示されます</span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="h-4 w-4 accent-[var(--accent)]"
+                checked={me.notify_reactions}
+                disabled={busy}
+                onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setNotifyReactions(on).finally(() => setBusy(false)); }}
+              />
+            </label>
+          )}
           <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
             <Bell size={18} className={permission === "granted" ? "text-success" : "text-muted"} />
             <div className="min-w-0 flex-1 text-sm">

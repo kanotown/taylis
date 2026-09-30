@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, Lock, MessagesSquare, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -7,6 +7,7 @@ import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
+import { activityBadge } from "./mobileTabs";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
@@ -38,8 +39,9 @@ interface Props {
   onAdmin?: () => void;
   /** M11h: channel browser, recent mentions and drafts. */
   onBrowse?: () => void;
-  onMentions?: () => void;
-  mentionsActive?: boolean;
+  /** M39: 「アクティビティ」 with its badge (the recent mentions, 「メンション」, for a server before M39). */
+  onActivity?: () => void;
+  activityActive?: boolean;
   onDrafts?: () => void;
   draftsActive?: boolean;
   /** M11i: files in my channels. */
@@ -53,11 +55,13 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onMentions, mentionsActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
   const draftCount = store.listDrafts().length + store.scheduled.size;
+  // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
+  const activity = activityBadge(channels, store.threadSummary, store.activity);
   const me = store.me ?? controller.me;
   const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
   // M24: offer to make my times until I have one.
@@ -203,20 +207,27 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               )}
             </button>
           </li>
-          {onMentions && (
+          {onActivity && (
             <li>
               <button
                 type="button"
-                onClick={onMentions}
-                aria-current={mentionsActive ? "page" : undefined}
-                title="自分宛てのメンション"
+                onClick={onActivity}
+                aria-current={activityActive ? "page" : undefined}
+                aria-label={store.activity ? (activity.count > 0 ? `アクティビティ (未読 ${activity.count})` : "アクティビティ") : "メンション"}
+                title={store.activity ? "メンション・スレッドへの返信・リアクション" : "自分宛てのメンション"}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  mentionsActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                  activityActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                  store.activity && activity.count > 0 && "font-semibold text-white",
                 )}
               >
-                <AtSign size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">メンション</span>
+                {store.activity ? <Bell size={15} className="shrink-0 opacity-70" /> : <AtSign size={15} className="shrink-0 opacity-70" />}
+                <span className="flex-1 truncate">{store.activity ? "アクティビティ" : "メンション"}</span>
+                {store.activity && activity.count > 0 && (
+                  <Badge tone={activity.mention ? "danger" : "neutral"} className={activity.mention ? undefined : "bg-white/20 text-white"}>
+                    <span data-badge={activity.mention ? "danger" : "neutral"}>{activity.count > 99 ? "99+" : activity.count}</span>
+                  </Badge>
+                )}
               </button>
             </li>
           )}

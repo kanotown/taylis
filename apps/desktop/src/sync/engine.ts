@@ -5,7 +5,7 @@
  */
 import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
-import type { BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -56,6 +56,9 @@ export interface SyncApi {
   /** M15d: drafts shared by my devices. Optional (older fakes). */
   saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
   deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
+  /** M39: the activity badge (GET /activity/summary) and read position (PUT /activity/read). Optional (older fakes). */
+  activitySummary?(): Promise<ActivitySummaryOut>;
+  markActivityRead?(readAt: string): Promise<ActivitySummaryOut>;
 }
 
 export interface WsLike {
@@ -103,6 +106,11 @@ export interface EngineDeps {
   prepareConnection?: (options: { refresh: boolean }) => Promise<void>;
   onSignedOut?: () => void;
   onNotify?: (message: MessageOut, channel: ChannelState) => void;
+  /**
+   * M39: someone reacted to my message and I asked for reaction banners (`notify_reactions`), in a conversation that is
+   * not silent or muted and not the one I am looking at.
+   */
+  onReaction?: (reaction: ReactionAdded, channel: ChannelState) => void;
   /** M12e: a reminder just fired (a nudge in the app while it is open). */
   onReminder?: (reminder: ReminderOut) => void;
   /** A channel became fully read (here or on another device). */
@@ -126,6 +134,8 @@ export interface EngineOptions {
   threadPageSize?: number;
   /** thread.updated bursts (one per reply) collapse into one list / badge refresh. */
   threadRefreshMs?: number;
+  /** M39: the events that may move the activity badge collapse into one GET /activity/summary this long after. */
+  activityRefreshMs?: number;
   /** §5.2: typing frames go out at most this often per conversation; indicators expire after typingTtlMs. */
   typingIntervalMs?: number;
   typingTtlMs?: number;
@@ -163,6 +173,8 @@ export class SyncEngine {
   /** §7.7: views of a channel's rows besides the open conversation (a thread pane); the channel is not trimmed meanwhile. */
   private readonly views = new Map<string, number>();
   private threadRefreshCancel: (() => void) | null = null;
+  private activityRefreshCancel: (() => void) | null = null;
+  private activityRefresh: Promise<void> | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
   private readonly typingSent = new Map<string, number>();
@@ -200,6 +212,7 @@ export class SyncEngine {
       readDebounceMs: options.readDebounceMs ?? 1_000,
       threadPageSize: options.threadPageSize ?? 50,
       threadRefreshMs: options.threadRefreshMs ?? 300,
+      activityRefreshMs: options.activityRefreshMs ?? 1_000,
       typingIntervalMs: options.typingIntervalMs ?? 3_000,
       typingTtlMs: options.typingTtlMs ?? 5_000,
       draftSaveMs: options.draftSaveMs ?? 1_000,
@@ -535,6 +548,9 @@ export class SyncEngine {
     }
     this.reapplyUnsentReads();
     if (bootstrap.threads) store.setThreadSummary(bootstrap.threads);
+    // M39: the server's count after every (re)connect (SYNC_PROTOCOL.md §7.5); none from a server before M39.
+    this.activityRefreshCancel?.();
+    store.setActivity(bootstrap.activity ?? null);
     if (store.threadsLoaded) this.scheduleThreadRefresh(); // the list may have moved while we were away
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
@@ -742,6 +758,20 @@ export class SyncEngine {
         this.scheduleThreadRefresh();
         return;
       }
+      case "activity.read": {
+        // M39: my read position moved on another device (or by this one's PUT): the dots and the badge follow.
+        const data = frame.data as { read_at: string };
+        const current = store.activity;
+        if (current && Date.parse(data.read_at) > Date.parse(current.read_at)) store.setActivity({ ...current, read_at: data.read_at });
+        this.scheduleActivityRefresh();
+        return;
+      }
+      case "reaction.added": {
+        const data = frame.data as unknown as ReactionAdded;
+        this.scheduleActivityRefresh();
+        this.maybeNotifyReaction(data);
+        return;
+      }
       case "session.revoked":
         this.signOut();
         return;
@@ -764,6 +794,7 @@ export class SyncEngine {
     if (isNew) {
       store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
       this.noteLastMessage(channel.id, message);
+      this.noteActivity(message, thread);
     }
 
     if (channel.syncedSeq === null) {
@@ -888,6 +919,75 @@ export class SyncEngine {
     if (level === "mentions" && !involved) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
+  }
+
+  /**
+   * M39: a new message that is activity of mine (it mentions me, or it is someone's reply in a thread I follow) moves the
+   * badge: the count is the server's (GET /activity/summary, debounced), never guessed here.
+   */
+  private noteActivity(message: MessageOut, thread: ParentThread | null): void {
+    const store = this.deps.store;
+    const me = store.me;
+    if (!me || store.activity === null || message.sender_id === me.id) return;
+    const parentId = message.parent_id;
+    const following = !!parentId && ((thread?.participant_ids ?? []).includes(me.id) || store.threads.get(parentId)?.state.following === true);
+    if (following || mentionsMe(message, me)) this.scheduleActivityRefresh();
+  }
+
+  /**
+   * M39, the reaction banner (PUSH_NOTIFICATIONS.md §4, `reaction.added`): only with `notify_reactions` on, never in a
+   * conversation whose level comes to "none" or that is muted, nor in the one I am looking at.
+   */
+  private maybeNotifyReaction(reaction: ReactionAdded): void {
+    const me = this.deps.store.me;
+    if (!me || me.notify_reactions !== true || reaction.user_id === me.id) return;
+    const channel = this.deps.store.getChannel(reaction.channel_id);
+    if (!channel || !channel.isMember) return;
+    if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
+    if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
+    this.deps.onReaction?.(reaction, channel);
+  }
+
+  private scheduleActivityRefresh(): void {
+    if (!this.deps.api.activitySummary || this.deps.store.activity === null) return;
+    this.activityRefreshCancel?.();
+    let cancelled = false;
+    this.activityRefreshCancel = () => {
+      cancelled = true;
+    };
+    this.activityRefresh = (async () => {
+      await (this.deps.sleep ?? defaultSleep)(this.opts.activityRefreshMs);
+      if (cancelled || this.status !== "online") return;
+      this.activityRefreshCancel = null;
+      await this.refreshActivity();
+    })();
+  }
+
+  /** M39: the activity badge from the server (a server before M39 has none: nothing to refresh). */
+  async refreshActivity(): Promise<void> {
+    const api = this.deps.api;
+    if (!api.activitySummary || this.deps.store.activity === null) return;
+    try {
+      this.deps.store.setActivity(await api.activitySummary());
+    } catch {
+      // the next event or bootstrap refreshes again
+    }
+  }
+
+  /** Waits for the debounced activity refresh (tests). */
+  async flushActivity(): Promise<void> {
+    await this.activityRefresh;
+  }
+
+  /**
+   * M39: everything in the activity up to `readAt` is read (「すべて既読」, or the newest item the view showed). The server
+   * only moves it forward; its answer is the new badge, and my other devices get activity.read.
+   */
+  async markActivityRead(readAt: string): Promise<void> {
+    const api = this.deps.api;
+    if (!api.markActivityRead) return;
+    this.activityRefreshCancel?.();
+    this.deps.store.setActivity(await api.markActivityRead(readAt));
   }
 
   // --- §7.3 catch_up ----------------------------------------------------------------------

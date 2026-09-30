@@ -169,3 +169,21 @@ export type UnreadSummaryOut = components["schemas"]["UnreadSummaryOut"];
 export type TemplateOut = components["schemas"]["TemplateOut"];
 export type TemplateCreate = components["schemas"]["TemplateCreate"];
 export type TemplateUpdate = components["schemas"]["TemplateUpdate"];
+
+/**
+ * Activity, stage B (M39, MOBILE_UI.md §6.4 / §7.2): mentions of me, reactions to my messages (one item per message) and
+ * replies in threads I follow, newest first, with one read position per person (`read_at`, only moves forward).
+ */
+export type ActivityItem = components["schemas"]["ActivityItem"];
+export type ActivityKind = ActivityItem["kind"];
+export type ActivityListOut = components["schemas"]["ActivityListOut"];
+export type ActivitySummaryOut = components["schemas"]["ActivitySummaryOut"];
+export type ActivityFilter = "all" | "mentions" | "reactions" | "threads";
+/** reaction.added (audience = the message's author): someone reacted to my message. */
+export interface ReactionAdded {
+  channel_id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  at: string;
+}

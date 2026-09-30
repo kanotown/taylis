@@ -1,0 +1,234 @@
+/**
+ * M39, the activity stage B (MOBILE_UI.md §6.4, §7.2; SYNC_PROTOCOL.md bootstrap `activity`, activity.read,
+ * reaction.added): the rows' rules, the badge, the store's summary, and the engine keeping it with the server's.
+ */
+import { describe, expect, it } from "vitest";
+
+import type { ActivityItem, ActivitySummaryOut, MessageOut, ReactionAdded } from "../src/api/types";
+import { SyncEngine } from "../src/sync/engine";
+import { Store } from "../src/sync/store";
+import type { ChannelState } from "../src/sync/types";
+import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, movesActivityRead, newestActivityAt } from "../src/ui/activity";
+import { activityBadge } from "../src/ui/mobileTabs";
+import { FakeServer, MemoryPersistence } from "./fakeServer";
+
+const item = (kind: ActivityItem["kind"], id: string, at: string, actors: string[] = ["u1"], emojis: string[] = []): ActivityItem => ({
+  kind,
+  at,
+  message: { id, channel_id: "c1", sender_id: "u1", body: "本文" } as unknown as MessageOut,
+  actor_ids: actors,
+  emojis,
+});
+const names: Record<string, string> = { u1: "山田", u2: "佐藤", u3: "鈴木" };
+const nameOf = (id: string) => names[id] ?? "?";
+
+describe("activity rows", () => {
+  it("say who did what: a mention, a reply, one or several people's reactions", () => {
+    expect(activityHeadlineText(item("mention", "m1", "2026-09-30T01:00:00Z"), nameOf)).toBe("山田 がメンション");
+    expect(activityHeadlineText(item("thread_reply", "m1", "2026-09-30T01:00:00Z", ["u2"]), nameOf)).toBe("佐藤 がスレッドに返信");
+    expect(activityHeadlineText(item("reaction", "m1", "2026-09-30T01:00:00Z", ["u2"], ["👍"]), nameOf)).toBe("佐藤 が 👍");
+    expect(activityHeadlineText(item("reaction", "m1", "2026-09-30T01:00:00Z", ["u2", "u1", "u3"], ["👍", "🎉"]), nameOf)).toBe("佐藤 ほか 2 人が 👍🎉");
+    expect(activityHeadline(item("reaction", "m1", "2026-09-30T01:00:00Z", ["u2", "u3"]), nameOf)).toEqual({ who: "佐藤 ほか 1 人", what: "が" });
+    expect(activityHeadline(item("mention", "m1", "2026-09-30T01:00:00Z", []), nameOf).who).toBe("誰か");
+    expect(activityEmptyText("reactions")).toBe("自分の投稿へのリアクションはまだありません");
+  });
+
+  it("have a dot after the read position only, and mark read up to the newest one shown", () => {
+    const readAt = "2026-09-30T01:00:00.000Z";
+    expect(isActivityUnread(item("mention", "m1", "2026-09-30T01:00:00.001Z"), readAt)).toBe(true);
+    expect(isActivityUnread(item("mention", "m1", readAt), readAt)).toBe(false);
+    expect(isActivityUnread(item("mention", "m1", "2026-09-30T02:00:00Z"), null)).toBe(false);
+    const rows = [item("mention", "a", "2026-09-30T01:00:00Z"), item("reaction", "b", "2026-09-30T03:00:00Z"), item("thread_reply", "c", "2026-09-30T02:00:00Z")];
+    expect(newestActivityAt(rows)).toBe("2026-09-30T03:00:00Z");
+    expect(newestActivityAt([])).toBeNull();
+    expect(movesActivityRead("2026-09-30T03:00:00Z", "2026-09-30T02:00:00Z")).toBe(true);
+    expect(movesActivityRead("2026-09-30T02:00:00Z", "2026-09-30T02:00:00Z")).toBe(false);
+    expect(movesActivityRead(null, "2026-09-30T02:00:00Z")).toBe(false);
+  });
+
+  it("come in pages without listing a row twice (kind and message make a row)", () => {
+    const first = [item("mention", "a", "3"), item("reaction", "b", "2")];
+    const next = [item("reaction", "b", "2"), item("mention", "b", "2"), item("thread_reply", "c", "1")];
+    expect(appendActivityPage(first, next).map(activityKey)).toEqual(["mention:a", "reaction:b", "mention:b", "thread_reply:c"]);
+  });
+});
+
+describe("the activity badge", () => {
+  const channel = (patch: Partial<ChannelState>) => ({ id: "c", type: "public", isMember: true, mentionCount: 0, unreadCount: 0, ...patch }) as ChannelState;
+  it("is the server's unread count (red with a mention among them) once the server has activity, else stage A's", () => {
+    const channels = [channel({ mentionCount: 2 })];
+    const threads = { unread_count: 1, mention_count: 0 };
+    expect(activityBadge(channels, threads, null)).toEqual({ count: 2, mention: true });
+    const summary: ActivitySummaryOut = { read_at: "2026-09-30T00:00:00Z", unread_count: 5, mention_unread: false };
+    expect(activityBadge(channels, threads, summary)).toEqual({ count: 5, mention: false });
+    expect(activityBadge(channels, threads, { ...summary, mention_unread: true })).toEqual({ count: 5, mention: true });
+    expect(activityBadge(channels, threads, { ...summary, unread_count: 0, mention_unread: true })).toEqual({ count: 0, mention: false });
+  });
+});
+
+describe("Store.setActivity", () => {
+  it("keeps the newest read position (a summary answered after a newer PUT is dropped) and survives a restart", async () => {
+    const persistence = new MemoryPersistence();
+    const store = new Store(persistence);
+    store.setActivity({ read_at: "2026-09-30T02:00:00.000Z", unread_count: 0, mention_unread: false });
+    store.setActivity({ read_at: "2026-09-30T01:00:00.000Z", unread_count: 4, mention_unread: true });
+    expect(store.activity).toEqual({ read_at: "2026-09-30T02:00:00.000Z", unread_count: 0, mention_unread: false });
+    store.setActivity({ read_at: "2026-09-30T02:00:00.000Z", unread_count: 1, mention_unread: false });
+    expect(store.activity?.unread_count).toBe(1);
+    await store.flushPersistence();
+    const again = new Store(persistence);
+    await again.load();
+    expect(again.activity).toEqual({ read_at: "2026-09-30T02:00:00.000Z", unread_count: 1, mention_unread: false });
+    store.setActivity(null);
+    expect(store.activity).toBeNull();
+  });
+});
+
+/** Bob on this device, alice and carol posting in channel C; `reactions` collects the reaction banners. */
+async function setup(options: { activity?: boolean; notifyReactions?: boolean; active?: boolean } = {}) {
+  const server = new FakeServer();
+  server.activityEnabled = options.activity ?? true;
+  const alice = server.addUser("alice");
+  const bob = server.addUser("bob");
+  const carol = server.addUser("carol");
+  const channel = server.createChannel("c", alice.id);
+  server.join(channel.id, bob.id);
+  server.join(channel.id, carol.id);
+  if (options.notifyReactions) server.notifyReactions.add(bob.id);
+  const inner = server.apiFor(bob.id);
+  const calls = { summary: 0 };
+  const api = { ...inner, activitySummary: inner.activitySummary && (async () => { calls.summary += 1; return inner.activitySummary!(); }) };
+  const store = new Store();
+  const reactions: Array<{ reaction: ReactionAdded; channel: string }> = [];
+  const engine = new SyncEngine(
+    {
+      api,
+      connect: server.connectorFor(bob.id),
+      store,
+      getAccessToken: () => "t",
+      sleep: async () => {},
+      random: () => 0.5,
+      isActive: () => options.active ?? false,
+      onReaction: (reaction, c) => reactions.push({ reaction, channel: c.id }),
+    },
+    { reconnectMinMs: 0 },
+  );
+  await engine.start();
+  await engine.idle();
+  const settle = async () => {
+    await engine.idle();
+    await engine.flushActivity();
+  };
+  return { server, alice, bob, carol, channel, store, engine, calls, reactions, settle };
+}
+
+describe("SyncEngine and the activity (M39)", () => {
+  it("takes the badge from bootstrap; a server before M39 sends none and nothing is asked for", async () => {
+    const old = await setup({ activity: false });
+    expect(old.store.activity).toBeNull();
+    old.server.post(old.channel.id, old.alice.id, `<@${old.bob.id}> 見て`);
+    await old.settle();
+    expect(old.calls.summary).toBe(0);
+    old.engine.stop();
+
+    const w = await setup();
+    expect(w.store.activity).toMatchObject({ unread_count: 0, mention_unread: false });
+    w.engine.stop();
+  });
+
+  it("asks for the summary on a mention, a reply in a thread I follow, a reaction to my message; not for my own posts or other messages", async () => {
+    const w = await setup();
+    w.server.post(w.channel.id, w.alice.id, "ただの投稿");
+    await w.settle();
+    expect(w.calls.summary).toBe(0);
+
+    w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 見て`);
+    await w.settle();
+    expect(w.calls.summary).toBe(1);
+    expect(w.store.activity).toMatchObject({ unread_count: 1, mention_unread: true });
+
+    // A thread bob follows (his reply), a reply by alice.
+    const parent = w.server.post(w.channel.id, w.carol.id, "親").message;
+    w.server.post(w.channel.id, w.bob.id, "bob の返信", undefined, parent.id);
+    await w.settle();
+    expect(w.calls.summary).toBe(1); // my own reply is nothing new
+    w.server.post(w.channel.id, w.alice.id, "alice の返信", undefined, parent.id);
+    await w.settle();
+    expect(w.calls.summary).toBe(2);
+    expect(w.store.activity?.unread_count).toBe(2);
+
+    // Carol reacts to bob's message: reaction.added to bob only.
+    const mine = w.server.post(w.channel.id, w.bob.id, "bob の投稿").message;
+    await w.settle();
+    w.server.react(w.channel.id, w.carol.id, mine.id, "👍", true);
+    await w.settle();
+    expect(w.calls.summary).toBe(3);
+    expect(w.store.activity?.unread_count).toBe(3);
+    // Taken back: no event (the list drops it; the next bootstrap or event corrects the badge).
+    w.server.react(w.channel.id, w.carol.id, mine.id, "👍", false);
+    await w.settle();
+    expect(w.calls.summary).toBe(3);
+    w.engine.stop();
+  });
+
+  it("reads up to a time (PUT /activity/read) and follows my other device's activity.read", async () => {
+    const w = await setup();
+    w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 一つ目`);
+    const second = w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 二つ目`).message;
+    await w.settle();
+    expect(w.store.activity?.unread_count).toBe(2);
+    const first = w.server.activityItems(w.bob.id).at(-1)!;
+    await w.engine.markActivityRead(first.at);
+    expect(w.store.activity).toMatchObject({ read_at: first.at, unread_count: 1 });
+    await w.settle();
+    // The other device reads everything: activity.read moves the position, the summary brings the count.
+    w.server.markActivityRead(w.bob.id, second.created_at);
+    await w.settle();
+    expect(w.store.activity).toMatchObject({ read_at: second.created_at, unread_count: 0, mention_unread: false });
+    // Never backwards: a PUT behind the position changes nothing.
+    await w.engine.markActivityRead(first.at);
+    expect(w.store.activity?.read_at).toBe(second.created_at);
+    w.engine.stop();
+  });
+
+  it("shows a reaction banner only with notify_reactions on, not in a muted or silent conversation, nor the one on screen", async () => {
+    const off = await setup();
+    const mineOff = off.server.post(off.channel.id, off.bob.id, "投稿").message;
+    await off.settle();
+    off.server.react(off.channel.id, off.alice.id, mineOff.id, "👍", true);
+    await off.settle();
+    expect(off.reactions).toEqual([]);
+    off.engine.stop();
+
+    const w = await setup({ notifyReactions: true, active: true });
+    const mine = w.server.post(w.channel.id, w.bob.id, "投稿").message;
+    await w.settle();
+    w.server.react(w.channel.id, w.alice.id, mine.id, "🎉", true);
+    await w.settle();
+    expect(w.reactions.map((r) => [r.reaction.emoji, r.reaction.user_id, r.channel])).toEqual([["🎉", w.alice.id, w.channel.id]]);
+    // Looking at that conversation (the window in use): no banner.
+    await w.engine.openChannel(w.channel.id);
+    w.server.react(w.channel.id, w.carol.id, mine.id, "👀", true);
+    await w.settle();
+    expect(w.reactions).toHaveLength(1);
+    w.engine.closeChannel();
+    // Muted until unmuted, then the level "none": nothing either.
+    w.server.setNotificationPreference(w.bob.id, w.channel.id, { level: null, muted: true });
+    await w.settle();
+    w.server.react(w.channel.id, w.alice.id, mine.id, "👍", true);
+    await w.settle();
+    expect(w.reactions).toHaveLength(1);
+    w.server.setNotificationPreference(w.bob.id, w.channel.id, { level: "none", muted: false });
+    await w.settle();
+    w.server.react(w.channel.id, w.carol.id, mine.id, "👍", true);
+    await w.settle();
+    expect(w.reactions).toHaveLength(1);
+    // Back to following the overall setting: the next one shows.
+    w.server.setNotificationPreference(w.bob.id, w.channel.id, { level: null, muted: false });
+    await w.settle();
+    w.server.react(w.channel.id, w.alice.id, mine.id, "🙏", true);
+    await w.settle();
+    expect(w.reactions.map((r) => r.reaction.emoji)).toEqual(["🎉", "🙏"]);
+    w.engine.stop();
+  });
+});
