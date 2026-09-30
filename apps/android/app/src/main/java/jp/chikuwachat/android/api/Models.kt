@@ -1,6 +1,11 @@
 package jp.chikuwachat.android.api
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 // Models mirror the shared OpenAPI document (openapi/openapi.json). Wire keys are snake_case,
 // mapped by JsonNamingStrategy.SnakeCase in Json.kt.
@@ -67,9 +72,24 @@ data class UserMe(
      * and no two-factor setup. Absent from servers before M48 (true).
      */
     val hasPassword: Boolean = true,
+    /**
+     * M50: `quick_reactions` as it came, so a server before M50 (no key: [QUICK_REACTIONS_ABSENT], the setting is hidden)
+     * differs from one where I have not chosen any (null). Read it through [quickReactions] / [knowsQuickReactions].
+     */
+    @SerialName("quick_reactions") val quickReactionsJson: JsonElement = QUICK_REACTIONS_ABSENT,
 ) {
+    /** M50: the long-press sheet's reactions I chose (1–6 plain emoji, in order); null = not chosen (or an older server). */
+    val quickReactions: List<String>?
+        get() = (quickReactionsJson as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+
+    /** M50: the server has the setting (it sends the key, null or a list); 自分 → 表示 offers it only then. */
+    val knowsQuickReactions: Boolean get() = quickReactionsJson != QUICK_REACTIONS_ABSENT
+
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
+
+/** [UserMe.quickReactionsJson] when the key was missing (a server before M50); a server never sends an object there. */
+val QUICK_REACTIONS_ABSENT: JsonElement = JsonObject(emptyMap())
 
 /** A custom status (M11d) that has not expired: emoji to text; null otherwise. */
 fun activeStatus(user: UserPublic?, now: Long = System.currentTimeMillis()): Pair<String, String>? {
