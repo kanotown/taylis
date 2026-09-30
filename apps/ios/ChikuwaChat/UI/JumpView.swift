@@ -41,6 +41,7 @@ struct ConversationLabel: View {
     @Bindable var controller: AppController
     let channel: ChannelState
     var note: String? = nil
+    var rowHeight: CGFloat = 44
 
     var body: some View {
         let store = controller.store
@@ -70,7 +71,7 @@ struct ConversationLabel: View {
                 Circle().fill(Color.accentColor).frame(width: 8, height: 8)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(channel.channel.isDm ? "DM: \(title)" : "チャンネル: \(String(title.drop { $0 == "#" }))")
@@ -83,6 +84,7 @@ struct PersonLabel: View {
     @Bindable var controller: AppController
     let user: UserPublic
     var subtitle: String? = nil
+    var rowHeight: CGFloat = 44
 
     var body: some View {
         let isMe = user.id == controller.store.me?.id
@@ -98,7 +100,7 @@ struct PersonLabel: View {
             }
             Spacer(minLength: 4)
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
@@ -108,6 +110,9 @@ struct PersonLabel: View {
 /// and the recent searches. Typing: the matching conversations, then people (a tap opens the DM), then 「"語" を
 /// メッセージ検索」, the existing results screen.
 struct JumpView: View {
+    /// Rows tighter than the home's 44 pt: a list to pick from, read at a glance (tester, 2026-09-30).
+    static let rowHeight: CGFloat = 36
+
     @Bindable var controller: AppController
     /// A conversation to open (MainView routes it: a DM on the DM tab, a channel on the home tab).
     let onOpen: (String) -> Void
@@ -138,7 +143,7 @@ struct JumpView: View {
                     if query.isEmpty { emptyRows } else { matchRows }
                 }
                 .listStyle(.plain)
-                .environment(\.defaultMinListRowHeight, 44)
+                .environment(\.defaultMinListRowHeight, Self.rowHeight)
                 .scrollDismissesKeyboard(.immediately)
             }
             .background(Color(.systemBackground))
@@ -156,7 +161,7 @@ struct JumpView: View {
         if !conversations.isEmpty {
             Section {
                 ForEach(conversations) { channel in
-                    Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel) }
+                    Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel, rowHeight: Self.rowHeight) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowInsets(ChannelListView.rowInsets)
@@ -172,7 +177,7 @@ struct JumpView: View {
                             Text(describe(params)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -198,7 +203,7 @@ struct JumpView: View {
         if !conversations.isEmpty {
             Section {
                 ForEach(conversations) { channel in
-                    Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel) }
+                    Button { open(channel.id) } label: { ConversationLabel(controller: controller, channel: channel, rowHeight: Self.rowHeight) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowInsets(ChannelListView.rowInsets)
@@ -208,7 +213,7 @@ struct JumpView: View {
         if !people.isEmpty {
             Section {
                 ForEach(people) { user in
-                    Button { openDm(user.id) } label: { PersonLabel(controller: controller, user: user) }
+                    Button { openDm(user.id) } label: { PersonLabel(controller: controller, user: user, rowHeight: Self.rowHeight) }
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowInsets(ChannelListView.rowInsets)
@@ -224,7 +229,7 @@ struct JumpView: View {
                     Text("\"\(Text(query).bold())\" をメッセージ検索").lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -268,6 +273,8 @@ struct JumpView: View {
 /// people; several people make a group DM, me alone my DM with myself. The chosen conversation opens with its input
 /// ready (MOBILE_UI.md §6.1).
 struct NewMessageView: View {
+    static let rowHeight = JumpView.rowHeight
+
     @Bindable var controller: AppController
     /// The conversation to open; `focus`: its input takes the keyboard (a channel I can post in, a DM).
     let onOpen: (_ channelId: String, _ focus: Bool) -> Void
@@ -300,7 +307,7 @@ struct NewMessageView: View {
                     peopleRows(users)
                 }
                 .listStyle(.plain)
-                .environment(\.defaultMinListRowHeight, 44)
+                .environment(\.defaultMinListRowHeight, Self.rowHeight)
                 .scrollDismissesKeyboard(.immediately)
             }
             .navigationTitle("新しいメッセージ")
@@ -324,7 +331,7 @@ struct NewMessageView: View {
             Section {
                 ForEach(rows) { channel in
                     Button { openChannel(channel) } label: {
-                        ConversationLabel(controller: controller, channel: channel, note: channel.isMember ? nil : "未参加")
+                        ConversationLabel(controller: controller, channel: channel, note: channel.isMember ? nil : "未参加", rowHeight: Self.rowHeight)
                     }
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
@@ -345,7 +352,7 @@ struct NewMessageView: View {
                     let isSelected = selected.contains(user.id)
                     Button { tap(user.id) } label: {
                         HStack(spacing: 8) {
-                            PersonLabel(controller: controller, user: user, subtitle: isMe ? "メモや下書きに使える、自分だけの DM" : nil)
+                            PersonLabel(controller: controller, user: user, subtitle: isMe ? "メモや下書きに使える、自分だけの DM" : nil, rowHeight: Self.rowHeight)
                             if !isMe {
                                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                     .font(.title3)
