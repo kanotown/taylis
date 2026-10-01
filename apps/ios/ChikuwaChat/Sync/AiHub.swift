@@ -203,6 +203,13 @@ enum AiRules {
     static func notice(_ agents: [AiAgentPublic]) -> String? {
         guard !agents.isEmpty else { return nil }
         let names = agents.map(\.name).joined(separator: "・")
-        return "AI (\(names)) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます"
+        return "AI (\(names)) が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます"
+    }
+
+    /// §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.
+    static func providers(_ agents: [AiAgentPublic]) -> String {
+        let openai = agents.contains { ($0.model ?? "").hasPrefix("gpt-") }
+        let anthropic = agents.contains { !($0.model ?? "").hasPrefix("gpt-") }
+        return [anthropic ? "Anthropic" : nil, openai ? "OpenAI" : nil].compactMap { $0 }.joined(separator: " と ")
     }
 }

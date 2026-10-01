@@ -341,6 +341,9 @@ class AiTest {
             AiTexts.memberNotice(agents, listOf("me", "bot1")),
         )
         assertTrue(AiTexts.memberNotice(agents, listOf("bot1", "bot2"))!!.startsWith("AI (ちくわ、はんぺん)"))
+        val sol = listOf(AiAgentPublic("s", "bot3", "そる", "gpt-6.1-sol"), AiAgentPublic("o", "bot4", "ちくわ", "claude-opus-5-5"))
+        assertTrue(AiTexts.memberNotice(sol, listOf("bot3"))!!.contains("OpenAI の API"))
+        assertTrue(AiTexts.memberNotice(sol, listOf("bot3", "bot4"))!!.contains("Anthropic と OpenAI の API"))
     }
 
     @Test fun mentionCandidatesMarkTheAiBots() {

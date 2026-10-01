@@ -123,6 +123,10 @@ final class AiRulesTests: XCTestCase {
         XCTAssertNil(AiRules.notice([]))
         XCTAssertEqual(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ"), AiAgentPublic(id: "c", botUserId: "d", name: "はんぺん")]),
                        "AI (ちくわ・はんぺん) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます")
+        XCTAssertEqual(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "そる", model: "gpt-6.1-sol")]),
+                       "AI (そる) が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます")
+        XCTAssertTrue(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ", model: "claude-opus-5-5"),
+                                      AiAgentPublic(id: "c", botUserId: "d", name: "そる", model: "gpt-6.1-sol")])!.contains("Anthropic と OpenAI の API"))
     }
 
     func testMentionCandidatesMarkAiBots() {

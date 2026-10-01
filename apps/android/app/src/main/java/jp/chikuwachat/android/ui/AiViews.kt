@@ -67,9 +67,15 @@ object AiTexts {
 
     /** §4: shown on a channel's details while an AI bot is a member; null otherwise. */
     fun memberNotice(agents: List<AiAgentPublic>, memberIds: Collection<String>): String? {
-        val names = agents.filter { it.botUserId in memberIds }.map { it.name }.distinct()
+        val present = agents.filter { it.botUserId in memberIds }
+        val names = present.map { it.name }.distinct()
         if (names.isEmpty()) return null
-        return "AI (${names.joinToString("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます"
+        // §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.
+        val where = listOfNotNull(
+            "Anthropic".takeIf { present.any { !it.model.startsWith("gpt-") } },
+            "OpenAI".takeIf { present.any { it.model.startsWith("gpt-") } },
+        ).joinToString(" と ")
+        return "AI (${names.joinToString("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が $where の API に送られます"
     }
 
     const val PRIVATE_NOTE = "要約はあなたにだけ表示されます"
