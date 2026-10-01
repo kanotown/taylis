@@ -88,9 +88,7 @@ struct TimesFeedView: View {
             Text("フィードに出ている times (ミュートしていないもの) の未読がなくなります。")
         }
         .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.parentId) }
-        .messageSheets(controller, sheet: $messageSheet, openThread: { message in
-            thread = FeedThread(channelId: message.channelId, parentId: message.parentId ?? message.id)
-        })
+        .messageSheets(controller, sheet: $messageSheet, openThread: { message in openThread(channelId: message.channelId, id: message.id, parentId: message.parentId) })
         .task {
             // §5: the first page is read when the feed opens (not again when a thread over it closes).
             model.visible = true
@@ -102,7 +100,18 @@ struct TimesFeedView: View {
             // §5: after a reconnect, the first page again (events were lost while the connection was down).
             if opened && new == .online && old != .online { Task { await controller.refreshTimesFeed() } }
         }
-        .onChange(of: feedChannelKey) { _, _ in model.prune(channel: { store.channel($0) }) }
+        .onChange(of: feedChannelKey, initial: true) { _, _ in model.prune(channel: { store.channel($0) }) }
+    }
+
+    /// The thread over the feed (review #8): ThreadView finds a feed row's parent in the feed; the parent of a reply
+    /// also sent to the channel is fetched first when nothing holds it.
+    private func openThread(channelId: String, id: String, parentId: String?) {
+        let target = FeedThread(channelId: channelId, parentId: parentId ?? id)
+        guard parentId != nil else { thread = target; return }
+        Task {
+            await controller.loadTimesFeedParent(channelId: target.channelId, parentId: target.parentId)
+            thread = target
+        }
     }
 
     @ViewBuilder
@@ -174,7 +183,7 @@ struct TimesFeedView: View {
             .accessibilityLabel("\(channel?.channel.name ?? "") を開く")
             MessageRow(message: MessageState(message), controller: controller, margin: Self.margin,
                        highlighted: messageSheet?.kind == .actions && messageSheet?.message.id == message.id,
-                       onOpenThread: { thread = FeedThread(channelId: message.channelId, parentId: message.parentId ?? message.id) },
+                       onOpenThread: { openThread(channelId: message.channelId, id: message.id, parentId: message.parentId) },
                        present: { messageSheet = $0 },
                        onTap: { onOpen(message) })
                 .overlay(alignment: .topLeading) {

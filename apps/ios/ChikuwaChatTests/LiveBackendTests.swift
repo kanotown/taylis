@@ -74,7 +74,7 @@ final class LiveBackendTests: XCTestCase {
         let engine = SyncEngine(api: me, connect: { url, _ in try await WebSocketTransport.connect(url: url) }, wsUrl: me.wsUrl,
                                 store: store, getAccessToken: { me.accessToken }, options: options)
         let model = TimesFeedModel()
-        engine.onTimelineMessage = { event, message in model.live(event, message, channel: store.channel(message.channelId)) }
+        engine.onTimelineMessage = { event, message, thread in model.live(event, message, thread: thread, channel: store.channel(message.channelId)) }
         await engine.start()
         await engine.idle()
         XCTAssertEqual(store.channel(times.id)?.channel.timesOwnerId, times.timesOwnerId)

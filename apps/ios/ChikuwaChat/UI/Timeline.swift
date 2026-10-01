@@ -15,6 +15,17 @@ enum TimelineItem: Identifiable {
     }
 }
 
+/// One row of the conversation list: an item and the day separator drawn over it (user report 2026-10-02). A separator
+/// that was an item of its own had its own insertion transition: with the first message of a day, the message came up
+/// from under the input while its 「今日」 slid in separately from above, over the older rows, and settled after it. Drawn
+/// as part of the row after it, the separator comes and moves with that row.
+struct TimelineRow: Identifiable {
+    let item: TimelineItem
+    /// The day separator's label over this row, when a day starts here.
+    var day: String?
+    var id: String { item.id }
+}
+
 extension MessageState {
     /// A row's identity in lists: the client_msg_id, which my pending message keeps when the server confirms it
     /// (its id changes from "local:…" to the server's). Keyed by id, SwiftUI dropped and re-inserted my row on every
@@ -179,6 +190,22 @@ enum Timeline {
             previous = message
         }
         return items
+    }
+
+    /// The list's rows: each day separator goes onto the row after it (the 「新着メッセージ」 divider or a message).
+    static func rows(_ items: [TimelineItem]) -> [TimelineRow] {
+        var rows: [TimelineRow] = []
+        rows.reserveCapacity(items.count)
+        var day: String?
+        for item in items {
+            if case .date(let label, _) = item {
+                day = label
+                continue
+            }
+            rows.append(TimelineRow(item: item, day: day))
+            day = nil
+        }
+        return rows
     }
 
     /// M47: the replies of a thread shown under the one before them (their ids), by the timeline's rule; a new day and

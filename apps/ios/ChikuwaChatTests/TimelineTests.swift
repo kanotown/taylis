@@ -19,6 +19,26 @@ final class TimelineTests: XCTestCase {
         return message
     }
 
+    /// User report 2026-10-02: the first message of a day carries its 「今日」 in its own row, from the pending row on (its
+    /// local time), and keeps it, in the same row, when the server's row replaces it; the separator is no row of its own.
+    func testADaySeparatorIsPartOfTheRowAfterItFromThePendingRowOn() {
+        let yesterday = message("m1", sender: "u2", at: "2026-09-25T05:00:00Z", seq: 1)
+        let pending = MessageState(placeholderFor: "k2", channelId: "c", senderId: "me", body: "おはよう", createdAt: "2026-09-26T02:59:00Z")
+        let sent = Timeline.rows(Timeline.build([yesterday, pending], firstUnreadAfterSeq: nil, meId: "me", grouping: false, now: now, calendar: calendar))
+        XCTAssertEqual(sent.map(\.id), ["m1", "k2"])
+        XCTAssertEqual(sent.map(\.day), ["昨日", "今日"])
+        var confirmed = message("m2", sender: "me", at: "2026-09-26T02:59:00.123456+00:00", seq: 2)
+        confirmed.clientMsgId = "k2"
+        let after = Timeline.rows(Timeline.build([yesterday, confirmed], firstUnreadAfterSeq: nil, meId: "me", grouping: false, now: now, calendar: calendar))
+        XCTAssertEqual(after.map(\.id), ["m1", "k2"])
+        XCTAssertEqual(after.map(\.day), ["昨日", "今日"])
+        // With the 「新着メッセージ」 divider after the day's start, the day goes over the divider.
+        let other = message("m3", sender: "u2", at: "2026-09-26T03:00:00Z", seq: 3)
+        let unread = Timeline.rows(Timeline.build([yesterday, other], firstUnreadAfterSeq: 1, meId: "me", grouping: false, now: now, calendar: calendar))
+        XCTAssertEqual(unread.map(\.id), ["m1", "unread", "m3"])
+        XCTAssertEqual(unread.map(\.day), ["昨日", "今日", nil])
+    }
+
     func testDayLabelsAreRelativeToToday() {
         XCTAssertEqual(Timeline.dayLabel(parseIsoDate("2026-09-26T00:00:00Z")!, now: now, calendar: calendar), "今日")
         XCTAssertEqual(Timeline.dayLabel(parseIsoDate("2026-09-25T14:00:00Z")!, now: now, calendar: calendar), "昨日")

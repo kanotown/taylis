@@ -368,6 +368,12 @@ final class Store {
     var limits: Limits?
     /// A conversation left the store (left, removed, made private); the engine forgets it as the open one.
     @ObservationIgnored var onChannelRemoved: ((String) -> Void)?
+    /// L8 (TIMES_FEED.md §5, review #4): every server row given to the store (live events, the delta, pages, the answers
+    /// to my own actions), my own poll part of an answer, and a parent's new thread counters: the Times feed, which keeps
+    /// rows of its own, takes them from here as well as from the live events.
+    @ObservationIgnored var onMessageTaken: ((MessageOut) -> Void)?
+    @ObservationIgnored var onMyPart: ((MessageOut) -> Void)?
+    @ObservationIgnored var onParentThread: ((ParentThread) -> Void)?
     /// §10: read positions this device reached that the server has not confirmed yet, by channel id or
     /// "thread:<parent id>". Persisted, so a mark made just before the app quit is still sent after reconnecting.
     @ObservationIgnored private(set) var unsentReads: [String: Int] = [:]
@@ -1019,6 +1025,7 @@ final class Store {
 
     /// A reply moved the parent's counters (message.created / message.deleted with parent_thread).
     func applyParentThread(_ channelId: String, _ thread: ParentThread) {
+        onParentThread?(thread)
         let rows = bucket(channelId)
         guard var parent = rows.byId[thread.id], thread.updatedSeq > parent.updatedSeq else { return }
         parent.replyCount = thread.replyCount
@@ -1046,6 +1053,7 @@ final class Store {
                 persist { try $0.deleteMessage(id: placeholder) }
             }
         }
+        if let onMessageTaken, let out = MessageOut(message) { onMessageTaken(out) } // the feed merges by its own rows
         var message = message
         if let local = rows.byId[message.id] {
             if message.updatedSeq < local.updatedSeq { return false }
@@ -1077,6 +1085,7 @@ final class Store {
     /// its `mine` / `my_answers` / `my_comment` go in whatever the order. Another member's event may have come first with
     /// a newer updated_seq, and the merge then drops the answer.
     func setMyVotes(_ answer: MessageOut) {
+        onMyPart?(answer)
         guard let response = answer.poll else { return }
         let rows = bucket(answer.channelId)
         guard var stored = rows.byId[answer.id], let poll = stored.poll?.withMyPart(of: response) else { return }
