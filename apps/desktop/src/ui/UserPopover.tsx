@@ -47,7 +47,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
             <div className="truncate text-base font-semibold">{user?.display_name ?? "?"}</div>
             <div className="truncate text-xs text-muted">@{user?.username ?? ""}{user?.title ? ` · ${user.title}` : ""}</div>
             {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">ゲスト (参加したチャンネルだけ見えます)</div>}
-            {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">受信 Webhook の bot</div>}
+            {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? "AI のボット (メンションすると返事をします)" : "受信 Webhook の bot"}</div>}
             <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
             {dndActive(user) && (
               <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? `おやすみ時間 ${quietHoursLabel(user.quiet_hours)}` : undefined}>🔕 通知を一時停止中</div>

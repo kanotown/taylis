@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { AiTab } from "./AiTab";
 import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
@@ -14,7 +15,7 @@ import { RosterTab } from "./RosterTab";
 import { WebhooksTab } from "./WebhooksTab";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 
-type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "channels" | "emoji" | "canvas-templates";
+type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "ai" | "channels" | "emoji" | "canvas-templates";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -32,6 +33,9 @@ export function AdminDialog({ controller, onClose }: { controller: AppController
  */
 export function AdminBody({ controller, className }: { controller: AppController; className?: string }) {
   const [tab, setTab] = useState<Tab>("users");
+  // M65: 「AI」 only on a server that has the AI routes (GET /ai/status answered; docs/AI.md §5).
+  const ai = controller.store.aiStatus !== null;
+  const shown: Tab = tab === "ai" && !ai ? "users" : tab;
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       <div role="tablist" aria-label="管理" className="flex shrink-0 gap-1 overflow-x-auto border-b border-line">
@@ -42,6 +46,7 @@ export function AdminBody({ controller, className }: { controller: AppController
             ["groups", "グループ"],
             ["invites", "招待"],
             ["webhooks", "Webhook"],
+            ...(ai ? [["ai", "AI"]] : []),
             ["channels", "チャンネル"],
             ["emoji", "絵文字"],
             ["canvas-templates", "キャンバス"],
@@ -51,16 +56,16 @@ export function AdminBody({ controller, className }: { controller: AppController
             key={value}
             type="button"
             role="tab"
-            aria-selected={tab === value}
+            aria-selected={shown === value}
             onClick={() => setTab(value)}
-            className={cn("-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors max-md:px-2.5", tab === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
+            className={cn("-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors max-md:px-2.5", shown === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
           >
             {label}
           </button>
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "users" ? <UsersTab controller={controller} /> : tab === "roster" ? <RosterTab controller={controller} /> : tab === "groups" ? <GroupsTab controller={controller} /> : tab === "invites" ? <InvitesTab controller={controller} /> : tab === "webhooks" ? <WebhooksTab controller={controller} /> : tab === "channels" ? <ChannelsTab controller={controller} /> : tab === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {shown === "ai" ? <AiTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );
@@ -168,7 +173,7 @@ function UsersTab({ controller }: { controller: AppController }) {
                     <span className="truncate text-xs text-muted">@{user.username}{user.email ? ` · ${user.email}` : ""}</span>
                     {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
                     {user.role === "guest" && <Badge>ゲスト</Badge>}
-                    {user.role === "bot" && <Badge>BOT</Badge>}
+                    {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                     {off && <Badge>無効</Badge>}
                     {user.must_change_password && !off && <Badge tone="danger">仮パスワード</Badge>}
                     {user.totp_enabled && <Badge tone="accent">2FA</Badge>}

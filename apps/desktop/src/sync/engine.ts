@@ -9,6 +9,8 @@ import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
 import { type TaskApi, TaskHub, type TaskNotice } from "./tasks";
 import { TimesFeedHub } from "./timesFeed";
+import { type AiApi, AiHub } from "./ai";
+import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
@@ -94,6 +96,10 @@ export interface SyncApi {
   /** M39: the activity badge (GET /activity/summary) and read position (PUT /activity/read). Optional (older fakes). */
   activitySummary?(): Promise<ActivitySummaryOut>;
   markActivityRead?(readAt: string): Promise<ActivitySummaryOut>;
+  /** M65: the AI status and summaries (docs/AI.md §5). Optional (older fakes). */
+  aiStatus?: AiApi["aiStatus"];
+  createAiSummary?: AiApi["createAiSummary"];
+  getAiRun?: AiApi["getAiRun"];
 }
 
 export interface WsLike {
@@ -298,6 +304,12 @@ export class SyncEngine {
       isOnline: () => this.status === "online",
     });
     deps.store.onMessageStored = (message) => this.timesFeed.applyMessage(message, false);
+    this.ai = new AiHub({
+      api: api.aiStatus && api.createAiSummary && api.getAiRun
+        ? { aiStatus: () => api.aiStatus!(), createAiSummary: (body) => api.createAiSummary!(body), getAiRun: (id) => api.getAiRun!(id) }
+        : null,
+      setStatus: (status) => deps.store.setAiStatus(status),
+    });
   }
 
   /**
@@ -325,6 +337,8 @@ export class SyncEngine {
   readonly tasks: TaskHub;
   /** L8: the Times feed's rows, read while it is on screen (TIMES_FEED.md §5). */
   readonly timesFeed: TimesFeedHub;
+  /** M65: the AI status and the summary on screen (docs/AI.md §5). */
+  readonly ai: AiHub;
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -458,6 +472,7 @@ export class SyncEngine {
       this.calendar.online(); // M51: the ranges on screen read again (CALENDAR.md §5)
       this.tasks.online(); // M55: the boards and lists on screen read again (TASKS.md §4)
       this.timesFeed.online(); // L8: a feed on screen reads its first page again (TIMES_FEED.md §5)
+      this.ai.online(); // M65: the AI status, and an unfinished summary on screen read again (docs/AI.md §5)
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -898,6 +913,9 @@ export class SyncEngine {
         this.maybeNotifyReaction(data);
         return;
       }
+      case "ai.run_updated":
+        this.ai.applyEvent(frame.data as unknown as AiRunUpdated);
+        return;
       case "session.revoked":
         this.signOut();
         return;

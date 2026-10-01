@@ -1,3 +1,4 @@
+import { AiChannelNotice } from "./ai";
 import { Check, Hash, Lock, NotebookPen } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
@@ -237,6 +238,8 @@ export function MembersDialog({ controller, channel, onClose, onAdd }: { control
   return (
     <Modal onClose={onClose} title={`メンバー${members ? ` (${members.length})` : ""}`}>
       <div className="mt-4 space-y-3">
+        {/* M65 (docs/AI.md §4): an AI bot among the members. */}
+        <AiChannelNotice controller={controller} memberIds={members ? members.map((m) => m.user_id) : null} />
         <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} className="max-h-80" />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>

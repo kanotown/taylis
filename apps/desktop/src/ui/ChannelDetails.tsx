@@ -3,6 +3,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState, NotificationLevel } from "../sync/types";
+import { AiChannelNotice } from "./ai";
 import { canEditLinks } from "./ChannelLinks";
 import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
@@ -113,6 +114,10 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
                 <UserPlus size={14} /> メンバーを追加
               </Button>
             )}
+          </div>
+          {/* M65 (docs/AI.md §4): an AI bot among the members. */}
+          <div className="mb-2">
+            <AiChannelNotice controller={controller} memberIds={members ? members.map((m) => m.user_id) : null} />
           </div>
           <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} />
         </section>

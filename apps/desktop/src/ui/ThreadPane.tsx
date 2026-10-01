@@ -1,4 +1,4 @@
-import { Bell, BellRing } from "lucide-react";
+import { Bell, BellRing, MoreHorizontal } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { MessageOut } from "../api/types";
@@ -10,7 +10,8 @@ import { Composer } from "./Composer";
 import { continuesGroup, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
-import { Button } from "./primitives";
+import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from "./primitives";
+import { startSummary, summaryAvailable } from "./ai";
 import { useListAnchor } from "./scrollAnchor";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
@@ -230,6 +231,19 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
             {state.following ? <BellRing size={14} /> : <Bell size={14} />}
             {state.following ? "フォロー中" : "フォロー"}
           </Button>
+        )}
+        {/* M65: 「このスレッドを要約」 (docs/AI.md §6), only to the one who asks. */}
+        {parent && !parent.pending && parent.seq !== null && !parent.parent_id && channel.isMember && summaryAvailable(controller) && (
+          <Menu>
+            <MenuTrigger asChild>
+              <button type="button" aria-label="スレッドの操作" title="スレッドの操作" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+                <MoreHorizontal size={18} />
+              </button>
+            </MenuTrigger>
+            <MenuContent align="end">
+              <MenuItem onSelect={() => startSummary(controller, { channelId: channel.id, scope: "thread", threadId: parentId })}>このスレッドを要約</MenuItem>
+            </MenuContent>
+          </Menu>
         )}
         <PaneCloseButton onClick={onClose} />
       </header>

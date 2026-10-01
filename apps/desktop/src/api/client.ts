@@ -1,5 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -864,6 +865,48 @@ export class ApiClient {
 
   adminDeleteWebhook(webhookId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/admin/webhooks/${webhookId}`);
+  }
+
+  // --- AI (M65, docs/AI.md §5) -----------------------------------------------------------------
+
+  /** 404 on a server before M65: the caller hides every AI entry point. */
+  aiStatus(): Promise<AiStatusOut> {
+    return this.request("GET", "/api/v1/ai/status");
+  }
+
+  /** 202 with the run still `pending`; its progress comes as ai.run_updated (or GET /ai/runs/{id}). */
+  createAiSummary(body: AiSummaryCreate): Promise<AiRunOut> {
+    return this.request("POST", "/api/v1/ai/summaries", body);
+  }
+
+  getAiRun(runId: string): Promise<AiRunOut> {
+    return this.request("GET", `/api/v1/ai/runs/${runId}`);
+  }
+
+  /** My newest 20 runs. */
+  aiRuns(kind: "summary" | "mention" = "summary"): Promise<AiRunOut[]> {
+    return this.request("GET", `/api/v1/ai/runs?kind=${kind}`);
+  }
+
+  adminAiAgents(): Promise<AiAgentOut[]> {
+    return this.request("GET", "/api/v1/admin/ai/agents");
+  }
+
+  adminCreateAiAgent(body: AiAgentCreate): Promise<AiAgentOut> {
+    return this.request("POST", "/api/v1/admin/ai/agents", body);
+  }
+
+  adminUpdateAiAgent(agentId: string, patch: AiAgentUpdate): Promise<AiAgentOut> {
+    return this.request("PATCH", `/api/v1/admin/ai/agents/${agentId}`, patch);
+  }
+
+  adminDeleteAiAgent(agentId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/ai/agents/${agentId}`);
+  }
+
+  /** `month` "YYYY-MM"; this month when left out. */
+  adminAiUsage(month?: string): Promise<AiUsageOut> {
+    return this.request("GET", `/api/v1/admin/ai/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`);
   }
 
   // --- polls (M14b) ------------------------------------------------------------------------

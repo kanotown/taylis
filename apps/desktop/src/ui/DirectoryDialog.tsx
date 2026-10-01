@@ -66,13 +66,13 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       {line && <Badge>{rosterLabel(line)}</Badge>}
                       {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
                       {user.role === "guest" && <Badge>ゲスト</Badge>}
-                      {user.role === "bot" && <Badge>BOT</Badge>}
+                      {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
                       {user.dnd_until && <span title="通知を一時停止中">🔕</span>}
                       {user.id === me && <span className="text-xs text-muted">自分</span>}
                     </div>
                     <div className="truncate text-xs text-muted">
                       {/* A custom status emoji as its image (EmojiText), not its `:name:`. */}
-                      <EmojiText controller={controller} text={[user.title, line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? "受信 Webhook" : presence === "online" ? "オンライン" : presence === "away" ? "離席中" : "オフライン")} />
+                      <EmojiText controller={controller} text={[user.title, line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? (controller.store.aiAgentOf(user.id) ? "AI のボット" : "受信 Webhook") : presence === "online" ? "オンライン" : presence === "away" ? "離席中" : "オフライン")} />
                     </div>
                   </div>
                   {user.id !== me && user.role !== "bot" && (
