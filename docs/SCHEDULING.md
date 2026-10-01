@@ -115,6 +115,8 @@ API と形 (openapi/openapi.json が正):
    時刻が無ければ終日) で候補を入れたフォームを開く (すぐには作らない)。読めない引数は今までどおり使い方を出す。
    iOS / Android の `/日程` は M54 まで M30 のまま (`apps/shared/templates.json` の検証ケースも変えていない)。
    M54 (iOS): Web と同じく `/日程` はフォームを開く (引数の候補入り。M30 の 10 個までの制限は無く、フォームが 2〜20 個を確かめる)。
-   共有の検証ケースは M30 の読み方 (Templates.parseSchedule。readSchedule の上に作り直した) の検証としてそのまま使う。、M54 (Android): `/日程` は Web と同じくフォームを開く (`apps/shared/templates.json` のケースは古い見出しの規則として残し、
-6. **(M54 iOS) 決定で予定を作れないとき**: 3. の 403 `posting_restricted` はトーストにせず、「予定を作れません」の確認で、同じ読み方 `readSchedule` から候補を作る)。§7 3. の 403 `posting_restricted` は、決める人に「予定を作らずに決める」
-   「予定を作らずに決定」(`create_event: false`) を出す (Web はエラーのトースト、(`create_event: false`) を確認して出す (Web はエラーの表示だけ)。
+   共有の検証ケースは M30 の読み方 (Templates.parseSchedule。readSchedule の上に作り直した) の検証としてそのまま使う。
+   M54 (Android): `/日程` は Web と同じくフォームを開く (`apps/shared/templates.json` のケースは古い見出しの規則として残し、
+   同じ読み方 `readSchedule` から候補を作る)。
+6. **(M54) 決定で予定を作れないとき**: 3. の 403 `posting_restricted` はトーストにせず、iOS は「予定を作れません」の確認で
+   「予定を作らずに決定」、Android は「予定を作らずに決める」(どちらも `create_event: false`) を出す (Web はエラーの表示だけ)。
