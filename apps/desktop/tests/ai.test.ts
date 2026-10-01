@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { describeAiError, type AiRunOut } from "../src/api/ai";
+import { ERROR_MESSAGES } from "../src/api/errorMessages";
 import { ApiError, NetworkError } from "../src/api/errors";
 import { laterRun, summaryBody, summaryTitle } from "../src/sync/ai";
 import { SyncEngine } from "../src/sync/engine";
@@ -64,7 +65,8 @@ describe("rules", () => {
   });
 
   it("errors in Japanese", () => {
-    expect(describeAiError(new ApiError(409, "ai_unavailable", "x"))).toContain("AI は今使えません");
+    // The shared table (apps/shared/errors.json) wins over the local fallback text.
+    expect(describeAiError(new ApiError(409, "ai_unavailable", "x"))).toContain(ERROR_MESSAGES.ai_unavailable ?? "AI は今使えません");
     expect(describeAiError(new ApiError(429, "ai_budget_exceeded", "x"))).toContain("今月の AI の利用上限");
     expect(describeAiError(new ApiError(429, "ai_daily_limit", "x"))).toContain("今日の AI の利用回数");
     expect(describeAiError(new ApiError(409, "username_taken", "x"))).toBe("このユーザー名はすでに使われています");
