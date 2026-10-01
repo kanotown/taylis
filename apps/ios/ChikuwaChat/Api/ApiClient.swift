@@ -944,6 +944,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// 「自分のタスク」: my personal tasks and the shared ones assigned to me.
     func myTasks() async throws -> [TaskOut] { try await request("GET", "/api/v1/tasks/mine") }
 
+    /// L9 「自分が依頼した」: the shared tasks I made with someone else assigned (DMs too).
+    func requestedTasks() async throws -> [TaskOut] { try await request("GET", "/api/v1/tasks/requested") }
+
     /// The tasks due in the dates [from, to) (at most 100 days), every one I may see (the calendar).
     func dueTasks(from: DayKey, to: DayKey) async throws -> [TaskOut] {
         try await request("GET", Self.pathWithQuery("/api/v1/tasks/due", [URLQueryItem(name: "from", value: from), URLQueryItem(name: "to", value: to)]))

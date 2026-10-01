@@ -3,7 +3,7 @@ import UIKit
 
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
-    case thread, edit, moreReactions, reactors, share, delete, customReminder, task
+    case thread, edit, moreReactions, reactors, share, delete, customReminder, task, review
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -11,12 +11,14 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder, acks, collection }
+    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder, acks, collection, task }
     let kind: Kind
     let message: MessageState
     /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
     var url: URL? = nil
-    var id: String { "\(kind.rawValue) \(message.id) \(url?.lastPathComponent ?? "")" }
+    /// `.task` (L9): the task a chip under the message opens.
+    var taskId: String? = nil
+    var id: String { "\(kind.rawValue) \(message.id) \(url?.lastPathComponent ?? "") \(taskId ?? "")" }
 }
 
 extension View {
@@ -62,6 +64,9 @@ private struct MessageSheets: ViewModifier {
             // 「自分のタスク」 for a DM or a board I may not add to).
             taskForm = .new(TaskRules.messageTaskInit(message, channel: store.channel(message.channelId), users: store.users,
                                                       groups: store.groups, isAdmin: controller.isAdmin))
+        case (.review, let message)?:
+            // L9 (REVIEWS.md §2.3): the same form as a review request in the message's conversation (a DM too).
+            taskForm = .new(TaskRules.messageReviewInit(message, channel: store.channel(message.channelId), users: store.users, groups: store.groups))
         case nil: break
         }
         onClosed()
@@ -87,6 +92,8 @@ private struct MessageSheets: ViewModifier {
                     AckStatusView(message: message, controller: controller)
                 case .collection:
                     CollectionStatusView(message: message, controller: controller)  // L6
+                case .task:
+                    if let taskId = shown.taskId { TaskDetailLoader(controller: controller, taskId: taskId) }  // L9: a chip's task
                 case .reminder:
                     ReminderFormView(controller: controller, message: message)
                 case .share:
@@ -242,6 +249,10 @@ struct MessageActionsSheet: View {
                 // M56 (TASKS.md §6): after リマインド, as on the web; not on a server without tasks.
                 if controller.serverHasTasks && controller.taskHub?.available == true && message.type == "user" {
                     row("タスクにする", "checklist") { then(.task) }
+                    // L9 (REVIEWS.md §2.3): beside it, where the request can be shared (a board I may add to, a DM).
+                    if TaskRules.canRequestReview(controller.store.channel(message.channelId), isAdmin: controller.isAdmin) {
+                        row("レビューを依頼", "text.badge.checkmark") { then(.review) }
+                    }
                 }
                 if canMarkUnread { row("ここから未読にする", "envelope.badge") { onMarkUnread(); dismiss() } }
                 row("リンクをコピー", "link") { controller.copyPermalink(message.id); dismiss() }

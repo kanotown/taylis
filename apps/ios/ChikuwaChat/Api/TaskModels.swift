@@ -21,6 +21,17 @@ enum TaskStatus: String, CaseIterable, Codable, Hashable {
     }
 }
 
+/// L9 (docs/REVIEWS.md §2.2, §7 3.): what a task made from a message is — 「タスクにする」 (task) or 「レビューを依頼」
+/// (review). Only the words change (the chip, the form, the pushes). An unknown value reads as a task.
+enum TaskKind: String, Codable, Hashable {
+    case task, review
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TaskKind(rawValue: raw) ?? .task
+    }
+}
+
 /// The message a task was made from (§8 1.): `messageId` and `excerpt` become null once that message is deleted.
 struct TaskSourceOut: Codable, Equatable, Hashable {
     var messageId: String?
@@ -51,12 +62,14 @@ struct TaskOut: Identifiable, Equatable, Hashable {
     let createdAt: String
     var updatedAt: String
     var canDelete: Bool
+    /// L9: absent from a server before M63 (a task).
+    var kind: TaskKind = .task
 }
 
 extension TaskOut: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, channelId, channelName, ownerId, title, notes, status, position, dueOn, assigneeIds, source, completedAt, completedBy,
-             createdAt, updatedAt, canDelete
+             createdAt, updatedAt, canDelete, kind
     }
 
     init(from decoder: Decoder) throws {
@@ -77,6 +90,7 @@ extension TaskOut: Decodable {
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
         canDelete = try c.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
+        kind = (try? c.decodeIfPresent(TaskKind.self, forKey: .kind)) ?? .task
     }
 }
 
@@ -107,6 +121,62 @@ struct TaskAssigned: Decodable, Equatable {
     let channelName: String
     let title: String
     let byUserId: String
+    /// L9: "review" — the words say a review was requested (nil from a server before M63).
+    var kind: TaskKind? = nil
+}
+
+/// task.review_done (to the requester only, L9 REVIEWS.md §4): an assignee completed my review request. A DM's
+/// `channel_name` is empty.
+struct TaskReviewDone: Decodable, Equatable {
+    let taskId: String
+    let channelId: String
+    let channelName: String
+    let title: String
+    let byUserId: String
+}
+
+/// L9 (REVIEWS.md §2.2): `MessageOut.tasks` — a shared task made from the message, for its chip (personal ones are never
+/// listed). Persisted with the message (MessageState).
+struct MessageTaskOut: Codable, Equatable, Hashable, Identifiable {
+    let id: String
+    var kind: TaskKind = .task
+    var status: TaskStatus = .todo
+    var assigneeIds: [String] = []
+    /// "YYYY-MM-DD".
+    var dueOn: String? = nil
+    var ownerId: String = ""
+
+    private enum CodingKeys: String, CodingKey { case id, kind, status, assigneeIds, dueOn, ownerId }
+
+    init(id: String, kind: TaskKind = .task, status: TaskStatus = .todo, assigneeIds: [String] = [], dueOn: String? = nil, ownerId: String = "") {
+        self.id = id
+        self.kind = kind
+        self.status = status
+        self.assigneeIds = assigneeIds
+        self.dueOn = dueOn
+        self.ownerId = ownerId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decodeIfPresent(TaskKind.self, forKey: .kind)) ?? .task
+        status = (try? c.decodeIfPresent(TaskStatus.self, forKey: .status)) ?? .todo
+        assigneeIds = (try? c.decodeIfPresent([String].self, forKey: .assigneeIds)) ?? []
+        dueOn = try? c.decodeIfPresent(String.self, forKey: .dueOn)
+        ownerId = (try? c.decodeIfPresent(String.self, forKey: .ownerId)) ?? ""
+    }
+
+    /// The list as a message carries it: missing (a server before M63, a row persisted earlier) or unreadable is none,
+    /// and an odd entry is left out rather than the whole message failing.
+    static func list<K: CodingKey>(_ c: KeyedDecodingContainer<K>, forKey key: K) -> [MessageTaskOut] {
+        ((try? c.decodeIfPresent([Lenient].self, forKey: key)) ?? []).compactMap(\.value)
+    }
+
+    private struct Lenient: Decodable {
+        let value: MessageTaskOut?
+        init(from decoder: Decoder) throws { value = try? MessageTaskOut(from: decoder) }
+    }
 }
 
 /// task.due (to me only): one of my open tasks is due today (8:00 in my zone), sent once.
@@ -130,6 +200,8 @@ struct TaskCreate: Equatable {
     var sourceMessageId: String?
     var clientTaskId: String
     var tz: String
+    /// L9: a review request (sent only then: a server before M63 knows no kind).
+    var kind: TaskKind = .task
 
     /// Only what is set (the web's body: absent rather than null).
     var json: JSONValue {
@@ -140,6 +212,7 @@ struct TaskCreate: Equatable {
         if let dueOn { fields["due_on"] = .string(dueOn) }
         if channelId != nil && !assigneeIds.isEmpty { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
         if let sourceMessageId { fields["source_message_id"] = .string(sourceMessageId) }
+        if kind == .review { fields["kind"] = .string(kind.rawValue) }
         return .object(fields)
     }
 }

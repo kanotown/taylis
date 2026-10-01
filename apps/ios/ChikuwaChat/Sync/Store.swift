@@ -131,11 +131,13 @@ struct MessageState: Codable, Identifiable, Equatable {
     var acks: [AckOut] = []
     /// L6 (M59): who of a collecting post's targets has replied; rows persisted earlier lack it.
     var collection: CollectionOut? = nil
+    /// L9 (M64): the shared tasks made from it, for their chips; rows persisted earlier lack it.
+    var tasks: [MessageTaskOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection
+        case priority, ackRequested, acks, collection, tasks
     }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
@@ -178,6 +180,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         ackRequested = message.ackRequested
         acks = message.acks
         collection = message.collection
+        tasks = message.tasks
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -212,6 +215,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         ackRequested = try c.decodeIfPresent(Bool.self, forKey: .ackRequested) ?? false
         acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
+        tasks = MessageTaskOut.list(c, forKey: .tasks)
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
@@ -252,7 +256,8 @@ extension MessageOut {
                   type: state.type, mentionedUserIds: state.mentionedUserIds, mentionAll: state.mentionAll, reactions: state.reactions, parentId: state.parentId,
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
-                  priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection)
+                  priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection,
+                  tasks: state.tasks)
     }
 }
 

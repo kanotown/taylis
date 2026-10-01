@@ -651,8 +651,16 @@ final class AppController {
         if payload.opensTask, let taskId = payload.taskId {
             // M56 (PUSH_NOTIFICATIONS.md §4, kind = task): the task, in its channel's 「タスク」 tab once the store knows the
             // channel (as a message's conversation), or in 「自分のタスク」 for my own (no channel).
-            taskOpen = TaskOpen(taskId: taskId, channelId: payload.channelId)
-            if payload.channelId == nil { PushCenter.shared.pendingTasks = true }
+            // L9: a DM's task (a review request in a DM) has no board: it opens in 「自分のタスク」 too.
+            let board = isDmTask(payload.channelId) ? nil : payload.channelId
+            taskOpen = TaskOpen(taskId: taskId, channelId: board)
+            if board == nil {
+                PushCenter.shared.pendingTasks = true
+                PushCenter.shared.pendingChannelId = nil
+                PushCenter.shared.pendingParentId = nil
+                engine?.reconnectNow()
+                return
+            }
         }
         PushCenter.shared.pendingChannelId = payload.channelId
         PushCenter.shared.pendingParentId = payload.parentId // a reply: its thread opens too (M28d)
