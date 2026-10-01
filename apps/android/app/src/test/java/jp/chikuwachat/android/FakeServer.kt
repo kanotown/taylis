@@ -322,6 +322,20 @@ class FakeServer {
         return updated
     }
 
+    /**
+     * L9 (REVIEWS.md §2.2): the server's side of a message's tasks changing (made, its state / due date / assignees changed,
+     * deleted): the message takes a seq of its own and goes out as message.updated (change=tasks).
+     */
+    fun setTasks(channelId: String, messageId: String, tasks: List<jp.chikuwachat.android.api.MessageTaskOut>): MessageOut {
+        val record = channels.getValue(channelId)
+        val message = record.messages.first { it.id == messageId }
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq, tasks = tasks)
+        replace(record, updated, "message.updated", "tasks")
+        return updated
+    }
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------------
 
     /** PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin). */

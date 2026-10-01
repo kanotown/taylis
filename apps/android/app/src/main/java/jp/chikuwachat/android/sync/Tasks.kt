@@ -8,6 +8,7 @@ import jp.chikuwachat.android.api.TaskCreate
 import jp.chikuwachat.android.api.TaskDeleted
 import jp.chikuwachat.android.api.TaskDue
 import jp.chikuwachat.android.api.TaskNeighbors
+import jp.chikuwachat.android.api.TaskReviewDone
 import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.api.TaskUpdate
 import jp.chikuwachat.android.api.TaskUpdated
@@ -37,6 +38,8 @@ data class TaskDueWindow(val from: String, val to: String, val state: TaskListSt
 sealed interface TaskNotice {
     data class Assigned(val data: TaskAssigned) : TaskNotice
     data class Due(val data: TaskDue) : TaskNotice
+    /** L9: an assignee completed my review request (task.review_done). */
+    data class ReviewDone(val data: TaskReviewDone) : TaskNotice
 }
 
 /**
@@ -58,6 +61,8 @@ class TaskHub(
 ) {
     private val boards = LinkedHashMap<String, TaskBoard>()
     private var mine: TaskList? = null
+    /** L9 「自分が依頼した」 (GET /tasks/requested): open while 「タスク」 is on screen, like [mine]. */
+    private var requested: TaskList? = null
     private val due = LinkedHashMap<String, TaskDueWindow>()
     /** A read in flight per window: an older answer never replaces a newer one. */
     private val reads = HashMap<String, Int>()
@@ -77,6 +82,8 @@ class TaskHub(
     fun board(channelId: String): TaskBoard? = boards[channelId]
 
     fun mineList(): TaskList? = mine
+
+    fun requestedList(): TaskList? = requested
 
     fun dueWindow(key: String): TaskDueWindow? = due[key]
 
@@ -105,6 +112,20 @@ class TaskHub(
     fun closeMine() {
         if (mine == null) return
         mine = null
+        changed()
+    }
+
+    /** L9: 「自分が依頼した」 is on screen (beside 「自分のタスク」). */
+    suspend fun openRequested() {
+        if (requested?.state == TaskListState.READY) return
+        requested = TaskList(TaskListState.LOADING, requested?.tasks ?: emptyList())
+        changed()
+        readRequested()
+    }
+
+    fun closeRequested() {
+        if (requested == null) return
+        requested = null
         changed()
     }
 
@@ -167,6 +188,24 @@ class TaskHub(
         changed()
     }
 
+    private suspend fun readRequested() {
+        val api = api ?: return
+        if (requested == null) return
+        val ticket = ticket(REQUESTED)
+        try {
+            val tasks = api.requestedTasks()
+            if (reads[REQUESTED] != ticket || requested == null) return
+            requested = TaskList(TaskListState.READY, tasks)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val now = requested
+            if (reads[REQUESTED] != ticket || now == null) return
+            requested = now.copy(state = failure(e))
+        }
+        changed()
+    }
+
     private suspend fun readDue(key: String) {
         val api = api ?: return
         val window = due[key] ?: return
@@ -211,7 +250,7 @@ class TaskHub(
 
     private fun putLocalMove(task: TaskOut, status: String, neighbors: TaskNeighbors) {
         // The guess is made among the cards of the window that holds the task (its board, else 「自分のタスク」).
-        val pool = task.channelId?.let { boards[it]?.tasks } ?: mine?.tasks ?: listOf(task)
+        val pool = task.channelId?.let { boards[it]?.tasks } ?: mine?.tasks ?: requested?.tasks ?: listOf(task)
         val moved = TaskRules.applyLocalMove(if (pool.any { it.id == task.id }) pool else pool + task, task.id, status, neighbors, now(), me())
         moved.firstOrNull { it.id == task.id }?.let { put(it) }
     }
@@ -237,6 +276,7 @@ class TaskHub(
             "task.deleted" -> decode { Codec.snake.decodeFromJsonElement(TaskDeleted.serializer(), data) }?.let { drop(it.id) }
             "task.assigned" -> decode { Codec.snake.decodeFromJsonElement(TaskAssigned.serializer(), data) }?.let { onNotice?.invoke(TaskNotice.Assigned(it)) }
             "task.due" -> decode { Codec.snake.decodeFromJsonElement(TaskDue.serializer(), data) }?.let { onNotice?.invoke(TaskNotice.Due(it)) }
+            "task.review_done" -> decode { Codec.snake.decodeFromJsonElement(TaskReviewDone.serializer(), data) }?.let { onNotice?.invoke(TaskNotice.ReviewDone(it)) }
         }
     }
 
@@ -261,6 +301,11 @@ class TaskHub(
                 mine = list.copy(tasks = if (TaskRules.isMine(task, me())) TaskRules.upsert(list.tasks, task) else TaskRules.remove(list.tasks, task.id))
             }
         }
+        requested?.let { list ->
+            if (newer(list.tasks)) {
+                requested = list.copy(tasks = if (TaskRules.isRequested(task, me())) TaskRules.upsert(list.tasks, task) else TaskRules.remove(list.tasks, task.id))
+            }
+        }
         for ((key, window) in due.entries.toList()) {
             if (!newer(window.tasks)) continue
             val fits = TaskRules.dueInRange(task, window.from, window.to)
@@ -275,6 +320,7 @@ class TaskHub(
             if (board.tasks.any { it.id == taskId }) boards[channelId] = board.copy(tasks = TaskRules.remove(board.tasks, taskId))
         }
         mine?.let { list -> if (list.tasks.any { it.id == taskId }) mine = list.copy(tasks = TaskRules.remove(list.tasks, taskId)) }
+        requested?.let { list -> if (list.tasks.any { it.id == taskId }) requested = list.copy(tasks = TaskRules.remove(list.tasks, taskId)) }
         for ((key, window) in due.entries.toList()) {
             if (window.tasks.any { it.id == taskId }) due[key] = window.copy(tasks = TaskRules.remove(window.tasks, taskId))
         }
@@ -284,6 +330,7 @@ class TaskHub(
     fun find(taskId: String): TaskOut? =
         boards.values.firstNotNullOfOrNull { board -> board.tasks.firstOrNull { it.id == taskId } }
             ?: mine?.tasks?.firstOrNull { it.id == taskId }
+            ?: requested?.tasks?.firstOrNull { it.id == taskId }
             ?: due.values.firstNotNullOfOrNull { window -> window.tasks.firstOrNull { it.id == taskId } }
 
     // --- lifecycle ---------------------------------------------------------------------------------
@@ -293,6 +340,7 @@ class TaskHub(
         if (api == null) return
         boards.keys.toList().forEach { channelId -> scope.launch { readBoard(channelId) } }
         if (mine != null) scope.launch { readMine() }
+        if (requested != null) scope.launch { readRequested() }
         due.keys.toList().forEach { key -> scope.launch { readDue(key) } }
     }
 
@@ -300,6 +348,7 @@ class TaskHub(
     fun removeChannel(channelId: String) {
         boards.remove(channelId)
         mine?.let { list -> mine = list.copy(tasks = list.tasks.filter { it.channelId != channelId }) }
+        requested?.let { list -> requested = list.copy(tasks = list.tasks.filter { it.channelId != channelId }) }
         for ((key, window) in due.entries.toList()) due[key] = window.copy(tasks = window.tasks.filter { it.channelId != channelId })
         changed()
     }
@@ -307,12 +356,14 @@ class TaskHub(
     fun stop() {
         boards.clear()
         mine = null
+        requested = null
         due.clear()
         changed()
     }
 
     companion object {
         private const val MINE = "mine"
+        private const val REQUESTED = "requested"
 
         /** A server from before M55 has no such route (404 not_found): trying again cannot help until it is updated. */
         fun serverLacksTasks(e: Throwable): Boolean = e is ApiException.Api && e.status == 404 && (e.code == "not_found" || e.code == "http_404")

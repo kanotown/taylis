@@ -414,6 +414,11 @@ data class MessageOut(
      * before M59. A change arrives as the parent's message.updated (change "collection") with a new updated_seq.
      */
     val collection: CollectionOut? = null,
+    /**
+     * L9 (M63, REVIEWS.md §2.2): the shared tasks made from this message (the chips under it); empty without any and from a
+     * server before M63. A change arrives as message.updated (change "tasks") with a new updated_seq.
+     */
+    val tasks: List<MessageTaskOut> = emptyList(),
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =

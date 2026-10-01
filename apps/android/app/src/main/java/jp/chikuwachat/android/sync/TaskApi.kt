@@ -11,6 +11,11 @@ interface TaskApi {
     suspend fun listTasks(channelId: String, includeDone: String = "recent"): List<TaskOut>
     /** 「自分のタスク」: my personal tasks and the shared ones assigned to me (the latest 50 completed). */
     suspend fun myTasks(): List<TaskOut>
+    /**
+     * L9 「自分が依頼した」 (REVIEWS.md §8): the shared tasks I made with someone else assigned, DMs' too (open ones by due
+     * date, then the latest 50 completed).
+     */
+    suspend fun requestedTasks(): List<TaskOut>
     /** The tasks due in the dates [from, to) (at most 100 days), every one I may see, completed ones too. */
     suspend fun dueTasks(from: String, to: String): List<TaskOut>
     suspend fun getTask(taskId: String): TaskOut

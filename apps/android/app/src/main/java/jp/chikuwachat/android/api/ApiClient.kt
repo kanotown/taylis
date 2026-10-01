@@ -744,6 +744,8 @@ class ApiClient(
 
     override suspend fun myTasks(): List<TaskOut> = request("GET", "/api/v1/tasks/mine")
 
+    override suspend fun requestedTasks(): List<TaskOut> = request("GET", "/api/v1/tasks/requested")
+
     override suspend fun dueTasks(from: String, to: String): List<TaskOut> =
         request("GET", "/api/v1/tasks/due?from=" + Enc.encode(from, "UTF-8") + "&to=" + Enc.encode(to, "UTF-8"))
 

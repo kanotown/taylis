@@ -436,7 +436,9 @@ fun MainScreen(controller: AppController) {
         controller.pendingTask = null
         controller.messageFocus = null
         focusManager.clearFocus()
-        tabs = if (channelId != null) MainTabs.landTasks(tabs, channelId) else MainTabs.landMyTasks(tabs)
+        // A DM has no board (L9): its shared tasks show in 「タスク」 (自分の担当 / 自分が依頼した).
+        val board = channelId?.takeIf { store.channel(it)?.channel?.isDm != true }
+        tabs = if (board != null) MainTabs.landTasks(tabs, board) else MainTabs.landMyTasks(tabs)
         val hub = controller.tasks ?: return@LaunchedEffect
         scope.launch {
             runCatching { hub.load(target.taskId) }

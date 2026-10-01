@@ -54,6 +54,13 @@ class TaskHubTest {
             return mine
         }
 
+        var requested: List<TaskOut> = emptyList()
+
+        override suspend fun requestedTasks(): List<TaskOut> {
+            calls += "requested"
+            return requested
+        }
+
         override suspend fun dueTasks(from: String, to: String): List<TaskOut> {
             calls += "due $from $to"
             return due

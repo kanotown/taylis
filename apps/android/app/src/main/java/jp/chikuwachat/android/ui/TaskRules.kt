@@ -3,10 +3,13 @@ package jp.chikuwachat.android.ui
 import jp.chikuwachat.android.api.CalendarEventOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.GroupOut
+import jp.chikuwachat.android.api.MessageTaskOut
 import jp.chikuwachat.android.api.TaskAssigned
 import jp.chikuwachat.android.api.TaskDue
+import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskNeighbors
 import jp.chikuwachat.android.api.TaskOut
+import jp.chikuwachat.android.api.TaskReviewDone
 import jp.chikuwachat.android.api.TaskStatus
 import jp.chikuwachat.android.api.TaskUpdate
 import jp.chikuwachat.android.api.UserPublic
@@ -27,6 +30,11 @@ data class TaskDraft(
 /**
  * What the form starts a new task with. `channelId` null: 「自分のタスク」. 「タスクにする」 adds the message, its one-line
  * excerpt, and the boards offered besides 「自分のタスク」 (its channel's when I may add to it; none from a DM).
+ *
+ * L9 (REVIEWS.md §2.1, §2.3): `dmChannelId` is the DM a message came from: its members can be picked as assignees, and
+ * with any picked the task is shared in that DM (none: personal, as before). `kind` review is 「レビューを依頼」: the
+ * conversation is fixed (`channelId`, a board or a DM), 依頼先 come first and at least one is needed, 期限 reads 希望日.
+ * `assigneeIds`: picked from the start (a 1:1 DM's other person for a review).
  */
 data class TaskCreateInit(
     val channelId: String?,
@@ -35,7 +43,22 @@ data class TaskCreateInit(
     val sourceMessageId: String? = null,
     val sourceExcerpt: String? = null,
     val boardChoices: List<String> = emptyList(),
-)
+    val kind: String = TaskKind.TASK,
+    val dmChannelId: String? = null,
+    val assigneeIds: List<String> = emptyList(),
+) {
+    val isReview: Boolean get() = kind == TaskKind.REVIEW
+
+    /** The conversation a new task goes to: a DM once someone is assigned there, else the chosen board (null: mine). */
+    fun targetChannel(board: String?, assigneeIds: List<String>): String? =
+        if (dmChannelId != null && !isReview) dmChannelId.takeIf { assigneeIds.isNotEmpty() } else board
+}
+
+/** L9: how a chip under a message is coloured — grey once done, red past its due date, else the accent. */
+enum class TaskChipTone { OPEN, DONE, OVERDUE }
+
+/** L9 (REVIEWS.md §2.2): a chip under a message, 「レビュー依頼 · 加納 · 依頼中 · 10/9 まで」. */
+data class TaskChip(val taskId: String, val text: String, val tone: TaskChipTone)
 
 /** What a task says of the message it came from. */
 sealed interface TaskSource {
@@ -69,6 +92,73 @@ object TaskRules {
     private val collator: Collator = Collator.getInstance(Locale.JAPANESE)
 
     fun label(status: String): String = STATUS_LABELS[status] ?: status
+
+    // --- L9: kinds and the chips under a message (REVIEWS.md §2.2) ----------------------------------
+
+    /** A review request's states: 依頼中 / 対応中 / 完了. */
+    val REVIEW_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to "依頼中", TaskStatus.DOING to "対応中", TaskStatus.DONE to "完了")
+
+    /** A status in its kind's words (a review: 依頼中 / 対応中 / 完了; a task: 未着手 / 進行中 / 完了). */
+    fun label(kind: String, status: String): String = if (kind == TaskKind.REVIEW) REVIEW_LABELS[status] ?: status else label(status)
+
+    /** The chip's first word: 「レビュー依頼」 or 「タスク」. */
+    fun kindLabel(kind: String): String = if (kind == TaskKind.REVIEW) "レビュー依頼" else "タスク"
+
+    /** Names on a chip before 「ほか N 人」. */
+    const val CHIP_NAMES = 2
+
+    /**
+     * The chip of a task made from a message: its kind, the assignees (2 names, then 「ほか N 人」; none: left out), the state
+     * in its kind's words, and the due date (「10/9 まで」, 「今日まで」) while not done. Done is grey; open past its due date red.
+     */
+    fun chip(task: MessageTaskOut, today: String, nameOf: (String) -> String?): TaskChip {
+        val names = task.assigneeIds.take(CHIP_NAMES).map { nameOf(it) ?: "?" }
+        val rest = task.assigneeIds.size - names.size
+        val who = names.joinToString("、") + if (rest > 0) " ほか $rest 人" else ""
+        val done = task.status == TaskStatus.DONE
+        val parts = buildList {
+            add(kindLabel(task.kind))
+            if (who.isNotEmpty()) add(who)
+            add(label(task.kind, task.status))
+            if (!done) task.dueOn?.let { dueLabel(it, today).let { day -> add(if (day == "今日") "今日まで" else "$day まで") } }
+        }
+        val overdue = !done && task.dueOn != null && task.dueOn < today
+        return TaskChip(task.id, parts.joinToString(" · "), if (done) TaskChipTone.DONE else if (overdue) TaskChipTone.OVERDUE else TaskChipTone.OPEN)
+    }
+
+    /** The task detail's big buttons for an assignee (REVIEWS.md §2.2): 「対応を始める」 from todo, 「完了にする」 until done. */
+    fun quickStatuses(task: TaskOut, me: String?): List<String> {
+        if (me == null || me !in task.assigneeIds || task.channelId == null) return emptyList()
+        return when (task.status) {
+            TaskStatus.TODO -> listOf(TaskStatus.DOING, TaskStatus.DONE)
+            TaskStatus.DOING -> listOf(TaskStatus.DONE)
+            else -> emptyList()
+        }
+    }
+
+    fun quickLabel(status: String): String = if (status == TaskStatus.DOING) "対応を始める" else "完了にする"
+
+    /** 「自分が依頼した」: a shared task I made with someone else assigned (the server's GET /tasks/requested rule). */
+    fun isRequested(task: TaskOut, me: String?): Boolean =
+        me != null && task.channelId != null && task.ownerId == me && task.assigneeIds.any { it != me }
+
+    /**
+     * Where a task lives, as a card's line says it: 「自分のタスク」, 「#lab」, or (L9) for a DM's task, which has no channel
+     * name, the other people of that DM (`dmTitle`; 「DM」 when not known here).
+     */
+    fun placeLabel(task: TaskOut, dmTitle: (String) -> String? = { null }): String {
+        val channelId = task.channelId ?: return "自分のタスク"
+        task.channelName?.let { return "#$it" }
+        return dmTitle(channelId) ?: "DM"
+    }
+
+    /** 「自分が依頼した」's order: open ones by due date (none last), then the completed ones, newest first. */
+    fun sortRequested(tasks: List<TaskOut>): Pair<List<TaskOut>, List<TaskOut>> {
+        val open = tasks.filter { it.status != TaskStatus.DONE }
+            .sortedWith(compareBy<TaskOut> { it.dueOn == null }.thenBy { it.dueOn ?: "" }.thenBy { it.createdAt }.thenBy { it.id })
+        val done = tasks.filter { it.status == TaskStatus.DONE }.sortedWith(compareByDescending<TaskOut> { it.completedAt ?: "" }.thenBy { it.id })
+        return open to done
+    }
 
     // --- order and moves ---------------------------------------------------------------------------
 
@@ -204,8 +294,18 @@ object TaskRules {
     fun canEditBoard(channel: ChannelState?, isAdmin: Boolean): Boolean =
         channel != null && channel.isMember && hasBoard(channel.channel) && !channel.channel.archived && channel.canPostTopLevel(isAdmin)
 
-    /** A task I may change: a personal one always (only I see it), a shared one when I may edit its board. */
-    fun canEditTask(task: TaskOut, channel: ChannelState?, isAdmin: Boolean): Boolean = task.channelId == null || canEditBoard(channel, isAdmin)
+    /**
+     * L9 (REVIEWS.md §2.1): a DM or group DM whose members may share a task made from one of its messages (no board: such
+     * tasks show under the message, in 「自分のタスク」 and in the calendar). Posting limits do not apply to DMs.
+     */
+    fun canShareInDm(channel: ChannelState?): Boolean = channel != null && channel.channel.isDm && channel.isMember && !channel.channel.archived
+
+    /** L9: 「レビューを依頼」 is offered where a shared task can be made: a board I may add to, or a DM I am in. */
+    fun canRequestReview(channel: ChannelState?, isAdmin: Boolean): Boolean = canEditBoard(channel, isAdmin) || canShareInDm(channel)
+
+    /** A task I may change: a personal one always (only I see it), a shared one when I may edit its board (or its DM's). */
+    fun canEditTask(task: TaskOut, channel: ChannelState?, isAdmin: Boolean): Boolean =
+        task.channelId == null || canEditBoard(channel, isAdmin) || canShareInDm(channel)
 
     /** The strip over a board: why it cannot be read, or why I cannot change it (null: nothing to say). */
     fun boardNote(unsupported: Boolean, failed: Boolean, channel: ChannelState, canEdit: Boolean): String? = when {
@@ -248,9 +348,11 @@ object TaskRules {
     /** The title as the server keeps it (whitespace collapsed). */
     fun cleanTitle(title: String): String = title.replace(Regex("\\s+"), " ").trim()
 
-    fun draftProblem(draft: TaskDraft): String? {
+    /** `review`: a review request needs someone to ask (依頼先). */
+    fun draftProblem(draft: TaskDraft, review: Boolean = false): String? {
         val title = cleanTitle(draft.title)
         return when {
+            review && draft.assigneeIds.isEmpty() -> "依頼先を選んでください"
             title.isEmpty() -> "題名を入れてください"
             title.length > MAX_TITLE -> "題名は $MAX_TITLE 文字までです"
             draft.notes.length > MAX_NOTES -> "メモは $MAX_NOTES 文字までです"
@@ -300,7 +402,26 @@ object TaskRules {
         val board = channel?.takeIf { canEditBoard(it, isAdmin) }?.id
         return TaskCreateInit(
             channelId = board, title = title, sourceMessageId = messageId, sourceExcerpt = title.ifEmpty { null },
-            boardChoices = listOfNotNull(board),
+            boardChoices = listOfNotNull(board), dmChannelId = channel?.takeIf { canShareInDm(it) }?.id,
+        )
+    }
+
+    /**
+     * L9 「レビューを依頼」 (REVIEWS.md §2.3): the task form for a review, in the message's conversation (its board, or the
+     * DM), titled 「レビュー: <one line>」 (cut to 200). In a 1:1 DM the other person is picked already. Null where no shared
+     * task can be made (a board I may not add to, a channel I am not in).
+     */
+    fun messageReviewInit(
+        messageId: String, body: String, contentTypes: List<String>, channel: ChannelState?, users: Map<String, UserPublic>,
+        groups: Map<String, GroupOut>, isAdmin: Boolean, me: String?,
+    ): TaskCreateInit? {
+        if (channel == null || !canRequestReview(channel, isAdmin)) return null
+        val line = messageLine(body, contentTypes, users, groups, MAX_TITLE)
+        val others = if (channel.channel.isDm) (channel.channel.dmUserIds ?: emptyList()).filter { it != me } else emptyList()
+        return TaskCreateInit(
+            channelId = channel.id, title = ("レビュー: $line").take(MAX_TITLE).trim(), sourceMessageId = messageId,
+            sourceExcerpt = line.ifEmpty { null }, boardChoices = listOf(channel.id), kind = TaskKind.REVIEW,
+            assigneeIds = others.takeIf { it.size == 1 } ?: emptyList(),
         )
     }
 
@@ -314,8 +435,17 @@ object TaskRules {
     // --- notices -----------------------------------------------------------------------------------
 
     /** task.assigned while the app is open, worded like the push (TASKS.md §5). */
-    fun assignedText(data: TaskAssigned, nameOf: (String) -> String?): TaskNoticeText =
-        TaskNoticeText("${nameOf(data.byUserId) ?: "メンバー"} がタスクを割り当てました: ${data.title} (#${data.channelName})", data.taskId, data.channelId)
+    fun assignedText(data: TaskAssigned, nameOf: (String) -> String?): TaskNoticeText {
+        val who = nameOf(data.byUserId) ?: "メンバー"
+        // A DM's task has no channel name to show (L9).
+        val where = if (data.channelName.isNotEmpty()) " (#${data.channelName})" else ""
+        val what = if (data.kind == TaskKind.REVIEW) "レビューを依頼しました" else "タスクを割り当てました"
+        return TaskNoticeText("$who が$what: ${data.title}$where", data.taskId, data.channelId)
+    }
+
+    /** L9 task.review_done while the app is open: 「〇〇 がレビューを完了しました: 題名」 (REVIEWS.md §4). */
+    fun reviewDoneText(data: TaskReviewDone, nameOf: (String) -> String?): TaskNoticeText =
+        TaskNoticeText("${nameOf(data.byUserId) ?: "メンバー"} がレビューを完了しました: ${data.title}", data.taskId, data.channelId)
 
     /** task.due while the app is open: 「今日が期限: 題名」 (+ the channel for a shared one). */
     fun dueText(data: TaskDue): TaskNoticeText {
