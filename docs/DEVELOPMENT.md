@@ -26,6 +26,11 @@
 | Claude Code のメモ | `~/.claude/projects/<リポジトリの絶対パスの / を - にした名前>/memory/`。同じパスに clone すれば、フォルダごとコピーで引き継げる。個人の作業の決まりや運用の情報を含むので Git には入れない |
 | `ChikuwaChat-tools/` (リポジトリの隣) | 使い捨ての検証用ハーネス (iOS の XCUITest、Android の操作スクリプト、ヘッドレス Chrome のスクリプト、監査の画面) |
 
+AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `openai_api_key`) に、キーの文字列だけを 1 行で置く (権限 600)。
+使わないときも空のファイルを作っておく (`install -m 600 /dev/null infra/secrets/anthropic_api_key`)。ファイルが無いまま
+`docker compose up` すると、Docker がその場所に空のフォルダを作り、後からキーを置けなくなる (フォルダを `rmdir` で消せば直る)。
+本番では deploy.sh が空のファイルを作る。
+
 開発サーバのデータ (Docker のボリューム) は移さなくてよい。新しい Mac では空から始め、`server` の CLI で管理者を作る
 (`uv run python -m app.cli create-admin --password ...`。一般のユーザーは `create-user` で、仮のパスワードが表示される。決まったパスワードにするには、その人でログインして `PUT /users/me/password`)。
 
