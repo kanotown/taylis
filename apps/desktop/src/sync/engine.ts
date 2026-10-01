@@ -303,7 +303,10 @@ export class SyncEngine {
       subscribeChannels: (listener) => deps.store.subscribe(listener),
       isOnline: () => this.status === "online",
     });
-    deps.store.onMessageStored = (message) => this.timesFeed.applyMessage(message, false);
+    // Review v0.1.15 #4: whatever reaches the store (a catch-up recovering lost events, the answers to my own actions)
+    // reaches the feed the same way, new rows included.
+    deps.store.onMessageStored = (message, created) => this.timesFeed.applyMessage(message, created);
+    deps.store.onMyVotes = (message) => this.timesFeed.applyMyVotes(message);
     this.ai = new AiHub({
       api: api.aiStatus && api.createAiSummary && api.getAiRun
         ? { aiStatus: () => api.aiStatus!(), createAiSummary: (body) => api.createAiSummary!(body), getAiRun: (id) => api.getAiRun!(id) }

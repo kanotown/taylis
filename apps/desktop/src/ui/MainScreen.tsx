@@ -305,8 +305,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const current: ChannelState | undefined = currentId ? store.getChannel(currentId) : undefined;
   // §7.6.1: a public channel I have not joined opens read-only (its preview), never for a guest (who cannot browse).
   const previewing = !!current && !current.isMember && current.type === "public" && !controller.isGuest;
-  // The thread pane belongs to the current channel, or to the channel of the row picked in the threads view.
-  const threadChannel: ChannelState | undefined = view === "threads" ? (threadChannelId ? store.getChannel(threadChannelId) : undefined) : current;
+  // The thread pane belongs to the current channel, or to the channel of the row picked in the threads view or the Times
+  // feed (a feed row's thread is not in the conversation left open behind it).
+  const threadChannel: ChannelState | undefined = view === "threads" || view === "times" ? (threadChannelId ? store.getChannel(threadChannelId) : undefined) : current;
   const status = engine?.status ?? "idle";
   const banner = useConnectionBanner(status);
 

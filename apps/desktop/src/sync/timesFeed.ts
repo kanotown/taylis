@@ -8,6 +8,7 @@
  * The functions below are pure (tests/timesFeed.test.ts); TimesFeedHub holds the state and talks to the server.
  */
 import { isMutedChannel } from "./notifications";
+import { keepMyPart, withMyPart } from "./store";
 import type { ChannelState, MessageState, ParentThread } from "./types";
 
 export interface TimesFeedPage {
@@ -30,11 +31,56 @@ export interface FeedState {
 
 export const EMPTY_FEED: FeedState = { rows: [], nextCursor: null, loaded: false };
 
+const TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:[.,](\d+))?(Z|[+-]\d{2}:?\d{2})?$/i;
+const timeKeys = new Map<string, string>();
+
+/**
+ * A created_at as a key that sorts as text in time order with the server's full precision (microseconds; Date.parse
+ * keeps milliseconds only, review v0.1.15 #14): whole UTC seconds, zero-padded, then the fraction padded to 9 digits.
+ * "" when it cannot be read (such rows fall back to the id order).
+ */
+export function feedTimeKey(at: string): string {
+  let key = timeKeys.get(at);
+  if (key !== undefined) return key;
+  const parts = TIME.exec(at);
+  let seconds: number;
+  let fraction: string;
+  if (parts) {
+    const zone = parts[3] ? (parts[3].toUpperCase() === "Z" ? "Z" : parts[3].replace(/^([+-]\d{2}):?(\d{2})$/, "$1:$2")) : "Z";
+    seconds = Date.parse(parts[1] + zone) / 1000;
+    fraction = (parts[2] ?? "").slice(0, 9).padEnd(9, "0");
+  } else {
+    const ms = Date.parse(at);
+    seconds = Math.floor(ms / 1000);
+    fraction = String(((ms % 1000) + 1000) % 1000).padStart(3, "0").padEnd(9, "0");
+  }
+  key = Number.isFinite(seconds) ? `${String(seconds + 1e12).padStart(14, "0")}.${fraction}` : "";
+  if (timeKeys.size > 20_000) timeKeys.clear();
+  timeKeys.set(at, key);
+  return key;
+}
+
 /** The server's order (§2): created_at descending, then id descending (UUIDv7: same-instant rows of an import). */
 export function feedOrder(a: Pick<MessageState, "created_at" | "id">, b: Pick<MessageState, "created_at" | "id">): number {
-  const at = Date.parse(b.created_at) - Date.parse(a.created_at);
-  if (at !== 0 && !Number.isNaN(at)) return at;
+  const ka = feedTimeKey(a.created_at);
+  const kb = feedTimeKey(b.created_at);
+  if (ka && kb && ka !== kb) return ka < kb ? 1 : -1;
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+/**
+ * Where a row of the feed opens when clicked (§7, review v0.1.15 #13): its place in the channel. A reply also sent to the
+ * channel is that channel's row, so it is revealed there (no parent: no thread); 「N 件の返信」 opens the thread instead.
+ */
+export function feedRevealTarget(message: MessageState): MessageState {
+  return message.parent_id && message.also_in_channel ? { ...message, parent_id: null } : message;
+}
+
+/** `incoming` taking the place of `held` (same id, not older): what only answers to me carry stays (SYNC_PROTOCOL.md §8). */
+function merged(incoming: MessageState, held: MessageState | undefined): MessageState {
+  if (!held?.poll || !incoming.poll) return incoming;
+  const poll = keepMyPart(incoming.poll, held.poll);
+  return poll === incoming.poll ? incoming : { ...incoming, poll };
 }
 
 /** The channel's posts belong in the feed: a times I am a member of and have not muted (§2, SYNC_PROTOCOL.md §10.5). */
@@ -57,11 +103,19 @@ function sorted(rows: MessageState[]): MessageState[] {
   return [...rows].sort(feedOrder);
 }
 
-/** The first page (opening, reconnecting, refreshing): it replaces what was held. */
-export function replaceFeed(page: TimesFeedPage): FeedState {
-  const seen = new Set<string>();
-  const rows = page.items.filter((m) => !m.deleted && !seen.has(m.id) && (seen.add(m.id), true));
-  return { rows: sorted(rows), nextCursor: page.next_cursor, loaded: true };
+/**
+ * The first page (opening, reconnecting, refreshing): it replaces what was held. A row held in a newer version than the
+ * page's (an event that came while the page was on its way) keeps it; my part of a poll stays (§8).
+ */
+export function replaceFeed(page: TimesFeedPage, held?: FeedState): FeedState {
+  const before = new Map((held?.rows ?? []).map((m) => [m.id, m]));
+  const rows = new Map<string, MessageState>();
+  for (const message of page.items) {
+    if (message.deleted || rows.has(message.id)) continue;
+    const current = before.get(message.id);
+    rows.set(message.id, current && current.updated_seq > message.updated_seq ? merged(current, message) : merged(message, current));
+  }
+  return { rows: sorted([...rows.values()]), nextCursor: page.next_cursor, loaded: true };
 }
 
 /** The next page: appended, without the rows already held (a row that moved between pages keeps the newer copy). */
@@ -70,7 +124,7 @@ export function appendFeed(state: FeedState, page: TimesFeedPage): FeedState {
   for (const message of page.items) {
     if (message.deleted) continue;
     const current = held.get(message.id);
-    if (!current || message.updated_seq > current.updated_seq) held.set(message.id, message);
+    if (!current || message.updated_seq > current.updated_seq) held.set(message.id, merged(message, current));
   }
   return { rows: sorted([...held.values()]), nextCursor: page.next_cursor, loaded: true };
 }
@@ -88,9 +142,11 @@ export function applyFeedMessage(state: FeedState, message: MessageState, option
     if (message.deleted || (message.parent_id && !message.also_in_channel)) {
       return { ...state, rows: state.rows.filter((m) => m.id !== message.id) };
     }
-    if (message.updated_seq === current.updated_seq && message === current) return state;
+    if (message === current) return state;
+    // §8: an event (null) does not take away my vote / answers / comment; an answer to me of the same version brings them.
+    const next = merged(message, current);
     const rows = [...state.rows];
-    rows[index] = message;
+    rows[index] = next;
     return { ...state, rows };
   }
   if (!options.created || !options.belongs || !state.loaded) return state;
@@ -98,6 +154,21 @@ export function applyFeedMessage(state: FeedState, message: MessageState, option
   const last = state.rows[state.rows.length - 1];
   if (last && state.nextCursor !== null && feedOrder(message, last) > 0) return state;
   return { ...state, rows: sorted([message, ...state.rows]) };
+}
+
+/**
+ * The answer to my own vote, answer or close (§8 setMyVotes): its part of the poll goes into the held row whatever the
+ * order (another member's newer vote event may have come first).
+ */
+export function applyFeedMyVotes(state: FeedState, message: MessageState): FeedState {
+  const index = state.rows.findIndex((m) => m.id === message.id);
+  const current = index >= 0 ? state.rows[index]! : undefined;
+  if (!current?.poll || !message.poll) return state;
+  const poll = withMyPart(current.poll, message.poll);
+  if (!poll) return state;
+  const rows = [...state.rows];
+  rows[index] = { ...current, poll };
+  return { ...state, rows };
 }
 
 /** A reply changed a held parent's thread (reply count, last reply, repliers). */
@@ -149,6 +220,13 @@ export class TimesFeedHub {
   private visible = 0;
   private read = 0;
   private readonly listeners = new Set<() => void>();
+  /** Page reads on their way (first or next); while any is, events are also queued to be applied again after it. */
+  private loads = 0;
+  private queue: Array<{ seq: number; message?: MessageState; created?: boolean; thread?: ParentThread }> = [];
+  /** Channels removed while a page was on its way: its rows of them are not applied. */
+  private readonly removedWhileLoading = new Set<string>();
+  /** Ids deleted while signed in, with the deletion's updated_seq: no older copy (a page, a late event) brings them back. */
+  private tombstones = new Map<string, number>();
   private unsubscribeStore: (() => void) | null = null;
 
   constructor(
@@ -222,16 +300,19 @@ export class TimesFeedHub {
     const id = ++this.read;
     this.loadingMore = false;
     this.status = "loading";
+    this.loads += 1;
     this.changed();
     try {
       const page = await api.timesFeed(null, this.deps.pageSize ?? 50);
       if (id !== this.read) return;
-      this.state = pruneFeed(replaceFeed(page), (channelId) => isFeedChannel(this.deps.channel(channelId), this.now()));
+      this.state = this.applyPage(page, (admitted) => replaceFeed(admitted, this.state));
       this.status = "ready";
     } catch (err) {
       if (id !== this.read) return;
       console.warn("could not load the times feed", err);
       this.status = "failed";
+    } finally {
+      this.loaded();
     }
     this.changed();
   }
@@ -243,15 +324,17 @@ export class TimesFeedHub {
     if (!api || !cursor || this.loadingMore || this.status === "loading") return;
     const id = this.read;
     this.loadingMore = true;
+    this.loads += 1;
     this.changed();
     try {
       const page = await api.timesFeed(cursor, this.deps.pageSize ?? 50);
       if (id !== this.read) return;
-      this.state = appendFeed(this.state, page);
+      this.state = this.applyPage(page, (admitted) => appendFeed(this.state, admitted));
     } catch (err) {
       if (id !== this.read) return;
       console.warn("could not load more of the times feed", err);
     } finally {
+      this.loaded();
       if (id === this.read) {
         this.loadingMore = false;
         this.changed();
@@ -259,23 +342,78 @@ export class TimesFeedHub {
     }
   }
 
+  /**
+   * A page applied now (review v0.1.15 #2, #3): without rows deleted since in a version not newer than the deletion, the
+   * events that came meanwhile applied again on top, and pruned — page and rows held alike — against the channels as they
+   * are now (left, removed, muted, no longer a times; also when that happened while the page was on its way).
+   */
+  private applyPage(page: TimesFeedPage, apply: (page: TimesFeedPage) => FeedState): FeedState {
+    const now = this.now();
+    const belongs = (channelId: string) => !this.removedWhileLoading.has(channelId) && isFeedChannel(this.deps.channel(channelId), now);
+    const items = page.items.filter((m) => {
+      const deletedAt = this.tombstones.get(m.id);
+      return deletedAt === undefined || m.updated_seq > deletedAt;
+    });
+    return pruneFeed(this.replayed(apply(items.length === page.items.length ? page : { ...page, items })), belongs);
+  }
+
+  /**
+   * The events that came while a page was on its way, applied again on top of it in updated_seq order (review v0.1.15
+   * #3): the page may have been read before them, and must neither drop a new row nor bring back an older version.
+   */
+  private replayed(state: FeedState): FeedState {
+    const queued = [...this.queue].sort((a, b) => a.seq - b.seq);
+    for (const event of queued) {
+      state = event.thread ? applyFeedParentThread(state, event.thread) : this.withMessage(state, event.message!, event.created!);
+    }
+    return state;
+  }
+
+  /** A read ended (applied, dropped or failed): with none left, what was kept for the reads goes. */
+  private loaded(): void {
+    this.loads -= 1;
+    if (this.loads > 0) return;
+    this.loads = 0;
+    this.queue = [];
+    this.removedWhileLoading.clear();
+  }
+
   /** Connected again: a feed on screen reads its first page again (events may have been missed). */
   online(): void {
     if (this.isVisible) void this.refresh();
   }
 
-  /** message.created / updated / deleted, or a message the server answered me with. */
-  applyMessage(message: MessageState, created: boolean): void {
+  private withMessage(state: FeedState, message: MessageState, created: boolean): FeedState {
+    const deletedAt = this.tombstones.get(message.id);
+    if (deletedAt !== undefined && !message.deleted && message.updated_seq <= deletedAt) return state; // an older copy
     const belongs = created && this.isVisible && isFeedRow(message, this.deps.channel(message.channel_id), this.now());
-    this.set(applyFeedMessage(this.state, message, { created, belongs }));
+    return applyFeedMessage(state, message, { created, belongs });
+  }
+
+  /**
+   * message.created / updated / deleted, or a message the store took in (an event, a catch-up or history page, the
+   * answer to an action of mine). `created`: new to this device, so it may be a row the feed lacks.
+   */
+  applyMessage(message: MessageState, created: boolean): void {
+    if (message.deleted) this.tombstones.set(message.id, Math.max(message.updated_seq, this.tombstones.get(message.id) ?? 0));
+    if (this.loads > 0) this.queue.push({ seq: message.updated_seq, message, created });
+    this.set(this.withMessage(this.state, message, created));
+  }
+
+  /** The answer to my vote / answer / close (§8 setMyVotes). */
+  applyMyVotes(message: MessageState): void {
+    if (this.loads > 0) this.queue.push({ seq: message.updated_seq, message, created: false });
+    this.set(applyFeedMyVotes(this.state, message));
   }
 
   applyParentThread(thread: ParentThread): void {
+    if (this.loads > 0) this.queue.push({ seq: thread.updated_seq, thread });
     this.set(applyFeedParentThread(this.state, thread));
   }
 
-  /** I left the channel (or was removed): its rows leave at once. */
+  /** I left the channel (or was removed): its rows leave at once, and a page on its way does not bring them back. */
   removeChannel(channelId: string): void {
+    if (this.loads > 0) this.removedWhileLoading.add(channelId);
     this.set(pruneFeed(this.state, (id) => id !== channelId));
   }
 
@@ -295,6 +433,9 @@ export class TimesFeedHub {
   stop(): void {
     this.read += 1;
     this.state = EMPTY_FEED;
+    this.queue = [];
+    this.removedWhileLoading.clear();
+    this.tombstones = new Map();
     this.status = this.deps.api ? "idle" : "unsupported";
     this.loadingMore = false;
     this.changed();
