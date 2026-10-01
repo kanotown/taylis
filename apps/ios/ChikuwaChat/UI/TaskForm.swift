@@ -276,6 +276,8 @@ struct TaskAssigneePicker: View {
     /// nil while the members are read.
     let memberIds: [String]?
     @Binding var selected: [String]
+    /// The page's title (L6's 「提出する人」 picks people the same way).
+    var title = "担当者"
     @State private var query = ""
 
     private struct Row: Identifiable {
@@ -325,7 +327,7 @@ struct TaskAssigneePicker: View {
             }
         }
         .modifier(SearchableWhenLong(enabled: rows.count > 8, query: $query))
-        .navigationTitle(selected.isEmpty ? "担当者" : "担当者 (\(selected.count) 人)")
+        .navigationTitle(selected.isEmpty ? title : "\(title) (\(selected.count) 人)")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

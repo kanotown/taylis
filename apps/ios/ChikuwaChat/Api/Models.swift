@@ -505,11 +505,13 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var priority: String? = nil
     var ackRequested: Bool = false
     var acks: [AckOut] = []
+    /// L6 (M59): a recurring post that collects replies; nil otherwise and from older servers.
+    var collection: CollectionOut? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks
+        case priority, ackRequested, acks, collection
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -617,6 +619,7 @@ extension MessageOut {
         priority = try c.decodeIfPresent(String.self, forKey: .priority)
         ackRequested = try c.decodeIfPresent(Bool.self, forKey: .ackRequested) ?? false
         acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
+        collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
     }
 }
 
@@ -904,7 +907,8 @@ struct ReminderOut: Codable, Identifiable, Equatable {
     let status: String
     let firedAt: String?
     let createdAt: String
-    /// L4 (M31): "ack" when a message's author asked me to acknowledge it; "personal" (or missing) otherwise.
+    /// L4 (M31): "ack" when a message's author asked me to acknowledge it; L6 (M59): "collect", a nudge after a recurring
+    /// post's due time to a target who has not replied; "personal" (or missing) otherwise.
     var kind: String? = nil
 }
 

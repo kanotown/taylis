@@ -1042,6 +1042,10 @@ struct MessageRow: View {
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
                 if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly, present: present) }  // M15e
+                if let collection = message.collection, !message.deleted {  // L6: who of the targets has replied
+                    CollectionChipView(collection: collection, meId: store.me?.id,
+                                       onOpen: present.map { present in { present(MessageSheet(kind: .collection, message: message)) } })
+                }
                 if !message.reactions.isEmpty {
                     ChipsLayout(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in
