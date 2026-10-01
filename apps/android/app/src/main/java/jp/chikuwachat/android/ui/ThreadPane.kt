@@ -31,8 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ReadGate
 import jp.chikuwachat.android.sync.toOut
 import kotlinx.coroutines.flow.collectLatest
@@ -42,6 +45,20 @@ import java.time.ZoneId
 /** Thread list rows (SYNC_PROTOCOL.md §10.2, §10.3): the parent and the reply count line come before the replies. */
 object ThreadRows {
     fun header(hasParent: Boolean): Int = if (hasParent) 2 else 1
+
+    /**
+     * The parent above the replies: the store's row, the threads list's, a reveal's context, else (L8) the Times feed's
+     * row (a post held only there) or the one fetched by its id (a reply also in the channel opened from the feed, whose
+     * parent is nowhere here). Without one the thread's state is never read, so neither is its read position committed.
+     */
+    fun parent(
+        store: Store, channelId: String, parentId: String, focus: List<MessageState>?, feed: List<MessageOut>, fetched: MessageState?,
+    ): MessageState? =
+        store.message(channelId, parentId)
+            ?: store.threads[parentId]?.parent?.let { MessageState.from(it) }
+            ?: focus?.firstOrNull { it.id == parentId }
+            ?: feed.firstOrNull { it.id == parentId && it.channelId == channelId }?.let { MessageState.from(it) }
+            ?: fetched?.takeIf { it.id == parentId && it.channelId == channelId }
 
     /** The reply at a LazyColumn index. By index, never by key: keys are rowKeys, which no message id equals. */
     fun replyAt(replies: List<MessageState>, header: Int, index: Int): MessageState? = if (index < header) null else replies.getOrNull(index - header)
@@ -89,10 +106,9 @@ object ThreadRows {
 @Composable
 fun ThreadPane(controller: AppController, channelId: String, parentId: String, version: Int) {
     val store = controller.store
-    val entry = store.threads[parentId]
-    val parent = store.message(channelId, parentId)
-        ?: entry?.parent?.let { MessageState.from(it) }
-        ?: controller.messageFocus?.context?.firstOrNull { it.id == parentId }
+    // L8: a parent known nowhere on this device (a reply also in the channel, opened from the Times feed) is fetched.
+    var fetched by remember(parentId) { mutableStateOf<MessageState?>(null) }
+    val parent = ThreadRows.parent(store, channelId, parentId, controller.messageFocus?.context, controller.timesFeedState.rows, fetched)
     // Successful reply fetches in this open: a fetch that changed no row bumps no store version, yet makes the thread complete.
     var loads by remember(parentId) { mutableIntStateOf(0) }
     // The rows, my read position and the engine's complete flag in one read, so the read gate judges the rows the
@@ -167,6 +183,10 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     LaunchedEffect(parentId, controller.engineStatus) { load() }
     // A §7.3 reload of the channel dropped the fetched thread: fetch it again.
     LaunchedEffect(parentId, complete) { if (!complete && loads > 0) load() }
+    LaunchedEffect(parentId, controller.engineStatus, parent == null) {
+        if (parent != null || controller.engineStatus != EngineStatus.ONLINE) return@LaunchedEffect
+        controller.fetchMessage(parentId)?.takeIf { !it.deleted }?.let { fetched = MessageState.from(it) }
+    }
     // THREADS.md §5: my relation to the thread (follow flag, read position) is fetched once per thread.
     LaunchedEffect(parentId, controller.engineStatus, parent?.seq) {
         if (store.threads[parentId] != null) return@LaunchedEffect

@@ -62,16 +62,27 @@ fun TimesFeedPane(
     // The newest read wins: an answer to an older one (a reconnect during a pull) is dropped.
     var request by remember { mutableIntStateOf(0) }
 
+    // Every page is pruned against the channels as they are when it arrives (a times left meanwhile stays out), and takes
+    // again the events that arrived while it was read (TimesFeed.beginLoad / firstPage / nextPage).
+    val channelOf: (String) -> jp.chikuwachat.android.sync.ChannelState? = { controller.store.channel(it) }
+
     suspend fun refresh() {
         val id = ++request
-        controller.loadTimesFeed()
-            .onSuccess { page ->
-                if (id != request) return@onSuccess
-                controller.timesFeedState = TimesFeed.firstPage(page)
-                failed = false
-                moreFailed = false
-            }
-            .onFailure { if (id == request) failed = true; controller.report(it) }
+        controller.timesFeedState = TimesFeed.beginLoad(controller.timesFeedState)
+        var applied = false
+        try {
+            controller.loadTimesFeed()
+                .onSuccess { page ->
+                    if (id != request) return@onSuccess
+                    controller.timesFeedState = TimesFeed.firstPage(controller.timesFeedState, page, channelOf)
+                    applied = true
+                    failed = false
+                    moreFailed = false
+                }
+                .onFailure { if (id == request) failed = true; controller.report(it) }
+        } finally {
+            if (!applied) controller.timesFeedState = TimesFeed.endLoad(controller.timesFeedState)
+        }
     }
 
     suspend fun loadMore() {
@@ -79,17 +90,21 @@ fun TimesFeedPane(
         if (loadingMore) return
         loadingMore = true
         val id = request
+        controller.timesFeedState = TimesFeed.beginLoad(controller.timesFeedState)
+        var applied = false
         try {
             controller.loadTimesFeed(cursor)
                 .onSuccess { page ->
                     // A first page read meanwhile replaced the rows (and their cursor): this page belongs to the old ones.
                     if (id == request && controller.timesFeedState.nextCursor == cursor) {
-                        controller.timesFeedState = TimesFeed.nextPage(controller.timesFeedState, page)
+                        controller.timesFeedState = TimesFeed.nextPage(controller.timesFeedState, page, channelOf)
+                        applied = true
                     }
                     moreFailed = false
                 }
                 .onFailure { moreFailed = true; controller.report(it) }
         } finally {
+            if (!applied) controller.timesFeedState = TimesFeed.endLoad(controller.timesFeedState)
             loadingMore = false
         }
     }
@@ -97,16 +112,25 @@ fun TimesFeedPane(
     // On opening and whenever the connection comes back (§5).
     LaunchedEffect(online) { if (online) refresh() }
     // Live rows while on screen only (feedVisible): leaving the pane ends the collection, the next opening reads again.
+    // Rows the store takes otherwise (a catch-up after a gap, the answers to my own actions) come the same way.
     val engine = controller.engine
     LaunchedEffect(engine) {
         engine?.timelineEvents?.collect { event ->
-            controller.timesFeedState = TimesFeed.applyEvent(
-                controller.timesFeedState, event.event, event.message, event.thread, store.channel(event.message.channelId),
-            )
+            controller.timesFeedState = TimesFeed.applyEvent(controller.timesFeedState, event, channelOf)
+        }
+    }
+    // Events lost to a full buffer: the feed reads the server again (it is on screen, or this would not run).
+    LaunchedEffect(engine) {
+        val stale = engine?.timelineStale ?: return@LaunchedEffect
+        var seen = stale.value
+        stale.collect { count ->
+            if (count == seen) return@collect
+            seen = count
+            if (controller.engineStatus == EngineStatus.ONLINE) refresh()
         }
     }
     // A times left, muted or no longer a times takes its rows along (§5).
-    LaunchedEffect(version) { controller.timesFeedState = TimesFeed.pruned(controller.timesFeedState, { store.channel(it) }) }
+    LaunchedEffect(version) { controller.timesFeedState = TimesFeed.pruned(controller.timesFeedState, channelOf) }
 
     PullToRefreshBox(
         isRefreshing = refreshing,

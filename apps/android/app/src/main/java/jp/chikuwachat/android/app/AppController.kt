@@ -1318,6 +1318,9 @@ class AppController(private val app: Application) {
     /** L8: a page of the Times feed (TIMES_FEED.md §3). */
     suspend fun loadTimesFeed(cursor: String? = null): Result<jp.chikuwachat.android.api.TimesFeedOut> = attempt { api!!.timesFeed(cursor) }
 
+    /** L8: one message by its id (a thread's parent held nowhere on this device); null when it cannot be read now. */
+    suspend fun fetchMessage(id: String): jp.chikuwachat.android.api.MessageOut? = attempt { api!!.message(id) }.getOrNull()
+
     /**
      * L8 (TIMES_FEED.md §5): the Times feed's rows, kept here while its pane is closed (a row opened and back again shows
      * them at once, offline too), read again whenever the pane opens. Not stored on the device.
