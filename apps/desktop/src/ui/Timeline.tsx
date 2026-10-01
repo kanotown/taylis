@@ -31,7 +31,7 @@ import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
-import { anchorCorrection, BOTTOM_SLACK_PX, firstRowBelow, stillAtBottom } from "./scrollAnchor";
+import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 import { TaskDialog } from "./TaskDialog";
@@ -73,7 +73,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
    * when content above it changes height (a link card or a photo arriving, older rows loaded), the view moves with it,
    * so what the reader looks at stays put. WebKit has no CSS scroll anchoring, and Chromium's is off on this list.
    */
-  const rowAnchor = useRef<{ row: HTMLElement; offset: number; top: number } | null>(null);
+  const [rowAnchor] = useState(() => new ListAnchor(() => container.current, "article[id^='timeline-']"));
   /** scrollTop at the last scroll event (or the view's own move to the bottom): what a scroll up is measured from. */
   const lastTop = useRef(0);
 
@@ -159,30 +159,10 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     lastTop.current = el.scrollTop;
     rememberAnchor();
   };
-  /** Takes the topmost row on screen as the anchor (the rows are in order: found by bisection). */
-  const rememberAnchor = () => {
-    const el = container.current;
-    if (!el) return;
-    const rows = el.querySelectorAll<HTMLElement>("article[id^='timeline-']");
-    const viewTop = el.getBoundingClientRect().top;
-    const index = firstRowBelow(rows.length, (i) => rows[i]!.getBoundingClientRect().bottom, viewTop);
-    const row = index < 0 ? null : rows[index]!;
-    rowAnchor.current = row ? { row, offset: row.getBoundingClientRect().top - viewTop, top: el.scrollTop } : null;
-  };
-  /**
-   * Content changed height: the anchor row goes back where it was. Only while the list has not scrolled since the anchor
-   * was taken (a row growing moves no scrollTop); otherwise the reader moved, and the anchor is only taken again.
-   */
-  const keepAnchor = () => {
-    const el = container.current;
-    const anchor = rowAnchor.current;
-    if (!el) return;
-    if (anchor && el.contains(anchor.row) && Math.abs(el.scrollTop - anchor.top) < 1) {
-      const delta = anchorCorrection(anchor.offset, anchor.row.getBoundingClientRect().top - el.getBoundingClientRect().top);
-      if (delta !== 0) el.scrollTop += delta;
-    }
-    rememberAnchor();
-  };
+  /** Takes the topmost row on screen as the anchor. */
+  const rememberAnchor = () => rowAnchor.remember();
+  /** Content changed height: the anchor row goes back where it was, unless the list scrolled since it was taken. */
+  const keepAnchor = () => rowAnchor.keep();
   /**
    * From where the view is now: at the bottom (everything loaded counts as seen) and the bottom button. `landed`: the
    * view just put a row at the top itself (rows may have been added above in the same breath, so how far scrollTop moved

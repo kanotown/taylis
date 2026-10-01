@@ -11,6 +11,7 @@ import { continuesGroup, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button } from "./primitives";
+import { useListAnchor } from "./scrollAnchor";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
 import { READER_BACK } from "../platform/idle";
@@ -32,6 +33,13 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   useEffect(() => engine?.viewing(channel.id), [engine, channel.id]);
   const focused = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  /**
+   * The thread keeps still while its content changes height, as the timeline does (scrollAnchor.ts): at the end it
+   * follows photos and cards arriving until the reader scrolls up; elsewhere (landed on 「新しい返信」, a hit) the
+   * topmost row on screen keeps its place when the parent or replies above it grow.
+   */
+  const anchor = useListAnchor(list, content, "article[id^='thread-']");
   const [tapHandlers] = useState(() => tapClosesKeyboard());
   const lastReplyId = replies[replies.length - 1]?.id;
   const me = store.me?.id;
@@ -54,15 +62,24 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     anchored.current = false;
     positioned.current = null;
     userScrolled.current = false;
+    anchor.reset();
   }, [parentId]);
 
-  // My own reply (or a reply arriving while I am at the bottom) shows the newest message.
-  useEffect(() => {
+  // Replies came or went (the whole thread arriving puts the older ones above those held): the row on screen stays
+  // where it is, by that row, not by the height the list gained. At the end, the follow below and the resize observer
+  // keep the end.
+  useLayoutEffect(() => {
+    if (!anchor.atBottom) anchor.keep();
+  }, [replies.length]);
+
+  // My own reply (or a reply arriving while I am at the bottom) shows the newest message. A layout effect, before the
+  // opening position below: the landing of the commit that makes the thread ready wins.
+  useLayoutEffect(() => {
     const el = list.current;
     const last = replies[replies.length - 1];
     if (!el || !last) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom || (last.sender_id === store.me?.id && last.pending)) el.scrollTop = el.scrollHeight;
+    if (anchor.atBottom || nearBottom || (last.sender_id === store.me?.id && last.pending)) anchor.toBottom();
   }, [lastReplyId]);
 
   // Fetched on open and after reconnecting, and again as soon as the engine forgets the whole thread while online (a
@@ -89,9 +106,13 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     }
     const hit = focusId ? document.getElementById(`thread-${focusId}`) : null;
     const unread = ready && state ? firstUnreadRow(replies, state.last_read_seq, me) : null;
-    if (hit) hit.scrollIntoView({ block: "center" });
-    else if (unread && divider.current) divider.current.scrollIntoView({ block: "start" });
-    else el.scrollTop = el.scrollHeight;
+    if (hit || (unread && divider.current)) {
+      if (hit) hit.scrollIntoView({ block: "center" });
+      else divider.current!.scrollIntoView({ block: "start" });
+      anchor.placed(); // the landed row keeps its place while the parent and replies above it grow
+    } else {
+      anchor.toBottom();
+    }
     if (!ready) return;
     positioned.current = parentId;
     if (!hit && unread) anchored.current = true;
@@ -149,11 +170,17 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   useEffect(() => {
     markVisible();
     const el = list.current;
-    el?.addEventListener("scroll", markVisible, { passive: true });
+    // Where the list is first (at the end, or a correction making up for growth above the row on screen), then what
+    // is on screen reads.
+    const onScroll = () => {
+      anchor.scrolled();
+      markVisible();
+    };
+    el?.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("focus", markVisible);
     window.addEventListener(READER_BACK, markVisible);
     return () => {
-      el?.removeEventListener("scroll", markVisible);
+      el?.removeEventListener("scroll", onScroll);
       window.removeEventListener("focus", markVisible);
       window.removeEventListener(READER_BACK, markVisible);
     };
@@ -163,7 +190,11 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     const id = controller.messageFocus?.messageId;
     if (id && focused.current !== id) {
       const row = document.getElementById(`thread-${id}`);
-      if (row) { row.scrollIntoView({ block: "center" }); focused.current = id; }
+      if (row) {
+        row.scrollIntoView({ block: "center" });
+        anchor.placed();
+        focused.current = id;
+      }
     }
   }, [parentId, controller.messageFocus?.messageId, replies.length]);
 
@@ -202,7 +233,9 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
         )}
         <PaneCloseButton onClick={onClose} />
       </header>
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2" {...tapHandlers}>
+      {/* Chromium's own scroll anchoring is off: the pane anchors itself, the same on every engine (scrollAnchor.ts). */}
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" {...tapHandlers}>
+        <div ref={content}>
         {parent ? (
           <>
             <MessageRow thread message={parent} controller={controller} />
@@ -227,6 +260,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
         ) : (
           <div className="py-8 text-center text-sm text-muted">メッセージが見つかりません</div>
         )}
+        </div>
       </div>
       {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
       {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}
