@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
@@ -27,5 +28,29 @@ final class CustomEmojiTests: XCTestCase {
         // The DM header and the directory join the status into a line: the custom emoji is a piece of its own there.
         XCTAssertEqual(CustomEmoji.split("オンライン · :party_parrot: 会議中", known: { custom[$0] != nil }),
                        [.text("オンライン · "), .emoji("party_parrot"), .text(" 会議中")])
+    }
+
+    /// 2026-10-02: until its image came, a custom emoji in a message was its `:name:`, wider than the image: the line
+    /// re-wrapped and the row grew or shrank as the channel opened. Its place now takes the image's size from the start.
+    @MainActor
+    func testPlaceholderTakesTheImagesSize() {
+        let wide = CustomEmojiOut(id: "e2", name: "wide", contentType: "image/png", width: 64, height: 32, createdBy: "u", createdAt: "")
+        XCTAssertEqual(CustomEmoji.size(of: wide, height: 20), CGSize(width: 40, height: 20))
+        let custom = ["wide": wide]
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 48)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 96, height: 48))
+        }
+        let text = String(repeating: "あいうえお :wide: かきくけこ ", count: 6)
+        var asked = 0
+        func size(_ images: [String: UIImage]) -> CGSize {
+            let view = CustomEmoji.text(text, custom: custom, images: images, onNeed: { _ in asked += 1 }).frame(width: 300)
+            return UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 300, height: 2000))
+        }
+        let loaded = size(["e2": CustomEmoji.inlineImage(image)])
+        XCTAssertEqual(asked, 0)
+        let loading = size([:])
+        XCTAssertEqual(loading, loaded)
+        XCTAssertGreaterThan(asked, 0) // the missing image is asked for
     }
 }

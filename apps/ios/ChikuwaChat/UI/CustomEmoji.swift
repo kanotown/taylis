@@ -125,7 +125,9 @@ enum CustomEmoji {
         return UIImage(cgImage: cgImage, scale: CGFloat(cgImage.height) / height, orientation: .up)
     }
 
-    /// A Text made of runs and inline images; falls back to `:name:` until the image is cached.
+    /// A Text made of runs and inline images. Until an image is cached its place is held by a blank of the image's own
+    /// size (the server gives it): `:name:` there was wider, and the line re-wrapped and the row changed height when
+    /// the image came, moving the conversation as a channel opened (2026-10-02).
     static func text(_ text: String, custom: [String: CustomEmojiOut], images: [String: UIImage], onNeed: ((CustomEmojiOut) -> Void)?,
                      height: CGFloat = inlineHeight) -> Text {
         guard !custom.isEmpty else { return Text(text) }
@@ -136,8 +138,28 @@ enum CustomEmoji {
                 guard let emoji = custom[name] else { return acc + Text(":\(name):") }
                 if let image = images[emoji.id] { return acc + Text(Image(uiImage: sized(image, height: height))) }
                 onNeed?(emoji)
-                return acc + Text(":\(name):")
+                return acc + Text(Image(uiImage: blank(size: size(of: emoji, height: height))))
             }
         }
+    }
+
+    /// The size an emoji's image is drawn at for `height` (its aspect kept, as `inlineImage` keeps it).
+    static func size(of emoji: CustomEmojiOut, height: CGFloat) -> CGSize {
+        let aspect = emoji.width > 0 && emoji.height > 0 ? CGFloat(emoji.width) / CGFloat(emoji.height) : 1
+        return CGSize(width: (height * min(max(aspect, 0.25), 4)).rounded(), height: height)
+    }
+
+    private static let blanks = NSCache<NSString, UIImage>()
+
+    /// A transparent image of `size` points, made once per size.
+    static func blank(size: CGSize) -> UIImage {
+        let key = "\(size.width)x\(size.height)" as NSString
+        if let cached = blanks.object(forKey: key) { return cached }
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in }
+        blanks.setObject(image, forKey: key)
+        return image
     }
 }

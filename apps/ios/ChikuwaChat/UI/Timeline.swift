@@ -285,6 +285,19 @@ enum ReadGate {
         replies.contains { ($0.seq ?? 0) > lastReadSeq && $0.senderId != meId } ? lastReadSeq : nil
     }
 
+    /// An opening conversation keeps its rows hidden until they are final and where they will stay (2026-10-02: the held
+    /// rows showed at once, then the open's catch-up changed them — reactions, replies, edits since the app last looked —
+    /// and the placement or the landing on the first unread row moved them, a jolt or two as the channel opened). Hidden
+    /// while connecting (the bootstrap and the catch-up are on their way), while the placement waits for its catch-up,
+    /// when it is going to land (`landsOnOpen`, before it is placed) and while it lands. Never in the search context
+    /// (it opens on its hit) nor for an empty list; the view shows the rows after at most 3 s whatever happens.
+    static func hidesOpeningRows(hasRows: Bool, focused: Bool, placed: Bool, connecting: Bool, waits: Bool, landsOnOpen: Bool,
+                                 landing: Bool) -> Bool {
+        guard hasRows, !focused else { return false }
+        if connecting { return true }
+        return placed ? landing : waits || landsOnOpen
+    }
+
     /// §10.1 4.: a channel opened while its catch-up is on its way (connecting or online, the window short of last_seq)
     /// is placed once the catch-up is in, as the first unread row may be in it. Not when offline (nothing comes), once
     /// the reader has scrolled, or after the wait (3 s) is over.
