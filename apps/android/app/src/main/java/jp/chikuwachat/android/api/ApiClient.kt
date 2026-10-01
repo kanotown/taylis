@@ -712,6 +712,43 @@ class ApiClient(
             })
         })
 
+    // --- scheduling polls (M53, SCHEDULING.md §3) ----------------------------------------------
+
+    /**
+     * A scheduling poll (日程調整): the candidates as UTC instants or dates, and the zone the server writes their labels in
+     * (the device's). The server makes the options and always takes several answers; `anonymous` goes only when set.
+     */
+    suspend fun postSchedulePoll(channelId: String, parentId: String?, question: String, slots: List<ScheduleSlotIn>, tz: String, anonymous: Boolean = false): MessageOut =
+        request("POST", "/api/v1/channels/$channelId/messages", buildJsonObject {
+            put("client_msg_id", java.util.UUID.randomUUID().toString())
+            put("body", "")
+            put("parent_id", parentId?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("poll", buildJsonObject {
+                put("kind", "schedule")
+                put("question", question)
+                put("slots", buildJsonArray { slots.forEach { add(Codec.snake.encodeToJsonElement(ScheduleSlotIn.serializer(), it)) } })
+                put("tz", tz)
+                if (anonymous) put("anonymous", true)
+            })
+        })
+
+    /**
+     * PUT /messages/{id}/poll/answers: my ○ △ × for every candidate at once (those left out become unanswered).
+     * `comment`: [CommentChange.Keep] leaves it out (mine stays), [CommentChange.Set] sends it (blank or null removes it).
+     */
+    suspend fun answerPoll(messageId: String, answers: List<PollAnswerIn>, comment: CommentChange = CommentChange.Keep): MessageOut =
+        request("PUT", "/api/v1/messages/$messageId/poll/answers", buildJsonObject {
+            put("answers", buildJsonArray { answers.forEach { add(buildJsonObject { put("index", it.index); put("answer", it.answer) }) } })
+            if (comment is CommentChange.Set) put("comment", comment.text?.let { JsonPrimitive(it) } ?: JsonNull)
+        })
+
+    /** POST /messages/{id}/poll/decide: the author, the channel's owners and administrators; `createEvent` false makes none. */
+    suspend fun decidePoll(messageId: String, index: Int, createEvent: Boolean = true): MessageOut =
+        request("POST", "/api/v1/messages/$messageId/poll/decide", buildJsonObject { put("index", index); put("create_event", createEvent) })
+
+    /** DELETE /messages/{id}/poll/decide: answering reopens (the event stays). */
+    suspend fun undecidePoll(messageId: String): MessageOut = request("DELETE", "/api/v1/messages/$messageId/poll/decide")
+
     // --- workspaces (M16c) -------------------------------------------------------------------
 
     /** GET /server, no sign-in: which workspace this URL is (WORKSPACES.md §3.1). */

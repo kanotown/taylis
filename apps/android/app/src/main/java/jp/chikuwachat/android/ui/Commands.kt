@@ -20,11 +20,11 @@ object SlashCommands {
         Command("me", "/me 文", "動作を斜体で投稿"),
         Command("shrug", "/shrug [文]", "¯\\_(ツ)_/¯ を添えて投稿"),
         Command("poll", "/poll 質問 | 選択肢 | 選択肢 …", "アンケートを作る (/poll だけでフォームを開く)"),
-        Command(SCHEDULE, "/日程 [質問] 日付 日付 …", "日付を選択肢にした複数選択の投票 (/日程 だけでフォームを開く)"),
+        Command(SCHEDULE, "/日程 [題名] 日付 …", "日程調整を作る (候補に ○ △ × で答える。日付を続けるとフォームに入る)"),
         Command("help", "/help", "コマンド一覧"),
     )
 
-    /** M30: the date poll (ui/Templates.kt parseSchedule). */
+    /** M30: the date poll; M54: the scheduling poll's form (ui/Templates.kt readSchedule, SchedulePollForm). */
     const val SCHEDULE = "日程"
 
     /** In a code span, so the underscores do not read as italics (the light markdown has no escapes). */

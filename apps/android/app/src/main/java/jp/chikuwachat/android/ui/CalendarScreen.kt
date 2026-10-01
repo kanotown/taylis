@@ -360,7 +360,7 @@ private fun MonthGrid(anchor: LocalDate, events: List<CalendarEventOut>, today: 
     }
 }
 
-private fun weekdayColor(index: Int): Color? = when (index) {
+internal fun weekdayColor(index: Int): Color? = when (index) {
     0 -> Color(0xFFDC2626)
     6 -> Color(0xFF2563EB)
     else -> null

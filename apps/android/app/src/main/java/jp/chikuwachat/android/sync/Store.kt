@@ -1017,42 +1017,62 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     /**
-     * The response to my own vote, unvote or close (M27): merged like any row, then its `mine` goes in whatever the
-     * updated_seq order. Someone else's vote event can overtake it (a newer row without `mine`), and the plain rule would
-     * then drop the response and with it my vote. The newer row's counts stay.
+     * The response to my own vote, unvote or close (M27), or to my answers, decision or its undoing (M53): merged like any
+     * row, then its own parts (`mine`, `my_answers`, `my_comment`) go in whatever the updated_seq order. Someone else's
+     * event can overtake it (a newer row without them), and the plain rule would then drop the response and with it my
+     * answers. The newer row's counts stay.
      */
     fun applyMyPollResponse(message: MessageOut) {
         upsertMessage(message)
-        val mine = message.poll?.mine ?: return
+        val response = message.poll ?: return
         val bucket = bucket(message.channelId)
         val stored = bucket[message.id] ?: return
         val poll = stored.poll ?: return
-        if (poll.mine == mine) return
-        val updated = stored.copy(poll = poll.copy(mine = mine))
+        val merged = withMyPart(poll, response) ?: return
+        val updated = stored.copy(poll = merged)
         bucket[message.id] = updated
         persist { it.saveMessage(updated) }
         emit()
     }
 
     /**
-     * §8 poll.mine (M27): an event carries no `mine` (every member gets the same one), so a newer row keeps the votes I
-     * was known to have made; only a response to me says them again.
+     * §8 poll.mine (M27), my_answers / my_comment (M53): an event carries none of them (every member gets the same one),
+     * so a newer row keeps what I was known to have answered; only a response to me says them again.
      */
     private fun keepingMyVotes(message: MessageState, local: MessageState?): MessageState {
         val poll = message.poll ?: return message
-        val known = local?.poll?.mine ?: return message
-        return if (poll.mine == null) message.copy(poll = poll.copy(mine = known)) else message
+        val known = local?.poll ?: return message
+        val kept = keepMyPart(poll, known)
+        return if (kept === poll) message else message.copy(poll = kept)
     }
 
     /**
-     * §8 poll.mine (M27): the response to my vote can arrive after its event (same updated_seq), which the plain rule
-     * ignores as a duplicate; its `mine` still goes in. Null when there is nothing to take.
+     * §8 (M27, M53): the response to my vote or answers can arrive after its event (same updated_seq), which the plain
+     * rule ignores as a duplicate; its own parts still go in. Null when there is nothing to take.
      */
     private fun withMyVotes(local: MessageState, message: MessageState): MessageState? {
         if (message.updatedSeq != local.updatedSeq) return null
-        val mine = message.poll?.mine ?: return null
+        val response = message.poll ?: return null
         val poll = local.poll ?: return null
-        return if (poll.mine == mine) null else local.copy(poll = poll.copy(mine = mine))
+        return withMyPart(poll, response)?.let { local.copy(poll = it) }
+    }
+
+    /** `incoming` with the parts only responses to me carry (null in it) taken from `local`; `incoming` itself if none. */
+    private fun keepMyPart(incoming: PollOut, local: PollOut): PollOut {
+        val mine = if (incoming.mine == null) local.mine else incoming.mine
+        val answers = if (incoming.myAnswers == null) local.myAnswers else incoming.myAnswers
+        val comment = if (incoming.myComment == null) local.myComment else incoming.myComment
+        if (mine == incoming.mine && answers == incoming.myAnswers && comment == incoming.myComment) return incoming
+        return incoming.copy(mine = mine, myAnswers = answers, myComment = comment)
+    }
+
+    /** `local` with the parts `response` carries, or null when they change nothing. */
+    private fun withMyPart(local: PollOut, response: PollOut): PollOut? {
+        val mine = response.mine ?: local.mine
+        val answers = response.myAnswers ?: local.myAnswers
+        val comment = response.myComment ?: local.myComment
+        if (mine == local.mine && answers == local.myAnswers && comment == local.myComment) return null
+        return local.copy(mine = mine, myAnswers = answers, myComment = comment)
     }
 
     fun putPlaceholder(message: MessageState) {

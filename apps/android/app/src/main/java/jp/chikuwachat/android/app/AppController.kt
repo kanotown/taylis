@@ -1883,6 +1883,56 @@ class AppController(private val app: Application) {
         true
     }.getOrElse { error = describe(it); false }
 
+    // --- scheduling polls (M53/M54, SCHEDULING.md) -----------------------------------------------
+
+    /** What deciding came to: done, refused because the event cannot be made (offer to decide without), or failed (shown). */
+    enum class DecideOutcome { DONE, NEEDS_NO_EVENT, FAILED }
+
+    /** A scheduling poll: the candidates as UTC instants (or dates) and the device's zone, in which the server labels them. */
+    suspend fun createSchedulePoll(channelId: String, parentId: String?, question: String, slots: List<jp.chikuwachat.android.api.ScheduleSlotIn>, tz: String, anonymous: Boolean = false): Boolean = attempt {
+        val message = api!!.postSchedulePoll(channelId, parentId, question, slots, tz, anonymous)
+        engine?.postedFromHere(message) ?: store.upsertMessage(message)
+        if (message.parentId == null) postedHere = message.id
+        true
+    }.getOrElse { error = describe(it); false }
+
+    /**
+     * My ○ / △ / × for every candidate at once (null = unanswered); `comment` null keeps mine, "" removes it. The response's
+     * my_answers / my_comment are mine whatever arrived meanwhile (Store.applyMyPollResponse, SYNC_PROTOCOL.md §8).
+     */
+    suspend fun answerSchedule(message: MessageState, answers: List<String?>, comment: String? = null): Boolean = attempt {
+        val change = if (comment == null) jp.chikuwachat.android.api.CommentChange.Keep
+        else jp.chikuwachat.android.api.CommentChange.Set(comment.trim().ifEmpty { null })
+        store.applyMyPollResponse(api!!.answerPoll(message.id, jp.chikuwachat.android.ui.SchedulePolls.answersBody(answers), change)); true
+    }.getOrElse { error = describe(it); false }
+
+    /**
+     * Decide a candidate: the server makes the channel's event (not in a DM) and replies in the thread. SCHEDULING.md §7 3.:
+     * when I may not add to the channel's calendar (an announcement channel I do not own) the whole decision is refused
+     * with 403 posting_restricted; the card then offers to decide without the event (`createEvent` false).
+     */
+    suspend fun decideSchedule(message: MessageState, index: Int, createEvent: Boolean = true): DecideOutcome = attempt {
+        store.applyMyPollResponse(api!!.decidePoll(message.id, index, createEvent))
+        notice = "日程を決定しました"
+        DecideOutcome.DONE
+    }.getOrElse {
+        if (createEvent && it is ApiException.Api && it.code == "posting_restricted") DecideOutcome.NEEDS_NO_EVENT
+        else { error = describe(it); DecideOutcome.FAILED }
+    }
+
+    /** Take the decision back: answering reopens (`decided` and `closed_at` both null); the event stays. */
+    suspend fun undecideSchedule(message: MessageState): Boolean = attempt {
+        store.applyMyPollResponse(api!!.undecidePoll(message.id)); true
+    }.getOrElse { error = describe(it); false }
+
+    /** The card's 「予定を開く」: the event the decision made, in the M52 event form (read from the server: it may be outside every range). */
+    suspend fun openDecidedEvent(eventId: String) {
+        val hub = calendar ?: return
+        attempt { hub.get(eventId) }
+            .onSuccess { calendarForm = jp.chikuwachat.android.ui.CalendarForm(it, null) }
+            .onFailure { error = describe(it) }
+    }
+
     /**
      * §10.1 rule 11 (M28c): the id of my latest top-level post made through an endpoint of its own (a poll), for the
      * open conversation to show it at the bottom like a send from the outbox (the desktop's and iOS's postedHere).
@@ -1983,10 +2033,14 @@ class AppController(private val app: Application) {
                 createPoll(channelId, parentId, parts[0], parts.drop(1), multiple = false)
             }
             SlashCommands.SCHEDULE -> {
-                // M30: a multiple-choice poll of dates (the composer opens the form for /日程 alone).
-                val poll = Templates.parseSchedule(command.args, LocalDate.now())
-                if (poll == null) { error = Templates.SCHEDULE_USAGE; return false }
-                createPoll(channelId, parentId, poll.question, poll.options, multiple = true)
+                // M54: a scheduling poll of the dates read (the composer opens the form with them instead, to check first).
+                val read = Templates.readSchedule(command.args, LocalDate.now())
+                val slots = read?.let { jp.chikuwachat.android.ui.SchedulePolls.slotsFromEntries(it.entries) } ?: emptyList()
+                if (read == null || slots.size < jp.chikuwachat.android.ui.SchedulePolls.MIN_SLOTS || slots.size > jp.chikuwachat.android.ui.SchedulePolls.MAX_SLOTS) {
+                    error = Templates.SCHEDULE_USAGE
+                    return false
+                }
+                createSchedulePoll(channelId, parentId, read.question, slots.map { jp.chikuwachat.android.ui.SchedulePolls.slotToIn(it) }, java.time.ZoneId.systemDefault().id)
             }
             else -> false
         }
