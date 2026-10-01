@@ -1271,9 +1271,10 @@ struct ComposerView: View {
     @State private var showFileImporter = false
     @State private var showCamera = false
     @State private var showEmojiPicker = false
-    /// 「アンケートを作成」: from the ＋ menu, or `/poll` sent alone; `/日程` alone fills it in first (M30).
+    /// 「アンケートを作成」: from the ＋ menu, or `/poll` sent alone.
     @State private var showPollForm = false
-    @State private var pollPreset: Templates.Schedule?
+    /// M54: 「日程調整を作成」, from the ＋ menu or `/日程` (the dates typed after it fill it in).
+    @State private var scheduleForm: ScheduleFormInitial?
     @State private var showSchedule = false
     @State private var showCustomSchedule = false
     @State private var customSendAt = Date().addingTimeInterval(3600)
@@ -1401,14 +1402,16 @@ struct ComposerView: View {
             }
             if command.name == "poll" && command.args.isEmpty {  // the form instead of the syntax
                 controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
-                pollPreset = nil
                 showPollForm = true
                 return
             }
-            if command.name == "日程" && command.args.isEmpty {  // M30: the form, with the next weekdays
+            if command.name == "日程" {  // M54: the scheduling form, with the dates (and times) typed as its candidates
+                guard let initial = ScheduleFormInitial.reading(command.args, today: .today()) else {
+                    controller.error = Templates.scheduleUsage  // nothing opens; what was typed stays to be corrected
+                    return
+                }
                 controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
-                pollPreset = Templates.Schedule(question: "日程調整", options: Templates.nextWeekdays(after: .today()))
-                showPollForm = true
+                scheduleForm = initial
                 return
             }
             controller.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
@@ -1448,7 +1451,8 @@ struct ComposerView: View {
             Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
             if cameraAvailable { Button("カメラ", systemImage: "camera") { showCamera = true } }
             Button("ファイル", systemImage: "folder") { showFileImporter = true }
-            Button("アンケート", systemImage: "chart.bar.doc.horizontal") { pollPreset = nil; showPollForm = true }
+            Button("アンケート", systemImage: "chart.bar.doc.horizontal") { showPollForm = true }
+            Button("日程調整", systemImage: "calendar.badge.clock") { scheduleForm = ScheduleFormInitial() }
             if !typing && !templates.isEmpty { templateMenu }
             if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
             if parentId == nil {
@@ -1710,14 +1714,10 @@ struct ComposerView: View {
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
         }
         .sheet(isPresented: $showPollForm) {
-            if let controller {
-                if let preset = pollPreset {
-                    PollFormView(controller: controller, channelId: channelId, parentId: parentId, question: preset.question,
-                                 options: preset.options, multiple: true)
-                } else {
-                    PollFormView(controller: controller, channelId: channelId, parentId: parentId)
-                }
-            }
+            if let controller { PollFormView(controller: controller, channelId: channelId, parentId: parentId) }
+        }
+        .fullScreenCover(item: $scheduleForm) { initial in
+            if let controller { ScheduleFormView(controller: controller, channelId: channelId, parentId: parentId, initial: initial) }
         }
         // Videos too (testers, 2026-09-29: they were not in the list at all).
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))

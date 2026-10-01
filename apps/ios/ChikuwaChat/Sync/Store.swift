@@ -994,17 +994,17 @@ final class Store {
         if let local = rows.byId[message.id] {
             if message.updatedSeq < local.updatedSeq { return false }
             if message.updatedSeq == local.updatedSeq && !replacingSameVersion {
-                // §8 (M27): my own poll votes come only in a response to me; one that comes after the event of the same
-                // change still brings them.
-                guard let mine = message.poll?.mine, local.poll != nil, local.poll?.mine != mine else { return false }
+                // §8 (M27, M53): my own poll votes and answers come only in a response to me; one that comes after the
+                // event of the same change still brings them.
+                guard let response = message.poll, let poll = local.poll?.withMyPart(of: response) else { return false }
                 var kept = local
-                kept.poll?.mine = mine
+                kept.poll = poll
                 rows.byId[message.id] = kept
                 persist { try $0.saveMessage(kept) }
                 return true
             }
-            // An event (mine = nil) keeps the votes of mine I knew of.
-            if message.poll != nil, message.poll?.mine == nil { message.poll?.mine = local.poll?.mine }
+            // An event (mine, my_answers, my_comment = nil) keeps the votes and answers of mine I knew of.
+            if let poll = message.poll { message.poll = poll.keepingMyPart(of: local.poll) }
         }
         if message.deleted {
             rows.byId.removeValue(forKey: message.id)
@@ -1017,13 +1017,14 @@ final class Store {
         return true
     }
 
-    /// The answer to my own vote or close (SYNC_PROTOCOL.md §8, M27): its `mine` goes in whatever the order. Another
-    /// member's vote event may have come first with a newer updated_seq, and the merge then drops the answer.
+    /// The answer to my own vote or close (SYNC_PROTOCOL.md §8, M27), or to my answers, decision or its undoing (M53):
+    /// its `mine` / `my_answers` / `my_comment` go in whatever the order. Another member's event may have come first with
+    /// a newer updated_seq, and the merge then drops the answer.
     func setMyVotes(_ answer: MessageOut) {
-        guard let mine = answer.poll?.mine else { return }
+        guard let response = answer.poll else { return }
         let rows = bucket(answer.channelId)
-        guard var stored = rows.byId[answer.id], stored.poll != nil, stored.poll?.mine != mine else { return }
-        stored.poll?.mine = mine
+        guard var stored = rows.byId[answer.id], let poll = stored.poll?.withMyPart(of: response) else { return }
+        stored.poll = poll
         rows.byId[answer.id] = stored
         persist { try $0.saveMessage(stored) }
     }

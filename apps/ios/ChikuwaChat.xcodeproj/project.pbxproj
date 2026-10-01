@@ -25,6 +25,11 @@
 		1A93D49379035A2E3F974C93 /* LiveBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6130C50876B86E11534F6 /* LiveBackendTests.swift */; };
 		1C05C00854F6286A034963BE /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3912A5148D5775ED304A0125 /* ImageViewerTests.swift */; };
 		1C8D809901927C185631CCC1 /* Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B404F9D56E0D4FC24A30F35 /* Schedule.swift */; };
+		0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */; };
+		192D5EA9BB517C68F4356693 /* SchedulePoll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7B640035DAEED17AD3FC06 /* SchedulePoll.swift */; };
+		23954A9A418E7D3FD6541B37 /* ScheduleFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF918363BC7233499EC2F85 /* ScheduleFormView.swift */; };
+		D43FAF804E08665FCD6A9B10 /* SchedulePollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3029D52918C274E739B70198 /* SchedulePollTests.swift */; };
+		F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */; };
 		1E0643780343046096A1AE70 /* CalendarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E45FA0FD3CD7DF4CB0ED02F /* CalendarViews.swift */; };
 		1EFC86F754C971D184B62E46 /* SsoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33F1DBF33E0FF6DC5A31FAD /* SsoTests.swift */; };
 		214B994514BE464424A29889 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2CF95CE2CFABCEE59F14D6 /* Keychain.swift */; };
@@ -194,6 +199,11 @@
 		0979C692C57AD564B5051EAC /* DND.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DND.swift; sourceTree = "<group>"; };
 		098E3FEB32BEC69B8C2B68AF /* ComposerFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerFormatTests.swift; sourceTree = "<group>"; };
 		0B404F9D56E0D4FC24A30F35 /* Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Schedule.swift; sourceTree = "<group>"; };
+		2FF918363BC7233499EC2F85 /* ScheduleFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleFormView.swift; sourceTree = "<group>"; };
+		3029D52918C274E739B70198 /* SchedulePollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulePollTests.swift; sourceTree = "<group>"; };
+		9F7B640035DAEED17AD3FC06 /* SchedulePoll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulePoll.swift; sourceTree = "<group>"; };
+		A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleCardView.swift; sourceTree = "<group>"; };
+		CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleSnapshotTests.swift; sourceTree = "<group>"; };
 		0FB071937EF97C9E53923BC8 /* InviteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteTests.swift; sourceTree = "<group>"; };
 		11ADABD71F51A91011248A1E /* PollCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollCardView.swift; sourceTree = "<group>"; };
 		13B6130C50876B86E11534F6 /* LiveBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBackendTests.swift; sourceTree = "<group>"; };
@@ -486,6 +496,8 @@
 				5295A8876F64E2619E181FDA /* ReadGateTests.swift */,
 				021AEEA95E1D9DCF12F13504 /* RosterTests.swift */,
 				97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */,
+				3029D52918C274E739B70198 /* SchedulePollTests.swift */,
+				CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */,
 				B770F0D367C58D2D20912066 /* SearchHighlightTests.swift */,
 				58E69EFE1A7FE36AF129AFCD /* SearchLogicTests.swift */,
 				E07AA1D9EDE0DEABBA2BA87B /* SearchWorkspaceSnapshotTests.swift */,
@@ -568,6 +580,9 @@
 				DD7B56434AC3E290743128FF /* Roster.swift */,
 				9B4C8A95833707C7581F036D /* SavedView.swift */,
 				0B404F9D56E0D4FC24A30F35 /* Schedule.swift */,
+				A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */,
+				2FF918363BC7233499EC2F85 /* ScheduleFormView.swift */,
+				9F7B640035DAEED17AD3FC06 /* SchedulePoll.swift */,
 				CA98EE4F635D9C1BC5DA1661 /* Search.swift */,
 				4E8952935F7E755BB8B341C5 /* SearchView.swift */,
 				89AF06AAF4BDDFD30FB894ED /* SectionFormView.swift */,
@@ -763,6 +778,8 @@
 				E68C8CCBC9A310A60EDFE3AC /* ReadGateTests.swift in Sources */,
 				64F100B2D1B77CEDE89CF100 /* RosterTests.swift in Sources */,
 				9FBA5F10614875FDAE440DCC /* ScheduleTests.swift in Sources */,
+				D43FAF804E08665FCD6A9B10 /* SchedulePollTests.swift in Sources */,
+				0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */,
 				1643D8D6E1C7BE4386F7EB1B /* SearchHighlightTests.swift in Sources */,
 				D1360F215A5C4911ED74BB2F /* SearchLogicTests.swift in Sources */,
 				E200EC6ED147DF3669158C04 /* SearchWorkspaceSnapshotTests.swift in Sources */,
@@ -866,6 +883,9 @@
 				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
 				F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */,
 				1C8D809901927C185631CCC1 /* Schedule.swift in Sources */,
+				F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */,
+				23954A9A418E7D3FD6541B37 /* ScheduleFormView.swift in Sources */,
+				192D5EA9BB517C68F4356693 /* SchedulePoll.swift in Sources */,
 				84C7F0EBE484CB4BB8577908 /* Search.swift in Sources */,
 				8F6A01DF751DCCA4CB03E753 /* SearchView.swift in Sources */,
 				118575FA56C717B3175B0528 /* SectionFormView.swift in Sources */,

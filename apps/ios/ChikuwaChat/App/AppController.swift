@@ -1287,6 +1287,76 @@ final class AppController {
         } catch { self.error = describe(error); return false }
     }
 
+    // MARK: scheduling polls (M54, SCHEDULING.md)
+
+    /// A scheduling poll: the candidates as UTC instants (or dates) and the device's zone, in which the server labels them.
+    func createSchedulePoll(channelId: String, parentId: String?, question: String, slots: [SchedulePoll.SlotIn],
+                            tz: String = CalendarDates.zoneId, anonymous: Bool = false) async -> Bool {
+        guard let api else { return false }
+        do {
+            let message = try await api.postSchedulePoll(channelId: channelId, parentId: parentId, question: question, slots: slots,
+                                                         tz: tz, anonymous: anonymous)
+            if let engine { engine.postedFromHere(message) } else { store.upsertMessage(message) }
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// My ○ / △ / × for every candidate at once (nil = unanswered); `comment` nil keeps mine, "" removes it.
+    func answerSchedule(_ message: MessageState, answers: [SchedulePoll.Answer?], comment: String? = nil) async -> Bool {
+        guard let api else { return false }
+        do {
+            let answer = try await api.answerPoll(messageId: message.id, answers: answers,
+                                                  comment: comment.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            store.upsertMessage(answer)
+            store.setMyVotes(answer) // my_answers / my_comment also when another member's event came first (§8)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    enum DecideOutcome: Equatable {
+        case decided
+        /// 403 posting_restricted: I may decide, but not make the channel's event (SCHEDULING.md §7 3.); the card offers
+        /// to decide without it.
+        case eventRefused
+        case failed
+    }
+
+    /// Decide a candidate: the server makes the channel's event (`createEvent`; never in a DM) and replies in the thread.
+    func decideSchedule(_ message: MessageState, index: Int, createEvent: Bool = true) async -> DecideOutcome {
+        guard let api else { return .failed }
+        do {
+            let answer = try await api.decidePoll(messageId: message.id, index: index, createEvent: createEvent)
+            store.upsertMessage(answer)
+            store.setMyVotes(answer)
+            notice = "日程を決定しました"
+            return .decided
+        } catch {
+            if createEvent, let refused = error as? ApiError, refused.code == "posting_restricted" { return .eventRefused }
+            self.error = describe(error)
+            return .failed
+        }
+    }
+
+    /// Take the decision back: answering opens again; the event stays.
+    func undecideSchedule(_ message: MessageState) async -> Bool {
+        guard let api else { return false }
+        do {
+            let answer = try await api.undecidePoll(messageId: message.id)
+            store.upsertMessage(answer)
+            store.setMyVotes(answer)
+            return true
+        } catch { self.error = describe(error); return false }
+    }
+
+    /// The event a decision made (the card's 「予定を開く」): held, or from the server; nil when gone or hidden (the toast).
+    func loadCalendarEvent(_ eventId: String) async -> CalendarEventOut? {
+        do {
+            if let hub = calendarHub { return try await hub.fetch(eventId) }
+            guard let api else { return nil }
+            return try await api.calendarEvent(id: eventId)
+        } catch { self.error = describe(error); return nil }
+    }
+
     // MARK: slash commands (M13b)
 
     /// Runs a command typed in the composer; false when it could not (the reason is in `error`).
@@ -1382,12 +1452,14 @@ final class AppController {
             let parts = command.args.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             guard parts.count >= 3 else { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
             return await createPoll(channelId: channelId, parentId: parentId, question: parts[0], options: Array(parts.dropFirst()), multiple: false)
-        case "日程":  // M30: a multiple-choice poll of dates
-            guard let schedule = Templates.parseSchedule(command.args, today: .today()) else {
+        case "日程":  // M54: a scheduling poll of the dates read (the composer opens the form with them instead, to check first)
+            let read = Templates.readSchedule(command.args, today: .today())
+            let slots = read.map { SchedulePoll.slots(from: $0.entries) } ?? []
+            guard let read, (SchedulePoll.minSlots...SchedulePoll.maxSlots).contains(slots.count) else {
                 error = Templates.scheduleUsage
                 return false
             }
-            return await createPoll(channelId: channelId, parentId: parentId, question: schedule.question, options: schedule.options, multiple: true)
+            return await createSchedulePoll(channelId: channelId, parentId: parentId, question: read.question, slots: slots.map(SchedulePoll.slotIn))
         default:
             return false
         }
