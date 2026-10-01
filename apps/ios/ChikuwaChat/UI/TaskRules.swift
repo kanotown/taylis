@@ -102,6 +102,12 @@ enum TaskRules {
         task.channelId == nil || (me.map(task.assigneeIds.contains) ?? false)
     }
 
+    /// L9 「自分が依頼した」 (GET /tasks/requested): a shared task I made with someone else assigned.
+    static func isRequested(_ task: TaskOut, me: String?) -> Bool {
+        guard let me, task.channelId != nil, task.ownerId == me else { return false }
+        return task.assigneeIds.contains { $0 != me }
+    }
+
     // MARK: due dates
 
     static func isOverdue(_ task: TaskOut, today: DayKey) -> Bool {
@@ -162,9 +168,22 @@ enum TaskRules {
         return channel.isMember && hasBoard(channel) && !channel.channel.archived && channel.canPostTopLevel(isAdmin: isAdmin)
     }
 
-    /// A task I may change: a personal one always (only I see it), a shared one when I may edit its board.
+    /// A task I may change: a personal one always (only I see it), a shared one when I may edit its board, a DM's
+    /// (L9) when I am still in that DM.
     static func canEditTask(_ task: TaskOut, channel: ChannelState?, isAdmin: Bool) -> Bool {
-        task.channelId == nil || canEditBoard(channel, isAdmin: isAdmin)
+        task.channelId == nil || canEditBoard(channel, isAdmin: isAdmin) || canShareInDm(channel)
+    }
+
+    /// L9 (REVIEWS.md §2.1): a DM or group DM I am in (not archived) has no board, but a task made from one of its
+    /// messages may be shared with its members.
+    static func canShareInDm(_ channel: ChannelState?) -> Bool {
+        guard let channel else { return false }
+        return channel.channel.isDm && channel.isMember && !channel.channel.archived
+    }
+
+    /// L9: 「レビューを依頼」 needs a conversation the request can be shared in — a board I may add to, or a DM.
+    static func canRequestReview(_ channel: ChannelState?, isAdmin: Bool) -> Bool {
+        canEditBoard(channel, isAdmin: isAdmin) || canShareInDm(channel)
     }
 
     /// Why a board is read-only (or could not be read), as the banner over it says; nil when it is mine to change.
@@ -190,6 +209,20 @@ enum TaskRules {
             return x != y ? x > y : inOrder(a, b)
         }
         return (open, done)
+    }
+
+    /// L9 「自分が依頼した」: open ones by date (none last, then oldest first), the server's order; completed ones apart,
+    /// newest first.
+    static func sortRequested(_ tasks: [TaskOut]) -> (open: [TaskOut], done: [TaskOut]) {
+        let open = tasks.filter { $0.status != .done }.sorted { a, b in
+            switch (a.dueOn, b.dueOn) {
+            case let (x?, y?) where x != y: return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.createdAt != b.createdAt ? a.createdAt < b.createdAt : a.id < b.id
+            }
+        }
+        return (open, splitOpenDone(tasks).done)
     }
 
     struct MineGroup: Equatable {
@@ -245,20 +278,96 @@ enum TaskRules {
         draft.sourceMessageId = message.id
         draft.sourceExcerpt = title.isEmpty ? nil : title
         draft.boardChoices = board.map { [$0] } ?? []
+        // L9 (REVIEWS.md §2.1): from a DM, choosing assignees shares it in the DM; without, it stays mine.
+        if canShareInDm(channel) { draft.dmChannelId = channel?.id }
         return draft
+    }
+
+    static let reviewPrefix = "レビュー: "
+
+    /// L9 「レビューを依頼」 (REVIEWS.md §2.3): 「タスクにする」's form as a review request — 「レビュー: <excerpt>」, the
+    /// message's own conversation (a channel's board or the DM; the menu offers it only there), 依頼先 to choose (at
+    /// least one), no status (it starts 依頼中).
+    static func messageReviewInit(_ message: MessageState, channel: ChannelState?, users: [String: UserPublic], groups: [String: GroupOut]) -> TaskDraft {
+        let excerpt = Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups, limit: maxTitle)
+        var draft = TaskDraft(title: String((reviewPrefix + excerpt).prefix(maxTitle)), channelId: channel?.id)
+        draft.kind = .review
+        draft.needsAssignee = true
+        draft.sourceMessageId = message.id
+        draft.sourceExcerpt = excerpt.isEmpty ? nil : excerpt
+        draft.boardChoices = channel.map { [$0.id] } ?? []
+        return draft
+    }
+
+    // MARK: the chip under a message (L9, REVIEWS.md §2.2)
+
+    /// 「レビュー依頼」 / 「タスク」.
+    static func kindLabel(_ kind: TaskKind) -> String { kind == .review ? "レビュー依頼" : "タスク" }
+
+    /// A review request's state reads 依頼中 / 対応中 / 完了; a task's the columns' 未着手 / 進行中 / 完了.
+    static func statusLabel(_ status: TaskStatus, kind: TaskKind) -> String {
+        guard kind == .review else { return status.label }
+        switch status {
+        case .todo: return "依頼中"
+        case .doing: return "対応中"
+        case .done: return "完了"
+        }
+    }
+
+    /// The assignees on one line: two names, then 「他 N 人」.
+    static func namesText(_ names: [String]) -> String {
+        guard names.count > 2 else { return names.joined(separator: "、") }
+        return names.prefix(2).joined(separator: "、") + " 他 \(names.count - 2) 人"
+    }
+
+    struct Chip: Equatable {
+        enum Tone: Equatable {
+            case open
+            /// Past its date and not done: red.
+            case overdue
+            /// Grey.
+            case done
+        }
+
+        let text: String
+        let tone: Tone
+    }
+
+    /// 「レビュー依頼 · 加納 · 依頼中 · 10/9 まで」: the kind, the assignees (left out when none), the state, the date (left
+    /// out when none or done; 「今日まで」 on the day). Done is grey, past the date and not done red.
+    static func chip(_ task: MessageTaskOut, names: [String], today: DayKey) -> Chip {
+        var parts = [kindLabel(task.kind)]
+        if !names.isEmpty { parts.append(namesText(names)) }
+        parts.append(statusLabel(task.status, kind: task.kind))
+        let done = task.status == .done
+        if let due = task.dueOn, !done { parts.append(due == today ? "今日まで" : dueLabel(due, today: today) + " まで") }
+        let overdue = !done && (task.dueOn.map { $0 < today } ?? false)
+        return Chip(text: parts.joined(separator: " · "), tone: done ? .done : overdue ? .overdue : .open)
     }
 
     // MARK: notices
 
     /// The open app's line for task.assigned / task.due, the push's wording (§5): 「<name> がタスクを割り当てました: <title>
     /// (#<channel>)」 / 「今日が期限: <title>」 (+ 「 (#<channel>)」 for a shared one).
+    /// L9: a review request says 「レビューを依頼しました」; a DM's task (its name empty) has no 「(#…)」.
     static func noticeText(assigned: TaskAssigned, nameOf: (String) -> String?) -> String {
-        "\(nameOf(assigned.byUserId) ?? "メンバー") がタスクを割り当てました: \(assigned.title) (#\(assigned.channelName))"
+        let verb = assigned.kind == .review ? "レビューを依頼しました" : "タスクを割り当てました"
+        return "\(nameOf(assigned.byUserId) ?? "メンバー") が\(verb): \(assigned.title)\(whereText(assigned.channelName))"
     }
 
     static func noticeText(due: TaskDue) -> String {
-        let channel = due.channelId != nil ? due.channelName.map { " (#\($0))" } ?? "" : ""
-        return "今日が期限: \(due.title)\(channel)"
+        "今日が期限: \(due.title)\(due.channelId != nil ? whereText(due.channelName) : "")"
+    }
+
+    /// L9 task.review_done: 「<name> がレビューを完了しました: <title> (#<channel>)」.
+    static func noticeText(reviewDone: TaskReviewDone, nameOf: (String) -> String?) -> String {
+        "\(nameOf(reviewDone.byUserId) ?? "メンバー") がレビューを完了しました: \(reviewDone.title)\(whereText(reviewDone.channelName))"
+    }
+
+    /// 「 (#lab)」, nothing for a DM (no name) — the push's rule.
+    private static func whereText(_ channelName: String?) -> String {
+        guard let channelName, !channelName.isEmpty else { return "" }
+        return " (#\(channelName))"
     }
 }
 
@@ -277,6 +386,12 @@ struct TaskDraft: Equatable {
     var sourceExcerpt: String?
     /// The boards offered besides 「自分のタスク」 (a channel message: its channel's; none from a DM).
     var boardChoices: [String] = []
+    /// L9: 「レビューを依頼」 (the form says 依頼先 and 希望日).
+    var kind: TaskKind = .task
+    /// L9 (REVIEWS.md §2.1): 「タスクにする」 from a DM — with assignees the task is shared in this DM, without it is mine.
+    var dmChannelId: String?
+    /// L9: a new review request needs someone to ask.
+    var needsAssignee = false
 
     init(title: String = "", channelId: String? = nil, status: TaskStatus = .todo) {
         self.title = title
@@ -291,10 +406,15 @@ struct TaskDraft: Equatable {
         dueOn = task.dueOn ?? ""
         assigneeIds = task.assigneeIds
         channelId = task.channelId
+        kind = task.kind
     }
+
+    /// Where a new task goes: the board chosen, else the DM when someone is assigned (L9), else 「自分のタスク」.
+    var target: String? { channelId ?? (assigneeIds.isEmpty ? nil : dmChannelId) }
 
     var problem: String? {
         let title = TaskRules.cleanTitle(title)
+        if needsAssignee && assigneeIds.isEmpty { return "依頼先を選んでください" }
         if title.isEmpty { return "題名を入れてください" }
         if title.count > TaskRules.maxTitle { return "題名は \(TaskRules.maxTitle) 文字までです" }
         if notes.count > TaskRules.maxNotes { return "メモは \(TaskRules.maxNotes) 文字までです" }
@@ -304,11 +424,12 @@ struct TaskDraft: Equatable {
     /// POST /tasks.
     func create(clientTaskId: String, tz: String) -> TaskCreate {
         var seen = Set<String>()
-        let assignees = channelId == nil ? [] : assigneeIds.filter { seen.insert($0).inserted }
-        return TaskCreate(channelId: channelId, title: TaskRules.cleanTitle(title),
+        let target = target
+        let assignees = target == nil ? [] : assigneeIds.filter { seen.insert($0).inserted }
+        return TaskCreate(channelId: target, title: TaskRules.cleanTitle(title),
                           notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes, status: status,
                           dueOn: dueOn.isEmpty ? nil : dueOn, assigneeIds: assignees, sourceMessageId: sourceMessageId,
-                          clientTaskId: clientTaskId, tz: tz)
+                          clientTaskId: clientTaskId, tz: tz, kind: kind)
     }
 
     /// PATCH /tasks/{id} with only what changed (`tz` with a new due date: its notification is read in my zone).

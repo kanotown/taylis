@@ -35,6 +35,22 @@ extension AppController {
             self.notice = "☑️ " + TaskRules.noticeText(assigned: data) { [store] id in store.users[id]?.displayName }
         case .due(let data):
             self.notice = "☑️ " + TaskRules.noticeText(due: data)
+        case .reviewDone(let data):  // L9
+            self.notice = "☑️ " + TaskRules.noticeText(reviewDone: data) { [store] id in store.users[id]?.displayName }
         }
+    }
+
+    /// L9: a DM's (or group DM's) task — no board; lists name the other members instead of a channel.
+    func isDmTask(_ channelId: String?) -> Bool {
+        guard let channelId else { return false }
+        return store.channel(channelId)?.channel.isDm ?? false
+    }
+
+    /// Where a shared task lives, as 「自分の担当」 / 「自分が依頼した」 name it: the channel's name, or for a DM (whose
+    /// `channel_name` is null) the other members' names.
+    func taskPlaceName(_ channelId: String, fallback: String?) -> String {
+        guard let state = store.channel(channelId) else { return fallback ?? "DM" }
+        if state.channel.isDm { return channelTitle(state, store: store) }
+        return state.channel.name ?? fallback ?? "?"
     }
 }

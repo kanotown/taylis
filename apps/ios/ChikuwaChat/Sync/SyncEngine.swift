@@ -638,7 +638,7 @@ final class SyncEngine {
             canvases.applyEvent(frame.event, frame.data)
         case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
             calendar.applyEvent(frame.event, frame.data)
-        case "task.updated", "task.deleted", "task.assigned", "task.due":  // M56 (TASKS.md §4)
+        case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9
             tasks.applyEvent(frame.event, frame.data)
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }

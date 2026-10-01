@@ -9,12 +9,12 @@ enum TaskFixtures {
     static func task(_ title: String, id: String? = nil, channelId: String? = "c-lab", channelName: String? = "lab", ownerId: String = "u-me",
                      notes: String? = nil, status: TaskStatus = .todo, position: Double? = nil, dueOn: String? = nil, assigneeIds: [String] = [],
                      source: TaskSourceOut? = nil, completedAt: String? = nil, updatedAt: String = "2026-10-01T00:00:00Z",
-                     canDelete: Bool = true) -> TaskOut {
+                     canDelete: Bool = true, kind: TaskKind = .task) -> TaskOut {
         n += 1
         return TaskOut(id: id ?? String(format: "t%03d", n), channelId: channelId, channelName: channelId == nil ? nil : channelName, ownerId: ownerId,
                        title: title, notes: notes, status: status, position: position ?? Double(n), dueOn: dueOn, assigneeIds: assigneeIds,
                        source: source, completedAt: completedAt, completedBy: nil, createdAt: "2026-10-01T00:00:00Z", updatedAt: updatedAt,
-                       canDelete: canDelete)
+                       canDelete: canDelete, kind: kind)
     }
 
     /// The task as task.updated carries it (no can_delete, TASKS.md §8 4.).
@@ -28,7 +28,7 @@ enum TaskFixtures {
             "title": .string(task.title), "notes": text(task.notes), "status": .string(task.status.rawValue), "position": .number(task.position),
             "due_on": text(task.dueOn), "assignee_ids": .array(task.assigneeIds.map(JSONValue.string)), "source": source,
             "completed_at": text(task.completedAt), "completed_by": text(task.completedBy), "created_at": .string(task.createdAt),
-            "updated_at": .string(task.updatedAt),
+            "updated_at": .string(task.updatedAt), "kind": .string(task.kind.rawValue),
         ])
     }
 
@@ -78,13 +78,23 @@ final class FakeTaskApi: TaskApi {
         return mine
     }
 
+    /// L9: 「自分が依頼した」 (nil: a server before M63, 404).
+    var requested: [TaskOut]? = []
+    private(set) var requestedCalls = 0
+
+    func requestedTasks() async throws -> [TaskOut] {
+        requestedCalls += 1
+        guard let requested else { throw ApiError.api(status: 404, code: "not_found", message: "") }
+        return requested
+    }
+
     func dueTasks(from: DayKey, to: DayKey) async throws -> [TaskOut] {
         dueCalls.append((from, to))
         return due.filter { TaskRules.dueInRange($0, from: from, to: to) }
     }
 
     func task(id: String) async throws -> TaskOut {
-        guard let row = (board + mine + due).first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "task_not_found", message: "") }
+        guard let row = (board + mine + due + (requested ?? [])).first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "task_not_found", message: "") }
         return row
     }
 
@@ -826,6 +836,7 @@ final class TaskEngineTests: XCTestCase {
 extension FakeServer.Api: TaskApi {
     func listTasks(channelId: String, includeDone: String) async throws -> [TaskOut] { server.taskRows.filter { $0.channelId == channelId } }
     func myTasks() async throws -> [TaskOut] { server.taskRows.filter { $0.channelId == nil || $0.assigneeIds.contains(userId) } }
+    func requestedTasks() async throws -> [TaskOut] { server.taskRows.filter { TaskRules.isRequested($0, me: userId) } }
     func dueTasks(from: DayKey, to: DayKey) async throws -> [TaskOut] { server.taskRows.filter { TaskRules.dueInRange($0, from: from, to: to) } }
 
     func task(id: String) async throws -> TaskOut {
@@ -837,4 +848,218 @@ extension FakeServer.Api: TaskApi {
     func updateTask(id: String, _ patch: TaskPatch) async throws -> TaskOut { throw ApiError.api(status: 501, code: "unused", message: "") }
     func moveTask(id: String, _ move: TaskMove) async throws -> TaskOut { throw ApiError.api(status: 501, code: "unused", message: "") }
     func deleteTask(id: String) async throws {}
+}
+
+/// L9 (M64, docs/REVIEWS.md): review requests on top of tasks — the chip under a message, MessageOut.tasks, the review
+/// form, tasks shared in a DM, 「自分が依頼した」, the notices.
+@MainActor
+final class ReviewTests: XCTestCase {
+    private typealias F = TaskFixtures
+
+    private func store() -> Store {
+        let store = Store()
+        func add(_ id: String, type: String = "public", policy: String? = nil, archived: Bool = false, dmUserIds: [String]? = nil) {
+            var out = ChannelOut(id: id, type: type, name: type == "public" ? id : nil, topic: nil, purpose: nil, archived: archived, createdBy: nil,
+                                 lastSeq: 0, lastMessageAt: nil, createdAt: "", updatedAt: "",
+                                 membership: type == "public" ? MembershipOut(role: "member", joinedAt: "") : nil, dmUserIds: dmUserIds)
+            out.postingPolicy = policy
+            store.upsertChannel(out, isMember: true)
+        }
+        add("lab")
+        add("news", policy: "owners")
+        add("dm", type: "dm", dmUserIds: ["u-me", "u-kano"])
+        add("olddm", type: "dm", archived: true, dmUserIds: ["u-me", "u-kano"])
+        var me = UserMe(id: "u-me", username: "me", displayName: "私", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "", email: nil,
+                        mustChangePassword: false)
+        me.notifyTasks = true
+        store.setMe(me)
+        store.upsertUser(UserPublic(id: "u-kano", username: "kano", displayName: "加納", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+        return store
+    }
+
+    private func message(_ body: String, channel: String) -> MessageState {
+        var message = MessageState(placeholderFor: "x", channelId: channel, senderId: "u-me", body: body, createdAt: "")
+        message.id = "m1"
+        return message
+    }
+
+    func testTheChipSaysWhatWhoStateAndDate() {
+        let today = "2026-10-02"
+        func chip(_ kind: TaskKind, _ status: TaskStatus, due: String? = nil, names: [String] = ["加納"]) -> TaskRules.Chip {
+            TaskRules.chip(MessageTaskOut(id: "t", kind: kind, status: status, assigneeIds: names.map { _ in "u" }, dueOn: due), names: names, today: today)
+        }
+        XCTAssertEqual(chip(.review, .todo, due: "2026-10-09"), TaskRules.Chip(text: "レビュー依頼 · 加納 · 依頼中 · 10/9 まで", tone: .open))
+        XCTAssertEqual(chip(.review, .doing).text, "レビュー依頼 · 加納 · 対応中")
+        XCTAssertEqual(chip(.review, .done, due: "2026-09-01"), TaskRules.Chip(text: "レビュー依頼 · 加納 · 完了", tone: .done))
+        XCTAssertEqual(chip(.task, .todo, due: "2026-10-02").text, "タスク · 加納 · 未着手 · 今日まで")
+        XCTAssertEqual(chip(.task, .todo, due: "2026-10-02").tone, .open)  // the day itself is not late
+        XCTAssertEqual(chip(.task, .doing, due: "2026-10-01"), TaskRules.Chip(text: "タスク · 加納 · 進行中 · 10/1 まで", tone: .overdue))
+        XCTAssertEqual(chip(.task, .done).text, "タスク · 加納 · 完了")
+        XCTAssertEqual(chip(.task, .todo, names: []).text, "タスク · 未着手")
+        XCTAssertEqual(chip(.review, .todo, names: ["加納", "佐藤", "鈴木", "田中"]).text, "レビュー依頼 · 加納、佐藤 他 2 人 · 依頼中")
+        XCTAssertEqual(chip(.review, .todo, due: "2027-01-05").text, "レビュー依頼 · 加納 · 依頼中 · 2027/1/5 まで")
+        XCTAssertEqual(TaskRules.statusLabel(.todo, kind: .task), "未着手")
+    }
+
+    func testMessageTasksDecodeLenientlyAndPersistWithTheMessage() throws {
+        let base = #""id":"m1","channel_id":"c1","sender_id":"u1","seq":3,"updated_seq":9,"body":"原稿です","created_at":"2026-10-02T00:00:00Z","deleted":false"#
+        let older = try JSON.snakeDecoder.decode(MessageOut.self, from: Data("{\(base)}".utf8))
+        XCTAssertEqual(older.tasks, [])
+        let odd = try JSON.snakeDecoder.decode(MessageOut.self, from: Data("{\(base),\"tasks\":{\"x\":1}}".utf8))
+        XCTAssertEqual(odd.tasks, [])
+        let message = try JSON.snakeDecoder.decode(MessageOut.self, from: Data("""
+        {\(base),"tasks":[{"id":"t1","kind":"review","status":"doing","assignee_ids":["u2"],"due_on":"2026-10-09","owner_id":"u1"},
+          {"id":"t2","kind":"later_kind","status":"blocked","assignee_ids":[],"due_on":null,"owner_id":"u1"},{"kind":"task"}]}
+        """.utf8))
+        XCTAssertEqual(message.tasks, [MessageTaskOut(id: "t1", kind: .review, status: .doing, assigneeIds: ["u2"], dueOn: "2026-10-09", ownerId: "u1"),
+                                       MessageTaskOut(id: "t2", kind: .task, status: .todo, assigneeIds: [], dueOn: nil, ownerId: "u1")])
+        // Kept on the device with the message (the rows are JSON) and read back; a row written before M64 has none.
+        let state = MessageState(message)
+        let row = try JSON.plainEncoder.encode(state)
+        XCTAssertEqual(try JSONDecoder().decode(MessageState.self, from: row).tasks, message.tasks)
+        XCTAssertEqual(MessageOut(state)?.tasks, message.tasks)
+        var plain = try XCTUnwrap(try JSONSerialization.jsonObject(with: row) as? [String: Any])
+        plain["tasks"] = nil
+        let earlier = try JSONSerialization.data(withJSONObject: plain)
+        XCTAssertEqual(try JSONDecoder().decode(MessageState.self, from: earlier).tasks, [])
+        // TaskOut.kind: absent (before M63) is a task.
+        XCTAssertEqual(try JSON.snakeDecoder.decode(TaskOut.self, from: Data(TaskWireTests.taskJson.utf8)).kind, .task)
+        let review = TaskWireTests.taskJson.replacingOccurrences(of: #""can_delete":true"#, with: #""can_delete":true,"kind":"review""#)
+        XCTAssertEqual(try JSON.snakeDecoder.decode(TaskOut.self, from: Data(review.utf8)).kind, .review)
+    }
+
+    func testTheReviewFormAsksSomeoneInTheMessagesConversation() {
+        let store = store()
+        let lab = TaskRules.messageReviewInit(message("原稿を見てください", channel: "lab"), channel: store.channel("lab"), users: store.users, groups: [:])
+        XCTAssertEqual(lab.title, "レビュー: 原稿を見てください")
+        XCTAssertEqual(lab.kind, .review)
+        XCTAssertEqual(lab.channelId, "lab")
+        XCTAssertEqual(lab.sourceMessageId, "m1")
+        XCTAssertEqual(lab.problem, "依頼先を選んでください")
+        var asked = lab
+        asked.assigneeIds = ["u-kano", "u-kano"]
+        XCTAssertNil(asked.problem)
+        let body = asked.create(clientTaskId: "k1", tz: "Asia/Tokyo")
+        XCTAssertEqual(body.channelId, "lab")
+        XCTAssertEqual(body.assigneeIds, ["u-kano"])
+        XCTAssertEqual(body.json, .object(["title": .string("レビュー: 原稿を見てください"), "status": .string("todo"), "client_task_id": .string("k1"),
+                                           "tz": .string("Asia/Tokyo"), "channel_id": .string("lab"), "assignee_ids": .array([.string("u-kano")]),
+                                           "source_message_id": .string("m1"), "kind": .string("review")]))
+        // A long body: the title stays within 200.
+        let long = TaskRules.messageReviewInit(message(String(repeating: "あ", count: 300), channel: "lab"), channel: store.channel("lab"),
+                                               users: store.users, groups: [:])
+        XCTAssertEqual(long.title.count, TaskRules.maxTitle)
+        XCTAssertTrue(long.title.hasPrefix("レビュー: "))
+        // In a DM: shared there.
+        var dm = TaskRules.messageReviewInit(message("修論の 3 章", channel: "dm"), channel: store.channel("dm"), users: store.users, groups: [:])
+        dm.assigneeIds = ["u-kano"]
+        XCTAssertEqual(dm.create(clientTaskId: "k2", tz: "Asia/Tokyo").channelId, "dm")
+        // Where it is offered: a board I may add to, or a DM I am in (not archived).
+        XCTAssertTrue(TaskRules.canRequestReview(store.channel("lab"), isAdmin: false))
+        XCTAssertTrue(TaskRules.canRequestReview(store.channel("dm"), isAdmin: false))
+        XCTAssertFalse(TaskRules.canRequestReview(store.channel("news"), isAdmin: false))
+        XCTAssertTrue(TaskRules.canRequestReview(store.channel("news"), isAdmin: true))
+        XCTAssertFalse(TaskRules.canRequestReview(store.channel("olddm"), isAdmin: false))
+        XCTAssertFalse(TaskRules.canRequestReview(nil, isAdmin: false))
+    }
+
+    func testATaskFromADmIsSharedThereOnlyWithAssignees() {
+        let store = store()
+        var draft = TaskRules.messageTaskInit(message("資料お願いします", channel: "dm"), channel: store.channel("dm"), users: store.users, groups: [:],
+                                              isAdmin: false)
+        XCTAssertNil(draft.channelId)
+        XCTAssertEqual(draft.dmChannelId, "dm")
+        XCTAssertEqual(draft.kind, .task)
+        XCTAssertNil(draft.problem)  // no assignee needed
+        let personal = draft.create(clientTaskId: "k", tz: "Asia/Tokyo")
+        XCTAssertNil(personal.channelId)
+        XCTAssertEqual(personal.assigneeIds, [])
+        XCTAssertNil(personal.json["kind"])
+        draft.assigneeIds = ["u-kano"]
+        let shared = draft.create(clientTaskId: "k", tz: "Asia/Tokyo")
+        XCTAssertEqual(shared.channelId, "dm")
+        XCTAssertEqual(shared.assigneeIds, ["u-kano"])
+        // A channel's message keeps its board (no DM).
+        XCTAssertNil(TaskRules.messageTaskInit(message("x", channel: "lab"), channel: store.channel("lab"), users: store.users, groups: [:],
+                                               isAdmin: false).dmChannelId)
+        // A DM's task is mine to change while I am in it; it opens with its kind.
+        let dmTask = F.task("レビュー: 3 章", channelId: "dm", channelName: nil, kind: .review)
+        XCTAssertTrue(TaskRules.canEditTask(dmTask, channel: store.channel("dm"), isAdmin: false))
+        XCTAssertFalse(TaskRules.canEditTask(dmTask, channel: store.channel("olddm"), isAdmin: false))
+        XCTAssertEqual(TaskDraft(task: dmTask).kind, .review)
+    }
+
+    func testRequestedHoldsMySharedTasksWithSomeoneElseAssigned() async {
+        let mine = F.task("レビュー: 1 章", ownerId: "u-me", dueOn: "2026-10-09", assigneeIds: ["u-kano"], kind: .review)
+        let api = FakeTaskApi()
+        api.requested = [mine]
+        let hub = TaskHub(api: api, me: { "u-me" })
+        await hub.openRequested()
+        XCTAssertEqual(hub.requested?.state, .ready)
+        XCTAssertEqual(hub.requested?.tasks.map(\.title), ["レビュー: 1 章"])
+        XCTAssertEqual(hub.find(mine.id)?.kind, .review)
+        // A new request made elsewhere comes in; one taken off its assignees (or only me left) goes.
+        let dm = F.task("レビュー: 2 章", channelId: "dm", channelName: nil, ownerId: "u-me", assigneeIds: ["u-kano"], kind: .review)
+        hub.applyEvent("task.updated", F.updated(dm, deleters: ["u-me"]))
+        XCTAssertEqual(hub.requested?.tasks.count, 2)
+        var selfOnly = mine
+        selfOnly.assigneeIds = ["u-me"]
+        selfOnly.updatedAt = "2026-10-02T00:00:00Z"
+        hub.applyEvent("task.updated", F.updated(selfOnly, deleters: ["u-me"]))
+        XCTAssertEqual(hub.requested?.tasks.map(\.id), [dm.id])
+        hub.applyEvent("task.updated", F.updated(F.task("theirs", ownerId: "u-kano", assigneeIds: ["u-other"]), deleters: []))
+        hub.applyEvent("task.updated", F.updated(F.task("personal", channelId: nil), deleters: ["u-me"]))
+        XCTAssertEqual(hub.requested?.tasks.map(\.id), [dm.id])
+        hub.applyEvent("task.deleted", F.deleted(dm.id, channelId: "dm"))
+        XCTAssertEqual(hub.requested?.tasks, [])
+        // Reconnecting reads it again; leaving the conversation drops its tasks.
+        api.requested = [dm]
+        hub.online()
+        for _ in 0..<20 where hub.requested?.tasks.isEmpty == true { await Task.yield() }
+        XCTAssertEqual(api.requestedCalls, 2)
+        XCTAssertEqual(hub.requested?.tasks.map(\.id), [dm.id])
+        hub.removeChannel("dm")
+        XCTAssertEqual(hub.requested?.tasks, [])
+        hub.closeRequested()
+        XCTAssertNil(hub.requested)
+        // A server before M63: unsupported (the section hides).
+        let old = FakeTaskApi()
+        old.requested = nil
+        let oldHub = TaskHub(api: old, me: { "u-me" })
+        await oldHub.openRequested()
+        XCTAssertEqual(oldHub.requested?.state, .unsupported)
+    }
+
+    func testRequestedIsOrderedByDate() {
+        let late = F.task("late", dueOn: "2026-10-20", assigneeIds: ["u-kano"])
+        let soon = F.task("soon", dueOn: "2026-10-05", assigneeIds: ["u-kano"])
+        let none = F.task("none", assigneeIds: ["u-kano"])
+        let done = F.task("done", status: .done, completedAt: "2026-10-01T00:00:00Z")
+        let split = TaskRules.sortRequested([none, late, done, soon])
+        XCTAssertEqual(split.open.map(\.title), ["soon", "late", "none"])
+        XCTAssertEqual(split.done.map(\.title), ["done"])
+        XCTAssertTrue(TaskRules.isRequested(late, me: "u-me"))
+        XCTAssertFalse(TaskRules.isRequested(late, me: nil))
+        XCTAssertFalse(TaskRules.isRequested(F.task("p", channelId: nil, assigneeIds: ["u-kano"]), me: "u-me"))
+    }
+
+    func testNoticesForReviewsAreWordedLikeThePush() {
+        let nameOf: (String) -> String? = { $0 == "u-kano" ? "加納" : nil }
+        let asked = TaskAssigned(taskId: "t1", channelId: "c-lab", channelName: "lab", title: "レビュー: 1 章", byUserId: "u-kano", kind: .review)
+        XCTAssertEqual(TaskRules.noticeText(assigned: asked, nameOf: nameOf), "加納 がレビューを依頼しました: レビュー: 1 章 (#lab)")
+        let inDm = TaskAssigned(taskId: "t1", channelId: "dm", channelName: "", title: "資料", byUserId: "u-kano")
+        XCTAssertEqual(TaskRules.noticeText(assigned: inDm, nameOf: nameOf), "加納 がタスクを割り当てました: 資料")
+        let done = TaskReviewDone(taskId: "t1", channelId: "dm", channelName: "", title: "レビュー: 1 章", byUserId: "u-kano")
+        XCTAssertEqual(TaskRules.noticeText(reviewDone: done, nameOf: nameOf), "加納 がレビューを完了しました: レビュー: 1 章")
+        // task.assigned carries kind from M63; task.review_done is said through the hub.
+        let frame = JSONValue.object(["task_id": .string("t1"), "channel_id": .string("c1"), "channel_name": .string("lab"), "title": .string("x"),
+                                      "by_user_id": .string("u-kano"), "kind": .string("review")])
+        XCTAssertEqual(try frame.decode(TaskAssigned.self).kind, .review)
+        let hub = TaskHub(api: FakeTaskApi(), me: { "u-me" })
+        var said: [TaskNotice] = []
+        hub.onNotice = { said.append($0) }
+        hub.applyEvent("task.review_done", .object(["task_id": .string("t1"), "channel_id": .string("c1"), "channel_name": .string("lab"),
+                                                    "title": .string("x"), "by_user_id": .string("u-kano")]))
+        XCTAssertEqual(said, [.reviewDone(TaskReviewDone(taskId: "t1", channelId: "c1", channelName: "lab", title: "x", byUserId: "u-kano"))])
+    }
 }

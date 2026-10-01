@@ -17,6 +17,8 @@ struct TaskForm: View {
     @State private var error: String?
     @State private var confirmDelete = false
     @State private var members: [String]?
+    /// The server's answer to 「対応を始める」 / 「完了にする」, for a task outside the hub's windows (opened from a chip).
+    @State private var answered: TaskOut?
     /// The creation's idempotency key: a retry after a failure never makes a second task (SYNC_PROTOCOL.md §16).
     @State private var clientTaskId = UUID().uuidString.lowercased()
     @Environment(\.dismiss) private var dismiss
@@ -37,25 +39,38 @@ struct TaskForm: View {
     }
 
     /// The task as it is now (an event may have changed it while the form is open).
-    private var current: TaskOut? { task.flatMap { hub?.find($0.id) } ?? task }
-    private var channelId: String? { task?.channelId ?? draft.channelId }
+    private var current: TaskOut? { task.flatMap { hub?.find($0.id) } ?? answered ?? task }
+    /// The conversation whose members may be assigned: the task's, the board chosen, or (L9) the DM a new task comes from.
+    private var channelId: String? { task?.channelId ?? draft.channelId ?? draft.dmChannelId }
     private var editable: Bool { current.map(controller.canEditTask) ?? true }
     private var problem: String? { editable ? draft.problem : nil }
     private var canSave: Bool { hub?.available == true && !busy && problem == nil && editable }
     private var now: DayKey { today ?? CalendarDates.today() }
+    /// L9: a review request — 依頼先 first, 希望日 for the due date.
+    private var isReview: Bool { (current?.kind ?? draft.kind) == .review }
+    private var assigneeLabel: String { isReview ? "依頼先" : "担当者" }
 
     /// The boards a new task may go to besides 「自分のタスク」 (those I may still add to).
     private var boards: [String] { draft.boardChoices.filter(controller.canEditBoard) }
 
     private var title: String {
-        guard task != nil else { return "タスクを追加" }
+        guard task != nil else { return isReview ? "レビューを依頼" : "タスクを追加" }
+        if isReview { return "レビュー依頼" }
         return editable ? "タスクを編集" : "タスク"
+    }
+
+    /// L9 (REVIEWS.md §2.2): an assignee's 「対応を始める」 / 「完了にする」, while the task is open.
+    private var quickStatus: TaskOut? {
+        guard let current, current.channelId != nil, current.status != .done, editable, hub?.available == true,
+              let me = controller.store.me?.id, current.assigneeIds.contains(me) else { return nil }
+        return current
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                if task == nil {
+                if let quick = quickStatus { quickStatusSection(quick) }
+                if task == nil && !isReview && draft.dmChannelId == nil {
                     Section {
                         Picker("追加先", selection: Binding(get: { draft.channelId }, set: { id in
                             draft.channelId = id
@@ -115,45 +130,62 @@ struct TaskForm: View {
 
     private func boardName(_ id: String?) -> String {
         guard let id else { return "自分のタスク" }
+        if let state = controller.store.channel(id), state.channel.isDm { return channelTitle(state, store: controller.store) + " との DM" }  // L9
         return "#" + (controller.store.channel(id)?.channel.name ?? task?.channelName ?? "?") + " のボード"
+    }
+
+    /// The header over the title: the task's board (or DM); a new review request says where it is asked.
+    private var placeHeader: String? {
+        if task != nil { return boardName(task?.channelId) }
+        return isReview ? boardName(draft.channelId) : nil
     }
 
     @ViewBuilder
     private var editableFields: some View {
+        if isReview { assigneeSection }
         Section {
             TextField("題名 (例: 資料をまとめる)", text: $draft.title, axis: .vertical)
                 .lineLimit(1...4)
                 .onChange(of: draft.title) { _, _ in error = nil }
         } header: {
-            if task != nil { Text(boardName(task?.channelId)) }
+            if let placeHeader { Text(placeHeader) }
         } footer: {
-            if let problem, problem != "題名を入れてください" { Text(problem).foregroundStyle(.red) }
+            if let problem, problem != "題名を入れてください", problem != "依頼先を選んでください" { Text(problem).foregroundStyle(.red) }
         }
         Section("メモ") {
             TextField("Markdown で書けます", text: $draft.notes, axis: .vertical)
                 .lineLimit(3...10)
         }
-        Section("状態") {
-            Picker("状態", selection: $draft.status) {
-                ForEach(TaskStatus.allCases, id: \.self) { Text($0.label).tag($0) }
+        if !(task == nil && isReview) {  // a new request starts 依頼中
+            Section("状態") {
+                Picker("状態", selection: $draft.status) {
+                    ForEach(TaskStatus.allCases, id: \.self) { Text(TaskRules.statusLabel($0, kind: draft.kind)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
         }
-        Section("期限") {
+        let due = isReview ? "希望日" : "期限"
+        Section(due) {
             if draft.dueOn.isEmpty {
-                Button("期限を設定", systemImage: "calendar.badge.plus") { draft.dueOn = now }
+                Button("\(due)を設定", systemImage: "calendar.badge.plus") { draft.dueOn = now }
             } else {
-                DatePicker("期限", selection: Binding(get: { CalendarDates.parseDay(draft.dueOn) }, set: { draft.dueOn = CalendarDates.dayKey($0) }),
+                DatePicker(due, selection: Binding(get: { CalendarDates.parseDay(draft.dueOn) }, set: { draft.dueOn = CalendarDates.dayKey($0) }),
                            displayedComponents: [.date])
-                Button("期限をなくす", systemImage: "xmark.circle", role: .destructive) { draft.dueOn = "" }
+                Button("\(due)をなくす", systemImage: "xmark.circle", role: .destructive) { draft.dueOn = "" }
                     .tint(.red)
             }
         }
+        if !isReview { assigneeSection }
+    }
+
+    /// 担当者 (依頼先 for a review request, shown first): the conversation's members.
+    @ViewBuilder
+    private var assigneeSection: some View {
         if let channelId {
             Section {
                 NavigationLink {
-                    TaskAssigneePicker(controller: controller, memberIds: memberIds ?? members, selected: $draft.assigneeIds)
+                    TaskAssigneePicker(controller: controller, memberIds: memberIds ?? members, selected: $draft.assigneeIds, title: assigneeLabel)
                 } label: {
                     HStack(spacing: 8) {
                         Text(assigneeSummary)
@@ -163,13 +195,46 @@ struct TaskForm: View {
                         TaskAssigneeStack(controller: controller, ids: draft.assigneeIds, size: 24)
                     }
                 }
-                .accessibilityLabel("担当者")
+                .accessibilityLabel(assigneeLabel)
                 .accessibilityValue(assigneeSummary)
             } header: {
-                Text(draft.assigneeIds.isEmpty ? "担当者" : "担当者 (\(draft.assigneeIds.count) 人)")
+                Text(draft.assigneeIds.isEmpty ? assigneeLabel : "\(assigneeLabel) (\(draft.assigneeIds.count) 人)")
             } footer: {
-                if task == nil, controller.store.channel(channelId) != nil { Text("加えた人には通知が届きます (自分を除く)") }
+                if task == nil {
+                    if isReview {
+                        Text("選んだ人にレビューの依頼が届きます。状態はメッセージの下に表示されます")
+                    } else if draft.channelId == nil && draft.dmChannelId != nil {
+                        Text("担当者を選ぶと、この DM のメンバーにも表示されます (選ばなければ自分だけのタスク)")
+                    } else if controller.store.channel(channelId) != nil {
+                        Text("加えた人には通知が届きます (自分を除く)")
+                    }
+                }
             }
+        }
+    }
+
+    /// The assignee's big buttons: 「対応を始める」 (未着手 → 進行中) and 「完了にする」.
+    private func quickStatusSection(_ task: TaskOut) -> some View {
+        Section {
+            VStack(spacing: 10) {
+                if task.status == .todo {
+                    Button { Task { await setStatus(task, .doing) } } label: {
+                        Label("対応を始める", systemImage: "play.fill").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Button { Task { await setStatus(task, .done) } } label: {
+                    Label("完了にする", systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.large)
+            .font(.body.weight(.semibold))
+            .disabled(busy)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+        } footer: {
+            if task.kind == .review && task.ownerId != controller.store.me?.id { Text("完了にすると、依頼した人に通知が届きます") }
         }
     }
 
@@ -185,10 +250,10 @@ struct TaskForm: View {
                 .strikethrough(task.status == .done)
                 .foregroundStyle(task.status == .done ? Color.secondary : Color.primary)
                 .textSelection(.enabled)
-            LabeledContent("状態", value: task.status.label)
-            LabeledContent("期限", value: TaskRules.dueText(task.dueOn, today: now))
+            LabeledContent("状態", value: TaskRules.statusLabel(task.status, kind: task.kind))
+            LabeledContent(isReview ? "希望日" : "期限", value: TaskRules.dueText(task.dueOn, today: now))
             if task.channelId != nil {
-                LabeledContent("担当者") {
+                LabeledContent(assigneeLabel) {
                     Text(task.assigneeIds.isEmpty ? "なし" : task.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: "、"))
                 }
             }
@@ -229,7 +294,13 @@ struct TaskForm: View {
     }
 
     private func loadMembers() async {
-        guard memberIds == nil, let channelId, let api = controller.api else { return }
+        guard memberIds == nil, let channelId else { return }
+        // A DM's members are known here (L9).
+        if let state = controller.store.channel(channelId), state.channel.isDm, let ids = state.channel.dmUserIds, !ids.isEmpty {
+            members = ids
+            return
+        }
+        guard let api = controller.api else { return }
         do {
             members = try await api.members(channelId: channelId).map(\.userId)
         } catch {
@@ -249,9 +320,23 @@ struct TaskForm: View {
                 if !patch.isEmpty { _ = try await hub.update(task.id, patch) }
             } else {
                 _ = try await hub.create(draft.create(clientTaskId: clientTaskId, tz: CalendarDates.zoneId))
-                controller.notice = "タスクを作成しました"
+                controller.notice = draft.kind == .review ? "レビューを依頼しました" : "タスクを作成しました"
             }
             dismiss()
+        } catch {
+            self.error = controller.describe(error)
+        }
+    }
+
+    /// 「対応を始める」 / 「完了にする」: at once (the form stays open on the new state).
+    private func setStatus(_ task: TaskOut, _ status: TaskStatus) async {
+        guard let hub else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            answered = try await hub.update(task.id, TaskPatch(status: status))
+            draft.status = status
+            error = nil
         } catch {
             self.error = controller.describe(error)
         }

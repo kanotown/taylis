@@ -63,6 +63,9 @@ final class TaskSnapshotTests: XCTestCase {
             out.postingPolicy = policy
             store.upsertChannel(out, isMember: true)
         }
+        // L9: a DM with 佐藤 (its tasks have no channel name).
+        store.upsertChannel(ChannelOut(id: dmId, type: "dm", name: nil, topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                                       lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: ["me", "u-sato"]), isMember: true)
         let source = TaskSourceOut(messageId: "m1", channelId: labId, excerpt: "来週のゼミまでに先行研究を 3 本まとめておいてください")
         let board = [
             F.task("先行研究を 3 本まとめる", id: "b1", channelId: labId, notes: "Google Scholar で 2020 年以降", position: 1, dueOn: "2026-09-29",
@@ -87,8 +90,18 @@ final class TaskSnapshotTests: XCTestCase {
         ]
         let due = [board[0], board[1], board[2], board[4], board[5], mine[0], mine[1], mine[7],
                    F.task("報告書の提出", id: "d1", channelId: m2Id, channelName: "m2-進捗", status: .done, position: 1, dueOn: today)]
-        return (controller, FakeTaskApi(board: board, mine: mine, due: due))
+        let api = FakeTaskApi(board: board, mine: mine, due: due)
+        api.requested = [  // L9 「自分が依頼した」
+            F.task("レビュー: 修論 3 章 (Overleaf)", id: "r1", channelId: dmId, channelName: nil, position: 1, dueOn: "2026-10-09",
+                   assigneeIds: ["u-sato"], kind: .review),
+            F.task("レビュー: 学会原稿のアブストラクト", id: "r2", channelId: labId, status: .doing, position: 2, dueOn: "2026-09-30",
+                   assigneeIds: ["u-ebi", "u-tanaka"], kind: .review),
+            F.task("ポスターの印刷", id: "r3", channelId: labId, status: .done, position: 3, assigneeIds: ["u-kim"], completedAt: "2026-09-30T00:00:00Z"),
+        ]
+        return (controller, api)
     }
+
+    private let dmId = "0199a0b0-3333-7000-8000-000000000003"
 
     private func hub(_ api: FakeTaskApi) -> TaskHub { TaskHub(api: api, me: { "me" }) }
 
@@ -146,6 +159,39 @@ final class TaskSnapshotTests: XCTestCase {
             _ = try render(NavigationStack { MyTasksView(controller: controller, hub: hub(api), today: today, showDone: true) }, style: style,
                            name: "tasks-mine-\(suffix).png")
             XCTAssertEqual(api.mineCalls, 1)
+            XCTAssertEqual(api.requestedCalls, 1)
+        }
+    }
+
+    /// L9 (REVIEWS.md §2.2, §2.3): 「レビューを依頼」 from a DM, a request as its assignee sees it (the big buttons), the
+    /// chips under a message.
+    func testReviews() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            let (controller, api) = world()
+            let hub = hub(api)
+            var message = MessageState(placeholderFor: "x", channelId: dmId, senderId: "me", body: "修論 3 章を Overleaf に上げました", createdAt: "")
+            message.id = "m9"
+            var draft = TaskRules.messageReviewInit(message, channel: controller.store.channel(dmId), users: controller.store.users, groups: [:])
+            draft.assigneeIds = ["u-sato"]
+            draft.dueOn = "2026-10-09"
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .new(draft), memberIds: ["me", "u-sato"], today: today), style: style,
+                           name: "reviews-form-new-\(suffix).png")
+            let asked = F.task("レビュー: 学会原稿のアブストラクト", id: "q1", channelId: labId, ownerId: "u-ebi", dueOn: "2026-10-09", assigneeIds: ["me"],
+                               source: TaskSourceOut(messageId: "m2", channelId: labId, excerpt: "学会原稿のアブストラクト"), kind: .review)
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .task(asked), memberIds: people.map(\.0), today: today), style: style,
+                           name: "reviews-form-assignee-\(suffix).png")
+            let chips = MessageTaskChips(tasks: [
+                MessageTaskOut(id: "c1", kind: .review, status: .todo, assigneeIds: ["u-sato"], dueOn: "2026-10-09", ownerId: "me"),
+                MessageTaskOut(id: "c2", kind: .review, status: .doing, assigneeIds: ["u-ebi", "u-tanaka", "u-kim"], dueOn: "2026-09-30", ownerId: "me"),
+                MessageTaskOut(id: "c3", kind: .review, status: .done, assigneeIds: ["u-sato"], dueOn: "2026-09-20", ownerId: "me"),
+                MessageTaskOut(id: "c4", kind: .task, status: .todo, assigneeIds: ["me"], dueOn: today, ownerId: "u-ebi"),
+            ], controller: controller, onOpen: { _ in }, today: today)
+            _ = try render(VStack(alignment: .leading) { chips; Spacer() }.padding(), size: CGSize(width: 393, height: 240), style: style,
+                           name: "reviews-chips-\(suffix).png")
+            // 「自分が依頼した」 at the bottom of 「タスク」 (a tall screen to show it).
+            _ = try render(NavigationStack { MyTasksView(controller: controller, hub: hub, today: today) }, size: CGSize(width: 393, height: 1500),
+                           style: style, name: "reviews-mine-\(suffix).png")
         }
     }
 

@@ -68,7 +68,7 @@ struct TaskCardContent: View {
             if hasMeta {
                 HStack(spacing: 8) {
                     if showStatus && task.status == .doing {
-                        Text("進行中")
+                        Text(TaskRules.statusLabel(task.status, kind: task.kind))  // 対応中 for a review request (L9)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 5).padding(.vertical, 1)
@@ -365,7 +365,8 @@ struct TaskCheckbox: View {
 
 /// M56 (TASKS.md §6): 「タスク」 from the home's tile — 「自分のタスク」, my personal list (the circle completes a task,
 /// 「＋ 追加」 adds one, the completed ones fold under 「完了 (N)」), and 「自分の担当」, the shared tasks assigned to me, by
-/// channel (its name opens that channel's 「タスク」 tab).
+/// channel (its name opens that channel's 「タスク」 tab; a DM's go by the other person's name, L9), and 「自分が依頼した」
+/// (L9, GET /tasks/requested): the shared tasks I made with someone else assigned, by date.
 struct MyTasksView: View {
     static let selectionId = "tasks"
 
@@ -385,9 +386,11 @@ struct MyTasksView: View {
         let hub = taskHub
         let list = hub?.mine
         let me = controller.store.me?.id
-        let mine = TaskRules.groupMine(list?.tasks ?? [], me: me) { controller.store.channel($0)?.channel.name }
+        // A DM's tasks (L9) go by the other members' names.
+        let mine = TaskRules.groupMine(list?.tasks ?? [], me: me) { id in controller.store.channel(id).map { _ in controller.taskPlaceName(id, fallback: nil) } }
         let personal = TaskRules.splitOpenDone(mine.personal)
         let loading = list == nil || list?.state == .loading
+        let requested = hub?.requested
         List {
             if hub == nil {
                 Section { Text("接続すると表示します").foregroundStyle(.secondary) }
@@ -428,17 +431,34 @@ struct MyTasksView: View {
                     } header: {
                         VStack(alignment: .leading, spacing: 6) {
                             if index == 0 { Text("自分の担当") }
-                            Button { onOpenBoard(group.channelId) } label: {
-                                HStack(spacing: 3) {
-                                    Text(glyph(group.channelId) + group.channelName).textCase(nil)
-                                    Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                            if controller.isDmTask(group.channelId) {
+                                // L9: a DM has no board to open.
+                                Label(group.channelName, systemImage: "person").textCase(nil).font(.footnote.weight(.semibold))
+                            } else {
+                                Button { onOpenBoard(group.channelId) } label: {
+                                    HStack(spacing: 3) {
+                                        Text(glyph(group.channelId) + group.channelName).textCase(nil)
+                                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                                    }
+                                    .font(.footnote.weight(.semibold))
                                 }
-                                .font(.footnote.weight(.semibold))
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("#\(group.channelName) のタスクを開く")
                             }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("#\(group.channelName) のタスクを開く")
                         }
                     }
+                }
+            }
+            // L9 (REVIEWS.md §2.3): the shared tasks I made with someone else assigned — my review requests and the like.
+            if requested?.state != .unsupported && hub != nil {
+                let split = TaskRules.sortRequested(requested?.tasks ?? [])
+                Section("自分が依頼した") {
+                    if split.open.isEmpty && split.done.isEmpty {
+                        Text(requested == nil || requested?.state == .loading ? "読み込み中…"
+                             : requested?.state == .failed ? "読み込めませんでした。下に引いて読み直せます" : "依頼したタスクはありません")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    ForEach(split.open + split.done) { requestedRow($0) }
                 }
             }
         }
@@ -452,9 +472,24 @@ struct MyTasksView: View {
                     .disabled(hub?.available != true)
             }
         }
-        .refreshable { await taskHub?.reloadMine() }
-        .task { await taskHub?.openMine() }
-        .onDisappear { if form == nil { taskHub?.closeMine() } }
+        .refreshable {
+            let hub = taskHub
+            let requested = Task { await hub?.reloadRequested() }
+            await hub?.reloadMine()
+            await requested.value
+        }
+        .task {
+            let hub = taskHub
+            let requested = Task { await hub?.openRequested() }  // L9, beside 「自分のタスク」
+            await hub?.openMine()
+            await requested.value
+        }
+        .onDisappear {
+            if form == nil {
+                taskHub?.closeMine()
+                taskHub?.closeRequested()
+            }
+        }
         .onChange(of: controller.taskOpen, initial: true) { _, open in
             // A notification of my own task (M56): shown here.
             guard let open, open.channelId == nil, let taskId = open.taskId, let hub = taskHub else { return }
@@ -482,6 +517,28 @@ struct MyTasksView: View {
             .buttonStyle(.borderless)
             .tint(.primary)
         }
+    }
+
+    /// 「自分が依頼した」's row: the card, and under it what it is and where (a DM by the other person's name).
+    private func requestedRow(_ task: TaskOut) -> some View {
+        Button { form = .task(task) } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                TaskCardContent(controller: controller, task: task, today: now, showStatus: true)
+                Text(TaskRules.kindLabel(task.kind) + " · " + place(task) + (task.status == .done ? " · 完了" : ""))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.borderless)
+        .tint(.primary)
+    }
+
+    private func place(_ task: TaskOut) -> String {
+        guard let channelId = task.channelId else { return "自分のタスク" }
+        let name = controller.taskPlaceName(channelId, fallback: task.channelName)
+        if controller.isDmTask(channelId) || (controller.store.channel(channelId) == nil && task.channelName == nil) { return name }
+        return glyph(channelId) + name
     }
 
     private func toggleDone(_ task: TaskOut) {
@@ -534,5 +591,103 @@ struct CalendarTaskRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel((done ? "完了したタスク " : "タスク ") + task.title)
+    }
+}
+
+// MARK: under a message (L9, docs/REVIEWS.md §2.2)
+
+/// The tasks made from a message, one line each: 「レビュー依頼 · 加納 · 依頼中 · 10/9 まで」 (「タスク · …」 for 「タスクにする」);
+/// done grey, past the date red. They come with the message (`MessageOut.tasks`), so the row has its final height from
+/// the start (DEVELOPMENT.md §5). A tap opens the task (`MessageSheet.task`).
+struct MessageTaskChips: View {
+    let tasks: [MessageTaskOut]
+    @Bindable var controller: AppController
+    /// nil: shown without the tap (a preview).
+    var onOpen: ((String) -> Void)?
+    var today: DayKey?
+
+    var body: some View {
+        let now = today ?? CalendarDates.today()
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(tasks) { task in
+                let names = task.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }
+                let chip = TaskRules.chip(task, names: names, today: now)
+                Button { onOpen?(task.id) } label: { face(chip, kind: task.kind) }
+                    .buttonStyle(.plain)
+                    .disabled(onOpen == nil)
+                    .accessibilityLabel(chip.text + (chip.tone == .overdue ? "、期限を過ぎています" : ""))
+                    .accessibilityHint(onOpen == nil ? "" : "タスクを開く")
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func face(_ chip: TaskRules.Chip, kind: TaskKind) -> some View {
+        let tint: Color = switch chip.tone {
+        case .open: .accentColor
+        case .overdue: .red
+        case .done: .secondary
+        }
+        let icon = chip.tone == .done ? "checkmark.circle" : kind == .review ? "text.badge.checkmark" : "checklist"
+        return HStack(spacing: 5) {
+            Image(systemName: icon).font(.caption).foregroundStyle(tint)
+            Text(chip.text)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(chip.tone == .open ? Color.primary : tint)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(chip.tone == .overdue ? Color.red.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(chip.tone == .overdue ? Color.red.opacity(0.55) : Color.secondary.opacity(0.3)))
+        .contentShape(Rectangle())
+    }
+}
+
+/// A chip's task: read (held in a window, else from the server), then its form — where an assignee finds
+/// 「対応を始める」 / 「完了にする」.
+struct TaskDetailLoader: View {
+    @Bindable var controller: AppController
+    let taskId: String
+    @State private var task: TaskOut?
+    @State private var error: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            if let task {
+                TaskForm(controller: controller, hub: controller.taskHub, target: .task(task))
+            } else {
+                NavigationStack {
+                    VStack(spacing: 12) {
+                        if let error {
+                            Text(error).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        } else {
+                            ProgressView("読み込み中…")
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationTitle("タスク")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                    }
+                }
+            }
+        }
+        .task(id: taskId) { await load() }
+    }
+
+    private func load() async {
+        guard let hub = controller.taskHub, hub.available else {
+            error = "接続すると表示します"
+            return
+        }
+        do {
+            task = try await hub.load(taskId)
+        } catch {
+            self.error = controller.describe(error)
+        }
     }
 }

@@ -1051,6 +1051,10 @@ struct MessageRow: View {
                     CollectionChipView(collection: collection, meId: store.me?.id,
                                        onOpen: present.map { present in { present(MessageSheet(kind: .collection, message: message)) } })
                 }
+                if !message.tasks.isEmpty && !message.deleted {  // L9: its review requests and shared tasks
+                    MessageTaskChips(tasks: message.tasks, controller: controller,
+                                     onOpen: present.map { present in { id in present(MessageSheet(kind: .task, message: message, taskId: id)) } })
+                }
                 if !message.reactions.isEmpty {
                     ChipsLayout(spacing: 6) {
                         ForEach(message.reactions, id: \.emoji) { reaction in

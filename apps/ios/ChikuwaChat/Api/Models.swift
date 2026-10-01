@@ -507,11 +507,13 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var acks: [AckOut] = []
     /// L6 (M59): a recurring post that collects replies; nil otherwise and from older servers.
     var collection: CollectionOut? = nil
+    /// L9 (M63): the shared tasks made from it (review requests, 「タスクにする」), oldest first; none from older servers.
+    var tasks: [MessageTaskOut] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection
+        case priority, ackRequested, acks, collection, tasks
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -620,6 +622,7 @@ extension MessageOut {
         ackRequested = try c.decodeIfPresent(Bool.self, forKey: .ackRequested) ?? false
         acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
+        tasks = MessageTaskOut.list(c, forKey: .tasks)
     }
 }
 

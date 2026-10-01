@@ -6,6 +6,8 @@ import Observation
 protocol TaskApi: AnyObject {
     func listTasks(channelId: String, includeDone: String) async throws -> [TaskOut]
     func myTasks() async throws -> [TaskOut]
+    /// L9: 「自分が依頼した」.
+    func requestedTasks() async throws -> [TaskOut]
     func dueTasks(from: DayKey, to: DayKey) async throws -> [TaskOut]
     func task(id: String) async throws -> TaskOut
     func createTask(_ body: TaskCreate) async throws -> TaskOut
@@ -36,6 +38,8 @@ struct TaskList: Equatable {
 enum TaskNotice: Equatable {
     case assigned(TaskAssigned)
     case due(TaskDue)
+    /// L9: an assignee completed my review request.
+    case reviewDone(TaskReviewDone)
 }
 
 /// M56: the tasks on this device (TASKS.md §4, SYNC_PROTOCOL.md §16), as the web's TaskHub (apps/desktop/src/sync/tasks.ts).
@@ -49,6 +53,8 @@ enum TaskNotice: Equatable {
 final class TaskHub {
     private(set) var boards: [String: TaskList] = [:]
     private(set) var mine: TaskList?
+    /// L9: 「自分が依頼した」 (GET /tasks/requested).
+    private(set) var requested: TaskList?
     private(set) var due: [String: TaskList] = [:]
     /// A read in flight per window: an older answer never replaces a newer one.
     @ObservationIgnored private var reads: [String: Int] = [:]
@@ -93,6 +99,23 @@ final class TaskHub {
     func closeMine() {
         mine = nil
         reads["mine"] = nil
+    }
+
+    /// L9: 「自分が依頼した」 is on screen (beside 「自分のタスク」).
+    func openRequested() async {
+        if requested?.state == .ready { return }
+        requested = TaskList(state: .loading, tasks: requested?.tasks ?? [])
+        await readRequested()
+    }
+
+    func closeRequested() {
+        requested = nil
+        reads["requested"] = nil
+    }
+
+    func reloadRequested() async {
+        guard requested != nil else { return }
+        await readRequested()
     }
 
     /// A calendar shows the dates [from, to): the tasks due then.
@@ -162,6 +185,19 @@ final class TaskHub {
         } catch {
             guard reads["mine"] == ticket, mine != nil else { return }
             mine?.state = failure(error)
+        }
+    }
+
+    private func readRequested() async {
+        guard let api, requested != nil else { return }
+        let ticket = ticket("requested")
+        do {
+            let tasks = try await api.requestedTasks()
+            guard reads["requested"] == ticket, requested != nil else { return }
+            requested = TaskList(state: .ready, tasks: tasks)
+        } catch {
+            guard reads["requested"] == ticket, requested != nil else { return }
+            requested?.state = failure(error)
         }
     }
 
@@ -250,6 +286,9 @@ final class TaskHub {
         case "task.due":
             guard let payload = try? data.decode(TaskDue.self) else { return }
             onNotice?(.due(payload))
+        case "task.review_done":  // L9
+            guard let payload = try? data.decode(TaskReviewDone.self) else { return }
+            onNotice?(.reviewDone(payload))
         default:
             break
         }
@@ -269,6 +308,9 @@ final class TaskHub {
         if let list = mine, newer(list.tasks) {
             mine?.tasks = TaskRules.isMine(task, me: me()) ? TaskRules.upsert(list.tasks, task) : TaskRules.remove(list.tasks, task.id)
         }
+        if let list = requested, newer(list.tasks) {
+            requested?.tasks = TaskRules.isRequested(task, me: me()) ? TaskRules.upsert(list.tasks, task) : TaskRules.remove(list.tasks, task.id)
+        }
         for (key, window) in due where newer(window.tasks) {
             let fits = TaskRules.dueInRange(task, from: window.from, to: window.to)
             let held = window.tasks.contains { $0.id == task.id }
@@ -282,6 +324,7 @@ final class TaskHub {
             boards[channelId]?.tasks = TaskRules.remove(board.tasks, taskId)
         }
         if let list = mine, list.tasks.contains(where: { $0.id == taskId }) { mine?.tasks = TaskRules.remove(list.tasks, taskId) }
+        if let list = requested, list.tasks.contains(where: { $0.id == taskId }) { requested?.tasks = TaskRules.remove(list.tasks, taskId) }
         for (key, window) in due where window.tasks.contains(where: { $0.id == taskId }) {
             due[key]?.tasks = TaskRules.remove(window.tasks, taskId)
         }
@@ -292,6 +335,7 @@ final class TaskHub {
             if let task = board.tasks.first(where: { $0.id == taskId }) { return task }
         }
         if let task = mine?.tasks.first(where: { $0.id == taskId }) { return task }
+        if let task = requested?.tasks.first(where: { $0.id == taskId }) { return task }
         for window in due.values {
             if let task = window.tasks.first(where: { $0.id == taskId }) { return task }
         }
@@ -304,6 +348,7 @@ final class TaskHub {
     func online() {
         for channelId in boards.keys { Task { await readBoard(channelId) } }
         if mine != nil { Task { await readMine() } }
+        if requested != nil { Task { await readRequested() } }
         for key in due.keys { Task { await readDue(key) } }
     }
 
@@ -313,6 +358,9 @@ final class TaskHub {
         if let list = mine, list.tasks.contains(where: { $0.channelId == channelId }) {
             mine?.tasks = list.tasks.filter { $0.channelId != channelId }
         }
+        if let list = requested, list.tasks.contains(where: { $0.channelId == channelId }) {
+            requested?.tasks = list.tasks.filter { $0.channelId != channelId }
+        }
         for (key, window) in due where window.tasks.contains(where: { $0.channelId == channelId }) {
             due[key]?.tasks = window.tasks.filter { $0.channelId != channelId }
         }
@@ -321,6 +369,7 @@ final class TaskHub {
     func stop() {
         boards = [:]
         mine = nil
+        requested = nil
         due = [:]
         reads = [:]
     }
