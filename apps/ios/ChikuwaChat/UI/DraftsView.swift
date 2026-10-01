@@ -60,6 +60,9 @@ struct DraftsView: View {
                             Text(entry.draft.text.isEmpty ? "(本文なし)" : entry.draft.text).font(.subheadline).lineLimit(2)
                         }
                         .padding(.vertical, 2)
+                        // The whole row is the target, not only the text (a plain button hit-tests its drawn parts).
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }

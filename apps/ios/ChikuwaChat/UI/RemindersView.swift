@@ -47,6 +47,8 @@ struct RemindersView: View {
                 Text(row.preview).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())  // the whole row, not only the text
         }
         .buttonStyle(.plain)
         .swipeActions {

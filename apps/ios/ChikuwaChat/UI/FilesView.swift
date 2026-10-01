@@ -122,6 +122,7 @@ struct FileRowView: View {
             AttachmentFileButton(attachment: attachment) { await controller.downloadAttachment(attachment) }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())  // the Spacer counts too: the whole row opens the file
         .task(id: attachment.id) {
             guard attachment.hasThumbnail, image == nil else { return }
             if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
