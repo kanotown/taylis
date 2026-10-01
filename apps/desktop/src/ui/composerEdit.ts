@@ -138,5 +138,26 @@ export function changedRange(before: string, after: string): { start: number; en
   return { start, end: before.length - tail, text: after.slice(start, after.length - tail) };
 }
 
+/**
+ * Makes the text area read `next` as if it had been typed: the smallest changed range (changedRange) selected, then
+ * replaced with `execCommand("insertText")`, which Chrome / WebView2 and WebKit (Tauri on macOS) put on the text area's
+ * own undo stack, merged with typing, and announce with an `input` event (the composer's draft or the canvas follows
+ * through onChange). The command is deprecated but has no replacement for this, and a stack of our own would fight the
+ * native one (the Edit menu, IME). False where the browser does not take it (jsdom, a hidden text area): the caller
+ * sets the text instead. Used by the composer and the canvas editor.
+ */
+export function replaceThroughBrowser(el: HTMLTextAreaElement, next: string): boolean {
+  if (el.value === next) return true;
+  el.focus();
+  if (document.activeElement !== el || typeof document.execCommand !== "function") return false;
+  const { start, end, text } = changedRange(el.value, next);
+  el.setSelectionRange(start, end);
+  try {
+    return document.execCommand(text ? "insertText" : "delete", false, text) && el.value === next;
+  } catch {
+    return false;
+  }
+}
+
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;

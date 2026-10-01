@@ -7,7 +7,7 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
-import { changedRange, continueStructure, type EditState, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { continueStructure, type EditState, indentListLine, insertLink, insideFence, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
@@ -780,26 +780,6 @@ export function Composer({
 }
 
 type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut };
-
-/**
- * Makes the text area read `next` as if it had been typed: the smallest changed range (changedRange) selected, then
- * replaced with `execCommand("insertText")`, which Chrome / WebView2 and WebKit (Tauri on macOS) put on the text area's
- * own undo stack, merged with typing, and announce with an `input` event (the draft follows through onChange). The
- * command is deprecated but has no replacement for this, and a stack of our own would fight the native one (the Edit
- * menu, IME). False where the browser does not take it (jsdom, a hidden text area): the caller sets the draft instead.
- */
-function replaceThroughBrowser(el: HTMLTextAreaElement, next: string): boolean {
-  if (el.value === next) return true;
-  el.focus();
-  if (document.activeElement !== el || typeof document.execCommand !== "function") return false;
-  const { start, end, text } = changedRange(el.value, next);
-  el.setSelectionRange(start, end);
-  try {
-    return document.execCommand(text ? "insertText" : "delete", false, text) && el.value === next;
-  } catch {
-    return false;
-  }
-}
 
 /** A popover anchor at the first of these elements that is shown (the others folded away by the composer's width). */
 function useShownAnchor(...elements: Array<RefObject<HTMLElement | null>>): RefObject<{ getBoundingClientRect(): DOMRect }> {

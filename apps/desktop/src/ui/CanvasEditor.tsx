@@ -1,17 +1,19 @@
 /**
  * The canvas's Markdown source editor (CANVAS.md §5 「編集」): a text area with a toolbar (headings, emphasis, lists,
- * checklists, quotes, code, links, rules, mentions), the composer's list continuation and `@` completion. Mentions show
- * as `@username` and are stored as `<@uuid>` (§4.2). Every change goes to the save loop (sync/canvasSave.ts); a body the
+ * checklists, quotes, code, links, mentions, rules, tables (M57), images), the composer's list continuation and `@`
+ * completion. Mentions show as `@username` and are stored as `<@uuid>` (§4.2). Every change goes to the save loop (sync/canvasSave.ts); a body the
  * loop replaces (someone else's merged edits, a box ticked in the preview) comes back here with the caret kept.
  */
-import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, TextQuote } from "lucide-react";
+import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
 import type { CanvasSaver } from "../sync/canvasSave";
 import type { AppController } from "../state/app";
+import { anchorLine, findTable, insertTable, lineOf, lineStart, NEW_TABLE, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
+import { CanvasTableDialog } from "./CanvasTableDialog";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, setHeading, toggleTasks } from "./canvasText";
-import { continueStructure, type EditState, indentListLine, insertLink, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { continueStructure, type EditState, indentListLine, insertLink, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
 
@@ -117,21 +119,88 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   /** Where the caret was when the text area lost the focus (a toolbar's file picker takes it). */
   const lastCaret = useRef<number | null>(null);
 
-  /** A formatting edit on the current selection; focus and selection come back afterwards. */
-  const edit = (transform: (state: EditState) => EditState | null): boolean => {
+  /**
+   * Puts `next` in the text area through the browser's own editing (replaceThroughBrowser, as the composer does), so
+   * ⌘Z / Ctrl+Z takes an edit back as one step and the text reaches the save loop through onChange; where the browser
+   * does not take it (jsdom), the text is set. The selection is set to `next`'s.
+   */
+  const put = (next: EditState) => {
     const el = area.current;
-    if (!el) return false;
-    const next = transform({ text, start: el.selectionStart ?? text.length, end: el.selectionEnd ?? text.length });
-    if (!next) return false;
-    change(next.text);
+    if (el && replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
+    else change(next.text);
     setCaret(next.start);
+  };
+
+  /** `put`, then focus and selection come back on the next frame (a toolbar button or a dialog took them). */
+  const apply = (next: EditState) => {
+    put(next);
     const restore = () => {
-      el.focus();
-      el.setSelectionRange(next.start, next.end);
+      area.current?.focus();
+      area.current?.setSelectionRange(next.start, next.end);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
     else setTimeout(restore, 0);
+  };
+
+  /** A formatting edit on the current selection. */
+  const edit = (transform: (state: EditState) => EditState | null): boolean => {
+    const el = area.current;
+    if (!el) return false;
+    const value = el.value;
+    const next = transform({ text: value, start: el.selectionStart ?? value.length, end: el.selectionEnd ?? value.length });
+    if (!next) return false;
+    apply(next);
     return true;
+  };
+
+  // M57 (§17): 「表」 opens the table at the caret in the table editor, or a new 3 × 2 table to go after the caret's line.
+  // 「完了」 writes the table into the text as one edit (auto-save, the merge and undo as for typing); a new table goes
+  // in only then. 「キャンセル」 changes nothing, and neither does 「完了」 on a table left unedited (no tidying).
+  const [tableEdit, setTableEdit] = useState<{ table: Table; isNew: boolean } | null>(null);
+  const tableSession = useRef<{
+    table: Table;
+    /** An existing table: where it was. A new one: the caret's line (its number and text) it goes after. */
+    place: { origin: TableOrigin } | { line: number; content: string };
+    outcome: Table | "cancel" | null;
+  } | null>(null);
+  const openTable = () => {
+    const el = area.current;
+    if (!el) return;
+    const value = el.value;
+    const line = lineOf(value, el.selectionStart ?? value.length);
+    const range = findTable(value, line);
+    if (range) {
+      const lines = value.split("\n").slice(range[0], range[1] + 1);
+      const table = parseTable(lines);
+      tableSession.current = { table, place: { origin: { range, lines } }, outcome: null };
+      setTableEdit({ table, isNew: false });
+    } else {
+      tableSession.current = { table: NEW_TABLE, place: { line, content: value.split("\n")[line] ?? "" }, outcome: null };
+      setTableEdit({ table: NEW_TABLE, isNew: true });
+    }
+  };
+  /** After the dialog has gone (the focus handed back): the table written in, the caret at its first line. */
+  const finishTable = () => {
+    const session = tableSession.current;
+    const el = area.current;
+    if (!session || session.outcome === null || !el) return;
+    tableSession.current = null;
+    const { outcome, place } = session;
+    const value = el.value;
+    if (outcome === "cancel" || ("origin" in place && sameTable(outcome, session.table))) {
+      el.focus();
+      return;
+    }
+    const out = "origin" in place
+      ? writeBackTable(value, place.origin, outcome)
+      : { ...insertTable(value, anchorLine(value, place.line, place.content), outcome), inserted: false };
+    const at = lineStart(out.text, out.range[0]);
+    apply({ text: out.text, start: at, end: at });
+    if (out.inserted) controller.setNotice("編集中に表がほかの人に変更されていたので、編集した表はその下に新しい表として入れました");
+  };
+  const closeTable = (outcome: Table | "cancel") => {
+    if (tableSession.current) tableSession.current.outcome = outcome;
+    setTableEdit(null);
   };
 
   const query = mentionQuery(text, caret);
@@ -172,6 +241,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       return { text: s.text.slice(0, s.start) + lead + s.text.slice(s.end), start: s.start + lead.length, end: s.start + lead.length };
     }) },
     { icon: <Minus size={16} />, label: "区切り線", run: () => edit(insertRule) },
+    { icon: <TableIcon size={16} />, label: "表", run: openTable },
     { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => picker.current?.click() },
   ];
 
@@ -294,6 +364,15 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         <div role="status" className="pointer-events-none absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-muted shadow">
           <Loader2 size={12} className="animate-spin" /> 画像をアップロード中… ({uploading})
         </div>
+      )}
+      {tableEdit && (
+        <CanvasTableDialog
+          initial={tableEdit.table}
+          isNew={tableEdit.isNew}
+          onDone={(table) => closeTable(table)}
+          onCancel={() => closeTable("cancel")}
+          onClosed={finishTable}
+        />
       )}
       {candidates.length > 0 && (
         <ul className="absolute bottom-3 left-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="メンションの候補">
