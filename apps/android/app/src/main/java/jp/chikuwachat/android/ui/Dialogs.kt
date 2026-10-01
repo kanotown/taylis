@@ -284,7 +284,7 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(user?.displayName ?: "?")
-                            StatusEmoji(user, modifier = Modifier.padding(start = 6.dp))
+                            StatusEmoji(user, controller, version, modifier = Modifier.padding(start = 6.dp))
                             store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
                         }
                         Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

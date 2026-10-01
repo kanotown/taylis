@@ -203,7 +203,9 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 48.dp),
             ) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(status?.first?.ifEmpty { null } ?: "😀", style = MaterialTheme.typography.titleMedium)
+                    // A custom status emoji is its image (SectionIcon), not its `:name:`.
+                    status?.first?.ifEmpty { null }?.let { SectionIcon(controller, it, version, size = 22.dp) }
+                        ?: Text("😀", style = MaterialTheme.typography.titleMedium)
                     Column(Modifier.padding(start = 10.dp).weight(1f)) {
                         Text(
                             status?.second?.ifEmpty { null } ?: if (status != null) "ステータス" else "ステータスを更新",
@@ -385,7 +387,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
             OutlinedButton(onClick = { pickingEmoji = true }, modifier = Modifier.size(56.dp), contentPadding = PaddingValues(0.dp),
                 shape = RoundedCornerShape(12.dp)) {
                 if (emoji.isEmpty()) Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字を選ぶ")
-                else Text(emoji, fontSize = 24.sp, modifier = Modifier.semantics { contentDescription = "絵文字を変更" })
+                else Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "絵文字を変更" }) { SectionIcon(controller, emoji, version, size = 28.dp) }
             }
             if (emoji.isNotEmpty()) TextButton(onClick = { emoji = "" }) { Text("外す") }
             Spacer(Modifier.width(8.dp))

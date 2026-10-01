@@ -91,7 +91,7 @@ struct YouView: View {
         let status = activeStatus(mePublic)
         return HStack(spacing: 12) {
             if let status, !status.emoji.isEmpty {
-                Text(status.emoji).font(.title3).frame(width: 28)
+                StatusGlyph(controller: controller, emoji: status.emoji, size: 24).font(.title3).frame(width: 28)
             } else {
                 Image(systemName: "face.smiling").font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
             }

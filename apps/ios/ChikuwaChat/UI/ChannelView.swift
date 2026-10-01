@@ -594,7 +594,8 @@ struct ChannelView: View {
                                 Text(channelTitle(channel, store: controller.store)).font(.headline).lineLimit(1)
                             }
                             if let subtitle = headerSubtitle(channel) {
-                                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                // The other person's status emoji may be a custom one: its image, not its `:name:`.
+                                StatusGlyph.text(subtitle, controller: controller, height: 14).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
                     }
@@ -994,7 +995,7 @@ struct MessageRow: View {
                             Text("BOT").font(.caption2).bold().foregroundStyle(.secondary)
                                 .padding(.horizontal, 4).padding(.vertical, 1).background(Color.secondary.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 3))
                         }
-                        StatusEmojiView(user: store.users[message.senderId])
+                        StatusEmojiView(user: store.users[message.senderId], controller: controller)
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if message.editedAt != nil {
                             if isMine {

@@ -183,7 +183,7 @@ struct DMListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(store.me?.displayName ?? "…").lineLimit(1)
-                    StatusEmojiView(user: store.me?.asPublic)
+                    StatusEmojiView(user: store.me?.asPublic, controller: controller)
                     Spacer(minLength: 4)
                 }
                 Text(DMList.fallbackLine(memberCount: 1, status: activeStatus(store.me?.asPublic), presence: store.presenceOf(meId)))
@@ -213,7 +213,7 @@ struct DMListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
-                    if let statusId { StatusEmojiView(user: store.statusUser(statusId)) }
+                    if let statusId { StatusEmojiView(user: store.statusUser(statusId), controller: controller) }
                     if channel.isMuted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                     Spacer(minLength: 4)
                     if let time = DMList.timeLabel(channel.channel.lastMessageAt) {

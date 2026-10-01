@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -188,7 +189,12 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState) {
+        // The channel's 8 dp above and below (ChannelPane): the newest reply sits as far above the input as a channel's
+        // newest message (2026-10-02: the thread had none).
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState,
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
             if (parent != null) {
                 item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                 item(key = "divider") {

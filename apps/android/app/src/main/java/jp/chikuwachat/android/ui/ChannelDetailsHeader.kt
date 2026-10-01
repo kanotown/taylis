@@ -159,7 +159,7 @@ fun ChannelDetailsHeader(
         val count = memberCount ?: channel.channel.memberCount
         val sub = if (isChannel) ChannelDetailsHeader.memberLine(count) else if (others.size == 1) dmPresenceSubtitle(channel, store) ?: "" else ChannelDetailsHeader.memberLine(count)
         if (sub.isNotEmpty()) {
-            Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+            EmojiLineText(sub, controller, version, MaterialTheme.typography.bodyMedium, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.padding(top = 2.dp))
         }
         channel.channel.topic?.takeIf { isChannel && it.isNotBlank() }?.let { topic ->
             Text(

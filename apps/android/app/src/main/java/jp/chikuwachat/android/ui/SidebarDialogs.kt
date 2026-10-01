@@ -122,13 +122,14 @@ fun SectionActionsDialog(
 }
 
 /**
- * A section's icon (M26): an emoji, or a custom emoji drawn from its image (its `:name:` until the image is here).
+ * A section's icon (M26), also a status emoji: an emoji, or a custom emoji drawn from its image (its `:name:` until the
+ * image is here).
  * `version` (M28c): the image lands in the Store after the first draw; without it strong skipping kept the `:name:`.
  */
 @Composable
 fun SectionIcon(controller: AppController, emoji: String?, version: Int, size: Dp = 18.dp) {
     if (emoji == null) return
-    val custom = remember(version, emoji) { CustomEmoji.name(emoji)?.let { controller.store.customEmoji[it] } }
+    val custom = remember(version, emoji) { CustomEmoji.of(emoji, controller.store.customEmoji) }
     val image = remember(version, custom) { custom?.let { controller.store.emojiImages[it.id] } }
     if (custom != null && image == null) LaunchedEffect(custom.id) { controller.loadEmojiImage(custom) }
     if (image != null) EmojiImage(image, custom?.let { controller.store.emojiAnimations[it.id] }, contentDescription = null, modifier = Modifier.size(size))

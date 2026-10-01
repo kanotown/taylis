@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection } from "./roster";
+import { EmojiText } from "./UserPopover";
 import { activeStatus } from "./users";
 
 /**
@@ -70,7 +71,8 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       {user.id === me && <span className="text-xs text-muted">自分</span>}
                     </div>
                     <div className="truncate text-xs text-muted">
-                      {[user.title, line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? "受信 Webhook" : presence === "online" ? "オンライン" : presence === "away" ? "離席中" : "オフライン")}
+                      {/* A custom status emoji as its image (EmojiText), not its `:name:`. */}
+                      <EmojiText controller={controller} text={[user.title, line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? "受信 Webhook" : presence === "online" ? "オンライン" : presence === "away" ? "離席中" : "オフライン")} />
                     </div>
                   </div>
                   {user.id !== me && user.role !== "bot" && (

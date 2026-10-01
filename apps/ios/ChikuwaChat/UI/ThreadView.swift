@@ -75,8 +75,14 @@ struct ThreadView: View {
                     // Upside down like a conversation (UpsideDownList.swift): the newest reply stays above the input as
                     // the keyboard comes and goes, and a new one pushes the others up by itself.
                     ScrollView {
-                        rowStack(viewportHeight: viewport.size.height)
-                        .padding(.vertical) // the side margin is each row's (margin)
+                        // The end marker outside the replies' stack, and the channel's 8 pt: under the newest reply the
+                        // same gap as under a channel's newest message (2026-10-02: the default padding of 16 and the
+                        // stack's 12 between the marker and that reply left 20 pt more).
+                        VStack(alignment: .leading, spacing: 0) {
+                            EndMarker(viewportHeight: viewport.size.height) { atBottom = $0 }.id(UpsideDown.newest)
+                            rowStack()
+                        }
+                        .padding(.vertical, 8) // the side margin is each row's (margin)
                         // MOBILE_POLISH.md C7: a thread shorter than the screen starts at the top (the parent under the
                         // bar, the replies after it; Slack), not at the bottom under a gap. At least a screen tall, with
                         // the rows at its far end — the screen's top in the flipped list. Layout only: a longer thread
@@ -192,19 +198,18 @@ struct ThreadView: View {
     private static let margin: CGFloat = 16
 
     @ViewBuilder
-    private func rowStack(viewportHeight: CGFloat) -> some View {
+    private func rowStack() -> some View {
         if replies.count > Self.lazyFrom {
-            LazyVStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }.scrollTargetLayout()
+            LazyVStack(alignment: .leading, spacing: 12) { rows() }.scrollTargetLayout()
         } else {
-            VStack(alignment: .leading, spacing: 12) { rows(viewportHeight: viewportHeight) }.scrollTargetLayout()
+            VStack(alignment: .leading, spacing: 12) { rows() }.scrollTargetLayout()
         }
     }
 
-    /// Upside down (the list is flipped): the end marker, the replies newest first, then the reply count and the parent;
-    /// each flipped back the right way up.
+    /// Upside down (the list is flipped): the replies newest first (the end marker is before them, in body), then the
+    /// reply count and the parent; each flipped back the right way up.
     @ViewBuilder
-    private func rows(viewportHeight: CGFloat) -> some View {
-        EndMarker(viewportHeight: viewportHeight) { atBottom = $0 }.id(UpsideDown.newest)
+    private func rows() -> some View {
         if let parent {
             let compactIds = Timeline.threadCompactIds(replies, firstUnreadId: firstUnreadId, grouping: grouping)
             ForEach(replies.reversed(), id: \.rowKey) { reply in
@@ -337,8 +342,8 @@ struct ThreadView: View {
     }
 }
 
-/// The end of the thread's list, and whether it is on screen: from where it is, since a VStack (rowStack) makes it
-/// once, on screen or not, and its onAppear said nothing.
+/// The end of the thread's list, and whether it is on screen: from where it is, since a plain VStack (before the rows,
+/// in body) makes it once, on screen or not, and its onAppear said nothing.
 private struct EndMarker: View {
     let viewportHeight: CGFloat
     let onScreen: (Bool) -> Void
@@ -346,7 +351,7 @@ private struct EndMarker: View {
     var body: some View {
         Color.clear.frame(height: 1)
             .onGeometryChange(for: Bool.self) { $0.frame(in: .named("threadViewport")).minY <= viewportHeight + 1 } action: { onScreen($0) }
-            .onDisappear { onScreen(false) } // a lazy thread let go of it
+            .onDisappear { onScreen(false) } // the thread closed
     }
 }
 

@@ -1,8 +1,9 @@
 import { MessageSquare, Pencil } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
+import { CustomEmojiImage, customEmojiName, splitCustomEmoji } from "./customEmoji";
 import { useStoreUpdates } from "./hooks";
 import { rosterSummary } from "./roster";
 import { expiryLabel } from "./users";
@@ -61,7 +62,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
         )}
         {status && (
           <div className="border-b border-line px-4 py-2.5 text-sm">
-            <span className="mr-1.5">{status.emoji}</span>
+            {status.emoji && <span className="mr-1.5"><StatusGlyph controller={controller} emoji={status.emoji} size={18} /></span>}
             {status.text}
             {expiryLabel(user?.status_expires_at) && <span className="ml-2 text-xs text-muted">{expiryLabel(user?.status_expires_at)}</span>}
           </div>
@@ -91,8 +92,37 @@ export function StatusEmoji({ controller, userId, className }: { controller: App
   const label = [status?.text, quiet ? "通知を一時停止中" : null].filter(Boolean).join(" · ");
   return (
     <span className={cn("text-[13px] leading-none", className)} title={label} aria-label={label}>
-      {status?.emoji}
+      {status?.emoji && <StatusGlyph controller={controller} emoji={status.emoji} size={14} />}
       {quiet && "🔕"}
     </span>
+  );
+}
+
+/** The custom emoji a status emoji is (`:name:`, picked from the emoji picker), when this workspace has it. */
+export function statusCustomEmoji(controller: AppController, emoji: string) {
+  const name = customEmojiName(emoji.trim());
+  return name ? controller.store.customEmoji.get(name) : undefined;
+}
+
+/**
+ * A status emoji: a custom one as its image, as on a reaction (2026-10-02: it showed as its `:name:`); a standard one,
+ * or a name this workspace does not have, as text.
+ */
+export function StatusGlyph({ controller, emoji, size = 14 }: { controller: AppController; emoji: string; size?: number | string }) {
+  const custom = statusCustomEmoji(controller, emoji);
+  return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={size} /> : <>{emoji}</>;
+}
+
+/** A line with a status in it (a DM's subtitle, the directory): custom emoji as their images, as in a message. */
+export function EmojiText({ controller, text, size = "1.15em" }: { controller: AppController; text: string; size?: number | string }) {
+  const custom = controller.store.customEmoji;
+  return (
+    <>
+      {splitCustomEmoji(text, custom).map((piece, index) => {
+        if (typeof piece === "string") return <Fragment key={index}>{piece}</Fragment>;
+        const emoji = custom.get(piece.name);
+        return emoji ? <CustomEmojiImage key={index} controller={controller} emoji={emoji} size={size} /> : <Fragment key={index}>:{piece.name}:</Fragment>;
+      })}
+    </>
   );
 }

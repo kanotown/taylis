@@ -49,10 +49,7 @@ struct EmojiPickerView: View {
     /// 「よく使う」 that can be shown: a custom emoji only while it exists (testers, 2026-09-29: a removed or unknown
     /// `:name:` was shown as its text, wider than its cell).
     private var frequentShown: [String] {
-        EmojiUsage.decode(usageRaw, recent: recentRaw).frequent.filter { glyph in
-            guard let name = CustomEmoji.name(of: glyph) else { return true }
-            return custom.contains { $0.name == name }
-        }
+        EmojiUsage.shown(EmojiUsage.decode(usageRaw, recent: recentRaw).frequent, customNames: Set(custom.map(\.name)))
     }
 
     @ViewBuilder
@@ -75,8 +72,9 @@ struct EmojiPickerView: View {
 
     @ViewBuilder
     private func recentCell(_ glyph: String) -> some View {
-        if let name = CustomEmoji.name(of: glyph), let emoji = custom.first(where: { $0.name == name }) {
-            customCell(emoji)
+        if let name = CustomEmoji.name(of: glyph) {
+            // frequentShown keeps only known ones; one gone meanwhile shows nothing rather than its text.
+            if let emoji = custom.first(where: { $0.name == name }) { customCell(emoji) }
         } else {
             Button(glyph) { pick(glyph) }.font(.title2).frame(maxWidth: .infinity, minHeight: 36)
         }

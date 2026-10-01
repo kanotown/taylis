@@ -171,7 +171,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
                     )
                 }
             }
-            items(rows, key = { it.id }) { channel -> DmRow(channel, store, version, now, onClick = { onOpen(channel.id) }) }
+            items(rows, key = { it.id }) { channel -> DmRow(channel, controller, version, now, onClick = { onOpen(channel.id) }) }
         }
         ExtendedFloatingActionButton(
             onClick = onNew,
@@ -198,7 +198,8 @@ private fun SelfNotesPlaceholderRow(meId: String, name: String, busy: Boolean, o
 
 /** `version`: the names, presence and statuses come from the Store, not from `channel`. */
 @Composable
-private fun DmRow(channel: ChannelState, store: Store, version: Int, now: ZonedDateTime, onClick: () -> Unit) {
+private fun DmRow(channel: ChannelState, controller: AppController, version: Int, now: ZonedDateTime, onClick: () -> Unit) {
+    val store = controller.store
     val meId = store.me?.id
     val title = remember(version, channel) { channelTitle(channel, store) }
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
@@ -242,7 +243,7 @@ private fun DmRow(channel: ChannelState, store: Store, version: Int, now: ZonedD
                         title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    StatusEmoji(statusUser, modifier = Modifier.padding(start = 4.dp))
+                    StatusEmoji(statusUser, controller, version, modifier = Modifier.padding(start = 4.dp))
                 }
                 if (time != null) {
                     Text(

@@ -58,7 +58,7 @@ struct DirectoryView: View {
                     if user.role == "bot" { Text("BOT").font(.caption2).bold().foregroundStyle(.secondary) }
                     if user.dndUntil != nil { Text("🔕").font(.caption2) }
                 }
-                Text(subtitle(user)).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                StatusGlyph.text(subtitle(user), controller: controller, height: 16).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             if user.id != controller.store.me?.id && user.role != "bot" {

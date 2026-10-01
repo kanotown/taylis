@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
     val store = controller.store
+    // Custom status emoji images land in the Store after the first draw (EmojiLineText).
+    val version by store.version.collectAsState()
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     fun rank(user: UserPublic): Int = if (user.role == "bot") 3 else when (store.presenceOf(user.id)) { "online" -> 0; "away" -> 1; else -> 2 }
@@ -96,7 +99,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                                         if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
                                         if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
                                     }
-                                    Text(subtitle(user), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    EmojiLineText(subtitle(user), controller, version, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (user.id != store.me?.id && user.role != "bot") {
                                     TextButton(onClick = { scope.launch { controller.openDmWith(user.id)?.let { onOpened(it); onDismiss() } } }) { Text("DM") }

@@ -21,6 +21,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { THEME_OPTIONS, themeLabel, useTheme, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
+import { StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 
 /**
@@ -165,7 +166,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
             selected === "status" && "border-accent bg-accent-soft hover:bg-accent-soft",
           )}
         >
-          <span className="shrink-0 text-lg leading-none">{status?.emoji || "😀"}</span>
+          <span className="shrink-0 text-lg leading-none">{status?.emoji ? <StatusGlyph controller={controller} emoji={status.emoji} size={20} /> : "😀"}</span>
           <span className="min-w-0 flex-1">
             <span className={cn("block truncate", !status && "text-muted")}>{status ? status.text || "ステータス" : "ステータスを更新"}</span>
             {status && expiryLabel(me?.status_expires_at) && <span className="block truncate text-xs text-muted">{expiryLabel(me?.status_expires_at)}</span>}

@@ -75,7 +75,6 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
-import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 
 /** The home's rows are at least this tall (MOBILE_UI.md §6.1: 44 pt / 48 dp). */
@@ -151,7 +150,7 @@ fun HomeScreen(
     }
     var refreshing by remember { mutableStateOf(false) }
     val row: @Composable LazyItemScope.(ChannelState) -> Unit = { channel ->
-        HomeChannelRow(channel, store, version, onClick = { onSelect(channel.id) }, onLongClick = { onChannelMenu(channel.id) }, modifier = Modifier.folding(this))
+        HomeChannelRow(channel, controller, version, onClick = { onSelect(channel.id) }, onLongClick = { onChannelMenu(channel.id) }, modifier = Modifier.folding(this))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -407,7 +406,8 @@ private fun ChannelGlyph(channel: ChannelState) {
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun HomeChannelRow(channel: ChannelState, store: Store, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+private fun HomeChannelRow(channel: ChannelState, controller: AppController, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+    val store = controller.store
     val meId = store.me?.id
     val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
     val muted = Channels.isMuted(channel)
@@ -435,7 +435,7 @@ private fun HomeChannelRow(channel: ChannelState, store: Store, version: Int, on
         // The name takes the room the badge leaves; the status emoji stays right after it.
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            if (channel.channel.isDm && others.size == 1) StatusEmoji(store.users[others[0]], modifier = Modifier.padding(start = 4.dp))
+            if (channel.channel.isDm && others.size == 1) StatusEmoji(store.users[others[0]], controller, version, modifier = Modifier.padding(start = 4.dp))
         }
         if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         if (unread && badge > 0) {

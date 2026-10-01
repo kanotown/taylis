@@ -624,7 +624,7 @@ fun MessageRow(
                                 Text("BOT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                             }
                         }
-                        StatusEmoji(store.users[message.senderId], modifier = Modifier.padding(start = 6.dp))
+                        StatusEmoji(store.users[message.senderId], controller, version, modifier = Modifier.padding(start = 6.dp))
                         if (channelLabel != null) {
                             Text(
                                 channelLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,

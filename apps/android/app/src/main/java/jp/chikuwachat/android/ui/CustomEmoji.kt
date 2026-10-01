@@ -13,6 +13,12 @@ object CustomEmoji {
     /** The custom emoji name when `text` is exactly `:name:` (reactions, picker picks). */
     fun name(text: String): String? = EXACT.find(text)?.groupValues?.get(1)
 
+    /**
+     * The custom emoji a status emoji is (picked from the emoji picker, it can be `:name:`), when it exists: drawn as its
+     * image (2026-10-02: it showed as its text). Null for a standard emoji or a name this workspace does not have.
+     */
+    fun <T> of(emoji: String, custom: Map<String, T>): T? = name(emoji.trim())?.let { custom[it] }
+
     /** Split text into plain runs and known custom emoji names; unknown `:x:` stay text. */
     fun split(text: String, known: (String) -> Boolean): List<Piece> {
         if (!text.contains(':')) return listOf(Piece.Text(text))

@@ -26,7 +26,9 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   const shown = searching ? hits : category === "custom" ? [] : hits.filter((e) => e.category === category);
   // A recent custom emoji shows as its image, and only while it exists (testers, 2026-09-29: 「:hanpen:」 as text, wider
   // than its cell, also for names with no emoji).
-  const recentShown = recent.filter((glyph) => {
+  // Each glyph once: they are the row's keys (a stored list from elsewhere may repeat one).
+  const recentShown = [...new Set(recent)].filter((glyph) => {
+    if (!glyph) return false;
     const name = customEmojiName(glyph);
     return !name || (!!controller && customByName.has(name));
   });

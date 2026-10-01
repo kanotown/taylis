@@ -782,7 +782,9 @@ final class Store {
     // MARK: custom emoji (M12f)
 
     func replaceCustomEmoji(_ rows: [CustomEmojiOut]) {
-        customEmoji = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+        // Not uniqueKeysWithValues, which traps when a name comes twice (the server keeps names unique; the app
+        // should not depend on it): the last wins.
+        customEmoji = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
     }
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
