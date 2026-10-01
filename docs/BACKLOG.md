@@ -32,7 +32,7 @@ M58 で画像の挿入・検索・履歴の比較/復元/ラベル・共有と�
 
 ## 4. ロードマップ Phase 5
 
-2026-10-01 に決めた順: ~~L6 定期投稿と週報の回収~~ (M59・M60 で完了、docs/RECURRING.md) → ~~L8 Times フィード~~ (M61・M62 で完了、docs/TIMES_FEED.md) → **次は** L9 添削・レビュー依頼。L5 締切はタスクとカレンダーで足りるか確かめてから。Canvas Phase 2 と Slack からの取り込みは必要になったら。
+2026-10-01 に決めた順: ~~L6 定期投稿と週報の回収~~ (M59・M60 で完了、docs/RECURRING.md) → ~~L8 Times フィード~~ (M61・M62 で完了、docs/TIMES_FEED.md) → **次は** L9 添削・レビュー依頼 (設計: [REVIEWS.md](REVIEWS.md)、返事待ち)。L5 締切はタスクとカレンダーで足りるか確かめてから。Canvas Phase 2 と Slack からの取り込みは必要になったら。
 
 元の表 (ROADMAP §5):
 
