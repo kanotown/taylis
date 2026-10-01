@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.Poll
 import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Schedule
@@ -290,16 +291,24 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         }
         // 「アンケートを作成」 (testers): from the ＋ sheet, or /poll alone.
         var pollOpen by rememberSaveable { mutableStateOf(false) }
-        // M30: /日程 alone opens it as a date poll: 「日程調整」, several answers, the next five weekdays.
-        var pollForDates by rememberSaveable { mutableStateOf(false) }
         if (pollOpen) PollDialog(
-            onDismiss = { pollOpen = false; pollForDates = false },
+            onDismiss = { pollOpen = false },
             onCreate = { question, options, multiple, anonymous -> controller.createPoll(channelId, parentId, question, options, multiple, anonymous) },
             launch = { work -> controller.scope.launch { work() } },
-            initialQuestion = if (pollForDates) Templates.SCHEDULE_QUESTION else "",
-            initialOptions = if (pollForDates) Templates.nextWeekdays(LocalDate.now(), 5) else listOf("", ""),
-            initialMultiple = pollForDates,
         )
+        // M54 「日程調整を作成」: from the ＋ sheet, or /日程 (with the dates typed after it as the candidates). Saveable as
+        // strings (SchedulePollInitial.encode) so a rotation keeps it open with what it started with.
+        var scheduleForm by rememberSaveable { mutableStateOf<List<String>?>(null) }
+        scheduleForm?.let { fields ->
+            SchedulePollForm(
+                initial = remember(fields) { SchedulePollInitial.decode(fields) },
+                onDismiss = { scheduleForm = null },
+                onCreate = { question, slots, anonymous ->
+                    controller.createSchedulePoll(channelId, parentId, question, slots.map { SchedulePolls.slotToIn(it) }, java.time.ZoneId.systemDefault().id, anonymous)
+                },
+                launch = { work -> controller.scope.launch { work() } },
+            )
+        }
         // M12d 「後で送信」: the same draft, posted by the server at the chosen time. 仕上げ B: from a long press on send or
         // the ＋ sheet; the presets drop down from send.
         var scheduleOpen by remember { mutableStateOf(false) }
@@ -339,14 +348,20 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
                     return
                 }
-                // M30: /日程 that cannot be read keeps what was typed, to be corrected; nothing is posted.
-                if (command.name == SlashCommands.SCHEDULE && command.args.isNotBlank() && Templates.parseSchedule(command.args, LocalDate.now()) == null) {
-                    controller.error = Templates.SCHEDULE_USAGE
+                // M54: /日程 opens the scheduling poll's form, with the dates (and times) typed after it as the candidates;
+                // arguments that cannot be read keep what was typed, to be corrected, and nothing opens.
+                if (command.name == SlashCommands.SCHEDULE) {
+                    val read = if (command.args.isBlank()) null else Templates.readSchedule(command.args, LocalDate.now())
+                    if (command.args.isNotBlank() && read == null) {
+                        controller.error = Templates.SCHEDULE_USAGE
+                        return
+                    }
+                    store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
+                    scheduleForm = (read?.let { SchedulePollInitial(it.question, SchedulePolls.slotsFromEntries(it.entries)) } ?: SchedulePollInitial()).encode()
                     return
                 }
                 store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
                 if (command.name == "poll" && command.args.isBlank()) { pollOpen = true; return }
-                if (command.name == SlashCommands.SCHEDULE && command.args.isBlank()) { pollForDates = true; pollOpen = true; return }
                 controller.scope.launch { controller.runCommand(command, channelId, parentId) }
                 return
             }
@@ -398,6 +413,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             onCamera = ::openCamera,
             onFile = { picker.launch("*/*") },
             onPoll = { pollOpen = true },
+            onSchedulePoll = { scheduleForm = SchedulePollInitial().encode() },
             onTemplate = ::insertTemplate,
             onSchedule = { scheduleOpen = true },
         )
@@ -508,7 +524,7 @@ object CameraCapture {
 
 /**
  * 仕上げ B (C11, MUI-5): the ＋ sheet, every row with its icon: photos and videos, the camera (when the phone has one),
- * a file, a poll, a template (the list opens in the sheet), send later.
+ * a file, a poll, a scheduling poll (M54), a template (the list opens in the sheet), send later.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -521,6 +537,7 @@ private fun PlusSheet(
     onCamera: () -> Unit,
     onFile: () -> Unit,
     onPoll: () -> Unit,
+    onSchedulePoll: () -> Unit,
     onTemplate: (TemplateOut) -> Unit,
     onSchedule: () -> Unit,
 ) {
@@ -567,6 +584,7 @@ private fun PlusSheet(
                 if (hasCamera) item("カメラ", Icons.Outlined.PhotoCamera) { close(onCamera) }
                 item("ファイル", Icons.AutoMirrored.Outlined.InsertDriveFile) { close(onFile) }
                 item("アンケート", Icons.Outlined.Poll) { close(onPoll) }
+                item("日程調整", Icons.Outlined.EventAvailable) { close(onSchedulePoll) }
                 item("テンプレート", Icons.Outlined.PostAdd) { showingTemplates = true }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 item("後で送信…", Icons.Outlined.Schedule, enabled = canSchedule) { close(onSchedule) }

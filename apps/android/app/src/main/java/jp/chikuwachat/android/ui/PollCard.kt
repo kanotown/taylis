@@ -44,6 +44,11 @@ fun pollHidesBody(body: String, poll: PollOut?): Boolean = poll != null && body.
  */
 @Composable
 fun PollCard(poll: PollOut, message: MessageState, controller: AppController, version: Int, readOnly: Boolean = false) {
+    // M54: a scheduling poll (日程調整) has its own card; a choice poll (or one from a server before M53) stays as it was.
+    if (poll.isSchedule) {
+        ScheduleCard(poll, message, controller, version, readOnly)
+        return
+    }
     val store = controller.store
     val me = remember(version) { store.me?.id }
     val total = poll.total

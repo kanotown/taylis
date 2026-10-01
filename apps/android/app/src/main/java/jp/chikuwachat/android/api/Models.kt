@@ -292,7 +292,25 @@ data class PollOut(
     val anonymous: Boolean = false,
     val counts: List<Int> = emptyList(),
     val mine: List<Int>? = null,
+    /**
+     * M53 (SCHEDULING.md): `"schedule"` for a scheduling poll (日程調整), else `"choice"`. The rest are a scheduling poll's:
+     * its candidates (`slots`, one per option; `options` holds their labels written in `tz`), the decision, ○ △ × per
+     * candidate (`answers`), who answered or commented (`respondents`, the table's rows, first answer first), the
+     * comments, and my own `myAnswers` / `myComment`, which like `mine` come only in responses to me (events: null; the
+     * store keeps what it knew, SYNC_PROTOCOL.md §8). All default, so an older server and rows stored before decode.
+     */
+    val kind: String = "choice",
+    val slots: List<ScheduleSlotOut> = emptyList(),
+    val tz: String? = null,
+    val decided: PollDecidedOut? = null,
+    val answers: List<SlotAnswersOut> = emptyList(),
+    val respondents: List<String> = emptyList(),
+    val comments: List<PollCommentOut> = emptyList(),
+    val myAnswers: List<String?>? = null,
+    val myComment: String? = null,
 ) {
+    val isSchedule: Boolean get() = kind == "schedule"
+
     /** How many voted for the option: the server's count, else (a server before M27) its voters. */
     fun count(option: Int): Int = counts.getOrNull(option) ?: votes.getOrNull(option)?.size ?: 0
 
@@ -312,6 +330,42 @@ data class PollOut(
         return votes.indices.filter { userId in votes[it] }.toSet()
     }
 }
+
+/** M53: a candidate sent when creating a scheduling poll: `startsAt` and `endsAt` (UTC), or `date` for a whole day. */
+@Serializable
+data class ScheduleSlotIn(val startsAt: String? = null, val endsAt: String? = null, val date: String? = null)
+
+/** M53: one of my answers (PUT …/poll/answers): `answer` is "yes" (○), "maybe" (△) or "no" (×). */
+data class PollAnswerIn(val index: Int, val answer: String)
+
+/** M53: what an answer does to my comment: left as it is, or set (null or blank removes it). */
+sealed class CommentChange {
+    data object Keep : CommentChange()
+    data class Set(val text: String?) : CommentChange()
+}
+
+/** M53: one candidate of a scheduling poll: a time (UTC instants) or a whole day (`date`, "YYYY-MM-DD"). */
+@Serializable
+data class ScheduleSlotOut(val startsAt: String? = null, val endsAt: String? = null, val date: String? = null)
+
+/** M53: the decided candidate, the calendar event it made (none in a DM or when made without), who decided and when. */
+@Serializable
+data class PollDecidedOut(val index: Int, val eventId: String? = null, val by: String = "", val at: String = "")
+
+/** M53: who answered ○ (yes) / △ (maybe) / × (no) for one candidate, first first (nobody in an anonymous poll), and how many. */
+@Serializable
+data class SlotAnswersOut(
+    val yes: List<String> = emptyList(),
+    val maybe: List<String> = emptyList(),
+    val no: List<String> = emptyList(),
+    val yesCount: Int = 0,
+    val maybeCount: Int = 0,
+    val noCount: Int = 0,
+)
+
+/** M53: a comment on a scheduling poll; `userId` null in an anonymous poll. */
+@Serializable
+data class PollCommentOut(val userId: String? = null, val text: String)
 
 /** A body an edit replaced (M14c); the current body is the message's own. */
 @Serializable

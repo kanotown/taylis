@@ -3,7 +3,6 @@ package jp.chikuwachat.android.ui
 import jp.chikuwachat.android.api.TemplateOut
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 import java.time.temporal.IsoFields
 import java.util.Locale
@@ -14,7 +13,7 @@ import java.util.Locale
  */
 object Templates {
     const val SCHEDULE_QUESTION = "日程調整"
-    const val SCHEDULE_USAGE = "/日程 [質問] 日付 日付 … (例: /日程 ゼミ 10/3 10/4 10/6-10/8 13:00-14:30)"
+    const val SCHEDULE_USAGE = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)"
     private const val MAX_RANGE_DAYS = 14L
     private const val MIN_OPTIONS = 2
     private const val MAX_OPTIONS = 10
@@ -82,27 +81,58 @@ object Templates {
         (if (date.year == today.year) "${date.monthValue}/${date.dayOfMonth}" else "${date.year}/${date.monthValue}/${date.dayOfMonth}") +
             " (${weekday(date)})"
 
-    /** What `/日程 args` makes: the question and 2-10 options; null when the args are refused (show [SCHEDULE_USAGE]). */
-    fun parseSchedule(args: String, today: LocalDate): SchedulePoll? {
+    /** One date read from `/日程` arguments, with the time of day that followed it (minutes since midnight). */
+    data class ScheduleEntry(val day: LocalDate, val from: Int? = null, val to: Int? = null)
+
+    data class ScheduleRead(val question: String, val entries: List<ScheduleEntry>)
+
+    /**
+     * The grammar of `/日程 [質問] 日付 …` (apps/shared/templates.json; the desktop's readSchedule): the question and every
+     * date (a range gives each of its days) with the time after it; null when the arguments cannot be read. No limit on
+     * how many (M54: the scheduling poll's form takes them as its candidates, [SchedulePolls.slotsFromEntries]).
+     */
+    fun readSchedule(args: String, today: LocalDate): ScheduleRead? {
         val words = args.trim().split(WHITESPACE).filter { it.isNotEmpty() }
         val first = words.indexOfFirst { DATE_TOKEN.matches(it) }
         if (first < 0) return null
         val question = words.take(first).joinToString(" ").ifEmpty { SCHEDULE_QUESTION }
-        val labels = LinkedHashSet<String>()
+        val entries = ArrayList<ScheduleEntry>()
         var index = first
         while (index < words.size) {
             val dates = dates(words[index], today) ?: return null
             index += 1
-            var time = ""
+            var from: Int? = null
+            var to: Int? = null
             if (index < words.size && !DATE_TOKEN.matches(words[index])) {
-                time = time(words[index]) ?: return null  // a word that is neither a date nor a time
+                // A word that is neither a date nor a time (or a second time in a row) cannot be read.
+                val g = TIME_TOKEN.matchEntire(words[index])?.groupValues ?: return null
+                from = minutes(g[1], g[2]) ?: return null
+                if (g[3].isNotEmpty()) {
+                    to = minutes(g[3], g[4]) ?: return null
+                    if (to <= from) return null
+                }
                 index += 1
             }
-            dates.forEach { labels += dateLabel(it, today) + time }
-            if (labels.size > MAX_OPTIONS) return null
+            dates.forEach { entries += ScheduleEntry(it, from, to) }
         }
-        if (labels.size < MIN_OPTIONS) return null
-        return SchedulePoll(question, labels.toList())
+        return ScheduleRead(question, entries)
+    }
+
+    /**
+     * What `/日程 args` made before M54: the question and 2-10 options (labels); null when the args are refused. Kept for
+     * the shared vectors; the phones' `/日程` opens the scheduling poll's form from [readSchedule] since M54.
+     */
+    fun parseSchedule(args: String, today: LocalDate): SchedulePoll? {
+        val read = readSchedule(args, today) ?: return null
+        val labels = LinkedHashSet<String>()
+        read.entries.forEach { entry ->
+            var text = dateLabel(entry.day, today)
+            entry.from?.let { text += " " + label(it) }
+            entry.to?.let { text += "〜" + label(it) }
+            labels += text
+        }
+        if (labels.size < MIN_OPTIONS || labels.size > MAX_OPTIONS) return null
+        return SchedulePoll(read.question, labels.toList())
     }
 
     /** The next [count] weekdays after today (what /日程 alone offers). */
@@ -142,21 +172,12 @@ object Templates {
     private fun of(year: Int, month: Int, day: Int): LocalDate? =
         runCatching { LocalDate.of(year, month, day) }.getOrNull()
 
-    /** ` 13:00` or ` 13:00〜14:30`; null for a time that cannot be read or a range that ends first. */
-    private fun time(word: String): String? {
-        val g = TIME_TOKEN.matchEntire(word)?.groupValues ?: return null
-        val start = clock(g[1], g[2]) ?: return null
-        if (g[3].isEmpty()) return " " + label(start)
-        val end = clock(g[3], g[4]) ?: return null
-        if (!end.isAfter(start)) return null
-        return " " + label(start) + "〜" + label(end)
-    }
-
-    private fun clock(hour: String, minute: String): LocalTime? {
+    /** Minutes since midnight, or null when not a time of day. */
+    private fun minutes(hour: String, minute: String): Int? {
         val h = hour.toInt()
         val m = minute.toInt()
-        return if (h in 0..23 && m in 0..59) LocalTime.of(h, m) else null
+        return if (h in 0..23 && m in 0..59) h * 60 + m else null
     }
 
-    private fun label(time: LocalTime): String = "%d:%02d".format(Locale.ROOT, time.hour, time.minute)
+    private fun label(minutes: Int): String = "%d:%02d".format(Locale.ROOT, minutes / 60, minutes % 60)
 }
