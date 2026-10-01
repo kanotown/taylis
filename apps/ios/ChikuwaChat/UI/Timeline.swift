@@ -100,9 +100,19 @@ enum Timeline {
         return "最終返信 \(dayLabel(date, now: now, calendar: calendar)) " + String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
-    static func fullLabel(_ iso: String) -> String {
+    /// 「2026年10月1日 (木) 14:30」 whatever the device's region (an English region gave 「October 1, 2026 at 2:30 PM」).
+    static func fullLabel(_ iso: String, calendar: Calendar = .current) -> String {
         guard let date = parseIsoDate(iso) else { return "" }
-        return date.formatted(date: .long, time: .shortened)
+        return fullLabelFormatter(calendar).string(from: date)
+    }
+
+    private static func fullLabelFormatter(_ calendar: Calendar) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "y年M月d日 (E) H:mm"
+        return formatter
     }
 
     /// 「Toru Kano」→ TK, 「かのう」→ か.
