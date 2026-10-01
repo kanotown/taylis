@@ -7,13 +7,15 @@ import { cn } from "./primitives";
 /**
  * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
  * §4.1), which the wide layout has too (in the header). M51: 「予定」, a channel's calendar (CALENDAR.md §7; not in a DM).
+ * M55: 「タスク」, a channel's board (TASKS.md §6; not in a DM either).
  */
-export type ConversationTab = "messages" | "canvas" | "events" | "pins" | "files";
+export type ConversationTab = "messages" | "canvas" | "events" | "tasks" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
   ["messages", "メッセージ"],
   ["canvas", "キャンバス"],
   ["events", "予定"],
+  ["tasks", "タスク"],
   ["pins", "ピン留め"],
   ["files", "ファイル"],
 ];
@@ -41,7 +43,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   return (
     <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none]">
       <div role="tablist" aria-label="会話の表示" className="flex shrink-0 items-center">
-        {TABS.filter(([value]) => value !== "events" || channel.type === "public" || channel.type === "private").map(([value, label]) => (
+        {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button
             key={value}
             type="button"

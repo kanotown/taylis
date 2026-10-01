@@ -23,6 +23,7 @@ channels 1---* messages 1---* reactions
                         1---* messages (parent_id: スレッド返信)
 channels 1---* canvases 1---* canvas_revisions   (M41。canvas_templates は独立)
 channels 0..1---* calendar_events 1---* calendar_event_alarms *---1 users   (M51。channel_id NULL = 自分用)
+channels 0..1---* tasks 1---* task_assignees / task_due_alarms *---1 users   (M55。channel_id NULL = 自分用)
 outbox_events (独立。channel_id / audience で配信先を持つ)
 push_deliveries *---1 devices   (event_id は outbox_events.id を参照するが FK は張らない)
 audit_logs *---1 users (actor)
@@ -93,6 +94,7 @@ CREATE TABLE users (
   notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
   activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (項目ごとの既読行は作らない。進むだけ)
   notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
+  notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
@@ -900,6 +902,69 @@ CREATE INDEX calendar_event_alarms_user_idx ON calendar_event_alarms (user_id) W
   (送らない)。予定を消すと pending は cancelled。チャンネルから抜けると、その人の通知の行を消す (outbox の channel.member_removed を
   受ける CalendarLeaveHandler)。worker は送る直前にも、予定が残っているか・まだ見られるか・終わっていないかを確かめる。
 - 予定はチャンネルの seq を使わない (メッセージの同期規則に影響しない)。
+
+### tasks / task_assignees / task_due_alarms (タスクとカンバン、M55、TASKS.md §1)
+
+```sql
+CREATE TABLE tasks (
+  id                 uuid PRIMARY KEY,                       -- UUIDv7
+  channel_id         uuid REFERENCES channels(id),           -- NULL = 自分用 (owner_id の人だけ)。公開・非公開チャンネルだけ (DM は不可)
+  owner_id           uuid NOT NULL REFERENCES users(id),     -- 作った人
+  title              text NOT NULL,                          -- 1〜200 文字 (空白は 1 つにまとめる)
+  notes              text,                                   -- ≤ 4000 (Markdown)
+  status             varchar(8) NOT NULL DEFAULT 'todo',     -- 列: todo / doing / done
+  position           double precision NOT NULL,              -- 列の中の並び (小さいほど上)
+  due_on             date,                                   -- 期限 (日付だけ)
+  source_message_id  uuid REFERENCES messages(id) ON DELETE SET NULL,  -- メッセージから作ったとき
+  source_channel_id  uuid,                                   -- そのメッセージのチャンネル
+  source_excerpt     text,                                   -- 作った時の 1 行の抜粋 (DM の一覧・通知と同じ規則、140 文字)
+  completed_at       timestamptz,                            -- done の間だけ入る
+  completed_by       uuid REFERENCES users(id),
+  client_task_id     varchar(64),                            -- POST の冪等キー (作った人ごとに一意)
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  deleted_at         timestamptz,                            -- 論理削除 (task.deleted で端末に伝える)
+  CHECK (char_length(title) BETWEEN 1 AND 200),
+  CHECK (notes IS NULL OR char_length(notes) <= 4000),
+  CHECK (status IN ('todo', 'doing', 'done')),
+  CHECK ((status = 'done') = (completed_at IS NOT NULL))
+);
+CREATE INDEX tasks_board_idx    ON tasks (channel_id, status, position) WHERE channel_id IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX tasks_personal_idx ON tasks (owner_id, status, position)   WHERE channel_id IS NULL AND deleted_at IS NULL;
+CREATE INDEX tasks_due_idx      ON tasks (due_on) WHERE due_on IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX tasks_client_uniq ON tasks (owner_id, client_task_id) WHERE client_task_id IS NOT NULL;
+
+CREATE TABLE task_assignees (
+  task_id     uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES users(id),           -- そのチャンネルのメンバーだけ。自分用のタスクには付けない
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (task_id, user_id)
+);
+CREATE INDEX task_assignees_user_idx ON task_assignees (user_id);
+
+CREATE TABLE task_due_alarms (
+  task_id     uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES users(id),           -- 知らせる人 (担当者。自分用は持ち主)
+  tz          varchar(64) NOT NULL,                         -- 8:00 を読むゾーン
+  fire_at     timestamptz NOT NULL,                         -- due_on の 8:00 (tz)
+  status      varchar(16) NOT NULL DEFAULT 'pending',       -- pending → fired、または cancelled
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (task_id, user_id),
+  CHECK (status IN ('pending', 'fired', 'cancelled'))
+);
+CREATE INDEX task_due_alarms_due_idx ON task_due_alarms (fire_at) WHERE status = 'pending';
+```
+
+- **並び**: 新しいカードと、位置を指定しない移動は todo / doing の一番下、done の一番上 (端から 1024 離す)。位置を指定した移動は
+  前後のカードの真ん中。間が 1e-6 より狭いときは、その列を 1024 おきに振り直してから入れる (振り直したカードにも task.updated)。
+  同じ位置になったら id 順。
+- **期限の通知**: 知らせる人 (未完了で期限のあるタスクの担当者、自分用は持ち主) ごとに 1 行。期限・担当・状態・削除のたびに行を
+  合わせる: 外れた人と done は cancelled、時刻 (`due_on` の 8:00) が変わった行は計算し直し (過ぎていれば cancelled)、done から
+  戻せば pending に戻す。時刻の変わらない fired の行はそのまま (同じ通知を 2 度送らない)。tz は、変更した本人の行なら端末の
+  `tz`、ほかの人はおやすみ時間のゾーン、無ければ Asia/Tokyo (作った後は行に残す)。チャンネルから抜けた人は担当から外し、通知を
+  cancelled にする (outbox の channel.member_removed を受ける TaskLeaveHandler)。
+- タスクはチャンネルの seq を使わない。
 
 ### drafts (端末間で共有する下書き、M15d)
 

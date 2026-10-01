@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, ListTodo, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
@@ -33,6 +33,8 @@ import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
+import { TaskDialog } from "./TaskDialog";
+import { messageTaskInit } from "./tasks";
 
 
 export function Timeline({ controller, channel, onOpenThread, active = true }: {
@@ -711,6 +713,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const [chipPicker, setChipPicker] = useState(false);
   // M27 「リアクションした人」: from the long-press sheet on a phone, from the hover bar with a mouse.
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  // M55 「タスクにする」: the task dialog, new, from this message.
+  const [taskOpen, setTaskOpen] = useState(false);
+  const canMakeTask = !!engine?.tasks?.available && !message.deleted;
   // M25: the long-press sheet on touch screens (a mouse has the hover bar), and where it opens.
   const [sheet, setSheet] = useState<"actions" | "emoji" | null>(null);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -990,6 +995,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               </div>
             </PopoverContent>
           </PopoverRoot>
+          {canMakeTask && (
+            <IconButton label="タスクにする" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setTaskOpen(true)}>
+              <ListTodo size={15} />
+            </IconButton>
+          )}
           <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
             {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
@@ -1032,6 +1042,14 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
       {reactionsOpen && <ReactionsDialog controller={controller} message={message} onClose={() => setReactionsOpen(false)} />}
+      {taskOpen && (
+        <TaskDialog
+          controller={controller}
+          task={null}
+          init={messageTaskInit(message, store.getChannel(message.channel_id), store.users, store.groups, isAdmin)}
+          onClose={() => setTaskOpen(false)}
+        />
+      )}
       {sheet && (
         <MessageActionsSheet
           controller={controller}
@@ -1041,6 +1059,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}
           onShowReactions={() => setReactionsOpen(true)}
+          onMakeTask={canMakeTask ? () => setTaskOpen(true) : undefined}
           unreadOffered={unreadOffered}
           saved={saved}
           isAdmin={isAdmin}

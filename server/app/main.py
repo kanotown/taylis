@@ -63,6 +63,8 @@ from app.modules.sso import service as sso_service
 from app.modules.sso.oidc import build_google
 from app.modules.sso.router import router as sso_router
 from app.modules.sync.router import router as sync_router
+from app.modules.tasks import service as tasks_service
+from app.modules.tasks.router import router as tasks_router
 from app.modules.templates.router import router as templates_router
 from app.modules.threads.router import router as threads_router
 from app.modules.totp.router import router as totp_router
@@ -181,8 +183,8 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
 
 
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
-    """Posts scheduled messages (M12d) and fires reminders (M12e) and calendar alarms (M51)
-    whose time has come."""
+    """Posts scheduled messages (M12d) and fires reminders (M12e), calendar alarms (M51) and
+    task due dates (M55) whose time has come."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -203,6 +205,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await calendar.fire_due(session)
             except Exception:
                 log.exception("calendar alarm firing failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await tasks_service.fire_due(session)
+            except Exception:
+                log.exception("task due-date firing failed")
 
 
 @asynccontextmanager
@@ -264,6 +271,7 @@ def build_api_router() -> APIRouter:
     api.include_router(channel_links_router)
     api.include_router(canvases_router)
     api.include_router(calendar_router)
+    api.include_router(tasks_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(emoji_router)
@@ -354,7 +362,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db,
         app.state.bus,
         channels_service.resolve_event_audience,
-        handlers=[planner, calendar.CalendarLeaveHandler()],
+        handlers=[
+            planner,
+            calendar.CalendarLeaveHandler(),
+            tasks_service.TaskLeaveHandler(),
+            tasks_service.TaskSourceHandler(),
+        ],
         listen_dsn=asyncpg_dsn(settings.database_url),
         poll_interval=settings.outbox_poll_interval_seconds,
         batch_size=settings.outbox_batch_size,

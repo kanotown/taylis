@@ -1,4 +1,4 @@
-import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Keyboard, Laptop, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -421,6 +421,23 @@ function NotificationsSection({ controller }: { controller: AppController }) {
             checked={me.notify_reactions}
             disabled={busy}
             onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setNotifyReactions(on).finally(() => setBusy(false)); }}
+          />
+        </label>
+      )}
+      {/* M55: a task assigned to me and the morning of its due date; a server before M55 has no such setting. */}
+      {typeof me?.notify_tasks === "boolean" && (
+        <label className={cn(CARD, "cursor-pointer")}>
+          <ListTodo size={18} className="text-muted" />
+          <span className="min-w-0 flex-1 text-sm">
+            タスク (割り当て・期限) <span className="ml-1 text-xs text-muted">担当になったときと期限の日の朝</span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="h-4 w-4 accent-[var(--accent)]"
+            checked={me.notify_tasks}
+            disabled={busy}
+            onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setNotifyTasks(on).finally(() => setBusy(false)); }}
           />
         </label>
       )}

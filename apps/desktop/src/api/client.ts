@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadStateOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -378,6 +378,46 @@ export class ApiClient {
 
   getCalendarEvent(eventId: string): Promise<CalendarEventOut> {
     return this.request("GET", `/api/v1/calendar/events/${eventId}`);
+  }
+
+  // --- tasks (TASKS.md §3, M55) -------------------------------------------------------------
+
+  /** A channel's board: every open task and the 100 most recently completed (`all`: every completed one). */
+  listTasks(channelId: string, includeDone: "recent" | "all" = "recent"): Promise<TaskOut[]> {
+    const params = new URLSearchParams({ channel_id: channelId, ...(includeDone === "all" ? { include_done: "all" } : {}) });
+    return this.request("GET", `/api/v1/tasks?${params}`);
+  }
+
+  /** My personal tasks and the shared ones assigned to me (completed: the 50 most recent). */
+  myTasks(): Promise<TaskOut[]> {
+    return this.request("GET", "/api/v1/tasks/mine");
+  }
+
+  /** The tasks I can see due in [from, to) (dates, `to` excluded, at most 100 days): the calendar's. */
+  dueTasks(from: string, to: string): Promise<TaskOut[]> {
+    return this.request("GET", `/api/v1/tasks/due?${new URLSearchParams({ from, to })}`);
+  }
+
+  getTask(taskId: string): Promise<TaskOut> {
+    return this.request("GET", `/api/v1/tasks/${taskId}`);
+  }
+
+  /** A retry with the same client_task_id returns the task made the first time. */
+  createTask(body: TaskCreate): Promise<TaskOut> {
+    return this.request("POST", "/api/v1/tasks", body);
+  }
+
+  updateTask(taskId: string, patch: TaskUpdate): Promise<TaskOut> {
+    return this.request("PATCH", `/api/v1/tasks/${taskId}`, patch);
+  }
+
+  /** Into a column, between two cards (the server picks the position). */
+  moveTask(taskId: string, body: TaskMove): Promise<TaskOut> {
+    return this.request("POST", `/api/v1/tasks/${taskId}/move`, body);
+  }
+
+  deleteTask(taskId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/tasks/${taskId}`);
   }
 
   // --- scheduled messages (M12d) ---------------------------------------------------------

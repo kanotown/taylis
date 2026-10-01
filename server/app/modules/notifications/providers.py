@@ -146,6 +146,8 @@ class APNsPushProvider:
             "parent_id": payload.get("parent_id"),
             # kind calendar (M51): the event to open.
             "event_id": payload.get("event_id"),
+            # kind task (M55): the task to open.
+            "task_id": payload.get("task_id"),
         }
         return url, headers, body
 
@@ -266,6 +268,7 @@ class FCMPushProvider:
                 "message_id",
                 "parent_id",
                 "event_id",
+                "task_id",
                 "seq",
                 "title",
                 "subtitle",

@@ -2,12 +2,13 @@
  * M51 (CALENDAR.md §7): 「カレンダー」 — my own events and those of my channels, as a month (titles in the days, 「+N」
  * past three), a week (all-day row over a time grid) or a list (day by day from today). 「すべて / 自分 / #channel」
  * filters; each channel has its fixed colour. Weeks start on Sunday. A channel's 「予定」 tab (ChannelEvents) lists
- * its events ahead with 「予定を追加」.
+ * its events ahead with 「予定を追加」. M55 (TASKS.md §6): the tasks due in the range, as all-day rows 「☐ 題名」 (done:
+ * 「☑」, struck through); a click opens the task.
  */
 import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import type { CalendarEventOut } from "../api/types";
+import type { CalendarEventOut, TaskOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { CalendarHub, CalendarWindow } from "../sync/calendar";
 import type { ChannelState } from "../sync/types";
@@ -39,6 +40,9 @@ import {
 import { BackButton } from "./compact";
 import { Button, cn } from "./primitives";
 import { readCalendarMode, writeCalendarMode } from "./prefs";
+import { useTaskHub } from "./TaskBoard";
+import { TaskDialog } from "./TaskDialog";
+import { filterTasks, tasksForDay } from "./tasks";
 
 /** "all", "me" (my own calendar) or a channel id. */
 export type CalendarFilter = string;
@@ -101,6 +105,14 @@ export function CalendarView({ controller }: { controller: AppController }) {
   useEffect(() => () => hub?.close("view"), [hub]);
   const win = hub?.window("view");
   const events = filterEvents(win?.events ?? [], filter);
+  // M55: the tasks due in the same days (dates, the end excluded).
+  const taskHub = useTaskHub(controller);
+  const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
+  useEffect(() => {
+    if (taskHub?.available) void taskHub.openDue("calendar", start, end);
+  }, [taskHub, start, end]);
+  useEffect(() => () => taskHub?.closeDue("calendar"), [taskHub]);
+  const tasks = filterTasks(taskHub?.dueWindow("calendar")?.tasks ?? [], filter, controller.store.me?.id ?? null);
   const channels = readableChannels(controller);
   const setMode = (next: CalendarMode) => {
     writeCalendarMode(next);
@@ -180,15 +192,16 @@ export function CalendarView({ controller }: { controller: AppController }) {
       {!hub ? (
         <div className="py-16 text-center text-sm text-muted">接続すると表示します</div>
       ) : mode === "month" ? (
-        <MonthGrid anchor={anchor} today={now} events={events} onOpen={(event) => setDialog({ event })} onNew={create} onDay={(day) => { setAnchor(day); setMode("week"); }} />
+        <MonthGrid anchor={anchor} today={now} events={events} tasks={tasks} onOpenTask={setTaskDialog} onOpen={(event) => setDialog({ event })} onNew={create} onDay={(day) => { setAnchor(day); setMode("week"); }} />
       ) : mode === "week" ? (
-        <WeekGrid anchor={anchor} today={now} events={events} onOpen={(event) => setDialog({ event })} onNew={create} />
+        <WeekGrid anchor={anchor} today={now} events={events} tasks={tasks} onOpenTask={setTaskDialog} onOpen={(event) => setDialog({ event })} onNew={create} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <AgendaList events={events} start={start} end={end} today={now} onOpen={(event) => setDialog({ event })} loading={win?.state === "loading"} />
+          <AgendaList events={events} tasks={tasks} onOpenTask={setTaskDialog} start={start} end={end} today={now} onOpen={(event) => setDialog({ event })} loading={win?.state === "loading"} />
         </div>
       )}
       {dialog && <CalendarEventDialog controller={controller} event={dialog.event} initial={dialog.initial} onClose={() => setDialog(null)} />}
+      {taskDialog && <TaskDialog controller={controller} task={taskHub?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} />}
     </div>
   );
 }
@@ -217,11 +230,44 @@ function EventChip({ event, day, onOpen }: { event: CalendarEventOut; day: DayKe
   );
 }
 
-export function MonthGrid({ anchor, today, events, onOpen, onNew, onDay }: {
+/** M55: a task due that day, an all-day row 「☐ 題名」 (done 「☑」, struck through) in its board's colour. */
+export function TaskChip({ task, onOpen }: { task: TaskOut; onOpen: (task: TaskOut) => void }) {
+  const color = channelColor(task.channel_id);
+  const done = task.status === "done";
+  return (
+    <button
+      type="button"
+      data-task={task.id}
+      title={`期限: ${task.title}${task.channel_name ? ` (#${task.channel_name})` : ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(task);
+      }}
+      className="flex w-full min-w-0 items-center gap-1 rounded border-l-[3px] px-1 text-left text-[11.5px] leading-[18px] text-ink hover:brightness-95"
+      style={{ borderLeftColor: color, background: `color-mix(in srgb, ${color} 14%, var(--color-canvas, #fff))` }}
+    >
+      <span aria-hidden className="shrink-0" style={{ color }}>{done ? "☑" : "☐"}</span>
+      <span className={cn("min-w-0 truncate", done && "text-muted line-through")}>{task.title}</span>
+    </button>
+  );
+}
+
+/** A month cell's rows: all-day events, then the tasks due, then timed events (cut to MONTH_CELL_EVENTS by the caller). */
+function cellRows(events: CalendarEventOut[], tasks: TaskOut[], day: DayKey): Array<{ event: CalendarEventOut } | { task: TaskOut }> {
+  const list = eventsOn(events, day);
+  const allDay = list.filter((e) => e.all_day || timeOnDay(e, day) === "終日");
+  const timed = list.filter((e) => !allDay.includes(e));
+  return [...allDay.map((event) => ({ event })), ...tasksForDay(tasks, day).map((task) => ({ task })), ...timed.map((event) => ({ event }))];
+}
+
+export function MonthGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask = () => {}, onNew, onDay }: {
   anchor: DayKey;
   today: DayKey;
   events: CalendarEventOut[];
+  /** M55: the tasks due in the range. */
+  tasks?: TaskOut[];
   onOpen: (event: CalendarEventOut) => void;
+  onOpenTask?: (task: TaskOut) => void;
   onNew: (day: DayKey) => void;
   onDay: (day: DayKey) => void;
 }) {
@@ -238,7 +284,7 @@ export function MonthGrid({ anchor, today, events, onOpen, onNew, onDay }: {
         {weeks.map((week) => (
           <div key={week[0]} className="grid grid-cols-7 border-b border-line last:border-b-0" role="row">
             {week.map((day, i) => {
-              const list = eventsOn(events, day);
+              const list = cellRows(events, tasks, day);
               const shown = list.slice(0, MONTH_CELL_EVENTS);
               const more = list.length - shown.length;
               const outside = day.slice(0, 7) !== month;
@@ -268,9 +314,13 @@ export function MonthGrid({ anchor, today, events, onOpen, onNew, onDay }: {
                   >
                     {parseDay(day).getDate()}
                   </button>
-                  {shown.map((event) => (
-                    <EventChip key={event.id} event={event} day={day} onOpen={onOpen} />
-                  ))}
+                  {shown.map((row) =>
+                    "task" in row ? (
+                      <TaskChip key={`task-${row.task.id}`} task={row.task} onOpen={onOpenTask} />
+                    ) : (
+                      <EventChip key={row.event.id} event={row.event} day={day} onOpen={onOpen} />
+                    ),
+                  )}
                   {more > 0 && (
                     <button
                       type="button"
@@ -294,11 +344,14 @@ export function MonthGrid({ anchor, today, events, onOpen, onNew, onDay }: {
   );
 }
 
-export function WeekGrid({ anchor, today, events, onOpen, onNew }: {
+export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask = () => {}, onNew }: {
   anchor: DayKey;
   today: DayKey;
   events: CalendarEventOut[];
+  /** M55: the tasks due in the week (in the all-day row). */
+  tasks?: TaskOut[];
   onOpen: (event: CalendarEventOut) => void;
+  onOpenTask?: (task: TaskOut) => void;
   onNew: (day: DayKey, hour?: number) => void;
 }) {
   const start = weekStart(anchor);
@@ -334,6 +387,9 @@ export function WeekGrid({ anchor, today, events, onOpen, onNew }: {
           <div key={day} className="flex min-h-[26px] min-w-0 flex-col gap-px border-l border-line p-0.5" data-all-day={day}>
             {allDay[i]!.map((event) => (
               <EventChip key={event.id} event={event} day={day} onOpen={onOpen} />
+            ))}
+            {tasksForDay(tasks, day).map((task) => (
+              <TaskChip key={`task-${task.id}`} task={task} onOpen={onOpenTask} />
             ))}
           </div>
         ))}
@@ -395,30 +451,34 @@ export function WeekGrid({ anchor, today, events, onOpen, onNew }: {
 }
 
 /** Day by day, the days with events only (「今日」 and 「明日」 marked). */
-export function AgendaList({ events, start, end, today, onOpen, loading = false, empty = "この期間の予定はありません", showCalendar = true }: {
+export function AgendaList({ events, tasks = [], start, end, today, onOpen, onOpenTask = () => {}, loading = false, empty = "この期間の予定はありません", showCalendar = true }: {
   events: CalendarEventOut[];
+  /** M55: the tasks due, after the day's events. */
+  tasks?: TaskOut[];
   start: DayKey;
   end: DayKey;
   today: DayKey;
   onOpen: (event: CalendarEventOut) => void;
+  onOpenTask?: (task: TaskOut) => void;
   loading?: boolean;
   empty?: ReactNode;
   showCalendar?: boolean;
 }) {
   const days = useMemo(() => {
-    const out: Array<[DayKey, CalendarEventOut[]]> = [];
+    const out: Array<[DayKey, CalendarEventOut[], TaskOut[]]> = [];
     const count = daysBetween(start, end);
     for (let i = 0; i < count; i++) {
       const day = addDays(start, i);
       const list = eventsOn(events, day);
-      if (list.length > 0) out.push([day, list]);
+      const due = tasksForDay(tasks, day);
+      if (list.length > 0 || due.length > 0) out.push([day, list, due]);
     }
     return out;
-  }, [events, start, end]);
+  }, [events, tasks, start, end]);
   if (days.length === 0) return <div className="py-16 text-center text-sm text-muted">{loading ? "読み込み中…" : empty}</div>;
   return (
     <div className="mx-auto max-w-3xl space-y-4" aria-label="予定の一覧">
-      {days.map(([day, list]) => (
+      {days.map(([day, list, due]) => (
         <section key={day} data-agenda-day={day}>
           <h3 className="mb-1 flex items-baseline gap-2 text-xs font-semibold text-muted">
             <span className={cn(day === today && "text-accent")}>{dayLabel(day)}</span>
@@ -439,6 +499,21 @@ export function AgendaList({ events, start, end, today, onOpen, loading = false,
                         <span className="flex min-w-0 items-center gap-0.5 truncate"><MapPin size={11} className="shrink-0" />{event.location}</span>
                       )}
                     </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {due.map((task) => (
+              <li key={`task-${task.id}`}>
+                <button type="button" data-task={task.id} onClick={() => onOpenTask(task)} className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-panel-2/60">
+                  <span className="w-[92px] shrink-0 pt-px text-xs text-muted">期限</span>
+                  <span aria-hidden className="mt-1 h-3 w-1 shrink-0 self-stretch rounded-full" style={{ background: channelColor(task.channel_id) }} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
+                      <span aria-hidden className="mr-1">{task.status === "done" ? "☑" : "☐"}</span>
+                      <span className={cn(task.status === "done" && "text-muted line-through")}>{task.title}</span>
+                    </span>
+                    {showCalendar && <span className="block text-xs text-muted">{task.channel_name ? `#${task.channel_name}` : "自分のタスク"}</span>}
                   </span>
                 </button>
               </li>

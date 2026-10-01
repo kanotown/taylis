@@ -212,7 +212,7 @@ it("the thread's header has ← (戻る) on a phone and ✕ in the wide layout",
   compact = false;
   act(() => controller.setEditing(null));
   expect(screen.queryByRole("tab", { name: "ピン留め" })).toBeNull();
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["メッセージ", "キャンバス", "予定", "タスク"]);
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy();
   fireEvent.click(screen.getByText(/1 件の返信/));
   await flush();

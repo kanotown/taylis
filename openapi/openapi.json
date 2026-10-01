@@ -6527,6 +6527,438 @@
         "title": "SsoExchange",
         "type": "object"
       },
+      "TaskCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Assignee Ids",
+            "type": "array"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "client_task_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Task Id"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "status": {
+            "default": "todo",
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "TaskCreate",
+        "type": "object"
+      },
+      "TaskMove": {
+        "additionalProperties": false,
+        "description": "Into a column and between two cards there (the server picks the position). `after_id` is\nthe card that ends up just above, `before_id` the one just below; either is enough. Neither:\nthe bottom of todo / doing, the top of done. A neighbour that is no longer in that column is\nignored.",
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TaskMove",
+        "type": "object"
+      },
+      "TaskOut": {
+        "properties": {
+          "assignee_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Assignee Ids",
+            "type": "array"
+          },
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "number"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskSourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "channel_name",
+          "owner_id",
+          "title",
+          "notes",
+          "status",
+          "position",
+          "due_on",
+          "assignee_ids",
+          "source",
+          "completed_at",
+          "completed_by",
+          "created_at",
+          "updated_at",
+          "can_delete"
+        ],
+        "title": "TaskOut",
+        "type": "object"
+      },
+      "TaskSourceOut": {
+        "description": "The message a task was made from (TASKS.md §1), with its text as one line (the DM list's\nand the notifications' rule), kept up to date with edits. When the message is deleted the task\nstays: message_id and excerpt become null (「元のメッセージは削除されました」).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          }
+        },
+        "required": [
+          "message_id",
+          "channel_id",
+          "excerpt"
+        ],
+        "title": "TaskSourceOut",
+        "type": "object"
+      },
+      "TaskUpdate": {
+        "additionalProperties": false,
+        "description": "Only the fields sent change; `assignee_ids` replaces the whole list. A task cannot move\nto another board.",
+        "properties": {
+          "assignee_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Ids"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "title": "TaskUpdate",
+        "type": "object"
+      },
       "TemplateCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7150,6 +7582,11 @@
             "title": "Notify Reactions",
             "type": "boolean"
           },
+          "notify_tasks": {
+            "default": true,
+            "title": "Notify Tasks",
+            "type": "boolean"
+          },
           "presence_hidden": {
             "default": false,
             "title": "Presence Hidden",
@@ -7467,6 +7904,17 @@
               }
             ],
             "title": "Notify Reactions"
+          },
+          "notify_tasks": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Tasks"
           },
           "presence_hidden": {
             "anyOf": [
@@ -15888,6 +16336,434 @@
         "summary": "Unread Summary",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "description": "A channel's board: every open task and the completed ones, by column and position.",
+        "operationId": "list_board_api_v1_tasks_get",
+        "parameters": [
+          {
+            "description": "The channel whose board to read",
+            "in": "query",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "description": "The channel whose board to read",
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "recent: the 100 most recently completed; all: every one",
+            "in": "query",
+            "name": "include_done",
+            "required": false,
+            "schema": {
+              "default": "recent",
+              "description": "recent: the 100 most recently completed; all: every one",
+              "enum": [
+                "recent",
+                "all"
+              ],
+              "title": "Include Done",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response List Board Api V1 Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Board",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "post": {
+        "description": "A new task in my list or on a channel's board (a member who may post there).",
+        "operationId": "create_task_api_v1_tasks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "A retry: the task made before"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/due": {
+      "get": {
+        "description": "Tasks I can see whose due date is in [from, to), completed ones too (the calendar);\nat most 1000.",
+        "operationId": "list_due_api_v1_tasks_due_get",
+        "parameters": [
+          {
+            "description": "First day (YYYY-MM-DD)",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "First day (YYYY-MM-DD)",
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The day after the last (excluded); at most 100 days after `from`",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "The day after the last (excluded); at most 100 days after `from`",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response List Due Api V1 Tasks Due Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Due",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/mine": {
+      "get": {
+        "description": "My own tasks and the shared ones assigned to me (in channels I belong to); of the\ncompleted ones, the 50 most recent.",
+        "operationId": "list_mine_api_v1_tasks_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response List Mine Api V1 Tasks Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Mine",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "delete": {
+        "description": "Its creator, its assignees, the channel's owners and administrators.",
+        "operationId": "delete_task_api_v1_tasks__task_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Task",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "get": {
+        "operationId": "get_task_api_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Task",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "patch": {
+        "description": "Members who may post on the board (a personal task: its owner).",
+        "operationId": "update_task_api_v1_tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/move": {
+      "post": {
+        "description": "To a column and a place in it; the server picks the position.",
+        "operationId": "move_task_api_v1_tasks__task_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Task",
+        "tags": [
+          "tasks"
         ]
       }
     },

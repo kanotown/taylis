@@ -38,7 +38,7 @@ const flush = () => act(async () => { await new Promise((resolve) => setTimeout(
 
 const ME: UserMe = {
   id: "u1", username: "taro-2", display_name: "山田 太郎", role: "member", deactivated_at: null, created_at: "", updated_at: "",
-  email: "taro@example.ac.jp", must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false, has_password: false,
+  email: "taro@example.ac.jp", must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false, notify_tasks: true, has_password: false,
 };
 
 beforeEach(() => {
