@@ -355,6 +355,15 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
     return out
 
 
+async def list_public_times_not_member(db: AsyncSession, actor: User) -> list[ChannelOut]:
+    """is:times (L8) widens the search to these; never for guests (M13e)."""
+    if actor.is_guest:
+        return []
+    rows = await repo.list_public_times_not_member(db, actor.id)
+    counts = await repo.member_counts_for_channels(db, [c.id for c in rows])
+    return [to_channel_out(c, None, None, counts.get(c.id, 0)) for c in rows]
+
+
 async def _out_with_count(
     db: AsyncSession, channel: Channel, membership: ChannelMember | None
 ) -> ChannelOut:
@@ -888,13 +897,18 @@ async def get_or_create_dm(
     return to_channel_out(channel, membership, user_ids), created
 
 
-async def mark_all_read(db: AsyncSession, actor: User) -> list[ChannelReadStateOut]:
-    """POST /channels/read-all (M12a): every channel I belong to is read to its end.
+async def mark_all_read(
+    db: AsyncSession, actor: User, *, only: set[uuid.UUID] | None = None
+) -> list[ChannelReadStateOut]:
+    """POST /channels/read-all (M12a): every channel I belong to (or those in `only`) is read to
+    its end.
 
     Each channel that moves emits its own read.updated, so other devices catch up as usual.
     """
     states: list[ChannelReadStateOut] = []
     for channel in await list_channels(db, actor, include_public=False):
+        if only is not None and channel.id not in only:
+            continue
         state = await reads.advance_in_tx(
             db, actor.id, channel.id, channel.last_seq, last_seq=channel.last_seq
         )

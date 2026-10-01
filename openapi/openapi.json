@@ -5219,6 +5219,21 @@
         "title": "ReactionOut",
         "type": "object"
       },
+      "ReadAllIn": {
+        "properties": {
+          "scope": {
+            "default": "all",
+            "enum": [
+              "all",
+              "times"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "ReadAllIn",
+        "type": "object"
+      },
       "ReadMark": {
         "properties": {
           "last_read_seq": {
@@ -6574,6 +6589,11 @@
             "title": "Is Thread",
             "type": "boolean"
           },
+          "is_times": {
+            "default": false,
+            "title": "Is Times",
+            "type": "boolean"
+          },
           "text": {
             "title": "Text",
             "type": "string"
@@ -6611,6 +6631,13 @@
       },
       "SearchOut": {
         "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
           "filters": {
             "$ref": "#/components/schemas/SearchFilters"
           },
@@ -7756,6 +7783,34 @@
           "mention_count"
         ],
         "title": "ThreadSummary",
+        "type": "object"
+      },
+      "TimesFeedOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "TimesFeedOut",
         "type": "object"
       },
       "TokenResponse": {
@@ -11900,8 +11955,25 @@
     },
     "/api/v1/channels/read-all": {
       "post": {
-        "description": "M12a 「すべて既読にする」: every channel I belong to is read to its end.",
+        "description": "M12a 「すべて既読にする」: every channel I belong to is read to its end; with scope \"times\"\nonly the Times feed's channels (L8).",
         "operationId": "mark_all_read_api_v1_channels_read_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReadAllIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -11916,6 +11988,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -16599,6 +16681,16 @@
           },
           {
             "in": "query",
+            "name": "is_times",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Is Times",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
@@ -17771,6 +17863,74 @@
         "summary": "Ensure Times",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/api/v1/times/feed": {
+      "get": {
+        "description": "L8: the timeline posts of the times I follow and have not muted, newest first\n(docs/TIMES_FEED.md). `cursor` is the previous page's `next_cursor`.",
+        "operationId": "times_feed_api_v1_times_feed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimesFeedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Times Feed",
+        "tags": [
+          "times"
         ]
       }
     },

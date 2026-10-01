@@ -980,7 +980,8 @@ export interface paths {
         put?: never;
         /**
          * Mark All Read
-         * @description M12a 「すべて既読にする」: every channel I belong to is read to its end.
+         * @description M12a 「すべて既読にする」: every channel I belong to is read to its end; with scope "times"
+         *     only the Times feed's channels (L8).
          */
         post: operations["mark_all_read_api_v1_channels_read_all_post"];
         delete?: never;
@@ -2595,6 +2596,27 @@ export interface paths {
          *     the lab roster join it (the lookup is injected by main.py: channels does not depend on lab).
          */
         post: operations["ensure_times_api_v1_times_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/times/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Times Feed
+         * @description L8: the timeline posts of the times I follow and have not muted, newest first
+         *     (docs/TIMES_FEED.md). `cursor` is the previous page's `next_cursor`.
+         */
+        get: operations["times_feed_api_v1_times_feed_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4680,6 +4702,15 @@ export interface components {
             /** User Ids */
             user_ids: string[];
         };
+        /** ReadAllIn */
+        ReadAllIn: {
+            /**
+             * Scope
+             * @default all
+             * @enum {string}
+             */
+            scope: "all" | "times";
+        };
         /** ReadMark */
         ReadMark: {
             /** Last Read Seq */
@@ -5184,6 +5215,11 @@ export interface components {
              * @default false
              */
             is_thread: boolean;
+            /**
+             * Is Times
+             * @default false
+             */
+            is_times: boolean;
             /** Text */
             text: string;
             /** Unresolved */
@@ -5197,6 +5233,8 @@ export interface components {
         };
         /** SearchOut */
         SearchOut: {
+            /** Channels */
+            channels?: components["schemas"]["ChannelOut"][];
             filters: components["schemas"]["SearchFilters"];
             /** Has More */
             has_more: boolean;
@@ -5620,6 +5658,13 @@ export interface components {
             mention_count: number;
             /** Unread Count */
             unread_count: number;
+        };
+        /** TimesFeedOut */
+        TimesFeedOut: {
+            /** Items */
+            items: components["schemas"]["MessageOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** TokenResponse */
         TokenResponse: {
@@ -7960,7 +8005,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReadAllIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7969,6 +8018,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelReadStateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10696,6 +10754,7 @@ export interface operations {
                 before?: string | null;
                 has?: ("file" | "link" | "pin" | "reaction" | "poll")[];
                 is_thread?: boolean;
+                is_times?: boolean;
                 sort?: "relevance" | "newest";
                 tz_offset_minutes?: number;
                 limit?: number;
@@ -11395,6 +11454,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+        };
+    };
+    times_feed_api_v1_times_feed_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimesFeedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -44,6 +44,7 @@ async def search_messages(
     # One of each flag at most (the model's own limit; past it the request is a 422, not a 500).
     has: list[HasFlag] = Query(default=[], max_length=len(get_args(HasFlag))),
     is_thread: bool = False,
+    is_times: bool = False,
     sort: SearchSort = "relevance",
     tz_offset_minutes: int = Query(default=0, ge=-840, le=840),
     limit: int = Query(default=20, ge=1, le=100),
@@ -58,6 +59,7 @@ async def search_messages(
         before=before,
         has=has,
         is_thread=is_thread,
+        is_times=is_times,
         sort=sort,
         tz_offset_minutes=tz_offset_minutes,
         limit=limit,

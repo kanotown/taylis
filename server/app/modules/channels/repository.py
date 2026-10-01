@@ -71,6 +71,17 @@ async def list_public_channels_not_member(db: AsyncSession, user_id: uuid.UUID) 
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_public_times_not_member(db: AsyncSession, user_id: uuid.UUID) -> list[Channel]:
+    """Public times I have not joined, archived ones too (is:times, TIMES_FEED.md §6)."""
+    member_of = select(ChannelMember.channel_id).where(ChannelMember.user_id == user_id)
+    stmt = select(Channel).where(
+        Channel.type == "public",
+        Channel.times_owner_id.is_not(None),
+        Channel.id.not_in(member_of),
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def list_members(db: AsyncSession, channel_id: uuid.UUID) -> list[ChannelMember]:
     stmt = (
         select(ChannelMember)

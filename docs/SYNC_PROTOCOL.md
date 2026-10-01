@@ -151,6 +151,8 @@
 
 `POST /api/v1/channels/read-all` (M12a 「すべて既読にする」) は参加中の全チャンネルを末尾まで既読にし、動いたチャンネルごとに
 `read.updated (reason=advance)` を出す。応答は `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at }` の配列。
+本文 `{"scope": "times"}` (L8、TIMES_FEED.md §4) なら、Times フィードの対象 (会員でミュートしていない times) だけ。本文が無いか
+`"all"` なら全部。
 
 ```json
 { "last_read_seq": 1532 }

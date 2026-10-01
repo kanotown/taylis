@@ -110,6 +110,14 @@ class Message(Base):
             postgresql_where=text("client_msg_id IS NOT NULL"),
         ),
         Index("messages_channel_updated_seq_idx", "channel_id", "updated_seq"),
+        # M61 (L8): the Times feed walks each channel's timeline newest first (migration 0055).
+        Index(
+            "messages_timeline_created_idx",
+            "channel_id",
+            text("created_at DESC"),
+            text("id DESC"),
+            postgresql_where=text("deleted_at IS NULL AND (parent_id IS NULL OR also_in_channel)"),
+        ),
         Index(
             "messages_parent_idx",
             "parent_id",
