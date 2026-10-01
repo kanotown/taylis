@@ -96,7 +96,8 @@ final class SyncEngine {
     var onBadge: ((Int) -> Void)?
     /// L8 (TIMES_FEED.md §5): every live message.created / .updated / .deleted of a channel the store knows, as it
     /// arrives (the Times feed keeps its rows with them).
-    var onTimelineMessage: ((_ event: String, _ message: MessageOut) -> Void)?
+    /// The reply's parent_thread rides along (review #11: the feed's parent counters move with it).
+    var onTimelineMessage: ((_ event: String, _ message: MessageOut, _ parentThread: ParentThread?) -> Void)?
     private var pendingReads: [String: Task<Void, Never>] = [:]
     /// Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10).
     private(set) var unreadHold: [String: Int] = [:]
@@ -708,7 +709,7 @@ final class SyncEngine {
         let message = payload.message
         let thread = payload.parentThread
         let isNew = frame.event == "message.created"
-        onTimelineMessage?(frame.event, message)
+        onTimelineMessage?(frame.event, message, thread)
         if isNew {
             noteActivity(message)
             // M39: a mention of me or a reply in a thread I follow moves the activity badge (the server counts it).

@@ -478,7 +478,7 @@ struct MessageOut: Codable, Identifiable, Equatable {
     let channelId: String
     let senderId: String
     let seq: Int
-    let updatedSeq: Int
+    var updatedSeq: Int
     let clientMsgId: String?
     let body: String
     let createdAt: String

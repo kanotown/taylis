@@ -98,13 +98,13 @@ final class TimesFeedTests: XCTestCase {
         list.apply(event: "message.created", message: message("3", at: "2026-10-02T10:03:00Z"), isFeedRow: true, adding: true)
         XCTAssertEqual(ids(list), ["3", "2", "1"])
         // An edit replaces the row in place; an update of a row not held adds nothing.
-        list.apply(event: "message.updated", message: message("2", at: "2026-10-02T10:02:00Z", body: "edited"), isFeedRow: true, adding: true)
+        list.apply(event: "message.updated", message: message("2", at: "2026-10-02T10:02:00Z", seq: 2, body: "edited"), isFeedRow: true, adding: true)
         list.apply(event: "message.updated", message: message("9", at: "2026-10-02T09:00:00Z"), isFeedRow: true, adding: true)
         XCTAssertEqual(ids(list), ["3", "2", "1"])
         XCTAssertEqual(list.items[1].body, "edited")
         // Deleted (either event): the row goes.
-        list.apply(event: "message.deleted", message: message("3", at: "2026-10-02T10:03:00Z", deleted: true), isFeedRow: false, adding: true)
-        list.apply(event: "message.updated", message: message("1", at: "2026-10-02T10:01:00Z", deleted: true), isFeedRow: false, adding: true)
+        list.apply(event: "message.deleted", message: message("3", at: "2026-10-02T10:03:00Z", seq: 2, deleted: true), isFeedRow: false, adding: true)
+        list.apply(event: "message.updated", message: message("1", at: "2026-10-02T10:01:00Z", seq: 2, deleted: true), isFeedRow: false, adding: true)
         XCTAssertEqual(ids(list), ["2"])
     }
 
@@ -128,7 +128,7 @@ final class TimesFeedTests: XCTestCase {
         model.live("message.created", message("2", at: "2026-10-02T10:02:00Z"), channel: times, now: now)
         XCTAssertEqual(ids(model.list), ["1"])
         // …but an edit or a delete still applies to the rows held (they show offline).
-        model.live("message.updated", message("1", at: "2026-10-02T10:01:00Z", body: "edited"), channel: times, now: now)
+        model.live("message.updated", message("1", at: "2026-10-02T10:01:00Z", seq: 2, body: "edited"), channel: times, now: now)
         XCTAssertEqual(model.list.items.first?.body, "edited")
         model.visible = true
         model.live("message.created", message("3", at: "2026-10-02T10:03:00Z"), channel: times, now: now)
@@ -146,24 +146,173 @@ final class TimesFeedTests: XCTestCase {
         XCTAssertEqual(ids(model.list), ["5", "4"])
 
         // The next page; then a muted channel's rows go.
-        await model.loadMore { cursor in
+        await model.loadMore(fetch: { cursor in
             XCTAssertEqual(cursor, "c2")
             return TimesFeedOut(items: [self.message("4", at: "2026-10-02T10:04:00Z"), self.message("0", channel: "t2", at: "2026-10-02T10:00:00Z")],
                                 nextCursor: nil)
-        }
+        }, channel: { _ in times }, now: { self.now })
         XCTAssertEqual(ids(model.list), ["5", "4", "0"])
-        await model.loadMore { _ in XCTFail("no more pages"); return first }
+        await model.loadMore(fetch: { _ in XCTFail("no more pages"); return first }, channel: { _ in times })
         model.prune(channel: { $0 == "t1" ? times : self.channel("t2", muted: true) }, now: now)
         XCTAssertEqual(ids(model.list), ["5", "4"])
     }
 
     func testAFailedReadKeepsTheRowsAndSaysWhy() async {
         let model = TimesFeedModel()
-        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("1", at: "2026-10-02T10:01:00Z")], nextCursor: nil) }, channel: { _ in nil })
+        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("1", at: "2026-10-02T10:01:00Z")], nextCursor: nil) },
+                            channel: { _ in self.channel("t1") })
         await model.refresh(fetch: { _ in throw URLError(.notConnectedToInternet) }, channel: { _ in nil })
         XCTAssertEqual(ids(model.list), ["1"])
         XCTAssertNotNil(model.failure)
         XCTAssertFalse(model.loading)
+    }
+
+    // MARK: review v0.1.15 (#2, #3, #4, #8, #9, #10, #11)
+
+    /// #2: a page read before a leave (a private times I was removed from) brings none of its rows back, first or next.
+    func testAPageThatLandsAfterALeaveBringsNoneOfThatChannelsRows() async {
+        let model = TimesFeedModel()
+        var channels: [String: ChannelState] = ["t1": channel("t1"), "t2": channel("t2")]
+        await model.refresh(fetch: { _ in
+            channels["t2"] = nil // removed while the page was read
+            model.prune(channel: { channels[$0] }, now: self.now)
+            return TimesFeedOut(items: [self.message("b", channel: "t2", at: "2026-10-02T10:02:00Z"),
+                                        self.message("a", channel: "t1", at: "2026-10-02T10:01:00Z")], nextCursor: "c")
+        }, channel: { channels[$0] }, now: { self.now })
+        XCTAssertEqual(ids(model.list), ["a"])
+        channels["t2"] = channel("t2")
+        await model.loadMore(fetch: { _ in
+            channels["t2"] = self.channel("t2", muted: true)
+            model.prune(channel: { channels[$0] }, now: self.now)
+            return TimesFeedOut(items: [self.message("y", channel: "t2", at: "2026-10-02T09:02:00Z"),
+                                        self.message("x", channel: "t1", at: "2026-10-02T09:01:00Z")], nextCursor: nil)
+        }, channel: { channels[$0] }, now: { self.now })
+        XCTAssertEqual(ids(model.list), ["a", "x"])
+    }
+
+    /// #3: an edit or a delete that comes while a page is read is not undone by the page's older copy.
+    func testChangesDuringAPageReadAreAppliedAgainAfterIt() async {
+        let model = TimesFeedModel()
+        model.visible = true
+        let times = channel("t1")
+        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("m", at: "2026-10-02T10:00:00Z")], nextCursor: "c") },
+                            channel: { _ in times }, now: { self.now })
+        // The first page again: meanwhile m is edited, n is posted and deleted, k is deleted; the page has their old copies.
+        await model.refresh(fetch: { _ in
+            model.live("message.updated", self.message("m", at: "2026-10-02T10:00:00Z", seq: 5, body: "edited"), channel: times, now: self.now)
+            model.live("message.created", self.message("n", at: "2026-10-02T10:05:00Z", seq: 6), channel: times, now: self.now)
+            model.live("message.deleted", self.message("n", at: "2026-10-02T10:05:00Z", seq: 7, deleted: true), channel: times, now: self.now)
+            model.live("message.deleted", self.message("k", at: "2026-10-02T09:59:00Z", seq: 8, deleted: true), channel: times, now: self.now)
+            return TimesFeedOut(items: [self.message("n", at: "2026-10-02T10:05:00Z", seq: 6),
+                                        self.message("m", at: "2026-10-02T10:00:00Z", seq: 1, body: "old"),
+                                        self.message("k", at: "2026-10-02T09:59:00Z", seq: 4)], nextCursor: "c2")
+        }, channel: { _ in times }, now: { self.now })
+        XCTAssertEqual(ids(model.list), ["m"])
+        XCTAssertEqual(model.list.items.first?.body, "edited")
+        // The next page: a row deleted while it was read does not come back.
+        await model.loadMore(fetch: { _ in
+            model.live("message.deleted", self.message("j", at: "2026-10-02T09:00:00Z", seq: 9, deleted: true), channel: times, now: self.now)
+            return TimesFeedOut(items: [self.message("j", at: "2026-10-02T09:00:00Z", seq: 3), self.message("i", at: "2026-10-02T08:00:00Z", seq: 2)],
+                                nextCursor: nil)
+        }, channel: { _ in times }, now: { self.now })
+        XCTAssertEqual(ids(model.list), ["m", "i"])
+    }
+
+    /// #9: an older version (a late event, a page) never replaces a newer row.
+    func testAnOlderVersionNeverReplacesANewerRow() {
+        var list = TimesFeedList()
+        list.replace(with: TimesFeedOut(items: [message("m", at: "2026-10-02T10:00:00Z", seq: 2, body: "edited")], nextCursor: "c"))
+        list.apply(event: "message.created", message: message("m", at: "2026-10-02T10:00:00Z", seq: 1, body: "old"), isFeedRow: true, adding: true)
+        list.apply(event: "message.deleted", message: message("m", at: "2026-10-02T10:00:00Z", seq: 1, deleted: true), isFeedRow: false, adding: true)
+        list.append(TimesFeedOut(items: [message("m", at: "2026-10-02T10:00:00Z", seq: 1, body: "old")], nextCursor: nil))
+        XCTAssertEqual(list.items.map(\.body), ["edited"])
+        XCTAssertEqual(list.items.first?.updatedSeq, 2)
+    }
+
+    /// #10: another member's event keeps my own poll part; the answer to my vote brings it.
+    func testMyPollPartSurvivesEventsAndMyAnswersBringIt() {
+        func poll(mine: [Int]?) -> PollOut {
+            var poll = PollOut(question: "q", options: ["a", "b"])
+            poll.anonymous = true
+            poll.mine = mine
+            return poll
+        }
+        var row = message("p", at: "2026-10-02T10:00:00Z", seq: 1)
+        row.poll = poll(mine: [0])
+        var list = TimesFeedList()
+        list.replace(with: TimesFeedOut(items: [row], nextCursor: nil))
+        var event = message("p", at: "2026-10-02T10:00:00Z", seq: 2)
+        event.poll = poll(mine: nil)
+        list.apply(event: "message.updated", message: event, isFeedRow: true, adding: true)
+        XCTAssertEqual(list.items.first?.poll?.mine, [0])
+        XCTAssertEqual(list.items.first?.updatedSeq, 2)
+        // My vote's answer at the version the event already brought: only my part changes.
+        var answer = event
+        answer.poll = poll(mine: [1])
+        list.apply(event: TimesFeedList.stored, message: answer, isFeedRow: true, adding: true)
+        XCTAssertEqual(list.items.first?.poll?.mine, [1])
+        XCTAssertTrue(list.applyMyPart(of: { var a = answer; a.poll = poll(mine: [0, 1]); return a }()))
+        XCTAssertEqual(list.items.first?.poll?.mine, [0, 1])
+    }
+
+    /// #11: a thread-only reply moves its feed parent's counters (newer only).
+    func testAReplyMovesItsFeedParentsCounters() async {
+        let model = TimesFeedModel()
+        model.visible = true
+        let times = channel("t1")
+        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("p", at: "2026-10-02T10:00:00Z", seq: 1)], nextCursor: nil) },
+                            channel: { _ in times }, now: { self.now })
+        let reply = message("r", at: "2026-10-02T10:01:00Z", seq: 2, parentId: "p")
+        model.live("message.created", reply, thread: ParentThread(id: "p", replyCount: 1, lastReplyAt: reply.createdAt, updatedSeq: 3,
+                                                                replyUserIds: ["u2"]), channel: times, now: now)
+        XCTAssertEqual(ids(model.list), ["p"])
+        XCTAssertEqual(model.list.items.first?.replyCount, 1)
+        XCTAssertEqual(model.list.items.first?.replyUserIds, ["u2"])
+        // An older one (a late event) does not move them back.
+        model.thread(ParentThread(id: "p", replyCount: 0, lastReplyAt: nil, updatedSeq: 2))
+        XCTAssertEqual(model.list.items.first?.replyCount, 1)
+    }
+
+    /// #4: a row the store took (the delta after a gap, my own action's answer) reaches the feed: a held row takes it, a
+    /// new one inside the rows read is added; the store hands every server row and my poll part over.
+    func testRowsTheStoreTakesReachTheFeed() async {
+        let store = Store()
+        let model = TimesFeedModel()
+        model.visible = true
+        let times = channel("t1")
+        store.onMessageTaken = { model.stored($0, channel: times, now: self.now) }
+        store.onMyPart = { model.myPart($0) }
+        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("b", at: "2026-10-02T10:02:00Z"),
+                                                               self.message("a", at: "2026-10-02T10:00:00Z")], nextCursor: "c") },
+                            channel: { _ in times }, now: { self.now })
+        store.upsertMessage(message("lost", at: "2026-10-02T10:01:00Z", seq: 3)) // recovered by the delta
+        store.upsertMessage(message("old", at: "2026-10-02T09:00:00Z", seq: 1)) // older than the rows read: the next page has it
+        store.upsertMessage(message("b", at: "2026-10-02T10:02:00Z", seq: 4, body: "edited")) // my edit's answer
+        XCTAssertEqual(ids(model.list), ["b", "lost", "a"])
+        XCTAssertEqual(model.list.items.first?.body, "edited")
+        var poll = PollOut(question: "q", options: ["a"])
+        poll.mine = []
+        var withPoll = message("a", at: "2026-10-02T10:00:00Z", seq: 5)
+        withPoll.poll = poll
+        store.upsertMessage(withPoll)
+        var answer = withPoll
+        answer.poll?.mine = [0]
+        store.setMyVotes(answer)
+        XCTAssertEqual(model.list.items.last?.poll?.mine, [0])
+    }
+
+    /// #8: the parent of a thread opened from the feed: a feed row, or one fetched for it.
+    func testAThreadsParentComesFromTheFeed() async {
+        let model = TimesFeedModel()
+        await model.refresh(fetch: { _ in TimesFeedOut(items: [self.message("p", at: "2026-10-02T10:00:00Z")], nextCursor: nil) },
+                            channel: { _ in self.channel("t1") }, now: { self.now })
+        XCTAssertEqual(model.parent("p")?.id, "p")
+        XCTAssertNil(model.parent("q"))
+        model.keepParent(message("q", at: "2026-10-02T09:00:00Z", seq: 2, body: "parent"))
+        model.keepParent(message("q", at: "2026-10-02T09:00:00Z", seq: 1, body: "older"))
+        XCTAssertEqual(model.parent("q")?.body, "parent")
+        model.thread(ParentThread(id: "q", replyCount: 4, lastReplyAt: nil, updatedSeq: 3))
+        XCTAssertEqual(model.parent("q")?.replyCount, 4)
     }
 
     // MARK: §4 the dot

@@ -49,6 +49,7 @@ struct ThreadView: View {
         controller.store.message(channelId, id: parentId)
             ?? entry.map { MessageState($0.parent) }
             ?? controller.messageFocus?.context.first { $0.id == parentId }
+            ?? controller.timesFeed.parent(parentId).map { MessageState($0) } // opened from the Times feed (review #8)
     }
     private var replies: [MessageState] { controller.store.replies(channelId, parentId: parentId) }
     /// 「新しい返信」 sits before the first reply from someone else past my read position when the thread became ready

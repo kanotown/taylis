@@ -474,9 +474,23 @@ final class AppController {
         engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
         // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
         timesFeed = TimesFeedModel()
-        engine.onTimelineMessage = { [weak self, weak engine] event, message in
+        engine.onTimelineMessage = { [weak self, weak engine] event, message, thread in
             guard let self, self.engine === engine else { return }
-            self.timesFeed.live(event, message, channel: self.store.channel(message.channelId))
+            self.timesFeed.live(event, message, thread: thread, channel: self.store.channel(message.channelId))
+        }
+        // Review #4: the rows the store takes otherwise (the delta after a gap, the answers to my own actions) and my
+        // poll part reach the feed too; it keeps the newer version of each (§8).
+        store.onMessageTaken = { [weak self, weak store] message in
+            guard let self, let store, self.store === store else { return }
+            self.timesFeed.stored(message, channel: store.channel(message.channelId))
+        }
+        store.onMyPart = { [weak self, weak store] answer in
+            guard let self, let store, self.store === store else { return }
+            self.timesFeed.myPart(answer)
+        }
+        store.onParentThread = { [weak self, weak store] thread in
+            guard let self, let store, self.store === store else { return }
+            self.timesFeed.thread(thread)
         }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
@@ -932,7 +946,16 @@ final class AppController {
 
     func loadMoreTimesFeed() async {
         guard let api else { return }
-        await timesFeed.loadMore { try await api.timesFeed(cursor: $0, limit: TimesFeedModel.pageSize) }
+        let store = store
+        await timesFeed.loadMore(fetch: { try await api.timesFeed(cursor: $0, limit: TimesFeedModel.pageSize) }, channel: { store.channel($0) })
+    }
+
+    /// Review #8: a thread opened from the feed needs its parent. A feed row is one (ThreadView falls back to the feed);
+    /// the parent of a reply also sent to the channel may be in neither the feed nor the store: it is fetched by id.
+    func loadTimesFeedParent(channelId: String, parentId: String) async {
+        guard let api, store.message(channelId, id: parentId) == nil, store.threads[parentId] == nil,
+              timesFeed.parent(parentId) == nil else { return }
+        do { timesFeed.keepParent(try await api.message(id: parentId)) } catch { self.error = describe(error) }
     }
 
     /// M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device.

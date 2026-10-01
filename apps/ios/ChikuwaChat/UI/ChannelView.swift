@@ -421,11 +421,12 @@ struct ChannelView: View {
                             // what is at the top of the conversation; each flipped back the right way up.
                             LazyVStack(alignment: .leading, spacing: 0) {
                                 NewestEdgeMarker { atBottom = $0 }
-                                ForEach(items.reversed()) { item in
-                                    Group {
-                                        switch item {
-                                        case .date(let label, _):
-                                            DaySeparator(label: label).padding(.horizontal, Self.margin)
+                                ForEach(Timeline.rows(items).reversed()) { row in
+                                    // A day's separator is part of the row under it: they come and move together.
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        if let day = row.day { DaySeparator(label: day).padding(.horizontal, Self.margin) }
+                                        switch row.item {
+                                        case .date: EmptyView() // drawn over the row after it (Timeline.rows)
                                         case .unread:
                                             UnreadSeparator().padding(.horizontal, Self.margin)
                                         case .message(let message, let compact):
@@ -444,7 +445,7 @@ struct ChannelView: View {
                                     // A new newest row comes up from under the input with the others (in the flipped list the
                                     // top edge is the screen's bottom); faded in in place, it overlapped the row above.
                                     .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
-                                    .id(item.id) // the row key (scrollTo), "unread" for the divider
+                                    .id(row.id) // the row key (scrollTo), "unread" for the divider
                                 }
                                 if let channel {
                                     conversationTop(channel).upsideDown()
