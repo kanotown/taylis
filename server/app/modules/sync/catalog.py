@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter
 
 from app.modules.activity import events as activity_events
+from app.modules.ai import events as ai_events
 from app.modules.auth import events as auth_events
 from app.modules.bookmarks import events as bookmark_events
 from app.modules.calendar import events as calendar_events
@@ -120,6 +121,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "user",
         False,
     ),
+    ai_events.AI_RUN_UPDATED: (ai_events.AiRunUpdatedData, "user (the requester)", False),
 }
 
 

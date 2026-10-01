@@ -41,7 +41,7 @@ CLAUDE.md を優先し、本書を更新する。
 - 外部連携のうち Bot API と OAuth アプリ、URL アンファール。受信 Webhook だけは M13a で最小構成にした
   (CI / 監視の通知はチームチャットの主用途のひとつで、bot ユーザーとして投稿するだけなら既存の経路で済む)
 - 音声 / ビデオ通話
-- 埋め込み・LLM を使う機能 (意味検索、要約、抽出、QA)。ただし後から足せる構造にする (§10)
+- 埋め込みを使う機能 (意味検索、RAG、抽出、QA)。ただし後から足せる構造にする (§10)。メンションに応える AI のボットと要約は M65 で作った (docs/AI.md)
 
 ## 2. 規模の前提 (scale envelope)
 
@@ -181,6 +181,7 @@ server/
       search/            # PGroonga 検索 (messages / attachments / canvases の読み取り専用アクセスを許可。canvases は M42)
       notifications/     # notification_preferences, PushPlanner, PushSender, PushProvider 実装
       sync/              # GET /api/v1/sync/bootstrap (各モジュールの read-only 集約)
+      ai/                # AI のボット (メンションへの返事) と要約、LlmProvider (Anthropic / テスト用の Fake)、worker (M65、docs/AI.md)
   migrations/            # Alembic
   tests/
 ```
@@ -196,6 +197,7 @@ server/
    `sync` は各モジュールの repository の read-only 関数を呼んでよい。`channels` はメンバー追加 / DM の
    対象ユーザー解決のため `users` を読み取り専用でクエリしてよい (`load_users`)。
    `reads` は未読数・メンション数の集計のため `messages` を読み取り専用でクエリしてよい (DATA_MODEL.md の COUNT)。
+   `ai` は送る会話を組み立てるため `messages` を読み取り専用でクエリしてよい (M65、`search` と同じ考え)。
 2. 副作用の連鎖 (「メッセージが作られたらプッシュを計画する」) はイベントで結ぶ。`messages` が
    `notifications` を直接呼ばない。
 3. 同期的に必要な判定 (権限、存在確認) は service 呼び出しでよい。例: `messages` → `channels.require_member()`。

@@ -341,6 +341,586 @@
         "title": "AdminUserUpdate",
         "type": "object"
       },
+      "AiAgentCreate": {
+        "properties": {
+          "allow_private": {
+            "default": false,
+            "title": "Allow Private",
+            "type": "boolean"
+          },
+          "character": {
+            "maxLength": 4000,
+            "title": "Character",
+            "type": "string"
+          },
+          "effort": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "username": {
+            "pattern": "^[a-z0-9._-]{3,32}$",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "name",
+          "character",
+          "model"
+        ],
+        "title": "AiAgentCreate",
+        "type": "object"
+      },
+      "AiAgentOut": {
+        "properties": {
+          "allow_private": {
+            "title": "Allow Private",
+            "type": "boolean"
+          },
+          "bot_user_id": {
+            "format": "uuid",
+            "title": "Bot User Id",
+            "type": "string"
+          },
+          "character": {
+            "title": "Character",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effort": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bot_user_id",
+          "username",
+          "name",
+          "character",
+          "model",
+          "effort",
+          "allow_private",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AiAgentOut",
+        "type": "object"
+      },
+      "AiAgentPublic": {
+        "properties": {
+          "bot_user_id": {
+            "format": "uuid",
+            "title": "Bot User Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bot_user_id",
+          "name",
+          "model"
+        ],
+        "title": "AiAgentPublic",
+        "type": "object"
+      },
+      "AiAgentUpdate": {
+        "description": "Only the fields sent change; the username never does.",
+        "properties": {
+          "allow_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Private"
+          },
+          "character": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "enum": [
+                  "claude-opus-5-5",
+                  "claude-sonnet-5-5",
+                  "claude-haiku-4-5"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "AiAgentUpdate",
+        "type": "object"
+      },
+      "AiRunOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "mention",
+              "summary"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "omitted_count": {
+            "title": "Omitted Count",
+            "type": "integer"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unread",
+                  "thread",
+                  "recent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "channel_id",
+          "thread_id",
+          "scope",
+          "days",
+          "output",
+          "error",
+          "omitted_count",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "AiRunOut",
+        "type": "object"
+      },
+      "AiStatusOut": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AiAgentPublic"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "summary_available": {
+            "title": "Summary Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "summary_available",
+          "agents"
+        ],
+        "title": "AiStatusOut",
+        "type": "object"
+      },
+      "AiSummaryCreate": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "maximum": 7.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "scope": {
+            "enum": [
+              "unread",
+              "thread",
+              "recent"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "tz_offset_minutes": {
+            "anyOf": [
+              {
+                "maximum": 840.0,
+                "minimum": -840.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz Offset Minutes"
+          }
+        },
+        "required": [
+          "channel_id",
+          "scope"
+        ],
+        "title": "AiSummaryCreate",
+        "type": "object"
+      },
+      "AiUsageByAgent": {
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "name",
+          "runs",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "title": "AiUsageByAgent",
+        "type": "object"
+      },
+      "AiUsageByUser": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "runs",
+          "cost_usd"
+        ],
+        "title": "AiUsageByUser",
+        "type": "object"
+      },
+      "AiUsageOut": {
+        "properties": {
+          "budget_usd": {
+            "title": "Budget Usd",
+            "type": "number"
+          },
+          "by_agent": {
+            "items": {
+              "$ref": "#/components/schemas/AiUsageByAgent"
+            },
+            "title": "By Agent",
+            "type": "array"
+          },
+          "by_user": {
+            "items": {
+              "$ref": "#/components/schemas/AiUsageByUser"
+            },
+            "title": "By User",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "total_cost_usd": {
+            "title": "Total Cost Usd",
+            "type": "number"
+          },
+          "total_runs": {
+            "title": "Total Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "budget_usd",
+          "total_cost_usd",
+          "total_runs",
+          "by_agent",
+          "by_user"
+        ],
+        "title": "AiUsageOut",
+        "type": "object"
+      },
       "AttachmentOut": {
         "properties": {
           "content_type": {
@@ -8997,6 +9577,237 @@
         ]
       }
     },
+    "/api/v1/admin/ai/agents": {
+      "get": {
+        "description": "The AI bots (deleted ones are not listed), oldest first.",
+        "operationId": "list_agents_api_v1_admin_ai_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiAgentOut"
+                  },
+                  "title": "Response List Agents Api V1 Admin Ai Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agents",
+        "tags": [
+          "ai"
+        ]
+      },
+      "post": {
+        "description": "A new AI bot with its own bot user (409 username_taken).",
+        "operationId": "create_agent_api_v1_admin_ai_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAgentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAgentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Agent",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/agents/{agent_id}": {
+      "delete": {
+        "description": "The bot leaves every conversation and is deactivated; its posts stay.",
+        "operationId": "delete_agent_api_v1_admin_ai_agents__agent_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Agent",
+        "tags": [
+          "ai"
+        ]
+      },
+      "patch": {
+        "description": "Only the fields sent change; the username never does.",
+        "operationId": "update_agent_api_v1_admin_ai_agents__agent_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAgentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAgentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Agent",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/usage": {
+      "get": {
+        "description": "A month's use (UTC month; default this one): per bot and per person.",
+        "operationId": "get_usage_api_v1_admin_ai_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Usage",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
     "/api/v1/admin/canvas-templates": {
       "get": {
         "description": "All templates, hidden ones too (administrators).",
@@ -9911,6 +10722,192 @@
         "summary": "Update Webhook",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/api/v1/ai/runs": {
+      "get": {
+        "description": "My most recent 20 runs, newest first.",
+        "operationId": "list_runs_api_v1_ai_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "mention",
+                    "summary"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiRunOut"
+                  },
+                  "title": "Response List Runs Api V1 Ai Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/runs/{run_id}": {
+      "get": {
+        "description": "One of my runs (others' are 404 ai_run_not_found).",
+        "operationId": "get_run_api_v1_ai_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/status": {
+      "get": {
+        "description": "Whether the AI can be used here, and the AI bots (for the 「AI」 badge).",
+        "operationId": "get_status_api_v1_ai_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Status",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/summaries": {
+      "post": {
+        "description": "A summary only the requester sees, of the messages they can read; the result arrives as\nai.run_updated and through GET /ai/runs/{id}.",
+        "operationId": "create_summary_api_v1_ai_summaries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSummaryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Summary",
+        "tags": [
+          "ai"
         ]
       }
     },

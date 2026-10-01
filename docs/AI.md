@@ -139,6 +139,44 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 あとで: 過去の会話への質問 (全文検索で拾ったメッセージを渡し、出典付きで答える)、スレッドから決定・タスクを取り出す
 (タスクにする前に確認)、前日までの要約を貯めて使い回す、times からの週報の下書き。
 
+## 8. 実装で決めたこと (M65 サーバ)
+
+- **モジュール**: `app/modules/ai` (葉のモジュール)。`llm.py` に `LlmProvider` (`AnthropicProvider` と `FakeProvider`)、料金は
+  `pricing.py`、送る文は `prompts.py`。`messages` は読み取り専用で直接読む (ARCHITECTURE §5 の例外に追加)。キーのファイルは最初に
+  使うときに読み、無ければ次の利用でまた見る (再起動なしで足せる)。ファイルが無い・空・ディレクトリ (compose の既定) は「使えない」。
+- **送る本文は run を作るときに組み立てる** (`ai_runs.input`)。要約は頼んだ時点で本人が読めるもの、メンションはそのときの会話。
+  worker は本文とボットの設定 (モデル・考える量・性格) だけで API を呼ぶ。行は `"名前 (YYYY-MM-DD HH:MM): 本文"`、メンションの
+  `<@id>` は表示名に (ゲストには見えない人は「@メンバー」)、添付は `[添付: ファイル名]`。時刻はメンションでは日本時間、要約では
+  `tz_offset_minutes` (無ければ +540)。
+- **要約の範囲**: `unread` / `recent` はチャンネルの返信も含めて seq 順 (返信は行頭に「↳」)。`unread` は既読位置より後、
+  `recent` は直近 `days` × 24 時間 (既定 1)。読むのは新しい側から最大 2000 件、6 万字を超える古い側は落として `omitted_count`
+  (2000 件より前も数える)。読むものが無ければ API を呼ばずに `done` (「要約するメッセージはありません。」)。会員でない会話は公開
+  チャンネルでも 404 (取り決めのとおり)。
+- **メンション**: 応えるのは、メンション順で最初の「有効・チャンネルのメンバー・(非公開なら allow_private)」のボット 1 体
+  (`(kind, source_message_id)` が一意なので 1 メッセージ 1 回)。送り手がボット (`role = bot`)・無効な人、メッセージの `type` が
+  user 以外、アーカイブ中のチャンネルでは何もしない。公開から非公開に変わったチャンネルでは allow_private の無いボットは黙る。
+  ハンドラは自分の savepoint で動き、失敗してもイベントのプッシュや配信を止めない (ログだけ)。
+- **上限の確かめ方**: 月は UTC の暦月で `cost_usd` を合計 (終わった run の分)。人ごとの回数は直近 24 時間に作った run の数
+  (メンションと要約の合計、上限で断ったものは数えない)。メンションで上限・キー無しのときは run を作らず、ボットが
+  「応答できませんでした: …」をスレッドに書く (`client_msg_id` はメッセージの id から作るので二重にならない)。
+- **worker**: 2 秒ごと (`AI_WORKER_INTERVAL_SECONDS`)、一度に 2 件を拾って並べて実行 (`FOR UPDATE SKIP LOCKED`、リース 10 分)。
+  拾うたびに `attempts` を 1 増やす。混雑・5xx・接続の失敗は 30 秒・120 秒あけて 3 回まで、そのあと失敗。キー・権限・不正な
+  リクエスト・モデル無しはすぐ失敗。落ちたプロセスの run はリースが切れたら拾い直す (4 回目は失敗として閉じる)。
+  断り (`refusal`) も費用は記録する。`max_tokens` で止まったら、返ってきた分に「(長さの上限に達したため、ここまでです)」を足す。
+- **イベント**: 要約は拾ったとき (`running`) と終わったとき (`done` / `failed`) に `ai.run_updated` (宛先は頼んだ人)。再試行で
+  `pending` に戻すときは出さない (次に拾ったときにまた `running`)。
+- **非公開の確認**: `POST /channels/{id}/members` (ボットを入れるとき、メンバーかどうかを確かめてから) と `POST /dms` で、
+  `allow_private` の無い AI ボットなら `400 ai_private_not_allowed`。channels は ai に依存しないので、確認の関数は main.py が
+  `app.state.ai_private_guard` で渡す (times_followers と同じ形)。
+- **管理**: 管理者でない人は既存の管理 API と同じ `403 admin_required` (取り決めの「403」のとおり、コードは既存に合わせた)。
+  ボットの作成・変更・削除は `audit_logs`。使用量の `by_agent.input_tokens` はキャッシュの読み書きも含めた入力の合計。
+  `month` の形が `YYYY-MM` でなければ 422 (FastAPI の検証)、ありえない月 (`2026-13`) は `400 validation_error`。
+- **秘密と設定**: `AI_API_KEY_FILE` (既定 `/run/secrets/anthropic_api_key`、compose は `infra/.env` の `ANTHROPIC_API_KEY_FILE` を
+  マウント)、`AI_MONTHLY_BUDGET_USD` (30)、`AI_USER_DAILY_RUNS` (50)、`AI_WORKER_INTERVAL_SECONDS` (2)、
+  `AI_INPUT_RETENTION_DAYS` (90。消すのは毎時の掃除のループ)。
+- **エラー文言**: `ai_unavailable` / `ai_budget_exceeded` / `ai_daily_limit` / `ai_private_not_allowed` / `ai_run_not_found` /
+  `ai_agent_not_found` を apps/shared/errors.json に足し、3 端末の表を作り直した。
+
 ## 9. 実装で決めたこと (M65 Desktop / Web)
 
 - **型**: §5 の型は `apps/desktop/src/api/ai.ts` に手で書いた (サーバと並行で作ったため openapi にまだ無い)。サーバが入ったら

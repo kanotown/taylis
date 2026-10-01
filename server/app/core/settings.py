@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     session_retention_days: int = 30
     device_retention_days: int = 90
 
+    # AI (docs/AI.md, M65): the Anthropic API key lives in a secret file only (never the DB or the
+    # clients); without it the AI features report unavailable. Budget per calendar month (UTC)
+    # and runs per person per rolling 24 hours (mentions and summaries together).
+    ai_api_key_file: str = "/run/secrets/anthropic_api_key"
+    ai_monthly_budget_usd: float = 30.0
+    ai_user_daily_runs: int = 50
+    ai_worker_interval_seconds: float = 2.0
+    # docs/AI.md §4: the prompt text of a run is dropped after this many days (cost stays).
+    ai_input_retention_days: int = 90
+
     # Realtime (SYNC_PROTOCOL.md §5)
     ws_auth_timeout_seconds: float = 5.0
     ws_heartbeat_interval_seconds: int = 30

@@ -2,6 +2,7 @@
 
 from app.core.base import Base
 from app.events import models as _event_models
+from app.modules.ai import models as _ai_models
 from app.modules.auth import models as _auth_models
 from app.modules.calendar import models as _calendar_models
 from app.modules.canvases import models as _canvas_models
@@ -24,6 +25,7 @@ from app.modules.workspace import models as _workspace_models
 
 __all__ = [
     "Base",
+    "_ai_models",
     "_auth_models",
     "_calendar_models",
     "_canvas_models",

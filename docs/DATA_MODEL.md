@@ -1026,6 +1026,48 @@ CREATE INDEX task_due_alarms_due_idx ON task_due_alarms (fire_at) WHERE status =
   cancelled にする (outbox の channel.member_removed を受ける TaskLeaveHandler)。
 - タスクはチャンネルの seq を使わない。
 
+### ai_agents / ai_runs (AI のボットと要約、M65、docs/AI.md)
+
+```sql
+CREATE TABLE ai_agents (
+  id            uuid PRIMARY KEY,
+  bot_user_id   uuid NOT NULL UNIQUE REFERENCES users(id),   -- role = bot
+  name          varchar(80) NOT NULL,                        -- users.display_name と同じ
+  character     text NOT NULL DEFAULT '',                    -- ≤ 4000 字。システムプロンプトに入れる
+  model         varchar(32) NOT NULL,                        -- claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-4-5
+  effort        varchar(8) NOT NULL DEFAULT 'medium',        -- low / medium / high
+  allow_private boolean NOT NULL DEFAULT false,              -- 非公開チャンネルと DM に入れるか
+  enabled       boolean NOT NULL DEFAULT true,
+  created_by    uuid REFERENCES users(id),
+  created_at, updated_at timestamptz NOT NULL, deleted_at timestamptz
+);
+
+CREATE TABLE ai_runs (
+  id uuid PRIMARY KEY, kind varchar(16) NOT NULL,            -- mention / summary
+  status varchar(16) NOT NULL DEFAULT 'pending',             -- pending / running / done / failed
+  agent_id uuid REFERENCES ai_agents(id), requester_id uuid NOT NULL REFERENCES users(id),
+  channel_id uuid NOT NULL REFERENCES channels(id),
+  thread_id uuid REFERENCES messages(id),                    -- 返事を書くスレッド / 要約したスレッド
+  source_message_id uuid REFERENCES messages(id),            -- メンションのメッセージ
+  scope varchar(16), days smallint,                          -- 要約の範囲
+  input text,                                                -- 送った本文。90 日で NULL
+  output text, error text, omitted_count int NOT NULL DEFAULT 0,
+  attempts smallint NOT NULL DEFAULT 0, next_attempt_at timestamptz, locked_until timestamptz,
+  input_tokens, output_tokens, cache_read_tokens, cache_write_tokens int NOT NULL DEFAULT 0,
+  cost_usd numeric(12, 6) NOT NULL DEFAULT 0, model varchar(64),
+  created_at timestamptz NOT NULL, started_at timestamptz, finished_at timestamptz
+);
+CREATE UNIQUE INDEX ai_runs_source_uniq ON ai_runs (kind, source_message_id) WHERE source_message_id IS NOT NULL;
+CREATE INDEX ai_runs_open_idx      ON ai_runs (created_at) WHERE status IN ('pending', 'running');
+CREATE INDEX ai_runs_created_idx   ON ai_runs (created_at);                      -- 月の合計
+CREATE INDEX ai_runs_requester_idx ON ai_runs (requester_id, created_at DESC);   -- 人ごとの回数・一覧
+CREATE INDEX ai_runs_input_idx     ON ai_runs (created_at) WHERE input IS NOT NULL;
+```
+
+- run は送る本文 (`input`) を作ってから入れる (要約は頼んだ時点で本人が読めるメッセージ、メンションはその時点の会話)。worker は
+  `pending` (と `next_attempt_at` を過ぎたもの) と、リースの切れた `running` を拾う。
+- ボットの削除は論理削除 (ボットのユーザーは無効化、投稿はそのまま)。ai_runs はチャンネルの seq を使わない。
+
 ### drafts (端末間で共有する下書き、M15d)
 
 ```sql
@@ -1527,6 +1569,7 @@ LIMIT $limit OFFSET $offset;
 | outbox_events | 1 日数千行 | 処理済みは 7 日で削除 |
 | push_deliveries | 1 日数千行 | 7 日で削除 |
 | sessions / devices | ユーザー × 端末 | 失効 / 無効化から 30 日で削除 |
+| ai_runs | 1 回ごとに 1 行 (入力は最大 6 万字) | 行は無期限 (費用の記録)。入力の本文は 90 日で消す (M65) |
 | canvases / canvas_revisions | 版 1 つ ≈ 本文の圧縮後 (約 1 万字で 9.6 KB)。1 時間の自動保存で約 700 版 | キャンバスは無期限 (ゴミ箱は 30 日で完全削除)。版は 24 時間後に整理 (M42) |
 
 ## 6. 将来の追加候補 (スキーマ上の置き場所だけ決めておく)
