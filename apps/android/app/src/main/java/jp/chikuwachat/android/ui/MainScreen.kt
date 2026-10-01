@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -447,6 +448,7 @@ fun MainScreen(controller: AppController) {
         }
     }
     controller.taskForm?.let { form -> TaskFormScreen(controller, form, version, onDismiss = { controller.taskForm = null }) }
+    AiSheets(controller) // M66: the 「要約」 choices and the summary sheet (docs/AI.md §6)
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
@@ -578,6 +580,9 @@ fun MainScreen(controller: AppController) {
                             activityFeed = top is Route.Activity && store.activity != null,
                             timesFeed = top == Route.TimesFeed,
                             myTimes = TimesFeed.myTimes(store.channels.values, me?.id) != null || !controller.isGuest,
+                            // M66: a joined conversation's thread; summaries while the server takes them (GET /ai/status).
+                            thread = selectedChannel != null && selectedChannel.isMember && threadId != null && !detailsOpen,
+                            summaries = controller.aiSummaryAvailable,
                         )
                         val barButtons = top != Route.You && top !is Route.Settings
                         // THREADS.md §5: follow / unfollow the open thread.
@@ -687,6 +692,21 @@ fun MainScreen(controller: AppController) {
                                                 }
                                             },
                                         )
+                                    }
+                                    // M66 (docs/AI.md §6): the choices open as a sheet; the result shows in its own sheet.
+                                    BarMenuItem.SUMMARIZE -> selectedChannel?.let { open ->
+                                        DropdownMenuItem(
+                                            text = { Text("要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                            onClick = { menuOpen = false; controller.aiSummaryChooser = open.id },
+                                        )
+                                    }
+                                    BarMenuItem.SUMMARIZE_THREAD -> selectedChannel?.let { open ->
+                                        threadId?.let { parentId ->
+                                            DropdownMenuItem(
+                                                text = { Text("このスレッドを要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                                onClick = { menuOpen = false; controller.requestSummary(AiTexts.threadRequest(open.id, parentId)) },
+                                            )
+                                        }
                                     }
                                     BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
                                         text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },

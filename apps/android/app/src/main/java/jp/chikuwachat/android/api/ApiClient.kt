@@ -3,6 +3,7 @@ package jp.chikuwachat.android.api
 import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.CalendarApi
 import jp.chikuwachat.android.sync.TaskApi
+import jp.chikuwachat.android.sync.AiApi
 import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
@@ -63,7 +64,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, TaskApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, TaskApi, AiApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -762,6 +763,15 @@ class ApiClient(
     override suspend fun deleteTask(taskId: String) {
         requestRaw("DELETE", "/api/v1/tasks/$taskId", null, auth = true, retry401 = true)
     }
+
+    // --- AI (docs/AI.md §5, M66) -----------------------------------------------------------------
+
+    override suspend fun aiStatus(): AiStatusOut = request("GET", "/api/v1/ai/status")
+
+    override suspend fun createSummary(body: AiSummaryIn): AiRunOut =
+        request("POST", "/api/v1/ai/summaries", Codec.snake.encodeToJsonElement(AiSummaryIn.serializer(), body))
+
+    override suspend fun aiRun(runId: String): AiRunOut = request("GET", "/api/v1/ai/runs/$runId")
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 

@@ -176,6 +176,9 @@ class SyncEngine(
     /** M56: the boards, 「自分のタスク」 and the calendar's due tasks on screen (TASKS.md §4, SYNC_PROTOCOL.md §16). */
     val tasks = TaskHub(api as? TaskApi, scope, { store.me?.id })
 
+    /** M66: the AI status (which bots are AI, whether summaries may be asked for) and the open summary (docs/AI.md §5). */
+    val ai = AiHub(api as? AiApi, scope)
+
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
         store.onStalePreview = { channelId -> post { refreshLastMessage(channelId) } }
@@ -303,6 +306,7 @@ class SyncEngine(
         canvases.stop()
         calendar.stop()
         tasks.stop()
+        ai.stop()
         cancelReconnect()
         stopHeartbeat()
         threadRefresh?.cancel()
@@ -406,6 +410,7 @@ class SyncEngine(
         canvases.online() // M46: canvas saves that failed, open canvases read again, edits kept from before a restart
         calendar.online() // M52: the calendar's ranges on screen and the counts read again (CALENDAR.md §5)
         tasks.online() // M56: the boards, 「自分のタスク」 and the due ranges on screen read again (SYNC_PROTOCOL.md §16)
+        ai.online() // M66: the AI status, and the open summary's run read again (docs/AI.md §5)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         currentChannelId?.let { current -> scope.launch { openChannel(current) } }
@@ -685,6 +690,8 @@ class SyncEngine(
             "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
             // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.
             "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done" -> tasks.applyEvent(frame.event, frame.data)
+            // M66 (docs/AI.md §5): my summary's run moved on (to me only, outside the channel seq).
+            "ai.run_updated" -> ai.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)

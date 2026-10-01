@@ -15,6 +15,11 @@ import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.sync.ActivityApi
+import jp.chikuwachat.android.sync.AiApi
+import jp.chikuwachat.android.api.AiRunOut
+import jp.chikuwachat.android.api.AiRunUpdated
+import jp.chikuwachat.android.api.AiStatusOut
+import jp.chikuwachat.android.api.AiSummaryIn
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
@@ -117,7 +122,50 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi, AiApi {
+        // --- M66 AI (docs/AI.md §5) ---
+        /** GET /ai/status and GET /ai/runs/{id} calls made. */
+        var aiStatusCalls = 0
+        val aiRunCalls = ArrayList<String>()
+        /** The POST /ai/summaries bodies received. */
+        val summaryRequests = ArrayList<AiSummaryIn>()
+
+        override suspend fun aiStatus(): AiStatusOut {
+            maybeFail()
+            aiStatusCalls += 1
+            return this@FakeServer.aiStatus ?: throw ApiException.Api(404, "not_found", "no AI before M65")
+        }
+
+        override suspend fun createSummary(body: AiSummaryIn): AiRunOut {
+            maybeFail()
+            val status = this@FakeServer.aiStatus ?: throw ApiException.Api(404, "not_found", "no AI before M65")
+            summaryRequests.add(body)
+            aiSummaryRefusals.removeFirstOrNull()?.let { throw it }
+            val record = channels[body.channelId]
+            if (record == null || userId !in record.members && !(record.channel.type == "public" && users[userId]?.role != "guest")) {
+                throw ApiException.Api(404, "channel_not_found", "not found")
+            }
+            if (body.scope == "thread" && (body.threadId == null || record.messages.none { it.id == body.threadId && it.parentId == null })) {
+                throw ApiException.Api(400, "validation_error", "thread_id must be a parent")
+            }
+            if (!status.available) throw ApiException.Api(409, "ai_unavailable", "AI is not available")
+            if (!status.summaryAvailable) throw ApiException.Api(429, "ai_budget_exceeded", "budget exceeded")
+            val run = AiRunOut(
+                id = nextId(), kind = "summary", status = "pending", channelId = body.channelId, threadId = body.threadId,
+                scope = body.scope, days = body.days, createdAt = now(),
+            )
+            aiRuns[run.id] = userId to run
+            return run
+        }
+
+        override suspend fun aiRun(runId: String): AiRunOut {
+            maybeFail()
+            aiRunCalls.add(runId)
+            val (owner, run) = aiRuns[runId] ?: throw ApiException.Api(404, "ai_run_not_found", "not found")
+            if (owner != userId) throw ApiException.Api(404, "ai_run_not_found", "not found")
+            return run
+        }
+
         /** M49: GET /channels/{id} calls made (the preview asked again after a deletion). */
         val channelCalls = ArrayList<String>()
         override suspend fun channel(id: String): ChannelOut {
@@ -885,6 +933,22 @@ class FakeServer {
     }
 
     fun api(userId: String): Api = Api(userId)
+
+    /** M66: GET /ai/status's answer; null is a server before M65 (every /ai route answers 404). */
+    var aiStatus: AiStatusOut? = null
+    /** Run id → (who asked, the run as it is now). */
+    val aiRuns = LinkedHashMap<String, Pair<String, AiRunOut>>()
+    /** Refusals for the next POST /ai/summaries calls, in order (after the request is recorded). */
+    val aiSummaryRefusals = ArrayDeque<Throwable>()
+
+    /** The worker moved a run on: stored, and ai.run_updated to the one who asked (unless `silent`: the event lost). */
+    fun advanceAiRun(runId: String, status: String, output: String? = null, error: String? = null, omittedCount: Int = 0, silent: Boolean = false): AiRunOut {
+        val (owner, run) = aiRuns.getValue(runId)
+        val next = run.copy(status = status, output = output, error = error, omittedCount = omittedCount, finishedAt = if (status == "done" || status == "failed") now() else null)
+        aiRuns[runId] = owner to next
+        if (!silent) emit(setOf(owner), event("ai.run_updated", null, null, Codec.snake.encodeToJsonElement(AiRunUpdated.serializer(), AiRunUpdated(next)) as JsonObject))
+        return next
+    }
 
     fun connector(userId: String): WsConnector = { _, _ -> Socket(userId).also { sockets.add(it) } }
 }
