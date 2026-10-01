@@ -246,13 +246,13 @@ export type TaskChipTone = "open" | "overdue" | "done";
 
 /**
  * A message's task as its chip says it: 「レビュー依頼 · 加納 · 依頼中 · 10/9 まで」 (a task: 「タスク · … · 未着手」):
- * the assignees by name (three, then 「他 N 人」), the status in the kind's words, the due date while open (「今日まで」).
+ * the assignees by name (two, then 「他 N 人」, as on the phones), the status in the kind's words, the due date while open (「今日まで」).
  * Done is grey, an open one past its due date red.
  */
 export function taskChip(task: MessageTaskOut, nameOf: (userId: string) => string | null, today: DayKey): { text: string; tone: TaskChipTone } {
   const parts = [task.kind === "review" ? "レビュー依頼" : "タスク"];
   const names = task.assignee_ids.map((id) => nameOf(id) ?? "?");
-  if (names.length > 0) parts.push(names.length > 3 ? `${names.slice(0, 3).join("、")} 他 ${names.length - 3} 人` : names.join("、"));
+  if (names.length > 0) parts.push(names.length > 2 ? `${names.slice(0, 2).join("、")} 他 ${names.length - 2} 人` : names.join("、"));
   parts.push(statusLabel(task.kind, task.status));
   if (task.due_on && task.status !== "done") parts.push(task.due_on === today ? "今日まで" : `${dueLabel(task.due_on, today)} まで`);
   const tone: TaskChipTone = task.status === "done" ? "done" : isOverdue(task, today) ? "overdue" : "open";
