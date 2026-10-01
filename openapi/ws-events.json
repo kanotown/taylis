@@ -23,6 +23,154 @@
         "type": "object"
       }
     },
+    "ai.run_updated": {
+      "audience": "user (the requester)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "AiRunOut": {
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "days": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Days"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Error"
+              },
+              "finished_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Finished At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "mention",
+                  "summary"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "omitted_count": {
+                "title": "Omitted Count",
+                "type": "integer"
+              },
+              "output": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Output"
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "unread",
+                      "thread",
+                      "recent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Scope"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "done",
+                  "failed"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "thread_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Thread Id"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "channel_id",
+              "thread_id",
+              "scope",
+              "days",
+              "output",
+              "error",
+              "omitted_count",
+              "created_at",
+              "finished_at"
+            ],
+            "title": "AiRunOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "run": {
+            "$ref": "#/$defs/AiRunOut"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "title": "AiRunUpdatedData",
+        "type": "object"
+      }
+    },
     "bookmark.updated": {
       "audience": "user",
       "consumes_seq": false,

@@ -93,8 +93,15 @@ async def list_members(channel_id: UUID, user: CurrentUser, db: Db) -> list[Memb
 
 
 @router.post("/channels/{channel_id}/members", response_model=MemberOut)
-async def add_member(channel_id: UUID, user: CurrentUser, body: MemberAdd, db: Db) -> MemberOut:
+async def add_member(
+    channel_id: UUID, user: CurrentUser, body: MemberAdd, db: Db, request: Request
+) -> MemberOut:
     (target,) = await service.load_users(db, [body.user_id])
+    if target.role == "bot":
+        # M65: an AI bot without allow_private stays out of private channels (400
+        # ai_private_not_allowed). The check comes from main.py: channels does not depend on ai.
+        channel, _ = await service.require_member(db, user.id, channel_id)
+        await request.app.state.ai_private_guard(db, channel.type, [target.id])
     return await service.add_member(db, user, channel_id, target)
 
 
@@ -128,6 +135,9 @@ async def get_or_create_dm(
     user: CurrentUser, body: DmCreate, db: Db, request: Request, response: Response
 ) -> ChannelOut:
     participants = await service.load_users(db, body.user_ids)
+    bots = [p.id for p in participants if p.role == "bot"]
+    if bots:  # M65: a DM is private (see add_member)
+        await request.app.state.ai_private_guard(db, "dm", bots)
     channel, created = await service.get_or_create_dm(db, user, participants)
     response.status_code = 201 if created else 200
     if created:

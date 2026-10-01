@@ -22,6 +22,9 @@ from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
 from app.modules.activity.router import router as activity_router
 from app.modules.admin.router import router as admin_router
+from app.modules.ai import service as ai_service
+from app.modules.ai.llm import AiRuntime
+from app.modules.ai.router import router as ai_router
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
@@ -146,6 +149,13 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 await session.commit()
             if purged_sso:
                 log.info("purged %d expired sign-in requests and tickets", purged_sso)
+            async with app.state.db.session_factory() as session:
+                # docs/AI.md §4: the prompt text of old AI runs (tokens and cost stay).
+                purged_ai = await ai_service.purge_inputs(
+                    session, days=settings.ai_input_retention_days
+                )
+            if purged_ai:
+                log.info("dropped the input of %d old AI runs", purged_ai)
         except Exception:
             log.exception("outbox purge failed")
         try:
@@ -226,6 +236,24 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 log.exception("collection nudging failed")
 
 
+async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """AI runs (docs/AI.md §2.2-§2.3, M65): at most two at a time, again at once while there
+    are more."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        claimed = 0
+        try:
+            claimed = await ai_service.process_due(app.state.db, app.state.ai)
+        except Exception:
+            log.exception("AI worker failed")
+        if claimed:
+            continue
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.ai_worker_interval_seconds)
+        except TimeoutError:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
@@ -252,6 +280,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_attachment_gc_loop(app, stop), name="attachment-gc"))
         tasks.append(asyncio.create_task(_presence_sweep_loop(app, stop), name="presence-sweep"))
         tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
+        tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
     try:
         yield
     finally:
@@ -298,6 +327,7 @@ def build_api_router() -> APIRouter:
     api.include_router(link_previews_router)
     api.include_router(attachments_router)
     api.include_router(search_router)
+    api.include_router(ai_router)
     api.include_router(notifications_router)
     api.include_router(sync_router)
     api.include_router(realtime_router)
@@ -333,6 +363,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M49: the last message of a member's conversations (ChannelOut.last_message); channels does
     # not depend on messages (the other way round), so its router gets the lookup here.
     app.state.last_messages = messages_service.last_messages
+    # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
+    # not depend on ai, so its router gets the check here.
+    app.state.ai_private_guard = ai_service.check_private_allowed
+    # M65: the model provider, built from the key file on first use (docs/AI.md §2.4).
+    app.state.ai = AiRuntime(
+        settings.ai_api_key_file,
+        monthly_budget_usd=settings.ai_monthly_budget_usd,
+        user_daily_runs=settings.ai_user_daily_runs,
+    )
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
@@ -383,6 +422,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             calendar.CalendarLeaveHandler(),
             tasks_service.TaskLeaveHandler(),
             tasks_service.TaskSourceHandler(),
+            ai_service.AiMentionHandler(app.state.ai),
         ],
         listen_dsn=asyncpg_dsn(settings.database_url),
         poll_interval=settings.outbox_poll_interval_seconds,

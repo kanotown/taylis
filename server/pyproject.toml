@@ -19,6 +19,7 @@ dependencies = [
     "pillow>=12.3.0",
     "python-multipart>=0.0.32",
     "qrcode>=8.2",
+    "anthropic>=1.11.0",
 ]
 
 [dependency-groups]

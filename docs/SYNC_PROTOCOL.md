@@ -247,6 +247,7 @@
 | `task.review_done` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (L9、M63)。自分が出したレビュー依頼を依頼先が完了にした。アプリ内でも通知する (REVIEWS.md §4) |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
+| `ai.run_updated` | user (頼んだ人) | — | `{ run: AiRunOut }` (M65、docs/AI.md §5)。要約の状態が変わるたび (running、done、failed)。メンションの run は出さない (返事はふつうのメッセージ)。取りこぼしうるので、開いている要約は再接続のあと `GET /ai/runs/{id}` で読み直す |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する。`kind` は `personal` / `ack` (L4) / `collect` (L6: 回収の締切後の催促。本人にだけ届く) |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |

@@ -65,6 +65,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ai/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description The AI bots (deleted ones are not listed), oldest first.
+         */
+        get: operations["list_agents_api_v1_admin_ai_agents_get"];
+        put?: never;
+        /**
+         * Create Agent
+         * @description A new AI bot with its own bot user (409 username_taken).
+         */
+        post: operations["create_agent_api_v1_admin_ai_agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ai/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Agent
+         * @description The bot leaves every conversation and is deactivated; its posts stay.
+         */
+        delete: operations["delete_agent_api_v1_admin_ai_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Agent
+         * @description Only the fields sent change; the username never does.
+         */
+        patch: operations["update_agent_api_v1_admin_ai_agents__agent_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description A month's use (UTC month; default this one): per bot and per person.
+         */
+        get: operations["get_usage_api_v1_admin_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/canvas-templates": {
         parameters: {
             query?: never;
@@ -329,6 +397,87 @@ export interface paths {
         head?: never;
         /** Update Webhook */
         patch: operations["update_webhook_api_v1_admin_webhooks__webhook_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/ai/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description My most recent 20 runs, newest first.
+         */
+        get: operations["list_runs_api_v1_ai_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description One of my runs (others' are 404 ai_run_not_found).
+         */
+        get: operations["get_run_api_v1_ai_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description Whether the AI can be used here, and the AI bots (for the 「AI」 badge).
+         */
+        get: operations["get_status_api_v1_ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Summary
+         * @description A summary only the requester sees, of the messages they can read; the result arrives as
+         *     ai.run_updated and through GET /ai/runs/{id}.
+         */
+        post: operations["create_summary_api_v1_ai_summaries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/attachments": {
@@ -2936,6 +3085,232 @@ export interface components {
             deactivated?: boolean | null;
             /** Role */
             role?: ("admin" | "member" | "guest") | null;
+        };
+        /** AiAgentCreate */
+        AiAgentCreate: {
+            /**
+             * Allow Private
+             * @default false
+             */
+            allow_private: boolean;
+            /** Character */
+            character: string;
+            /**
+             * Effort
+             * @default medium
+             * @enum {string}
+             */
+            effort: "low" | "medium" | "high";
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            /** Name */
+            name: string;
+            /** Username */
+            username: string;
+        };
+        /** AiAgentOut */
+        AiAgentOut: {
+            /** Allow Private */
+            allow_private: boolean;
+            /**
+             * Bot User Id
+             * Format: uuid
+             */
+            bot_user_id: string;
+            /** Character */
+            character: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Effort
+             * @enum {string}
+             */
+            effort: "low" | "medium" | "high";
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Username */
+            username: string;
+        };
+        /** AiAgentPublic */
+        AiAgentPublic: {
+            /**
+             * Bot User Id
+             * Format: uuid
+             */
+            bot_user_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            /** Name */
+            name: string;
+        };
+        /**
+         * AiAgentUpdate
+         * @description Only the fields sent change; the username never does.
+         */
+        AiAgentUpdate: {
+            /** Allow Private */
+            allow_private?: boolean | null;
+            /** Character */
+            character?: string | null;
+            /** Effort */
+            effort?: ("low" | "medium" | "high") | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Model */
+            model?: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5") | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** AiRunOut */
+        AiRunOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Days */
+            days: number | null;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mention" | "summary";
+            /** Omitted Count */
+            omitted_count: number;
+            /** Output */
+            output: string | null;
+            /** Scope */
+            scope: ("unread" | "thread" | "recent") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "done" | "failed";
+            /** Thread Id */
+            thread_id: string | null;
+        };
+        /** AiStatusOut */
+        AiStatusOut: {
+            /** Agents */
+            agents: components["schemas"]["AiAgentPublic"][];
+            /** Available */
+            available: boolean;
+            /** Summary Available */
+            summary_available: boolean;
+        };
+        /** AiSummaryCreate */
+        AiSummaryCreate: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Days */
+            days?: number | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "unread" | "thread" | "recent";
+            /** Thread Id */
+            thread_id?: string | null;
+            /** Tz Offset Minutes */
+            tz_offset_minutes?: number | null;
+        };
+        /** AiUsageByAgent */
+        AiUsageByAgent: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Name */
+            name: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Runs */
+            runs: number;
+        };
+        /** AiUsageByUser */
+        AiUsageByUser: {
+            /** Cost Usd */
+            cost_usd: number;
+            /** Runs */
+            runs: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AiUsageOut */
+        AiUsageOut: {
+            /** Budget Usd */
+            budget_usd: number;
+            /** By Agent */
+            by_agent: components["schemas"]["AiUsageByAgent"][];
+            /** By User */
+            by_user: components["schemas"]["AiUsageByUser"][];
+            /** Month */
+            month: string;
+            /** Total Cost Usd */
+            total_cost_usd: number;
+            /** Total Runs */
+            total_runs: number;
         };
         /** AttachmentOut */
         AttachmentOut: {
@@ -6154,6 +6529,154 @@ export interface operations {
             };
         };
     };
+    list_agents_api_v1_admin_ai_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentOut"][];
+                };
+            };
+        };
+    };
+    create_agent_api_v1_admin_ai_agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiAgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_api_v1_admin_ai_agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_api_v1_admin_ai_agents__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiAgentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_api_v1_admin_ai_usage_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiUsageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_list_canvas_templates_api_v1_admin_canvas_templates_get: {
         parameters: {
             query?: never;
@@ -6762,6 +7285,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_ai_runs_get: {
+        parameters: {
+            query?: {
+                kind?: ("mention" | "summary") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiRunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_ai_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_v1_ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiStatusOut"];
+                };
+            };
+        };
+    };
+    create_summary_api_v1_ai_summaries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSummaryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiRunOut"];
                 };
             };
             /** @description Validation Error */
