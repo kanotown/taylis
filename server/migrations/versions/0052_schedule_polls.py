@@ -4,11 +4,11 @@ Revision ID: 0052
 Revises: 0051
 Create Date: 2026-10-01
 
-- poll_votes.answer: 'yes' | 'maybe' | 'no' (○ △ ×). Every existing vote, and every vote of a
-  choice poll or from an app before M53, is 'yes'. One row per person and slot (the primary key
+- poll_votes.answer: 'yes' | 'maybe' | 'no' (maru, sankaku, batsu). Every existing vote, and every
+  vote of a choice poll or from an app before M53, is 'yes'. One row per person and slot (the primary key
   stays (message_id, user_id, option_index)); no row is 「未回答」.
 - poll_comments: one short comment (1-100 characters) per person on a poll, shown in the
-  people × slots table. Deleted with the message's row (ON DELETE CASCADE), like message_acks.
+  people-by-slots table. Deleted with the message's row (ON DELETE CASCADE), like message_acks.
 - The poll itself stays in messages.poll (JSONB): `kind`, `slots`, `tz` and `decided` are new keys
   there, so no change to messages.
 """
@@ -29,9 +29,7 @@ def upgrade() -> None:
         "poll_votes",
         sa.Column("answer", sa.String(8), nullable=False, server_default="yes"),
     )
-    op.create_check_constraint(
-        "answer_values", "poll_votes", "answer IN ('yes', 'maybe', 'no')"
-    )
+    op.create_check_constraint("answer_values", "poll_votes", "answer IN ('yes', 'maybe', 'no')")
     op.create_table(
         "poll_comments",
         sa.Column(
