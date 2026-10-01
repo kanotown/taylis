@@ -8,10 +8,12 @@
 | もの | メモ |
 |---|---|
 | Xcode (27 系) と iOS シミュレータ | `brew install xcodegen` (apps/ios/project.yml から作る) |
-| Android Studio / SDK | platform 37.0、cmdline-tools、emulator。`apps/android/local.properties` に `sdk.dir=$HOME/Library/Android/sdk` を書く (コミットしない) |
+| Android Studio / SDK | platform 37.0、cmdline-tools、emulator。`apps/android/local.properties` に `sdk.dir=$HOME/Library/Android/sdk` を書く (コミットしない)。Android Studio だけでは cmdline-tools が入らないことがある: `commandlinetools-mac-*_latest.zip` を `$ANDROID_HOME/cmdline-tools/latest` に展開する |
+| JDK 21 | `brew install openjdk@21` (keg-only なので `/opt/homebrew/opt/openjdk@21/bin` を PATH に足す)。Gradle に要る |
+| エミュレータ | `sdkmanager "system-images;android-36;google_apis_playstore;arm64-v8a"` のあと `avdmanager create avd -n <名前> -k <同じイメージ> -d pixel_9`。config.ini の `disk.dataPartition.size` を 12G にしておくと容量が足りる |
 | Node.js (20 系) | `apps/desktop` で `npm install` |
-| Rust と Tauri の前提 | Desktop アプリを作るとき (`cargo check` は `apps/desktop/src-tauri`) |
-| uv (Python 3.12) | `server` で `uv sync` |
+| Rust と Tauri の前提 | Desktop アプリを作るとき (`cargo check` は `apps/desktop/src-tauri`)。`brew install rustup` → `rustup default stable` (rustup も keg-only なので `/opt/homebrew/opt/rustup/bin` を PATH に) |
+| uv (Python 3.12) | `brew install uv`、`server` で `uv sync` |
 | Docker Desktop | 開発サーバ: `docker compose -f infra/docker-compose.yml up -d --build app` |
 
 ## 2. Git に入っていないので手で移すもの
@@ -25,7 +27,7 @@
 | `ChikuwaChat-tools/` (リポジトリの隣) | 使い捨ての検証用ハーネス (iOS の XCUITest、Android の操作スクリプト、ヘッドレス Chrome のスクリプト、監査の画面) |
 
 開発サーバのデータ (Docker のボリューム) は移さなくてよい。新しい Mac では空から始め、`server` の CLI で管理者を作る
-(`uv run python -m app.cli create-admin`、一般のユーザーは `create-user`)。
+(`uv run python -m app.cli create-admin --password ...`。一般のユーザーは `create-user` で、仮のパスワードが表示される。決まったパスワードにするには、その人でログインして `PUT /users/me/password`)。
 
 ## 3. 作業の決まり
 
@@ -38,7 +40,7 @@
 
 | 対象 | コマンド |
 |---|---|
-| サーバ | `cd server && DEBUG=false uv run pytest -q -n auto && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests` (ruff は CI と同じくフォルダ全体。migrations も含む) |
+| サーバ | `cd server && DEBUG=false uv run pytest -q -n 10 && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests` (ruff は CI と同じくフォルダ全体。migrations も含む)。`-n auto` はコアの多い Mac (18 コア) だと PostgreSQL の `max_locks_per_transaction` が足りず `out of shared memory` で大半が落ちるので、ワーカーは 10 までにする |
 | OpenAPI | `cd server && uv run python -m app.cli export-openapi`、Web の型は `cd apps/desktop && npm run gen:api` |
 | エラー文言 | `cd apps/shared && python3 gen_errors.py` (Web・iOS・Android の表を作り直す) |
 | Desktop / Web | `cd apps/desktop && npm run typecheck && npx vitest run && npx vite build` |
