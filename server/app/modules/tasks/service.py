@@ -259,10 +259,9 @@ async def _announce_source(db: AsyncSession, task: Task) -> None:
     so devices that were away catch up through the delta. Personal tasks show no chip."""
     if task.source_message_id is None or task.channel_id != task.source_channel_id:
         return
-    message = await messages.find_message(db, task.source_message_id)
-    if message is None or message.is_deleted:
-        return
-    await messages.announce_change_in_tx(db, message, "tasks")
+    # Re-read under the channel's lock: an edit or a delete committed meanwhile must not be sent
+    # back out with its old body (review v0.1.15 #1).
+    await messages.announce_change_by_id_in_tx(db, task.source_message_id, "tasks")
 
 
 async def _emit_review_done(
@@ -677,6 +676,8 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
     _require_editor(actor, seen)
     task = seen.task
     sent = data.model_fields_set
+    # What the chip under its message shows, before anything changes (L9, REVIEWS.md §2.2).
+    shown_before = (task.status, task.due_on)
     current = (await repo.assignees_of(db, [task.id])).get(task.id, [])
     assignees = current
     if "assignee_ids" in sent:
@@ -692,7 +693,6 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         task.due_on = data.due_on
     now = utcnow()
     renumbered: list[Task] = []
-    shown_before = (task.status, task.due_on)
     if "status" in sent and data.status is not None and data.status != task.status:
         if data.status != "done" and task.status == "done":
             await _check_room(db, task)
@@ -890,6 +890,7 @@ class TaskLeaveHandler:
                 continue
             task.updated_at = now
             await _emit_updated(db, task, channel, assignees.get(task_id, []))
+            await _announce_source(db, task)  # the chip loses the person who left
 
 
 class TaskSourceHandler:
