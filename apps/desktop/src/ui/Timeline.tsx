@@ -17,6 +17,7 @@ import { attachmentText, plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
 import { PollCard, pollHidesBody } from "./PollCard";
 import { PriorityLabel } from "./PriorityLabel";
+import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
@@ -870,7 +871,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <UserPopover controller={controller} userId={message.sender_id} className="hover:underline">
               <strong className="text-sm text-ink">{senderName}</strong>
             </UserPopover>
-            {sender?.role === "bot" && <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="受信 Webhook の投稿">BOT</span>}
+            {sender?.role === "bot" && <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="ボット (受信 Webhook・定期投稿) の投稿">BOT</span>}
             <StatusEmoji controller={controller} userId={message.sender_id} />
             <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
             {message.edited_at &&
@@ -903,6 +904,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         )}
         {message.poll && <PollCard poll={message.poll} message={message} controller={controller} readOnly={readOnly} />}
         {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} readOnly={readOnly} />}
+        {message.collection && !message.deleted && <CollectionChip controller={controller} message={message} />}
         {(message.reply_count ?? 0) > 0 && onOpenThread && <ThreadSummaryLine message={message} store={store} onOpen={() => onOpenThread(message.id)} />}
         {reactions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">

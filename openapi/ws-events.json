@@ -1922,6 +1922,57 @@
             "title": "AttachmentOut",
             "type": "object"
           },
+          "CollectionOut": {
+            "description": "L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when\nthey have a live reply in the thread (also one sent to the channel too).",
+            "properties": {
+              "due_at": {
+                "format": "date-time",
+                "title": "Due At",
+                "type": "string"
+              },
+              "reminded_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reminded At"
+              },
+              "submitted_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Submitted User Ids",
+                "type": "array"
+              },
+              "target_count": {
+                "title": "Target Count",
+                "type": "integer"
+              },
+              "target_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Target User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "due_at",
+              "target_user_ids",
+              "target_count",
+              "submitted_user_ids",
+              "reminded_at"
+            ],
+            "title": "CollectionOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -1970,6 +2021,17 @@
                   }
                 ],
                 "title": "Client Msg Id"
+              },
+              "collection": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CollectionOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "created_at": {
                 "format": "date-time",
@@ -2689,6 +2751,57 @@
             "title": "AttachmentOut",
             "type": "object"
           },
+          "CollectionOut": {
+            "description": "L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when\nthey have a live reply in the thread (also one sent to the channel too).",
+            "properties": {
+              "due_at": {
+                "format": "date-time",
+                "title": "Due At",
+                "type": "string"
+              },
+              "reminded_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reminded At"
+              },
+              "submitted_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Submitted User Ids",
+                "type": "array"
+              },
+              "target_count": {
+                "title": "Target Count",
+                "type": "integer"
+              },
+              "target_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Target User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "due_at",
+              "target_user_ids",
+              "target_count",
+              "submitted_user_ids",
+              "reminded_at"
+            ],
+            "title": "CollectionOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -2737,6 +2850,17 @@
                   }
                 ],
                 "title": "Client Msg Id"
+              },
+              "collection": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CollectionOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "created_at": {
                 "format": "date-time",
@@ -3457,6 +3581,57 @@
             "title": "AttachmentOut",
             "type": "object"
           },
+          "CollectionOut": {
+            "description": "L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when\nthey have a live reply in the thread (also one sent to the channel too).",
+            "properties": {
+              "due_at": {
+                "format": "date-time",
+                "title": "Due At",
+                "type": "string"
+              },
+              "reminded_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reminded At"
+              },
+              "submitted_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Submitted User Ids",
+                "type": "array"
+              },
+              "target_count": {
+                "title": "Target Count",
+                "type": "integer"
+              },
+              "target_user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Target User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "due_at",
+              "target_user_ids",
+              "target_count",
+              "submitted_user_ids",
+              "reminded_at"
+            ],
+            "title": "CollectionOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -3505,6 +3680,17 @@
                   }
                 ],
                 "title": "Client Msg Id"
+              },
+              "collection": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CollectionOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "created_at": {
                 "format": "date-time",
@@ -4058,7 +4244,8 @@
               "reactions",
               "pin",
               "poll",
-              "ack"
+              "ack",
+              "collection"
             ],
             "title": "Change",
             "type": "string"
@@ -4254,7 +4441,8 @@
                 "default": "personal",
                 "enum": [
                   "personal",
-                  "ack"
+                  "ack",
+                  "collect"
                 ],
                 "title": "Kind",
                 "type": "string"

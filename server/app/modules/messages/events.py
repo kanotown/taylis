@@ -19,7 +19,8 @@ class MessageCreatedData(BaseModel):
 
 class MessageUpdatedData(BaseModel):
     message: MessageOut
-    change: Literal["body", "reactions", "pin", "poll", "ack"]
+    # "collection" (L6): the submissions of a collecting post changed (a reply came or went).
+    change: Literal["body", "reactions", "pin", "poll", "ack", "collection"]
 
 
 class MessageDeletedData(BaseModel):

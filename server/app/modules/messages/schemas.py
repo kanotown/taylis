@@ -296,6 +296,20 @@ class ParentThread(BaseModel):
     participant_ids: list[UUID] = []
 
 
+class CollectionOut(BaseModel):
+    """L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when
+    they have a live reply in the thread (also one sent to the channel too)."""
+
+    due_at: datetime
+    # The targets fixed when it was posted (by display name then).
+    target_user_ids: list[UUID]
+    target_count: int
+    # The targets with a live reply, in target order.
+    submitted_user_ids: list[UUID]
+    # When the nudges went out (once, after due_at); null before.
+    reminded_at: datetime | None
+
+
 class MessageOut(BaseModel):
     id: UUID
     channel_id: UUID
@@ -329,6 +343,8 @@ class MessageOut(BaseModel):
     priority: Priority | None = None
     ack_requested: bool = False
     acks: list[AckOut] = []
+    # L6: present on a recurring post that collects replies (RECURRING.md §3).
+    collection: CollectionOut | None = None
 
 
 class MessageRevisionOut(BaseModel):
@@ -454,6 +470,7 @@ def to_message_out(
     acks: Sequence[MessageAck] = (),
     viewer: UUID | None = None,
     comments: Sequence[PollComment] = (),
+    collection: CollectionOut | None = None,
 ) -> MessageOut:
     """`viewer`: the user a response is for (their own poll votes, M27); None for events."""
     deleted = message.is_deleted
@@ -484,6 +501,23 @@ def to_message_out(
         priority=message.priority,  # type: ignore[arg-type]
         ack_requested=message.ack_requested,
         acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],
+        collection=None if deleted else collection,
+    )
+
+
+def collection_out(
+    target_user_ids: Sequence[UUID],
+    due_at: datetime,
+    reminded_at: datetime | None,
+    repliers: set[UUID],
+) -> CollectionOut:
+    targets = list(target_user_ids)
+    return CollectionOut(
+        due_at=due_at,
+        target_user_ids=targets,
+        target_count=len(targets),
+        submitted_user_ids=[uid for uid in targets if uid in repliers],
+        reminded_at=reminded_at,
     )
 
 

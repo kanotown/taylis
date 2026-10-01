@@ -90,6 +90,17 @@ export type UserUpdate = components["schemas"]["UserUpdate"];
 export type ScheduledOut = components["schemas"]["ScheduledOut"];
 export type ScheduledCreate = components["schemas"]["ScheduledCreate"];
 
+/** Recurring posts and collections (L6, M59, RECURRING.md). */
+export type RecurringPostOut = components["schemas"]["RecurringPostOut"];
+export type RecurringPostCreate = components["schemas"]["RecurringPostCreate"];
+export type RecurringPostUpdate = components["schemas"]["RecurringPostUpdate"];
+export type RecurringRunOut = components["schemas"]["RecurringRunOut"];
+export type WeeklySchedule = components["schemas"]["WeeklySchedule"];
+export type MonthlySchedule = components["schemas"]["MonthlySchedule"];
+export type RecurringSchedule = WeeklySchedule | MonthlySchedule;
+export type CollectSpec = components["schemas"]["CollectSpec"];
+export type CollectionOut = components["schemas"]["CollectionOut"];
+
 /** Reminders (M12e). */
 export type ReminderOut = components["schemas"]["ReminderOut"];
 export type ReminderCreate = components["schemas"]["ReminderCreate"];

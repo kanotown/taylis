@@ -2300,6 +2300,127 @@
         "title": "ChannelUpdate",
         "type": "object"
       },
+      "CollectDue": {
+        "additionalProperties": false,
+        "description": "Due `after_days` days after the posting day (0-30) at `time` (HH:MM), in the post's zone.",
+        "properties": {
+          "after_days": {
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "After Days",
+            "type": "integer"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "after_days",
+          "time"
+        ],
+        "title": "CollectDue",
+        "type": "object"
+      },
+      "CollectSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "due": {
+            "$ref": "#/components/schemas/CollectDue"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/CollectTargets"
+          }
+        },
+        "required": [
+          "targets",
+          "due"
+        ],
+        "title": "CollectSpec",
+        "type": "object"
+      },
+      "CollectTargets": {
+        "additionalProperties": false,
+        "description": "Whom to collect from: the union of the groups' members, the people and (all_members) the\nwhole channel, limited to the channel's members (not bots) when each post goes out.",
+        "properties": {
+          "all_members": {
+            "default": false,
+            "title": "All Members",
+            "type": "boolean"
+          },
+          "group_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Group Ids",
+            "type": "array"
+          },
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "title": "CollectTargets",
+        "type": "object"
+      },
+      "CollectionOut": {
+        "description": "L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when\nthey have a live reply in the thread (also one sent to the channel too).",
+        "properties": {
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "reminded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminded At"
+          },
+          "submitted_user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Submitted User Ids",
+            "type": "array"
+          },
+          "target_count": {
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "target_user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Target User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "due_at",
+          "target_user_ids",
+          "target_count",
+          "submitted_user_ids",
+          "reminded_at"
+        ],
+        "title": "CollectionOut",
+        "type": "object"
+      },
       "ConflictOut": {
         "description": "A region both sides changed differently. `ours_line` / `theirs_line`: its first line\n(0-based) in the submitted body and in the head.",
         "properties": {
@@ -4223,6 +4344,16 @@
             ],
             "title": "Client Msg Id"
           },
+          "collection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4416,6 +4547,34 @@
           "replaced_at"
         ],
         "title": "MessageRevisionOut",
+        "type": "object"
+      },
+      "MonthlySchedule": {
+        "additionalProperties": false,
+        "description": "Every month on `day` (1-31; a month without that day runs on its last day) at `time`.",
+        "properties": {
+          "day": {
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Day",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "monthly",
+            "title": "Kind",
+            "type": "string"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "day",
+          "time"
+        ],
+        "title": "MonthlySchedule",
         "type": "object"
       },
       "MyLabProfileUpdate": {
@@ -5118,6 +5277,282 @@
         "title": "ReadStateOut",
         "type": "object"
       },
+      "RecurringPostCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "collect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schedule": {
+            "discriminator": {
+              "mapping": {
+                "monthly": "#/components/schemas/MonthlySchedule",
+                "weekly": "#/components/schemas/WeeklySchedule"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WeeklySchedule"
+              },
+              {
+                "$ref": "#/components/schemas/MonthlySchedule"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "tz": {
+            "maxLength": 64,
+            "title": "Tz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "body",
+          "schedule",
+          "tz"
+        ],
+        "title": "RecurringPostCreate",
+        "type": "object"
+      },
+      "RecurringPostOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "bot_user_id": {
+            "format": "uuid",
+            "title": "Bot User Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "collect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "title": "Next Run At",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeeklySchedule"
+              },
+              {
+                "$ref": "#/components/schemas/MonthlySchedule"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "bot_user_id",
+          "created_by",
+          "name",
+          "body",
+          "schedule",
+          "tz",
+          "collect",
+          "enabled",
+          "next_run_at",
+          "last_run_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecurringPostOut",
+        "type": "object"
+      },
+      "RecurringPostUpdate": {
+        "additionalProperties": false,
+        "description": "Fields left out stay; `collect: null` turns collecting off.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "collect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "monthly": "#/components/schemas/MonthlySchedule",
+                    "weekly": "#/components/schemas/WeeklySchedule"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WeeklySchedule"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MonthlySchedule"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "title": "RecurringPostUpdate",
+        "type": "object"
+      },
+      "RecurringRunOut": {
+        "description": "POST /recurring-posts/{id}/run: the message just posted.",
+        "properties": {
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "title": "RecurringRunOut",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -5196,7 +5631,8 @@
             "default": "personal",
             "enum": [
               "personal",
-              "ack"
+              "ack",
+              "collect"
             ],
             "title": "Kind",
             "type": "string"
@@ -8213,6 +8649,37 @@
           }
         },
         "title": "WebhookUpdate",
+        "type": "object"
+      },
+      "WeeklySchedule": {
+        "additionalProperties": false,
+        "description": "Every week on `weekdays` (0 = Monday … 6 = Sunday) at `time` (HH:MM).",
+        "properties": {
+          "kind": {
+            "const": "weekly",
+            "title": "Kind",
+            "type": "string"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Weekdays",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "weekdays",
+          "time"
+        ],
+        "title": "WeeklySchedule",
         "type": "object"
       }
     },
@@ -12717,6 +13184,116 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/recurring-posts": {
+      "get": {
+        "description": "The channel's recurring posts, oldest first (paused ones too).",
+        "operationId": "list_recurring_posts_api_v1_channels__channel_id__recurring_posts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecurringPostOut"
+                  },
+                  "title": "Response List Recurring Posts Api V1 Channels  Channel Id  Recurring Posts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Recurring Posts",
+        "tags": [
+          "recurring"
+        ]
+      },
+      "post": {
+        "description": "A new recurring post with its own bot (named `name`), which joins the channel. At most 20\nper channel (409 too_many_recurring_posts).",
+        "operationId": "create_recurring_post_api_v1_channels__channel_id__recurring_posts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringPostCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Recurring Post",
+        "tags": [
+          "recurring"
+        ]
+      }
+    },
     "/api/v1/channels/{channel_id}/scheduled": {
       "post": {
         "description": "M12d 「後で送信」: the server posts this at send_at (at least a minute ahead).",
@@ -15388,6 +15965,154 @@
         "summary": "Mark Thread Read",
         "tags": [
           "threads"
+        ]
+      }
+    },
+    "/api/v1/recurring-posts/{post_id}": {
+      "delete": {
+        "description": "Stops it for good; the posts made (and their collections) stay.",
+        "operationId": "delete_recurring_post_api_v1_recurring_posts__post_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Post Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Recurring Post",
+        "tags": [
+          "recurring"
+        ]
+      },
+      "patch": {
+        "description": "Changes apply to the next posts. A new schedule or zone, and resuming, compute\nnext_run_at again from now.",
+        "operationId": "update_recurring_post_api_v1_recurring_posts__post_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Post Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringPostUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Recurring Post",
+        "tags": [
+          "recurring"
+        ]
+      }
+    },
+    "/api/v1/recurring-posts/{post_id}/run": {
+      "post": {
+        "description": "今すぐ投稿: posts now (also while paused); the next scheduled time stays.",
+        "operationId": "run_recurring_post_api_v1_recurring_posts__post_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Post Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Recurring Post",
+        "tags": [
+          "recurring"
         ]
       }
     },

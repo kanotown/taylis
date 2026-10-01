@@ -4,6 +4,8 @@ ROADMAP の L6。D4 の推奨 A に沿う: 「#週報」のようなチャンネ
 提出状況 (「提出 7/10」) が見え、締切を過ぎたら出していない本人にだけ催促する。研究室以外でも使える汎用の機能として作る
 (定例会の議題募集、日報、当番の確認なども同じ仕組み)。
 
+**状態**: M59 (サーバと Desktop / Web) は完了 (2026-10-01、移行 0054)。実装で決めたこと・直したことは §7。M60 (iOS / Android) は未着手。
+
 ## 1. 方針
 
 - **定期投稿**はチャンネルに付く。投稿者はその定期投稿ごとのボット (Webhook と同じ `role = bot` のユーザー。名前は定期投稿の名前、
@@ -27,7 +29,7 @@ ROADMAP の L6。D4 の推奨 A に沿う: 「#週報」のようなチャンネ
 | body (1〜4000) | 雛形 (置き換えあり) |
 | schedule | `{"kind": "weekly", "weekdays": [4], "time": "09:00"}` (0 = 月曜。複数の曜日可) か `{"kind": "monthly", "day": 1, "time": "09:00"}` (31 日がない月は月末) |
 | tz | 例 `Asia/Tokyo` (作った端末から) |
-| collect | NULL か `{"targets": {"group_ids": [...], "user_ids": [...]}, "due": {"after_days": 3, "time": "18:00"}}`。対象はグループと人の和で、投稿の時点のチャンネルのメンバーに限る (投稿ごとに固定) |
+| collect | NULL か `{"targets": {"group_ids": [...], "user_ids": [...], "all_members": false}, "due": {"after_days": 3, "time": "18:00"}}`。対象はグループと人の和 (`all_members` ならチャンネルの全員) で、投稿の時点のチャンネルのメンバー (bot・無効化された人を除く) に限る (投稿ごとに固定)。after_days は 0〜30 |
 | enabled, next_run_at, last_run_at | 停止中は投稿しない。next_run_at は schedule と tz から計算し直す |
 | created_at, updated_at, deleted_at | |
 
@@ -46,7 +48,10 @@ ROADMAP の L6。D4 の推奨 A に沿う: 「#週報」のようなチャンネ
 ## 3. API (`/api/v1`)
 
 - `GET /channels/{id}/recurring-posts` / `POST` / `PATCH /recurring-posts/{id}` / `DELETE` (オーナー・管理者)。
-- `POST /recurring-posts/{id}/run` — 今すぐ投稿 (次の予定は変えない)。
+  GET はチャンネルを読める人なら誰でも (名前・予定・回収の設定。投稿そのものと同じ内容)。応答は `RecurringPostOut`
+  (`id, channel_id, bot_user_id, created_by, name, body, schedule, tz, collect, enabled, next_run_at, last_run_at, created_at,
+  updated_at`)。POST の本文は `{name, body, schedule, tz, collect?, enabled?}`、PATCH は同じ項目の一部 (`collect: null` で回収をやめる)。
+- `POST /recurring-posts/{id}/run` — 今すぐ投稿 (次の予定は変えない)。応答 `{message_id}` (201)。
 - `MessageOut.collection` (回収のある投稿だけ): `{due_at, target_count, submitted_user_ids, target_user_ids, reminded_at}`。
   返信が付いたり消えたりしたら、親の `message.updated` (change = "collection") で各端末へ (スレッドの返信数と同じ流れ)。
 
@@ -69,3 +74,32 @@ ROADMAP の L6。D4 の推奨 A に沿う: 「#週報」のようなチャンネ
 
 - **M59**: サーバ (表・API・worker・催促・雛形の置き換え) と Desktop / Web。
 - **M60**: iOS と Android (チップと提出状況、定期投稿の一覧と管理)。
+
+## 7. 実装で決めたこと (M59)
+
+- **管理できる人**: チャンネルのメンバーであるオーナーと admin (メンバーでない admin は不可。非公開チャンネルにボットを入れられない
+  ように、受信 Webhook と同じ考え)。それ以外は `403 recurring_manage_restricted`、チャンネルを読めない人には `404
+  recurring_post_not_found`。DM は `400 recurring_channel_unsupported`、アーカイブ中は作る・直す・今すぐ投稿が `409 channel_archived`
+  (削除はできる)。1 チャンネル 20 件まで (`409 too_many_recurring_posts`)。一覧の変更はイベントを出さない (開くたびに読む)。
+- **対象に「チャンネルの全員」を足した** (`targets.all_members`)。設計 (§2) はグループと人だけだったが、#週報 のように全員が出す
+  使い方では全員を 1 人ずつ選ぶことになり、後から入った人も漏れる。全員は投稿の時点のメンバーで固定する (他の指定と同じ)。
+- **予定**: 次の予定は「今より厳密に後」。作成・予定やゾーンの変更・再開のときに今から計算し直す (止めていた間の分は投稿しない)。
+  夏時間で飛ばされる時刻は切り替え後の同じ間隔 (02:30 → 03:30)、2 回ある時刻は 1 回目。Asia/Tokyo には無い。
+- **本文の置き換え**は Desktop の雛形と同じ規則をサーバに移した (`app/modules/recurring/schedule.py`、`apps/shared/templates.json` の
+  `expand` のケースで試験)。日付は投稿した時刻の tz での日付 (止まっていた後のまとめ投稿・今すぐ投稿でもその日)。
+- **締切**: 投稿日 + after_days の time。今すぐ投稿や遅れた投稿で当日の締切がもう過ぎているときは 1 日ずつ後ろへ (始まった時点で
+  締切切れにならないように)。
+- **実行**: worker はリマインダーと同じ周期 (15 秒)。`client_msg_id` は定期投稿の id と予定時刻から作る (UUIDv5)。投稿に失敗した行は
+  ログに残して次の予定へ進める。ボットがチャンネルから外されていたら投稿の前に入り直す。ボットの投稿は誰の既読位置も動かさない。
+- **回収の表示と同期**: `MessageOut.collection = {due_at, target_user_ids, target_count, submitted_user_ids, reminded_at}` は全員に同じ。
+  投稿の `message.created` の時点では行が無いので、同じトランザクションで親が seq をもう 1 つ取り `message.updated (change =
+  collection)` を出す。返信で提出状況が変わったとき (対象者の最初の返信、最後の返信の削除) と催促のときも同じ。提出状況の変わらない
+  返信 (対象外の人、2 通目) では出さない。スレッドの返信数は従来どおり `parent_thread` で伝わる。
+- **催促**: `reminders.kind = collect` (プッシュの題「提出のお願い」)。note は「週報 の提出をお願いします (締切 10/9 (金) 18:00)」
+  (締切は定期投稿の tz)。締切の時点でチャンネルにいない人には作らない。提出した後は `GET /reminders` に出さない (L4 の確認と同じ)。
+  投稿が消されている・チャンネルがアーカイブされているときは作らない。定期投稿を消しても、それまでの投稿の回収と催促は残る。
+- **削除**: 論理削除 (`deleted_at`)。ボットはチャンネルを抜けて無効化 (投稿はボットの名前のまま残る)。
+- **Desktop / Web**: 狭い画面はチャンネル詳細の「定期投稿」、広い画面は ⋯ の「定期投稿…」(同じ一覧のダイアログ)。メンバーは一覧だけ、
+  オーナー・admin は追加・編集 (ダイアログ)、今すぐ投稿、止める / 再開、削除 (確認あり)。作るときの tz は端末のゾーン、編集では
+  定期投稿のゾーンのまま (違うゾーンなら一覧とダイアログに名前を出す)。チップは対象者で未提出なら「未提出」(締切後は赤)、提出済みなら
+  「提出済み」、押すと「提出状況」(提出済み / 未提出をアバター付きで)。BOT の印の説明を「ボット (受信 Webhook・定期投稿) の投稿」に。

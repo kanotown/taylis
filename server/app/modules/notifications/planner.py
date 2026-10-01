@@ -37,6 +37,9 @@ from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
 from app.modules.workspace import service as workspace
 
+# A fired reminder's push title by kind (L4 ack, L6 collect); a personal one is リマインダー.
+REMINDER_TITLES = {"ack": "確認のお願い", "collect": "提出のお願い"}
+
 log = logging.getLogger("app.push")
 
 
@@ -159,7 +162,8 @@ class PushPlanner:
             message_id=message_id,
             seq=None,
             # L4: a request from the author to acknowledge reads as such.
-            title="確認のお願い" if reminder.get("kind") == "ack" else "リマインダー",
+            # L6: a nudge to submit to a collection reads as such too.
+            title=REMINDER_TITLES.get(str(reminder.get("kind")), "リマインダー"),
             subtitle=None,
             body=(body if self.settings.push_include_content else "リマインダーの時間です")[:240]
             or "リマインダーの時間です",

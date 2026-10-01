@@ -105,13 +105,14 @@ async def create(
 async def list_mine(db: AsyncSession, actor: User) -> list[ReminderOut]:
     """Reminders whose message is gone (or whose channel I left) are left out; the worker
     cancels them when they come due. A request to acknowledge that I have since acknowledged
-    is left out too (L4)."""
+    is left out too (L4), and a request to submit once I have replied in the thread (L6)."""
     rows = await repo.list_open_for_user(db, actor.id)
     bodies = await _visible_bodies(db, rows)
     acked = {
         row.message_id
         for row in rows
-        if row.kind == "ack" and await messages.has_acked(db, row.message_id, actor.id)
+        if (row.kind == "ack" and await messages.has_acked(db, row.message_id, actor.id))
+        or (row.kind == "collect" and await messages.has_live_reply(db, row.message_id, actor.id))
     }
     return [
         to_out(row, bodies[row.message_id])

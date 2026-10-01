@@ -219,7 +219,7 @@
 | type | audience | seq | data |
 | --- | --- | --- | --- |
 | `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, reply_user_ids, updated_seq, participant_ids }`。`participant_ids` はスレッドのフォロワー (THREADS.md §2) で、プッシュ対象の判定に使う。`reply_user_ids` は親の `MessageOut.reply_user_ids` と同じ値 (C3、返信した人の最近順・最大 5。古いサーバは送らないので、クライアントは無ければ手元の値を残す)) |
-| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b。M53 の日程調整の回答・コメント・決定も) / `ack` (M15e: `acks` の変化) |
+| `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b。M53 の日程調整の回答・コメント・決定も) / `ack` (M15e: `acks` の変化) / `collection` (L6、M59: 回収のある投稿の `collection` の変化。対象者の最初の返信・最後の返信の削除、締切後の催促 (`reminded_at`)、投稿直後に回収が付いたとき。返信の `message.created` / `message.deleted` の後に、親が別の seq を取って出す。RECURRING.md §3) |
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
@@ -244,7 +244,7 @@
 | `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (M55)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。アプリ内でも通知する (プッシュは PushPlanner) |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
-| `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
+| `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する。`kind` は `personal` / `ack` (L4) / `collect` (L6: 回収の締切後の催促。本人にだけ届く) |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
