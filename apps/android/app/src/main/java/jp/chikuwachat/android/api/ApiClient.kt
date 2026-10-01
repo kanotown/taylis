@@ -646,6 +646,41 @@ class ApiClient(
 
     suspend fun canvasRevision(canvasId: String, revisionId: String): CanvasRevisionOut = request("GET", "/api/v1/canvases/$canvasId/revisions/$revisionId")
 
+    /**
+     * M58 (§4.9): that version's body as a new version. `clientSaveId` is one per restore: a retry after a lost answer
+     * returns the same canvas, never a second version.
+     */
+    suspend fun restoreCanvasRevision(canvasId: String, revisionId: String, clientSaveId: String): CanvasOut =
+        request("POST", "/api/v1/canvases/$canvasId/revisions/$revisionId/restore", buildJsonObject { put("client_save_id", clientSaveId) })
+
+    /** M58: a version's name (「提出版」); null takes it off (sent as `"label": null`). */
+    suspend fun labelCanvasRevision(canvasId: String, revisionId: String, label: String?): CanvasRevisionMeta =
+        request("PATCH", "/api/v1/canvases/$canvasId/revisions/$revisionId", buildJsonObject { put("label", label?.let { JsonPrimitive(it) } ?: JsonNull) })
+
+    /** M58: a version's body erased (§4.7: owners and administrators, in a DM its creator; the server audits it). */
+    suspend fun eraseCanvasRevision(canvasId: String, revisionId: String): CanvasRevisionMeta =
+        request("DELETE", "/api/v1/canvases/$canvasId/revisions/$revisionId")
+
+    /** M58 (§4.13): the canvas's link posted to its conversation (nothing new while that message exists). */
+    suspend fun shareCanvas(canvasId: String): CanvasOut = request("POST", "/api/v1/canvases/$canvasId/share", buildJsonObject {})
+
+    /** M58 (§4.8): canvases of my conversations whose title or body matches. */
+    suspend fun searchCanvases(query: CanvasSearchRequest, limit: Int = 20, offset: Int = 0): CanvasSearchOut {
+        val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
+        val params = buildList {
+            add("q=" + Enc.encode(query.q, "UTF-8"))
+            query.channelId?.let { add("channel_id=" + Enc.encode(it, "UTF-8")) }
+            query.fromUserId?.let { add("from_user_id=" + Enc.encode(it, "UTF-8")) }
+            query.after?.let { add("after=" + Enc.encode(it, "UTF-8")) }
+            query.before?.let { add("before=" + Enc.encode(it, "UTF-8")) }
+            add("sort=" + Enc.encode(query.sort, "UTF-8"))
+            add("tz_offset_minutes=$tzOffset")
+            add("limit=$limit")
+            add("offset=$offset")
+        }.joinToString("&")
+        return request("GET", "/api/v1/search/canvases?$params")
+    }
+
     /** An attachment's metadata (a canvas image knows only its id). */
     suspend fun attachment(attachmentId: String): AttachmentOut = request("GET", "/api/v1/attachments/$attachmentId")
 

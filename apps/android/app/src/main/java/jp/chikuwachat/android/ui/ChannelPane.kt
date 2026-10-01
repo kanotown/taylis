@@ -632,12 +632,14 @@ fun MessageRow(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
+                        canvasCard = { canvasId -> CanvasLinkCard(controller, canvasId, version) },  // M58
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
                 if (message.ackRequested && !message.pending) AckBar(message, store, controller, version, readOnly)  // M15e
                 AttachmentList(message.attachments, controller)
-                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null }?.let { LinkPreviewCard(controller, it) }
+                // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
+                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { LinkPreviewCard(controller, it) }
                 ReactionChips(
                     message, store, onToggle = if (readOnly) null else onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
                     onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」

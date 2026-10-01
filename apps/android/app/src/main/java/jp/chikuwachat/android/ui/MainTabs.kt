@@ -151,6 +151,11 @@ object MainTabs {
         if (tab == state.selected) update(state) { MainNav.openFromSearch(it, channelId, parentId) }
         else land(update(state, MainNav::returnToSearch), tab, channelId, parentId)
 
+    /** M58: a canvas from the search's results, landing as a message result does ([landFromSearch]). */
+    fun landCanvasFromSearch(state: TabStacks, tab: MainTab, channelId: String, canvasId: String): TabStacks =
+        if (tab == state.selected) update(state) { MainNav.openCanvasFromSearch(it, channelId, canvasId) }
+        else landCanvas(update(state, MainNav::returnToSearch), tab, channelId, canvasId)
+
     /**
      * M37 (MOBILE_UI.md §6.1, §6.2): a conversation picked on the jump screen or the ✏️ picker, both over the home tab:
      * the home tab goes back to its list (the jump screen and any results behind it close), then the conversation lands

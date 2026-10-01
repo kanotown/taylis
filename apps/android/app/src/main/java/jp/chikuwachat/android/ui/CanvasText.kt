@@ -260,6 +260,43 @@ object CanvasText {
 
     /** The canvas the tab opens on: the conversation's tab canvas, else the most recently updated one. */
     fun defaultCanvasId(list: List<CanvasMeta>): String? = (list.firstOrNull { it.isChannelTab } ?: list.firstOrNull())?.id
+
+    // --- images (M58, CANVAS.md §4.10; the desktop's M44 canvasText.ts) ---------------------------
+
+    /** How many attachments one canvas may name (the server's `too_many_canvas_images`). */
+    const val MAX_IMAGES = 100
+
+    private val ATTACHMENT_REF = Regex("""\(attachment:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)""", RegexOption.IGNORE_CASE)
+
+    /** The distinct attachments a body names (`attachment:<id>`, as the server counts them when it binds). */
+    fun attachmentRefs(body: String): Set<String> = ATTACHMENT_REF.findAll(body).map { it.groupValues[1].lowercase() }.toSet()
+
+    /** Whether `adding` more images keep the body within [MAX_IMAGES] (else nothing is uploaded). */
+    fun imagesFit(body: String, adding: Int): Boolean = attachmentRefs(body).size + adding <= MAX_IMAGES
+
+    /**
+     * An image `![alt](attachment:<id>)` on a line of its own at the caret (replacing a selection); the caret goes to the
+     * line after it. The same text the desktop's insertImageLine makes.
+     */
+    fun insertImageLine(state: Edit, attachmentId: String, alt: String = ""): Edit {
+        val text = state.text
+        val start = state.start.coerceIn(0, text.length)
+        val end = state.end.coerceIn(start, text.length)
+        val before = text.substring(0, start)
+        val after = text.substring(end)
+        val lead = if (before.isEmpty() || before.endsWith("\n")) "" else "\n"
+        val trail = if (after.startsWith("\n")) "" else "\n"
+        val line = "![" + alt.replace(Regex("[\\]\n]"), " ") + "](attachment:" + attachmentId + ")"
+        val caret = before.length + lead.length + line.length + 1
+        return Edit(before + lead + line + trail + after, caret)
+    }
+
+    /** The server's excerpt is the body's plain text: an image reference reads as 「[画像]」 instead of its id. */
+    fun readableSnippet(snippet: String): String =
+        snippet.replace(Regex("""!\[([^\]\n]*)\]\(attachment:[0-9a-fA-F-]*\)?""")) { match ->
+            val alt = match.groupValues[1]
+            if (alt.isNotEmpty()) "[画像: $alt]" else "[画像]"
+        }
 }
 
 /**
@@ -335,6 +372,10 @@ data class CanvasRights(
     val manage: Boolean = false,
     /** To the trash and back. */
     val trash: Boolean = false,
+    /** M58: erase a version's body (§4.7: owners and administrators; in a DM its creator). */
+    val erase: Boolean = false,
+    /** M58: 「会話に共有」 (posting the link is posting a message: not where only owners post, unless one). */
+    val share: Boolean = false,
 ) {
     /** Ticking is all this member may do (the conflict choice is then only 「相手の版」). */
     val tickOnly: Boolean get() = tick && !edit
@@ -347,7 +388,7 @@ data class CanvasRights(
             if (!channel.isMember || channel.channel.archived) return NONE // an archived conversation's canvases are read only
             if (channel.channel.isDm) {
                 val creator = canvas != null && canvas.createdBy == myId
-                return CanvasRights(create = true, edit = true, tick = true, manage = true, trash = canvas != null && creator)
+                return CanvasRights(create = true, edit = true, tick = true, manage = true, trash = canvas != null && creator, erase = creator, share = canvas != null)
             }
             val guest = role == "guest"
             val manager = role == "admin" || channel.channel.membership?.role == "owner"
@@ -356,7 +397,9 @@ data class CanvasRights(
             val creator = canvas.createdBy == myId
             val edit = if (canvas.editPolicy == "owners") !guest && (creator || manager) else create
             val manage = !guest && (creator || manager)
-            return CanvasRights(create = create, edit = edit, tick = edit || !guest, manage = manage, trash = manage)
+            // Sharing posts a message: whoever may post at the top level (a guest may post in a channel they are in).
+            val share = channel.channel.postingPolicy != "owners" || manager
+            return CanvasRights(create = create, edit = edit, tick = edit || !guest, manage = manage, trash = manage, erase = manager, share = share)
         }
     }
 }

@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,7 +20,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.CloudDone
@@ -58,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.CanvasConflict
 import jp.chikuwachat.android.api.CanvasMeta
 import jp.chikuwachat.android.api.CanvasOut
@@ -88,7 +97,7 @@ private val ONE_ROW = 600.dp
 
 /** The pane of the conversation's 「キャンバス」 tab. `canvasId` null: the default one (or the empty state). */
 @Composable
-fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, canvasId: String?, onSelect: (String?) -> Unit) {
+fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, canvasId: String?, onSelect: (String?) -> Unit, onOpenThread: (String) -> Unit) {
     val store = controller.store
     val hub = controller.engine?.canvases
     val list = remember(version, channel.id) { store.canvasesOf(channel.id) }
@@ -136,7 +145,7 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
             OpenCanvas(controller, channel, version, selectedId, list ?: emptyList(), onOpenList = { dialog = "list" }, onTrashed = {
                 scope.launch { hub.loadList(channel.id) }
                 onSelect(null)
-            })
+            }, onOpenThread = onOpenThread)
         }
     }
 }
@@ -181,7 +190,7 @@ private fun LoadFailedLine(onRetry: () -> Unit) {
 @Composable
 private fun OpenCanvas(
     controller: AppController, channel: ChannelState, version: Int, canvasId: String, list: List<CanvasMeta>,
-    onOpenList: () -> Unit, onTrashed: () -> Unit,
+    onOpenList: () -> Unit, onTrashed: () -> Unit, onOpenThread: (String) -> Unit,
 ) {
     val hub = controller.engine?.canvases ?: return
     var saver by remember(canvasId) { mutableStateOf<CanvasSaver?>(null) }
@@ -191,7 +200,7 @@ private fun OpenCanvas(
         onDispose { release() }
     }
     val open = saver ?: return CanvasEmpty("読み込み中…", null, loading = true)
-    CanvasView(controller, channel, version, canvasId, list, open, onOpenList, onTrashed)
+    CanvasView(controller, channel, version, canvasId, list, open, onOpenList, onTrashed, onOpenThread)
 }
 
 private enum class CanvasMode { VIEW, EDIT }
@@ -200,7 +209,7 @@ private enum class CanvasMode { VIEW, EDIT }
 @Composable
 private fun CanvasView(
     controller: AppController, channel: ChannelState, version: Int, canvasId: String, list: List<CanvasMeta>, saver: CanvasSaver,
-    onOpenList: () -> Unit, onTrashed: () -> Unit,
+    onOpenList: () -> Unit, onTrashed: () -> Unit, onOpenThread: (String) -> Unit,
 ) {
     val revision by saver.revision.collectAsState()
     val store = controller.store
@@ -233,6 +242,27 @@ private fun CanvasView(
     val title = meta?.title ?: "キャンバス"
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    // M58 (§4.13): the comments are the shared message's thread; a canvas never shared is shared first (a message is
+    // posted), so 「コメント」 shows to whoever may share it, and to everyone once it is shared.
+    val shared = meta?.shareMessageId != null
+    var opening by remember(canvasId) { mutableStateOf(false) }
+    val showComments = meta != null && status != CanvasSaveStatus.GONE && loadError == null && (shared || rights.share)
+    fun openComments() {
+        val canvas = meta ?: return
+        if (opening) return
+        opening = true
+        scope.launch {
+            val messageId = controller.canvasCommentsMessage(canvas)
+            opening = false
+            if (messageId != null) {
+                saver.flush() // what is typed is saved before the thread covers the canvas
+                onOpenThread(messageId)
+            }
+        }
+    }
+    val onShare: (() -> Unit)? = if (meta != null && !shared && rights.share) ({
+        scope.launch { if (controller.shareCanvas(meta.id) != null) controller.notice = "会話に共有しました" }
+    }) else null
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= WIDE
@@ -254,7 +284,15 @@ private fun CanvasView(
                     if (!wide && !editing && headings.size >= 3) OutlineMenu(headings) { entry -> scope.launch { scrollToHeading(listState, text, entry.line) } }
                     if (rights.edit && status != CanvasSaveStatus.GONE && loadError == null) ModeSwitch(mode) { mode = it }
                 }
-                if (meta != null) CanvasMenu(controller, channel, meta, rights, saver, status, onRename = { renaming = true }, onHistory = { history = true }, onTrashed = onTrashed)
+                if (showComments) {
+                    IconButton(onClick = ::openComments, enabled = !opening) {
+                        Icon(
+                            Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = if (shared) "コメント (共有したメッセージのスレッド)" else "コメント (会話に共有してスレッドを開きます)",
+                        )
+                    }
+                }
+                if (meta != null) CanvasMenu(controller, channel, meta, rights, saver, status, onRename = { renaming = true }, onHistory = { history = true }, onTrashed = onTrashed, onShare = onShare)
             }
             if (!oneRow) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -298,7 +336,7 @@ private fun CanvasView(
         })
     }
     if (renaming && meta != null) RenameDialog(controller, meta) { renaming = false }
-    if (history && meta != null) HistoryDialog(controller, meta) { history = false }
+    if (history && meta != null) CanvasHistoryDialog(controller, meta, rights) { history = false }
     val conflict = saver.conflict
     if (conflictOpen && status == CanvasSaveStatus.CONFLICT && conflict != null) {
         ConflictDialog(controller, saver, tickOnly = !rights.edit, conflict.details.conflicts, conflict.details.timedOut) { conflictOpen = false }
@@ -631,6 +669,34 @@ private fun CanvasEditorField(
         )
     }
 
+    // M58 (CANVAS.md §4.10, the desktop's M44): 「画像」 — photos picked or taken are uploaded (pending) and put in as
+    // `![](attachment:<id>)` lines at the caret through apply(), so they are saved and merged like typing (the save that
+    // names them binds them). An upload that ends after this editor has gone goes at the end of the stored body.
+    var uploading by remember { mutableIntStateOf(0) }
+    val active = remember { booleanArrayOf(true) }
+    DisposableEffect(Unit) { onDispose { active[0] = false } }
+    fun insertImages(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
+        if (uris.isEmpty()) return
+        if (!CanvasText.imagesFit(saver.text, uploading + uris.size)) {
+            controller.error = ErrorMessages.byCode["too_many_canvas_images"] ?: "画像が多すぎます"
+            cleanup()
+            return
+        }
+        uploading += uris.size
+        controller.scope.launch {
+            try {
+                for (uri in uris) {
+                    val uploaded = try { controller.uploadCanvasImage(uri) } finally { uploading -= 1 }
+                    if (uploaded == null) continue
+                    if (active[0]) apply { CanvasText.insertImageLine(it, uploaded.id) }
+                    else saver.edit(CanvasText.insertImageLine(CanvasText.Edit(saver.text, saver.text.length), uploaded.id).text, external = true)
+                }
+            } finally { cleanup() }
+        }
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { insertImages(it) }
+    val openCamera = rememberCameraCapture(controller) { uri, cleanup -> insertImages(listOf(uri), cleanup) }
+
     val focus = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
@@ -640,8 +706,19 @@ private fun CanvasEditorField(
     val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8).filter { it.kind != "all" } } ?: emptyList()
 
     Column(modifier) {
-        EditorToolbar(::apply, onTable = ::openTable)
+        EditorToolbar(
+            ::apply, onTable = ::openTable,
+            onPhotos = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onCamera = openCamera,
+        )
         HorizontalDivider()
+        if (uploading > 0) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                Spacer(Modifier.width(6.dp))
+                Text("画像をアップロード中… ($uploading)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         if (candidates.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 candidates.forEach { candidate ->
@@ -694,10 +771,11 @@ private val TABLE_EDIT_SAVER = Saver<TableEditState?, String>(
     restore = { runCatching { jp.chikuwachat.android.api.Codec.plain.decodeFromString(TableEditState.serializer(), it) }.getOrNull() },
 )
 
-/** 見出し, 太字, 箇条書き, 番号, チェックリスト, 引用, リンク, メンション, 区切り線, 表 (the desktop's toolbar, for a thumb). */
+/** 見出し, 太字, 箇条書き, 番号, チェックリスト, 引用, リンク, 画像, メンション, 区切り線, 表 (the desktop's toolbar, for a thumb). */
 @Composable
-private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit, onTable: () -> Unit) {
+private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit, onTable: () -> Unit, onPhotos: () -> Unit, onCamera: (() -> Unit)?) {
     var headingMenu by remember { mutableStateOf(false) }
+    var imageMenu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
             IconButton(onClick = { headingMenu = true }) { Icon(Icons.Outlined.Title, contentDescription = "見出し") }
@@ -713,6 +791,14 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
         IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "1. ") } }) { Icon(Icons.Outlined.FormatListNumbered, contentDescription = "番号付きリスト") }
         IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "> ") } }) { Icon(Icons.Outlined.FormatQuote, contentDescription = "引用") }
         IconButton(onClick = { apply { CanvasText.insertLink(it) } }) { Icon(Icons.Outlined.Link, contentDescription = "リンク") }
+        // M58: a photo from the picker, or one taken now (no camera: the picker straight away).
+        Box {
+            IconButton(onClick = { if (onCamera == null) onPhotos() else imageMenu = true }) { Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "画像") }
+            DropdownMenu(expanded = imageMenu, onDismissRequest = { imageMenu = false }) {
+                DropdownMenuItem(text = { Text("写真を選ぶ") }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) }, onClick = { imageMenu = false; onPhotos() })
+                if (onCamera != null) DropdownMenuItem(text = { Text("カメラで撮る") }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) }, onClick = { imageMenu = false; onCamera() })
+            }
+        }
         IconButton(onClick = { apply { CanvasText.insertMention(it) } }) { Icon(Icons.Outlined.AlternateEmail, contentDescription = "メンション") }
         IconButton(onClick = { apply { CanvasText.insertRule(it) } }) { Icon(Icons.Outlined.HorizontalRule, contentDescription = "区切り線") }
         IconButton(onClick = onTable) { Icon(Icons.Outlined.TableChart, contentDescription = "表") }
@@ -791,6 +877,8 @@ private fun CanvasListSheet(
 private fun CanvasMenu(
     controller: AppController, channel: ChannelState, canvas: CanvasMeta, rights: CanvasRights, saver: CanvasSaver, status: CanvasSaveStatus,
     onRename: () -> Unit, onHistory: () -> Unit, onTrashed: () -> Unit,
+    /** M58: 「会話に共有」 (null: shared already, or not allowed here). */
+    onShare: (() -> Unit)?,
 ) {
     var open by remember { mutableStateOf(false) }
     var confirmTrash by remember { mutableStateOf(false) }
@@ -818,6 +906,7 @@ private fun CanvasMenu(
                 }
                 HorizontalDivider()
             }
+            if (onShare != null && !gone) DropdownMenuItem(text = { Text("会話に共有") }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { open = false; onShare() })
             DropdownMenuItem(text = { Text("履歴") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { open = false; onHistory() })
             DropdownMenuItem(text = { Text("本文をコピー") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = { open = false; controller.copyCanvasText(saver.text) })
             if (rights.trash && !gone) {
@@ -1058,82 +1147,5 @@ private fun ExpiredDialog(controller: AppController, saver: CanvasSaver, head: C
                 if (canOverwrite) Button(onClick = { onDismiss(); saver.resolveExpired(mine = true) }) { Text("自分の本文で上書き") }
             }
         },
-    )
-}
-
-private fun revisionKind(kind: String): String = when (kind) {
-    "create" -> "作成"
-    "save" -> "保存"
-    "merge" -> "マージ"
-    "restore" -> "復元"
-    "erased" -> "消去済み"
-    else -> kind
-}
-
-/** The history, read only (M46; the desktop's M44 dialog also compares, restores and labels): versions, and one version. */
-@Composable
-private fun HistoryDialog(controller: AppController, canvas: CanvasMeta, onDismiss: () -> Unit) {
-    var rows by remember { mutableStateOf<List<CanvasRevisionMeta>?>(null) }
-    var shown by remember { mutableStateOf<CanvasRevisionOut?>(null) }
-    var tries by remember { mutableIntStateOf(0) }
-    var failed by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val store = controller.store
-    LaunchedEffect(canvas.id, tries) {
-        failed = false
-        rows = controller.canvasRevisions(canvas.id)
-        failed = rows == null
-    }
-    val revision = shown
-    if (revision != null) {
-        val version by store.version.collectAsState()
-        val inline = bodyInline(store.users, customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, groups = store.groups, version = version)
-        val blocks = remember(revision.id) { parseBlocks(revision.body, canvas = true) }
-        AlertDialog(
-            onDismissRequest = { shown = null },
-            title = { Text(revision.label ?: ("版 " + (revision.version?.toString() ?: ""))) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(
-                        (store.users[revision.authorId]?.displayName ?: "メンバー") + " · " + YouSettings.lastUsedLabel(revision.createdAt) + " · " + revisionKind(revision.kind),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    if (revision.kind == "erased") Text("この版の本文は消去されています", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else blocks.forEach { CanvasBlockView(it, inline, controller, onToggle = null, onEditSection = null) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { shown = null }) { Text("戻る") } },
-        )
-        return
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("履歴") },
-        text = {
-            val loaded = rows
-            when {
-                failed -> LoadFailedLine { tries += 1 }
-                loaded == null -> Text("読み込み中…")
-                loaded.isEmpty() -> Text("版はありません。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> LazyColumn(Modifier.heightIn(max = 460.dp)) {
-                    items(loaded, key = { it.id }) { row ->
-                        ListItem(
-                            headlineContent = {
-                                Text((store.users[row.authorId]?.displayName ?: "メンバー") + " · " + YouSettings.lastUsedLabel(row.createdAt), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            },
-                            supportingContent = {
-                                Text(
-                                    listOfNotNull(revisionKind(row.kind), row.label?.let { "「$it」" }, "+${row.linesAdded} −${row.linesRemoved} 行").joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            },
-                            modifier = Modifier.clickable(enabled = row.kind != "erased") { scope.launch { shown = controller.canvasRevision(canvas.id, row.id) } },
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
     )
 }

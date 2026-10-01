@@ -424,7 +424,7 @@ class CanvasSaveTest {
         val members = meta()
         val owners = meta(editPolicy = "owners")
         // A member edits a members canvas; an owners canvas only ticks (the conflict choice is then 相手の版 only).
-        assertEquals(CanvasRights(create = true, edit = true, tick = true, manage = false, trash = false), CanvasRights.of(channel(), "me", "member", members))
+        assertEquals(CanvasRights(create = true, edit = true, tick = true, manage = false, trash = false, share = true), CanvasRights.of(channel(), "me", "member", members))
         val ticker = CanvasRights.of(channel(), "me", "member", owners)
         assertTrue(ticker.tickOnly)
         assertFalse(ticker.edit)
@@ -433,7 +433,7 @@ class CanvasSaveTest {
         assertTrue(CanvasRights.of(channel(role = "owner"), "me", "member", owners).let { it.edit && it.manage })
         assertTrue(CanvasRights.of(channel(), "me", "admin", owners).edit)
         // A guest reads only.
-        assertEquals(CanvasRights.NONE, CanvasRights.of(channel(), "me", "guest", members).copy(create = false))
+        assertEquals(CanvasRights.NONE.copy(share = true), CanvasRights.of(channel(), "me", "guest", members).copy(create = false))
         assertFalse(CanvasRights.of(channel(), "me", "guest", members).tick)
         // An announcement channel: members tick, owners write.
         assertEquals(CanvasRights(tick = true), CanvasRights.of(channel(postingPolicy = "owners"), "me", "member", members))
@@ -441,7 +441,7 @@ class CanvasSaveTest {
         assertEquals(CanvasRights.NONE, CanvasRights.of(channel(archived = true), "creator", "admin", members))
         assertEquals(CanvasRights.NONE, CanvasRights.of(channel(member = false), "me", "member", members))
         // A DM: its members do everything; only the creator trashes.
-        assertEquals(CanvasRights(true, true, true, true, false), CanvasRights.of(channel(type = "dm"), "me", "member", members))
+        assertEquals(CanvasRights(true, true, true, true, false, erase = false, share = true), CanvasRights.of(channel(type = "dm"), "me", "member", members))
         assertTrue(CanvasRights.of(channel(type = "group_dm"), "creator", "member", members).trash)
     }
 

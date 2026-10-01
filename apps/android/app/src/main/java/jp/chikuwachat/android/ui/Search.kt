@@ -130,6 +130,23 @@ object Search {
         )
     }
 
+    /**
+     * M58 (CANVAS.md §4.8): GET /search/canvases parameters: the words (typed modifiers stay in them), the person (the
+     * canvas's creator or last editor), the conversation and the dates; kinds and 「スレッド内」 do not apply to canvases.
+     */
+    fun canvasQuery(params: SearchParams, now: ZonedDateTime = ZonedDateTime.now()): jp.chikuwachat.android.api.CanvasSearchRequest {
+        val q = params.q.trim()
+        val (after, before) = dateRange(params.date, now)
+        return jp.chikuwachat.android.api.CanvasSearchRequest(
+            q = q, channelId = params.channelId, fromUserId = params.fromUserId, after = after, before = before,
+            sort = if (q.isEmpty()) NEWEST else params.sort,
+        )
+    }
+
+    /** Nothing for the canvas search to look for (it is not sent): no words, person, conversation or dates. */
+    fun canvasEmpty(params: SearchParams): Boolean =
+        params.q.isBlank() && params.fromUserId == null && params.channelId == null && params.date == null
+
     /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
     fun totalLabel(total: Int, capped: Boolean): String = String.format(Locale.JAPAN, "%,d 件", total) + if (capped) "以上" else ""
 

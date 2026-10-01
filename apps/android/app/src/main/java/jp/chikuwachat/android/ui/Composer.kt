@@ -195,27 +195,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uploadPicked(it) }
     // 仕上げ B (C11): 「カメラ」, the camera app's photo written to the cache through the FileProvider (no permission:
     // the camera app takes it), uploaded as a picked photo is, then removed.
-    val context = LocalContext.current
-    val hasCamera = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
-    var cameraFile by rememberSaveable { mutableStateOf<String?>(null) }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken ->
-        val path = cameraFile ?: return@rememberLauncherForActivityResult
-        cameraFile = null
-        val file = File(path)
-        if (!taken || !file.exists() || file.length() == 0L) { file.delete(); return@rememberLauncherForActivityResult }
-        uploadPicked(listOf(FileProvider.getUriForFile(context, context.packageName + ".files", file))) { file.delete() }
-    }
-    fun openCamera() {
-        val file = CameraCapture.newFile(context.cacheDir, LocalDateTime.now())
-        cameraFile = file.path
-        try {
-            camera.launch(FileProvider.getUriForFile(context, context.packageName + ".files", file))
-        } catch (_: ActivityNotFoundException) {
-            cameraFile = null
-            file.delete()
-            controller.error = "カメラを開けませんでした"
-        }
-    }
+    val openCamera = rememberCameraCapture(controller) { uri, cleanup -> uploadPicked(listOf(uri), cleanup) }
+    val hasCamera = openCamera != null
     Column {
         val query = Mentions.query(draft)
         val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values) else emptyList()
@@ -410,7 +391,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             hasCamera = hasCamera, templates = templates, canSchedule = canSchedule,
             onDismiss = { plusOpen = false },
             onPhotos = { mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
-            onCamera = ::openCamera,
+            onCamera = { openCamera?.invoke() },
             onFile = { picker.launch("*/*") },
             onPoll = { pollOpen = true },
             onSchedulePoll = { scheduleForm = SchedulePollInitial().encode() },
@@ -519,6 +500,37 @@ object CameraCapture {
         val dayAgo = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         dir.listFiles()?.filter { it.lastModified() < dayAgo }?.forEach { it.delete() }
         return File(dir, fileName(at))
+    }
+}
+
+/**
+ * 仕上げ B (C11), shared with the canvas editor in M58: opens the camera app on a file in the cache (the FileProvider's
+ * `camera/`; no permission, the camera app takes the photo) and hands the photo's URI over with a `cleanup` that removes
+ * the file once its upload is over. Null when the phone has no camera. The pending file survives a rotation.
+ */
+@Composable
+fun rememberCameraCapture(controller: AppController, onPhoto: (uri: android.net.Uri, cleanup: () -> Unit) -> Unit): (() -> Unit)? {
+    val context = LocalContext.current
+    val hasCamera = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
+    var cameraFile by rememberSaveable { mutableStateOf<String?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken ->
+        val path = cameraFile ?: return@rememberLauncherForActivityResult
+        cameraFile = null
+        val file = File(path)
+        if (!taken || !file.exists() || file.length() == 0L) { file.delete(); return@rememberLauncherForActivityResult }
+        onPhoto(FileProvider.getUriForFile(context, context.packageName + ".files", file)) { file.delete() }
+    }
+    if (!hasCamera) return null
+    return {
+        val file = CameraCapture.newFile(context.cacheDir, LocalDateTime.now())
+        cameraFile = file.path
+        try {
+            camera.launch(FileProvider.getUriForFile(context, context.packageName + ".files", file))
+        } catch (_: ActivityNotFoundException) {
+            cameraFile = null
+            file.delete()
+            controller.error = "カメラを開けませんでした"
+        }
     }
 }
 
