@@ -855,6 +855,17 @@ export class FakeServer {
     return updated;
   }
 
+  /** L9: the shared tasks made from a message changed (created, status, due date, assignees, deleted): change=tasks. */
+  setMessageTasks(channelId: string, messageId: string, tasks: MessageOut["tasks"]): MessageOut {
+    const record = this.record(channelId);
+    const message = record.messages.find((m) => m.id === messageId && !m.deleted);
+    if (!message) throw new ApiError(404, "message_not_found", "not found");
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, updated_seq: seq, tasks };
+    this.replace(record, updated, "message.updated", "tasks");
+    return updated;
+  }
+
   /** Custom emoji by name (M12f); everyone gets emoji.updated. */
   readonly customEmoji = new Map<string, CustomEmojiOut>();
 

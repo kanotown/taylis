@@ -1,19 +1,22 @@
 /**
  * M55 (TASKS.md §6): 「タスク」 in the sidebar (a phone's home tile) — 「自分のタスク」, my personal list (a checkbox
  * completes a task, 「＋ 追加」 adds one, the completed ones fold under 「完了 (N)」), and 「自分の担当」, the shared tasks
- * assigned to me, by channel (its name opens that channel's 「タスク」 tab).
+ * assigned to me, by channel (its name opens that channel's 「タスク」 tab; a DM has no board, its name is only a label).
+ * L9 (REVIEWS.md §2.3): 「自分が依頼した」, the shared tasks I made for someone else (my review requests), by due date,
+ * each saying where it lives.
  */
-import { ChevronDown, ChevronRight, Hash, ListTodo, Lock, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Hash, ListTodo, Lock, MessageCircle, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import type { TaskOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { localZone } from "./calendarDates";
+import { conversationTitle } from "./channels";
 import { BackButton } from "./compact";
 import { Button, cn } from "./primitives";
 import { InlineAdd, TaskCard, useTaskHub, useToday } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
-import { canEditTask, groupMineByChannel, splitOpenDone } from "./tasks";
+import { canEditTask, groupMineByChannel, hasBoard, sortRequested, splitOpenDone, taskPlace } from "./tasks";
 
 export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   controller: AppController;
@@ -28,11 +31,22 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   useEffect(() => {
     if (!hub) return;
     void hub.openMine();
-    return () => hub.closeMine();
+    void hub.openRequested();
+    return () => {
+      hub.closeMine();
+      hub.closeRequested();
+    };
   }, [hub]);
+  const store = controller.store;
   const list = hub?.mineList();
-  const me = controller.store.me?.id ?? null;
-  const { personal, groups } = groupMineByChannel(list?.tasks ?? [], me, (id) => controller.store.getChannel(id)?.name ?? null);
+  const requested = hub?.requestedList();
+  const me = store.me?.id ?? null;
+  /** A DM (no channel name) by its other members. */
+  const dmTitle = (id: string) => {
+    const channel = store.getChannel(id);
+    return channel && !hasBoard(channel) ? conversationTitle(channel, store.users, me, store.me) : null;
+  };
+  const { personal, groups } = groupMineByChannel(list?.tasks ?? [], me, (id) => store.getChannel(id)?.name || dmTitle(id));
   const loading = !list || list.state === "loading";
   const note = list?.state === "unsupported" ? "このサーバはタスクに対応していません" : list?.state === "failed" ? "タスクを読み込めませんでした。再接続すると読み直します" : null;
 
@@ -50,30 +64,34 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
       return false;
     }
   };
-  const card = (task: TaskOut, showStatus = true) => {
-    const editable = canEditTask(task, task.channel_id ? controller.store.getChannel(task.channel_id) : undefined, controller.isAdmin);
+  const card = (task: TaskOut, options: { checkbox?: boolean; place?: boolean } = {}) => {
+    const editable = canEditTask(task, task.channel_id ? store.getChannel(task.channel_id) : undefined, controller.isAdmin);
     return (
       <TaskCard
         key={task.id}
         controller={controller}
         task={task}
         today={today}
-        showStatus={showStatus}
+        showStatus
+        place={options.place ? taskPlace(task, dmTitle) : undefined}
         onOpen={setDialog}
         onOpenMessage={onOpenMessage ?? ((id) => void controller.openPermalink(id))}
         leading={
-          <input
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
-            checked={task.status === "done"}
-            disabled={!editable || !hub?.available}
-            aria-label={task.status === "done" ? `「${task.title}」を未完了に戻す` : `「${task.title}」を完了にする`}
-            onChange={() => toggleDone(task)}
-          />
+          options.checkbox === false ? undefined : (
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+              checked={task.status === "done"}
+              disabled={!editable || !hub?.available}
+              aria-label={task.status === "done" ? `「${task.title}」を未完了に戻す` : `「${task.title}」を完了にする`}
+              onChange={() => toggleDone(task)}
+            />
+          )
         }
       />
     );
   };
+  const requestedLoading = !requested || requested.state === "loading";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -102,23 +120,44 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
             <h2 className="text-sm font-semibold">自分の担当</h2>
             {groups.length === 0 && <p className="text-sm text-muted">{loading ? "読み込み中…" : "担当のタスクはありません"}</p>}
             {groups.map((group) => {
-              const channel = controller.store.getChannel(group.channelId);
+              const channel = store.getChannel(group.channelId);
+              const board = !channel || hasBoard(channel);
               return (
                 <div key={group.channelId} className="space-y-1.5" data-mine-group={group.channelId}>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-md text-[13px] font-semibold text-muted hover:text-ink hover:underline"
-                    title={`#${group.channelName} のタスクを開く`}
-                    onClick={() => onOpenBoard(group.channelId)}
-                  >
-                    {channel?.type === "private" ? <Lock size={13} /> : <Hash size={13} />}
-                    {group.channelName}
-                  </button>
+                  {board ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 rounded-md text-[13px] font-semibold text-muted hover:text-ink hover:underline"
+                      title={`#${group.channelName} のタスクを開く`}
+                      onClick={() => onOpenBoard(group.channelId)}
+                    >
+                      {channel?.type === "private" ? <Lock size={13} /> : <Hash size={13} />}
+                      {group.channelName}
+                    </button>
+                  ) : (
+                    // L9: a DM's tasks (no board to open).
+                    <div className="flex items-center gap-1 text-[13px] font-semibold text-muted" data-dm-group>
+                      <MessageCircle size={13} /> {group.channelName}
+                    </div>
+                  )}
                   <TaskList tasks={group.tasks} loading={false} empty="" render={(task) => card(task)} />
                 </div>
               );
             })}
           </section>
+          {requested?.state !== "unsupported" && (
+            <section aria-label="自分が依頼した" className="space-y-2">
+              <h2 className="text-sm font-semibold">自分が依頼した <span className="ml-1 text-xs font-normal text-muted">ほかの人が担当のもの</span></h2>
+              {requested?.state === "failed" && <p className="text-xs text-muted">読み込めませんでした。再接続すると読み直します</p>}
+              <TaskList
+                tasks={requested?.tasks ?? []}
+                loading={requestedLoading}
+                empty="依頼したタスクはありません"
+                split={sortRequested}
+                render={(task) => card(task, { checkbox: false, place: true })}
+              />
+            </section>
+          )}
         </div>
       </div>
       {dialog && <TaskDialog controller={controller} task={hub?.find(dialog.id) ?? dialog} onClose={() => setDialog(null)} onOpenMessage={onOpenMessage} />}
@@ -127,16 +166,17 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   );
 }
 
-/** Open tasks (by status, then the board's order), then the completed ones folded under 「完了 (N)」. */
-function TaskList({ tasks, loading, empty, render, footer }: {
+/** Open tasks (by status, then the board's order; or `split`'s), then the completed ones folded under 「完了 (N)」. */
+function TaskList({ tasks, loading, empty, render, footer, split = splitOpenDone }: {
   tasks: TaskOut[];
   loading: boolean;
   empty: string;
   render: (task: TaskOut) => ReactNode;
   footer?: ReactNode;
+  split?: (tasks: readonly TaskOut[]) => { open: TaskOut[]; done: TaskOut[] };
 }) {
   const [showDone, setShowDone] = useState(false);
-  const { open, done } = splitOpenDone(tasks);
+  const { open, done } = split(tasks);
   return (
     <div className="space-y-1.5">
       {open.length === 0 && done.length === 0 && empty && <p className="text-sm text-muted">{loading ? "読み込み中…" : empty}</p>}

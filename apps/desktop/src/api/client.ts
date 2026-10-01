@@ -393,6 +393,11 @@ export class ApiClient {
     return this.request("GET", "/api/v1/tasks/mine");
   }
 
+  /** L9 「自分が依頼した」: the shared tasks I made with someone else assigned (completed: the 50 most recent). */
+  requestedTasks(): Promise<TaskOut[]> {
+    return this.request("GET", "/api/v1/tasks/requested");
+  }
+
   /** The tasks I can see due in [from, to) (dates, `to` excluded, at most 100 days): the calendar's. */
   dueTasks(from: string, to: string): Promise<TaskOut[]> {
     return this.request("GET", `/api/v1/tasks/due?${new URLSearchParams({ from, to })}`);

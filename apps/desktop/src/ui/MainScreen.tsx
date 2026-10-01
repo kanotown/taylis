@@ -489,7 +489,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (!request) return;
     controller.openTaskRequest = null;
     const channel = request.channelId ? store.getChannel(request.channelId) : undefined;
-    if (channel?.isMember) openTasksTab(channel.id);
+    // L9: a DM's task has no board: over 「タスク」 like a personal one.
+    if (channel?.isMember && !isDmChannel(channel)) openTasksTab(channel.id);
     else if (view !== "tasks") openView("tasks");
     void controller.loadTask(request.taskId).then((task) => { if (task) setTaskDialog(task); });
     // eslint-disable-next-line react-hooks/exhaustive-deps

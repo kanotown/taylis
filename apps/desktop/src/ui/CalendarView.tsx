@@ -42,7 +42,8 @@ import { Button, cn } from "./primitives";
 import { readCalendarMode, writeCalendarMode } from "./prefs";
 import { useTaskHub } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
-import { filterTasks, tasksForDay } from "./tasks";
+import { filterTasks, hasBoard, taskPlace, tasksForDay } from "./tasks";
+import { conversationTitle } from "./channels";
 
 /** "all", "me" (my own calendar) or a channel id. */
 export type CalendarFilter = string;
@@ -113,6 +114,12 @@ export function CalendarView({ controller }: { controller: AppController }) {
   }, [taskHub, start, end]);
   useEffect(() => () => taskHub?.closeDue("calendar"), [taskHub]);
   const tasks = filterTasks(taskHub?.dueWindow("calendar")?.tasks ?? [], filter, controller.store.me?.id ?? null);
+  // L9: a DM's task (no channel name, no board) by the DM's other members.
+  const placeOf = (task: TaskOut) =>
+    taskPlace(task, (id) => {
+      const channel = controller.store.getChannel(id);
+      return channel && !hasBoard(channel) ? conversationTitle(channel, controller.store.users, controller.store.me?.id ?? null, controller.store.me) : null;
+    });
   const channels = readableChannels(controller);
   const setMode = (next: CalendarMode) => {
     writeCalendarMode(next);
@@ -197,7 +204,7 @@ export function CalendarView({ controller }: { controller: AppController }) {
         <WeekGrid anchor={anchor} today={now} events={events} tasks={tasks} onOpenTask={setTaskDialog} onOpen={(event) => setDialog({ event })} onNew={create} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <AgendaList events={events} tasks={tasks} onOpenTask={setTaskDialog} start={start} end={end} today={now} onOpen={(event) => setDialog({ event })} loading={win?.state === "loading"} />
+          <AgendaList events={events} tasks={tasks} taskPlaceOf={placeOf} onOpenTask={setTaskDialog} start={start} end={end} today={now} onOpen={(event) => setDialog({ event })} loading={win?.state === "loading"} />
         </div>
       )}
       {dialog && <CalendarEventDialog controller={controller} event={dialog.event} initial={dialog.initial} onClose={() => setDialog(null)} />}
@@ -451,10 +458,12 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
 }
 
 /** Day by day, the days with events only (「今日」 and 「明日」 marked). */
-export function AgendaList({ events, tasks = [], start, end, today, onOpen, onOpenTask = () => {}, loading = false, empty = "この期間の予定はありません", showCalendar = true }: {
+export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPlace(task), start, end, today, onOpen, onOpenTask = () => {}, loading = false, empty = "この期間の予定はありません", showCalendar = true }: {
   events: CalendarEventOut[];
   /** M55: the tasks due, after the day's events. */
   tasks?: TaskOut[];
+  /** Where a task lives (「#lab」, 「自分のタスク」, L9: a DM by its members). */
+  taskPlaceOf?: (task: TaskOut) => string;
   start: DayKey;
   end: DayKey;
   today: DayKey;
@@ -513,7 +522,7 @@ export function AgendaList({ events, tasks = [], start, end, today, onOpen, onOp
                       <span aria-hidden className="mr-1">{task.status === "done" ? "☑" : "☐"}</span>
                       <span className={cn(task.status === "done" && "text-muted line-through")}>{task.title}</span>
                     </span>
-                    {showCalendar && <span className="block text-xs text-muted">{task.channel_name ? `#${task.channel_name}` : "自分のタスク"}</span>}
+                    {showCalendar && <span className="block text-xs text-muted">{taskPlaceOf(task)}</span>}
                   </span>
                 </button>
               </li>

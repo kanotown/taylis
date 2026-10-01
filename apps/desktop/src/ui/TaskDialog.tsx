@@ -2,28 +2,36 @@
  * M55 (TASKS.md §6): a task's dialog — 題名, メモ (Markdown text), 状態, 期限, 担当者 (the channel's members; not for a
  * personal task), the message it came from, 削除. New tasks too (「タスクにする」, 「自分のタスク」), with where they
  * go (a channel's board or 「自分のタスク」). Someone who may not edit the board sees the task read-only.
+ *
+ * L9 (REVIEWS.md §2): 「レビューを依頼」 is the same dialog for a new task of kind review in the message's conversation (a
+ * DM too): 依頼先 first, then the title, the notes and 希望日. A DM's 「タスクにする」 offers the DM's members as
+ * assignees (chosen: shared in the DM; none: personal). An assignee of an open shared task gets 「対応を始める」 and
+ * 「完了にする」 on top.
  */
-import { MessageSquareText, Trash2, X } from "lucide-react";
+import { CheckCircle2, MessageSquareText, PlayCircle, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { describeError } from "../api/errors";
-import type { TaskCreate, TaskOut, TaskStatus } from "../api/types";
+import type { TaskOut, TaskStatus } from "../api/types";
 import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { localZone, today as todayKey } from "./calendarDates";
+import { conversationTitle } from "./channels";
 import { useMembers } from "./Dialogs";
 import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 import {
   canEditBoard,
   canEditTask,
-  cleanTitle,
   draftFromTask,
+  hasBoard,
   MAX_TASK_NOTES,
   MAX_TASK_TITLE,
+  newTaskChannel,
   sourceState,
-  STATUS_LABELS,
+  statusLabel,
   TASK_STATUSES,
   type TaskCreateInit,
+  taskCreateBody,
   type TaskDraft,
   taskDraftProblem,
   taskPatch,
@@ -43,6 +51,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
 }) {
   const hub = controller.engine?.tasks ?? null;
   const store = controller.store;
+  const me = store.me?.id ?? null;
   const [draft, setDraft] = useState<TaskDraft>(() =>
     task ? draftFromTask(task) : { title: init?.title ?? "", notes: "", status: init?.status ?? "todo", dueOn: "", assigneeIds: [] },
   );
@@ -52,11 +61,18 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const clientId = useRef(crypto.randomUUID());
-  const channelId = task ? task.channel_id : board === "me" ? null : board;
+  const kind = task ? task.kind : (init?.kind ?? "task");
+  const review = kind === "review";
+  const creatingReview = !task && review;
+  const channelId = task ? task.channel_id : newTaskChannel(init, board, draft.assigneeIds);
+  /** Whose members the assignee picker offers: the task's conversation, the board chosen, or the DM it may be shared in. */
+  const pickerChannelId = task ? task.channel_id : board !== "me" ? board : (init?.shareChannelId ?? null);
   const channel = channelId ? store.getChannel(channelId) : undefined;
   const editable = task ? canEditTask(task, channel, controller.isAdmin) : true;
-  const problem = editable ? taskDraftProblem(draft) : null;
+  const problem = editable ? (creatingReview && draft.assigneeIds.length === 0 ? "依頼先を選んでください" : taskDraftProblem(draft)) : null;
   const boards = useMemo(() => (init?.boardChoices ?? []).filter((id) => canEditBoard(store.getChannel(id), controller.isAdmin)), [init, store, controller.isAdmin]);
+  // L9: an assignee of an open shared task acts on it in one click.
+  const actsOn = !!task && editable && task.channel_id !== null && me !== null && task.assignee_ids.includes(me) && task.status !== "done";
   const set = (patch: Partial<TaskDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setError(null);
@@ -76,19 +92,8 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     setBusy(true);
     try {
       if (!task) {
-        const body: TaskCreate = {
-          title: cleanTitle(draft.title),
-          status: draft.status,
-          kind: "task", client_task_id: clientId.current,
-          tz: localZone(),
-          ...(channelId ? { channel_id: channelId } : {}),
-          ...(draft.notes.trim() ? { notes: draft.notes } : {}),
-          ...(draft.dueOn ? { due_on: draft.dueOn } : {}),
-          ...(channelId && draft.assigneeIds.length > 0 ? { assignee_ids: draft.assigneeIds } : {}),
-          ...(init?.sourceMessageId ? { source_message_id: init.sourceMessageId } : {}),
-        };
-        await hub.create(body);
-        controller.setNotice("タスクを作成しました");
+        await hub.create(taskCreateBody(draft, init, board, clientId.current, localZone()));
+        controller.setNotice(creatingReview ? "レビューを依頼しました" : "タスクを作成しました");
       } else {
         const patch = taskPatch(task, draft, localZone());
         if (Object.keys(patch).length > 0) await hub.update(task.id, patch);
@@ -97,6 +102,19 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     } catch (err) {
       setError(describeError(err));
     } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 「対応を始める」 / 「完了にする」: the status alone, at once (the other fields as they were). */
+  const setStatus = async (status: TaskStatus) => {
+    if (!hub || !task || busy) return;
+    setBusy(true);
+    try {
+      await hub.update(task.id, { status });
+      onClose();
+    } catch (err) {
+      setError(describeError(err));
       setBusy(false);
     }
   };
@@ -113,9 +131,27 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     }
   };
 
-  const boardName = (id: string | null) => (id ? `#${store.getChannel(id)?.name ?? task?.channel_name ?? "?"} のボード` : "自分のタスク");
-  const title = !task ? "タスクを追加" : editable ? "タスクを編集" : "タスク";
+  const boardName = (id: string | null) => {
+    if (!id) return "自分のタスク";
+    const conversation = store.getChannel(id);
+    // L9: a DM's task (no board): the DM by its other members.
+    if (conversation && !hasBoard(conversation)) return `${conversationTitle(conversation, store.users, me, store.me)} との DM`;
+    if (!conversation && task?.channel_id === id && !task.channel_name) return "DM";
+    return `#${conversation?.name ?? task?.channel_name ?? "?"} のボード`;
+  };
+  const title = creatingReview ? "レビューを依頼" : !task ? "タスクを追加" : review ? (editable ? "レビュー依頼を編集" : "レビュー依頼") : editable ? "タスクを編集" : "タスク";
   const source = task ? sourceState(task) : init?.sourceMessageId ? { kind: "link" as const, messageId: init.sourceMessageId, excerpt: init.sourceExcerpt ?? null } : { kind: "none" as const };
+  const assigneeLabel = review ? "依頼先" : "担当者";
+  const picker = pickerChannelId && (
+    <AssigneePicker
+      controller={controller}
+      channelId={pickerChannelId}
+      label={assigneeLabel}
+      excludeMe={creatingReview}
+      selected={draft.assigneeIds}
+      onChange={(assigneeIds) => set({ assigneeIds })}
+    />
+  );
 
   return (
     <Modal onClose={onClose} title={title} className="w-[520px]">
@@ -127,7 +163,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
           void save();
         }}
       >
-        {!task && (
+        {!task && !review && !init?.shareChannelId && (
           <Field label="追加先">
             <select className={SELECT} aria-label="追加先" value={board} disabled={boards.length === 0} onChange={(e) => { setBoard(e.target.value); set({ assigneeIds: [] }); }}>
               {boards.map((id) => (
@@ -137,44 +173,64 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             </select>
           </Field>
         )}
+        {!task && (creatingReview || init?.shareChannelId) && (
+          <div className="text-xs text-muted" data-task-board>
+            {creatingReview ? `${boardName(init?.channelId ?? null)} で共有` : draft.assigneeIds.length > 0 ? `${boardName(init?.shareChannelId ?? null)} で共有` : "担当者を選ぶとこの DM のメンバーに共有します。選ばなければ自分のタスクになります"}
+          </div>
+        )}
         {task && <div className="text-xs text-muted" data-task-board>{boardName(task.channel_id)}</div>}
+        {actsOn && (
+          <div className="flex gap-2" data-assignee-actions>
+            {task.status === "todo" && (
+              <Button type="button" variant="secondary" className="h-11 flex-1 text-[15px]" disabled={busy} onClick={() => void setStatus("doing")}>
+                <PlayCircle size={18} /> 対応を始める
+              </Button>
+            )}
+            <Button type="button" className="h-11 flex-1 text-[15px]" disabled={busy} onClick={() => void setStatus("done")}>
+              <CheckCircle2 size={18} /> 完了にする
+            </Button>
+          </div>
+        )}
         {editable ? (
           <>
+            {creatingReview && picker}
             <Field label="題名">
-              <Input autoFocus value={draft.title} maxLength={MAX_TASK_TITLE} placeholder="資料をまとめる" onChange={(e) => set({ title: e.target.value })} />
+              <Input autoFocus={!creatingReview} value={draft.title} maxLength={MAX_TASK_TITLE} placeholder="資料をまとめる" onChange={(e) => set({ title: e.target.value })} />
             </Field>
             <Field label="メモ">
-              <Textarea rows={4} value={draft.notes} maxLength={MAX_TASK_NOTES} placeholder="Markdown で書けます" onChange={(e) => set({ notes: e.target.value })} />
+              <Textarea rows={creatingReview ? 3 : 4} value={draft.notes} maxLength={MAX_TASK_NOTES} placeholder={review ? "見てほしいところなど (Markdown で書けます)" : "Markdown で書けます"} onChange={(e) => set({ notes: e.target.value })} />
             </Field>
-            <div className="space-y-1">
-              <span className="text-xs font-medium text-muted">状態</span>
-              <div role="radiogroup" aria-label="状態" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
-                {TASK_STATUSES.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    role="radio"
-                    aria-checked={draft.status === status}
-                    onClick={() => set({ status })}
-                    className={cn("flex-1 rounded-md px-2.5 py-1.5 transition-colors", draft.status === status ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
-                  >
-                    {STATUS_LABELS[status]}
-                  </button>
-                ))}
+            {!creatingReview && (
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-muted">状態</span>
+                <div role="radiogroup" aria-label="状態" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
+                  {TASK_STATUSES.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      role="radio"
+                      aria-checked={draft.status === status}
+                      onClick={() => set({ status })}
+                      className={cn("flex-1 rounded-md px-2.5 py-1.5 transition-colors", draft.status === status ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+                    >
+                      {statusLabel(kind, status)}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="space-y-1">
-              <span className="text-xs font-medium text-muted">期限</span>
+              <span className="text-xs font-medium text-muted">{review ? "希望日" : "期限"}</span>
               <div className="flex items-center gap-2">
-                <Input type="date" aria-label="期限" className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+                <Input type="date" aria-label={review ? "希望日" : "期限"} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
                 {draft.dueOn && (
                   <Button variant="ghost" size="sm" onClick={() => set({ dueOn: "" })}>
-                    <X size={14} /> 期限をなくす
+                    <X size={14} /> {review ? "希望日をなくす" : "期限をなくす"}
                   </Button>
                 )}
               </div>
             </div>
-            {channelId && <AssigneePicker controller={controller} channelId={channelId} selected={draft.assigneeIds} onChange={(assigneeIds) => set({ assigneeIds })} />}
+            {!creatingReview && picker}
           </>
         ) : (
           task && <ReadOnlyTask controller={controller} task={task} />
@@ -202,7 +258,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         {confirmDelete ? (
           <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-3 py-2">
-            <span className="mr-auto text-sm">このタスクを削除しますか？</span>
+            <span className="mr-auto text-sm">{review ? "このレビュー依頼を削除しますか？" : "このタスクを削除しますか？"}</span>
             <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>削除する</Button>
           </div>
@@ -215,7 +271,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             )}
             <Button variant="secondary" onClick={onClose}>{editable ? "キャンセル" : "閉じる"}</Button>
             {editable && (
-              <Button type="submit" disabled={busy || !!problem || !hub?.available}>{task ? "保存" : "追加"}</Button>
+              <Button type="submit" disabled={busy || !!problem || !hub?.available}>{task ? "保存" : creatingReview ? "依頼する" : "追加"}</Button>
             )}
           </div>
         )}
@@ -224,10 +280,13 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   );
 }
 
-/** 担当者: the channel's members, each a toggle (avatars and names; a filter once there are many). */
-function AssigneePicker({ controller, channelId, selected, onChange }: {
+/** 担当者 (a review request: 依頼先): the conversation's members, each a toggle (avatars and names; a filter once there are many). */
+function AssigneePicker({ controller, channelId, label, excludeMe = false, selected, onChange }: {
   controller: AppController;
   channelId: string;
+  label: string;
+  /** A new review request: asking myself makes no sense. */
+  excludeMe?: boolean;
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
@@ -236,6 +295,7 @@ function AssigneePicker({ controller, channelId, selected, onChange }: {
   const users = controller.store.users;
   const me = controller.store.me?.id ?? null;
   const rows = (members ?? [])
+    .filter((m) => !excludeMe || m.user_id !== me)
     .map((m) => ({ id: m.user_id, name: users.get(m.user_id)?.display_name ?? "?", username: users.get(m.user_id)?.username ?? "" }))
     // Me first, then by name.
     .sort((a, b) => Number(b.id === me) - Number(a.id === me) || a.name.localeCompare(b.name, "ja"));
@@ -244,13 +304,15 @@ function AssigneePicker({ controller, channelId, selected, onChange }: {
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
   return (
     <div className="space-y-1">
-      <span className="text-xs font-medium text-muted">担当者{selected.length > 0 ? ` (${selected.length} 人)` : ""}</span>
+      <span className="text-xs font-medium text-muted">{label}{selected.length > 0 ? ` (${selected.length} 人)` : ""}</span>
       {members === null ? (
         <p className="text-sm text-muted">読み込み中…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted">選べる人がいません</p>
       ) : (
         <>
-          {rows.length > 8 && <Input value={query} aria-label="担当者を絞り込む" placeholder="名前で絞り込む" className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
-          <ul role="group" aria-label="担当者" className="max-h-44 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+          {rows.length > 8 && <Input value={query} aria-label={`${label}を絞り込む`} placeholder="名前で絞り込む" className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
+          <ul role="group" aria-label={label} className="max-h-44 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {shown.map((row) => (
               <li key={row.id}>
                 <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm hover:bg-panel">
@@ -279,12 +341,12 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
       <div className={cn("break-words text-[15px] font-semibold", task.status === "done" && "text-muted line-through")}>{task.title}</div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
         <dt className="text-muted">状態</dt>
-        <dd>{STATUS_LABELS[task.status as TaskStatus]}</dd>
-        <dt className="text-muted">期限</dt>
+        <dd>{statusLabel(task.kind, task.status as TaskStatus)}</dd>
+        <dt className="text-muted">{task.kind === "review" ? "希望日" : "期限"}</dt>
         <dd>{task.due_on ? `${task.due_on.replaceAll("-", "/")}${task.due_on === today ? " (今日)" : ""}` : "なし"}</dd>
         {task.channel_id && (
           <>
-            <dt className="text-muted">担当者</dt>
+            <dt className="text-muted">{task.kind === "review" ? "依頼先" : "担当者"}</dt>
             <dd className="flex flex-wrap gap-x-3 gap-y-1">
               {task.assignee_ids.length === 0 && "なし"}
               {task.assignee_ids.map((id) => (
@@ -298,7 +360,7 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
         )}
       </dl>
       {task.notes && <p className="whitespace-pre-wrap break-words rounded-lg bg-panel-2 px-3 py-2 text-sm">{task.notes}</p>}
-      <p className="text-xs text-muted">このボードを変更できるのは、チャンネルに投稿できるメンバーです。</p>
+      <p className="text-xs text-muted">{task.channel_id && task.channel_name ? "このボードを変更できるのは、チャンネルに投稿できるメンバーです。" : "変更できるのは、この会話のメンバーです。"}</p>
     </div>
   );
 }

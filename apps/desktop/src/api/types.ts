@@ -306,6 +306,16 @@ export interface TaskAssigned {
   channel_name: string;
   title: string;
   by_user_id: string;
+  /** L9: "review" (a review request). Left out by servers before M63. */
+  kind?: "task" | "review";
+}
+/** task.review_done (to the requester only, L9): an assignee completed my review request. */
+export interface TaskReviewDone {
+  task_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  by_user_id: string;
 }
 /** task.due (to me only): one of my open tasks is due today (8:00 in my zone). */
 export interface TaskDue {

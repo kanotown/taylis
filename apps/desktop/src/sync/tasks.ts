@@ -9,12 +9,14 @@
  * when the server refuses it.
  */
 import { ApiError } from "../api/errors";
-import type { TaskAssigned, TaskCreate, TaskDeleted, TaskDue, TaskMove, TaskOut, TaskStatus, TaskUpdate, TaskUpdated } from "../api/types";
-import { applyLocalMove, dueInRange, isMine, type Neighbors, removeTask, taskFromEvent, upsertTask } from "../ui/tasks";
+import type { TaskAssigned, TaskCreate, TaskDeleted, TaskDue, TaskMove, TaskOut, TaskReviewDone, TaskStatus, TaskUpdate, TaskUpdated } from "../api/types";
+import { applyLocalMove, dueInRange, isMine, isRequestedByMe, type Neighbors, removeTask, taskFromEvent, upsertTask } from "../ui/tasks";
 
 export interface TaskApi {
   listTasks(channelId: string, includeDone?: "recent" | "all"): Promise<TaskOut[]>;
   myTasks(): Promise<TaskOut[]>;
+  /** L9 「自分が依頼した」 (GET /tasks/requested). Optional: without it (an older fake) the list is "unsupported". */
+  requestedTasks?(): Promise<TaskOut[]>;
   dueTasks(from: string, to: string): Promise<TaskOut[]>;
   getTask(taskId: string): Promise<TaskOut>;
   createTask(body: TaskCreate): Promise<TaskOut>;
@@ -44,13 +46,16 @@ export interface TaskDueWindow extends TaskList {
 }
 
 /** What task.assigned / task.due say to me (the app shows a notification while open). */
-export type TaskNotice = { kind: "assigned"; data: TaskAssigned } | { kind: "due"; data: TaskDue };
+export type TaskNotice = { kind: "assigned"; data: TaskAssigned } | { kind: "due"; data: TaskDue } | { kind: "review_done"; data: TaskReviewDone };
 
 const MINE = "mine";
+const REQUESTED = "requested";
 
 export class TaskHub {
   private readonly boards = new Map<string, TaskBoard>();
   private mine: TaskList | null = null;
+  /** L9 「自分が依頼した」. */
+  private requested: TaskList | null = null;
   private readonly due = new Map<string, TaskDueWindow>();
   /** A read in flight per window: an older answer never replaces a newer one. */
   private readonly reads = new Map<string, number>();
@@ -89,6 +94,10 @@ export class TaskHub {
     return this.mine;
   }
 
+  requestedList(): TaskList | null {
+    return this.requested;
+  }
+
   dueWindow(key: string): TaskDueWindow | undefined {
     return this.due.get(key);
   }
@@ -118,6 +127,20 @@ export class TaskHub {
   closeMine(): void {
     if (!this.mine) return;
     this.mine = null;
+    this.changed();
+  }
+
+  /** L9 「自分が依頼した」 is on screen. */
+  async openRequested(): Promise<void> {
+    if (this.requested?.state === "ready") return;
+    this.requested = { state: "loading", tasks: this.requested?.tasks ?? [] };
+    this.changed();
+    await this.readRequested();
+  }
+
+  closeRequested(): void {
+    if (!this.requested) return;
+    this.requested = null;
     this.changed();
   }
 
@@ -177,6 +200,22 @@ export class TaskHub {
     } catch (err) {
       if (this.reads.get(MINE) !== ticket || !this.mine) return;
       this.mine = { ...this.mine, state: this.failure(err) };
+    }
+    this.changed();
+  }
+
+  private async readRequested(): Promise<void> {
+    const api = this.deps.api;
+    if (!api || !this.requested) return;
+    const ticket = this.ticket(REQUESTED);
+    try {
+      if (!api.requestedTasks) throw new ApiError(404, "not_found", "GET /tasks/requested is not available");
+      const tasks = await api.requestedTasks();
+      if (this.reads.get(REQUESTED) !== ticket || !this.requested) return;
+      this.requested = { state: "ready", tasks };
+    } catch (err) {
+      if (this.reads.get(REQUESTED) !== ticket || !this.requested) return;
+      this.requested = { ...this.requested, state: this.failure(err) };
     }
     this.changed();
   }
@@ -266,12 +305,14 @@ export class TaskHub {
       this.deps.onNotice?.({ kind: "assigned", data: data as TaskAssigned });
     } else if (event === "task.due") {
       this.deps.onNotice?.({ kind: "due", data: data as TaskDue });
+    } else if (event === "task.review_done") {
+      this.deps.onNotice?.({ kind: "review_done", data: data as TaskReviewDone });
     }
   }
 
   /**
    * A task as it is now, into every window it belongs to (out of those it left): its board, 「自分のタスク」 when
-   * personal or assigned to me, a calendar range holding its due date. An older copy (updated_at) never replaces a newer
+   * personal or assigned to me, 「自分が依頼した」 when I made it for someone else, a calendar range holding its due date. An older copy (updated_at) never replaces a newer
    * one (the optimistic copy keeps the held updated_at, so the server's answer or a refusal's undo replaces it).
    */
   put(task: TaskOut): void {
@@ -285,6 +326,9 @@ export class TaskHub {
     }
     if (this.mine && newer(this.mine.tasks)) {
       this.mine = { ...this.mine, tasks: isMine(task, this.deps.me()) ? upsertTask(this.mine.tasks, task) : removeTask(this.mine.tasks, task.id) };
+    }
+    if (this.requested && newer(this.requested.tasks)) {
+      this.requested = { ...this.requested, tasks: isRequestedByMe(task, this.deps.me()) ? upsertTask(this.requested.tasks, task) : removeTask(this.requested.tasks, task.id) };
     }
     for (const [key, window] of this.due) {
       if (!newer(window.tasks)) continue;
@@ -300,6 +344,7 @@ export class TaskHub {
       if (board.tasks.some((t) => t.id === taskId)) this.boards.set(channelId, { ...board, tasks: removeTask(board.tasks, taskId) });
     }
     if (this.mine?.tasks.some((t) => t.id === taskId)) this.mine = { ...this.mine, tasks: removeTask(this.mine.tasks, taskId) };
+    if (this.requested?.tasks.some((t) => t.id === taskId)) this.requested = { ...this.requested, tasks: removeTask(this.requested.tasks, taskId) };
     for (const [key, window] of this.due) {
       if (window.tasks.some((t) => t.id === taskId)) this.due.set(key, { ...window, tasks: removeTask(window.tasks, taskId) });
     }
@@ -311,7 +356,7 @@ export class TaskHub {
       const task = board.tasks.find((t) => t.id === taskId);
       if (task) return task;
     }
-    const mine = this.mine?.tasks.find((t) => t.id === taskId);
+    const mine = this.mine?.tasks.find((t) => t.id === taskId) ?? this.requested?.tasks.find((t) => t.id === taskId);
     if (mine) return mine;
     for (const window of this.due.values()) {
       const task = window.tasks.find((t) => t.id === taskId);
@@ -326,6 +371,7 @@ export class TaskHub {
   online(): void {
     for (const channelId of this.boards.keys()) void this.readBoard(channelId);
     if (this.mine) void this.readMine();
+    if (this.requested) void this.readRequested();
     for (const key of this.due.keys()) void this.readDue(key);
   }
 
@@ -333,6 +379,7 @@ export class TaskHub {
   removeChannel(channelId: string): void {
     this.boards.delete(channelId);
     if (this.mine) this.mine = { ...this.mine, tasks: this.mine.tasks.filter((t) => t.channel_id !== channelId) };
+    if (this.requested) this.requested = { ...this.requested, tasks: this.requested.tasks.filter((t) => t.channel_id !== channelId) };
     for (const [key, window] of this.due) this.due.set(key, { ...window, tasks: window.tasks.filter((t) => t.channel_id !== channelId) });
     this.changed();
   }
@@ -340,6 +387,7 @@ export class TaskHub {
   stop(): void {
     this.boards.clear();
     this.mine = null;
+    this.requested = null;
     this.due.clear();
     this.changed();
   }
