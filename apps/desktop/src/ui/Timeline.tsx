@@ -31,6 +31,7 @@ import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
+import { anchorCorrection, BOTTOM_SLACK_PX, firstRowBelow, stillAtBottom } from "./scrollAnchor";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 import { TaskDialog } from "./TaskDialog";
@@ -67,7 +68,14 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   // Newest seq the reader has had on screen at the bottom; messages above it from others are "new".
   const [seenSeq, setSeenSeq] = useState(channel.lastReadSeq);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const anchor = useRef<{ height: number; top: number } | null>(null);
+  /**
+   * The topmost row on screen, how far below the top of the list it was and the list's scrollTop then (scrollAnchor.ts):
+   * when content above it changes height (a link card or a photo arriving, older rows loaded), the view moves with it,
+   * so what the reader looks at stays put. WebKit has no CSS scroll anchoring, and Chromium's is off on this list.
+   */
+  const rowAnchor = useRef<{ row: HTMLElement; offset: number; top: number } | null>(null);
+  /** scrollTop at the last scroll event (or the view's own move to the bottom): what a scroll up is measured from. */
+  const lastTop = useRef(0);
 
   // The "new messages" divider stays where it was when the channel was opened, or the search context was left (that
   // works like opening, §10.1 4.), or 「最初の未読へ」 reached it.
@@ -131,6 +139,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     const element = document.getElementById(`timeline-${row.id}`);
     const before = divider.current && divider.current.nextElementSibling === element ? divider.current : element;
     before?.scrollIntoView({ block: "start" });
+    rememberAnchor();
   };
   // The channel whose 「最初の未読へ」 is loading (the view outlives channel switches).
   const [jumping, setJumping] = useState<string | null>(null);
@@ -145,26 +154,61 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   // Scroll the container itself (scrollIntoView would also move scrollable ancestors).
   const scrollToBottom = () => {
     const el = container.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    lastTop.current = el.scrollTop;
+    rememberAnchor();
   };
-  /** From where the view is now: at the bottom (everything loaded counts as seen) and the bottom button. */
-  const measureScroll = () => {
+  /** Takes the topmost row on screen as the anchor (the rows are in order: found by bisection). */
+  const rememberAnchor = () => {
+    const el = container.current;
+    if (!el) return;
+    const rows = el.querySelectorAll<HTMLElement>("article[id^='timeline-']");
+    const viewTop = el.getBoundingClientRect().top;
+    const index = firstRowBelow(rows.length, (i) => rows[i]!.getBoundingClientRect().bottom, viewTop);
+    const row = index < 0 ? null : rows[index]!;
+    rowAnchor.current = row ? { row, offset: row.getBoundingClientRect().top - viewTop, top: el.scrollTop } : null;
+  };
+  /**
+   * Content changed height: the anchor row goes back where it was. Only while the list has not scrolled since the anchor
+   * was taken (a row growing moves no scrollTop); otherwise the reader moved, and the anchor is only taken again.
+   */
+  const keepAnchor = () => {
+    const el = container.current;
+    const anchor = rowAnchor.current;
+    if (!el) return;
+    if (anchor && el.contains(anchor.row) && Math.abs(el.scrollTop - anchor.top) < 1) {
+      const delta = anchorCorrection(anchor.offset, anchor.row.getBoundingClientRect().top - el.getBoundingClientRect().top);
+      if (delta !== 0) el.scrollTop += delta;
+    }
+    rememberAnchor();
+  };
+  /**
+   * From where the view is now: at the bottom (everything loaded counts as seen) and the bottom button. `landed`: the
+   * view just put a row at the top itself (rows may have been added above in the same breath, so how far scrollTop moved
+   * says nothing): only the distance to the end counts.
+   */
+  const measureScroll = (landed = false) => {
     const el = container.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    atBottom.current = distance < 48;
-    setShowJump(distance > 240);
+    // Content growing under a reader at the bottom is no scroll of theirs: the list stays there (scrollAnchor.ts).
+    atBottom.current = landed ? distance < BOTTOM_SLACK_PX : stillAtBottom(atBottom.current, lastTop.current, el.scrollTop, distance);
+    lastTop.current = el.scrollTop;
+    setShowJump(!atBottom.current && distance > 240);
     // Before positioning the list sits at its initial place (the bottom): what is below the divider is still new (7.).
     if (atBottom.current && positioned.current) markSeen();
   };
-  // Images loading, the composer growing or the window resizing change heights after we positioned:
-  // stay pinned to the bottom when the reader was there.
+  // Images loading, link cards arriving, the composer growing or the window resizing change heights after we
+  // positioned: stay pinned to the bottom when the reader was there, else keep the row they look at where it is.
   useEffect(() => {
     const el = container.current;
     const inner = content.current;
     if (!el || !inner || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if ((atBottom.current || holdingEnd()) && positioned.current && !anchor.current) scrollToBottom();
+      if (!positioned.current) return;
+      if (atBottom.current || holdingEnd()) scrollToBottom();
+      else keepAnchor();
     });
     observer.observe(el);
     observer.observe(inner);
@@ -205,12 +249,10 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   };
 
   useLayoutEffect(() => {
-    // Older messages were prepended: keep the viewport anchored to what the reader was looking at.
-    const el = container.current;
-    if (el && anchor.current) {
-      el.scrollTop = anchor.current.top + (el.scrollHeight - anchor.current.height);
-      anchor.current = null;
-    }
+    // Older messages were prepended (or rows came or went): the row the reader was looking at stays where it was. By
+    // that row, not by the height the list gained, which also counted photos and cards that grew below the screen
+    // while the page loaded and threw the view down by as much.
+    if (positioned.current && !atBottom.current) keepAnchor();
   }, [messages.length]);
 
   useLayoutEffect(() => {
@@ -232,6 +274,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     if (unread) showFromRow(unread);
     else if (target) document.getElementById(`timeline-${target}`)?.scrollIntoView({ block: "center" });
     else scrollToBottom();
+    rememberAnchor();
     positioned.current = true;
     followedSeq.current = maxSeq;
     openedWith.current = { lastId };
@@ -241,7 +284,8 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
       else reanchor();
     }
     const el = container.current;
-    atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    atBottom.current = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX;
+    lastTop.current = el?.scrollTop ?? 0;
     setShowJump(!atBottom.current);
     if (atBottom.current) markSeen();
   }, [channel.id, focus?.messageId, messages.length]);
@@ -275,7 +319,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     const el = container.current;
     if (first && row && el && row.getBoundingClientRect().top < el.getBoundingClientRect().top) {
       showFromRow(first);
-      measureScroll();
+      measureScroll(true);
       // A landing (§10.1 4.): when that row is the first unread one and the range is ready, anchored now, as when
       // opening. Rows and channel state both taken live (§10.1 2.).
       if (readRangeReady(current) && firstUnreadRow(store.messages(channel.id), current.lastReadSeq, me?.id)?.id === first.id) setAnchored(true);
@@ -360,7 +404,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     showFromRow(row);
     // As when opening there: what follows the divider is new for the bottom button (「新着 N 件」).
     setSeenSeq(at);
-    measureScroll();
+    measureScroll(true);
     setAnchored(true);
     quiet.current = false; // the reader pressed it
     markVisible(); // already there when the row was at the top: no scroll event follows
@@ -386,9 +430,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   }, [showBanner]);
 
   const loadOlder = () => {
-    const el = container.current;
     if (!engine || loadingOlder) return;
-    if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop };
     setLoadingOlder(true);
     void engine.loadOlder(channel.id).catch((error) => controller.setError(error)).finally(() => setLoadingOlder(false));
   };
@@ -405,6 +447,10 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
       return;
     }
     measureScroll();
+    // A scroll of the view's own (an anchor correction, a landing) left the list where the anchor was taken: content
+    // that grew since, before the resize observer saw it, is made up for here rather than taken as the new place.
+    if (positioned.current && !atBottom.current) keepAnchor();
+    else rememberAnchor();
     markVisible();
     if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") loadOlder();
   };
@@ -432,7 +478,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
           )}
         </div>
       )}
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2" ref={container} onScroll={onScroll} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">

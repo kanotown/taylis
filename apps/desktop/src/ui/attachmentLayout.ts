@@ -46,8 +46,21 @@ export function fitBox(width: number | null | undefined, height: number | null |
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-/** The bounds of an inline video tile, as a single photo's (max-w-72 × max-h-60). */
-export const VIDEO_TILE_MAX: Box = { width: 288, height: 240 };
+/** The bounds of a single photo in a message. */
+export const PHOTO_MAX: Box = { width: 288, height: 240 };
+/** The bounds of an inline video tile, as a single photo's. */
+export const VIDEO_TILE_MAX: Box = PHOTO_MAX;
+
+/**
+ * A single photo's box, from the size the server recorded (of the upright original): the tile has its final size
+ * before the thumbnail arrives, so nothing below or above it moves when the picture loads (it was a 96 px spinner, then
+ * nothing while the image decoded, then the picture: rows jumped by up to 240 px each). The thumbnail (512 px) is
+ * never smaller than this box, so the picture fills it. `null` without a recorded size (the tile then takes the
+ * picture's own, and the timeline's anchoring keeps the view still).
+ */
+export function photoBox(attachment: Pick<AttachmentOut, "width" | "height">): Box | null {
+  return fitBox(attachment.width, attachment.height, PHOTO_MAX);
+}
 /** Before the video's shape is known: a neutral square, so neither a portrait nor a landscape clip jumps far. */
 export const VIDEO_TILE_PLACEHOLDER: Box = { width: 180, height: 180 };
 

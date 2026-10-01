@@ -53,10 +53,35 @@ it("puts two or more photos in one wrapping row of equal squares, one photo and 
   expect(screen.getByText("notes.pdf").closest("[data-photo-grid]")).toBeNull(); // files stay in their own row
   view.rerender(<AttachmentList attachments={[attachment, file]} controller={controller(async () => new Blob())} />);
   expect(document.querySelector("[data-photo-grid]")).toBeNull();
-  expect((await screen.findByRole("img", { name: "result.png" })).className).toContain("max-w-72");
+  // One photo in its own shape: the box the server's size gives (10 x 10, never enlarged), the picture filling it.
+  expect((await screen.findByRole("img", { name: "result.png" })).className).toContain("h-full w-full");
+  expect(screen.getByRole("img", { name: "result.png" }).closest("button")!.dataset["photoBox"]).toBe("10x10");
   // One photo: the column does not stretch its button across the message (clicks beside it did open the photo).
   expect(document.querySelector("[data-attachments]")!.className).toContain("items-start");
   expect(screen.getByRole("img", { name: "result.png" }).closest("button")!.classList.contains("w-full")).toBe(false);
+});
+
+it("gives one photo its final box before the thumbnail arrives, so the rows around it never move (2026-10-01)", async () => {
+  let deliver!: (blob: Blob) => void;
+  const photo = { ...attachment, width: 4032, height: 3024 }; // a phone photo: 288 x 216 inside 288 x 240
+  render(<AttachmentList attachments={[photo]} controller={controller(() => new Promise<Blob>((resolve) => { deliver = resolve; }))} />);
+  const loading = screen.getByRole("status", { name: "画像を読み込み中" });
+  const tile = loading.closest("button")!;
+  expect(tile.style.width).toBe("288px");
+  expect(tile.style.aspectRatio).toBe("288 / 216");
+  expect(loading.className).toContain("h-full w-full"); // the spinner fills the box (it was a 96 px strip)
+  await act(async () => deliver(new Blob()));
+  const image = screen.getByRole("img", { name: "result.png" });
+  expect(image.closest("button")).toBe(tile);
+  expect(tile.style.aspectRatio).toBe("288 / 216"); // unchanged by the picture arriving
+  expect(image.className).toContain("h-full w-full");
+});
+
+it("leaves a photo without a recorded size to take the picture's own shape", async () => {
+  render(<AttachmentList attachments={[{ ...attachment, width: null, height: null }]} controller={controller(async () => new Blob())} />);
+  const image = await screen.findByRole("img", { name: "result.png" });
+  expect(image.className).toContain("max-h-60 max-w-72");
+  expect(image.closest("button")!.style.aspectRatio).toBe("");
 });
 
 it("keeps the full image viewer open while retrying a failed original", async () => {

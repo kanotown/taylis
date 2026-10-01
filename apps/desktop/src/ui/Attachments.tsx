@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState, useSyncExtern
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { fitBox, groupAttachments, loadsInlineVideo, mediaKind, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
+import { fitBox, groupAttachments, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
@@ -108,6 +108,8 @@ export function useAttachmentImage(controller: AppController, attachment: Attach
 function Thumbnail({ attachment, controller, square = false }: { attachment: AttachmentOut; controller: AppController; square?: boolean }) {
   const { url, failed, retry, onError } = useAttachmentImage(controller, attachment, "thumbnail");
   const [open, setOpen] = useState(false);
+  // Its final size from the start when the server knows the photo's (attachmentLayout.photoBox).
+  const box = square ? null : photoBox(attachment);
   return (
     <>
       {failed ? (
@@ -122,13 +124,15 @@ function Thumbnail({ attachment, controller, square = false }: { attachment: Att
       ) : <button
         type="button"
         className={cn("block max-w-full overflow-hidden rounded-xl border border-line bg-panel transition-shadow hover:shadow-md", square && "photo-tile aspect-square")}
+        style={box ? { width: box.width, aspectRatio: `${box.width} / ${box.height}` } : undefined}
+        data-photo-box={box ? `${box.width}x${box.height}` : undefined}
         title={`${attachment.filename} (${formatSize(attachment.size_bytes)}) — クリックで拡大`}
         onClick={() => setOpen(true)}
       >
         {url ? (
-          <img src={url} alt={attachment.filename} onError={onError} className={cn("block object-cover", square ? "h-full w-full" : "max-h-60 max-w-72")} />
+          <img src={url} alt={attachment.filename} onError={onError} className={cn("block object-cover", square || box ? "h-full w-full" : "max-h-60 max-w-72")} />
         ) : (
-          <span role="status" aria-label="画像を読み込み中" className={cn("flex items-center justify-center text-muted", square ? "h-full w-full" : "h-24 w-40")}>
+          <span role="status" aria-label="画像を読み込み中" className={cn("flex items-center justify-center text-muted", square || box ? "h-full w-full" : "h-24 w-40")}>
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}
