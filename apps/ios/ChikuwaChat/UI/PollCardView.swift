@@ -22,6 +22,15 @@ struct PollCardView: View {
     }
 
     var body: some View {
+        // M54: a scheduling poll has its own card (○ △ × per candidate, the table, the decision); old polls stay as they were.
+        if poll.isSchedule {
+            ScheduleCardView(poll: poll, message: message, controller: controller, readOnly: readOnly)
+        } else {
+            choiceCard
+        }
+    }
+
+    private var choiceCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("📊 " + poll.question).font(.subheadline.weight(.semibold))

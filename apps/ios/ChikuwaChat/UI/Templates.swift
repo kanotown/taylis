@@ -125,7 +125,7 @@ enum Templates {
 
     // MARK: /日程
 
-    static let scheduleUsage = "/日程 [質問] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)"
+    static let scheduleUsage = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)"
 
     struct Schedule: Equatable {
         let question: String
@@ -186,27 +186,40 @@ enum Templates {
         return (0...length).map { start.adding(days: $0) }
     }
 
-    /// `13:00` or `13:00-14:30`; nil when not a time, and an error when a time that does not work.
-    private static func time(_ token: String) throws -> String? {
+    /// `13:00` or `13:00-14:30` as minutes since midnight; nil when not a time, and an error when a time that does not work.
+    private static func time(_ token: String) throws -> (from: Int, to: Int?)? {
         guard let parts = groups(timePattern, token) else { return nil }
         let h1 = Int(parts[0]!)!, m1 = Int(parts[1]!)!
         guard h1 <= 23, m1 <= 59 else { throw Invalid() }
-        var label = String(format: "%d:%02d", h1, m1)
+        var to: Int?
         if let end = parts[2], let endMinutes = parts[3] {
             let h2 = Int(end)!, m2 = Int(endMinutes)!
             guard h2 <= 23, m2 <= 59, (h2, m2) > (h1, m1) else { throw Invalid() }
-            label += String(format: "〜%d:%02d", h2, m2)
+            to = h2 * 60 + m2
         }
-        return label
+        return (h1 * 60 + m1, to)
     }
+
+    private static func clock(_ minutes: Int) -> String { String(format: "%d:%02d", minutes / 60, minutes % 60) }
 
     /// `10/3 (土)`, `2027/1/8 (金)` outside this year, with ` 13:00` / ` 13:00〜14:30`.
     static func label(_ day: Day, today: Day, time: String? = nil) -> String {
         (day.year != today.year ? "\(day.year)/" : "") + "\(day.month)/\(day.day) (\(day.weekdayName))" + (time.map { " " + $0 } ?? "")
     }
 
-    /// `/日程 ゼミ 10/3 10/4 10/6` → the question and 2-10 options; nil when the words do not make one.
-    static func parseSchedule(_ args: String, today: Day) -> Schedule? {
+    /// One date read from `/日程` arguments, with the time that followed it (minutes since midnight; nil: none).
+    struct ScheduleEntry: Equatable {
+        let day: Day
+        let from: Int?
+        let to: Int?
+
+        /// "YYYY-MM-DD" (the calendar's DayKey).
+        var dayKey: String { String(format: "%04d-%02d-%02d", day.year, day.month, day.day) }
+    }
+
+    /// The grammar of `/日程 [題名] 日付 …` (the web's readSchedule): the question and every date (a range gives each of
+    /// its days) with the time after it; nil when the words cannot be read. No limit on how many (M54: the form checks).
+    static func readSchedule(_ args: String, today: Day) -> (question: String, entries: [ScheduleEntry])? {
         let tokens = args.split(whereSeparator: \.isWhitespace).map(String.init)
         do {
             var index = 0
@@ -215,25 +228,36 @@ enum Templates {
                 question.append(tokens[index])
                 index += 1
             }
-            var options: [String] = []
+            guard index < tokens.count else { return nil }
+            var entries: [ScheduleEntry] = []
             while index < tokens.count {
                 guard let days = try dateExpression(tokens[index], today: today) else { return nil }
                 index += 1
-                var at: String?
+                var at: (from: Int, to: Int?)?
                 if index < tokens.count, let parsed = try time(tokens[index]) {
                     at = parsed
                     index += 1
                 }
-                for day in days {
-                    let text = label(day, today: today, time: at)
-                    if !options.contains(text) { options.append(text) }
-                }
+                entries += days.map { ScheduleEntry(day: $0, from: at?.from, to: at?.to) }
             }
-            guard (2...10).contains(options.count) else { return nil }
-            return Schedule(question: question.isEmpty ? "日程調整" : question.joined(separator: " "), options: options)
+            return (question.isEmpty ? "日程調整" : question.joined(separator: " "), entries)
         } catch {
             return nil
         }
+    }
+
+    /// `/日程 ゼミ 10/3 10/4 10/6` → the question and 2-10 options of a multiple-choice poll (M30, the shared vectors);
+    /// nil when the words do not make one. Since M54 `/日程` opens the scheduling poll's form from readSchedule instead.
+    static func parseSchedule(_ args: String, today: Day) -> Schedule? {
+        guard let read = readSchedule(args, today: today) else { return nil }
+        var options: [String] = []
+        for entry in read.entries {
+            let time = entry.from.map { clock($0) + (entry.to.map { "〜" + clock($0) } ?? "") }
+            let text = label(entry.day, today: today, time: time)
+            if !options.contains(text) { options.append(text) }
+        }
+        guard (2...10).contains(options.count) else { return nil }
+        return Schedule(question: read.question, options: options)
     }
 
     /// `/日程` alone: the next `count` weekdays after today.

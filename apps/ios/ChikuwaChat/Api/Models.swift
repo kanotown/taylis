@@ -353,8 +353,23 @@ struct PollOut: Codable, Equatable {
     var counts: [Int]? = nil
     /// The options I voted for, in a response to me; nil in events, which keep what was known (SYNC_PROTOCOL.md §8).
     var mine: [Int]? = nil
+    /// M53 (SCHEDULING.md): "choice" or "schedule"; absent from a server before M53 (a choice poll). The rest are a
+    /// scheduling poll's, all absent before M53: the candidates (a time or a day each), the zone their labels were
+    /// written in, the decision, the ○ △ × per candidate, who answered (first answer first), the comments and, in a
+    /// response to me only (events: nil, kept like `mine`), my answers per candidate and my comment ("" = none).
+    var kind: String? = nil
+    var slots: [ScheduleSlotOut]? = nil
+    var tz: String? = nil
+    var decided: PollDecidedOut? = nil
+    var answers: [SlotAnswersOut]? = nil
+    var respondents: [String]? = nil
+    var comments: [PollCommentOut]? = nil
+    /// "yes" | "maybe" | "no" | nil per candidate (kept as text: an answer a later server adds never fails the message).
+    var myAnswers: [String?]? = nil
+    var myComment: String? = nil
 
     var isAnonymous: Bool { anonymous ?? false }
+    var isSchedule: Bool { kind == "schedule" }
 
     /// Who voted for option `index` (none in an anonymous poll).
     func voters(_ index: Int) -> [String] { index < votes.count ? votes[index] : [] }
@@ -372,6 +387,57 @@ struct PollOut: Codable, Equatable {
         if !isAnonymous { return me.map(voters(index).contains) ?? false }
         return mine?.contains(index) ?? false
     }
+
+    /// An event's copy (the parts only responses to me carry are nil) with what `local` knew of them (§8).
+    func keepingMyPart(of local: PollOut?) -> PollOut {
+        guard let local else { return self }
+        var poll = self
+        if poll.mine == nil { poll.mine = local.mine }
+        if poll.myAnswers == nil { poll.myAnswers = local.myAnswers }
+        if poll.myComment == nil { poll.myComment = local.myComment }
+        return poll
+    }
+
+    /// This poll with the parts a response to me (`response`) carries; nil when they change nothing.
+    func withMyPart(of response: PollOut) -> PollOut? {
+        var poll = self
+        var changed = false
+        if let mine = response.mine, mine != poll.mine { poll.mine = mine; changed = true }
+        if let answers = response.myAnswers, answers != poll.myAnswers { poll.myAnswers = answers; changed = true }
+        if let comment = response.myComment, comment != poll.myComment { poll.myComment = comment; changed = true }
+        return changed ? poll : nil
+    }
+}
+
+/// M53: one candidate of a scheduling poll: a time (UTC instants) or a whole day ("YYYY-MM-DD").
+struct ScheduleSlotOut: Codable, Equatable {
+    var startsAt: String? = nil
+    var endsAt: String? = nil
+    var date: String? = nil
+}
+
+/// M53: who said ○ / △ / × to one candidate, in the order they answered (empty lists in an anonymous poll), and how many.
+struct SlotAnswersOut: Codable, Equatable {
+    var yes: [String]? = nil
+    var maybe: [String]? = nil
+    var no: [String]? = nil
+    var yesCount: Int? = nil
+    var maybeCount: Int? = nil
+    var noCount: Int? = nil
+}
+
+/// M53: the candidate decided, the event it made (none in a DM, or when decided without one), who and when.
+struct PollDecidedOut: Codable, Equatable {
+    let index: Int
+    var eventId: String? = nil
+    var by: String? = nil
+    var at: String? = nil
+}
+
+/// M53: a comment on a scheduling poll; nobody's (nil) in an anonymous one.
+struct PollCommentOut: Codable, Equatable {
+    var userId: String? = nil
+    let text: String
 }
 
 /// A body an edit replaced (M14c); the current body is the message's own.

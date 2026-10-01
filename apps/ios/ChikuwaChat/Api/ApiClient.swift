@@ -699,6 +699,44 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return try await request("POST", "/api/v1/channels/\(channelId)/messages", body: body)
     }
 
+    /// M53 (SCHEDULING.md §3): a scheduling poll. The candidates as UTC instants (or dates) and the zone the server writes
+    /// their labels in; it makes the options itself and always takes several answers.
+    func postSchedulePoll(channelId: String, parentId: String?, question: String, slots: [SchedulePoll.SlotIn], tz: String,
+                          anonymous: Bool = false) async throws -> MessageOut {
+        var poll: [String: JSONValue] = ["kind": .string("schedule"), "question": .string(question), "slots": .array(slots.map(\.json)),
+                                         "tz": .string(tz)]
+        if anonymous { poll["anonymous"] = .bool(true) }
+        let body: JSONValue = .object([
+            "client_msg_id": .string(UUID().uuidString.lowercased()),
+            "body": .string(""),
+            "parent_id": parentId.map(JSONValue.string) ?? .null,
+            "poll": .object(poll),
+        ])
+        return try await request("POST", "/api/v1/channels/\(channelId)/messages", body: body)
+    }
+
+    /// M53: my ○ / △ / × to every candidate at once (those left out become unanswered). `comment`: nil keeps mine,
+    /// "" removes it, any other text sets it.
+    func answerPoll(messageId: String, answers: [SchedulePoll.Answer?], comment: String? = nil) async throws -> MessageOut {
+        var body: [String: JSONValue] = ["answers": .array(SchedulePoll.answersBody(answers).map { item in
+            .object(["index": .number(Double(item.index)), "answer": .string(item.answer.rawValue)])
+        })]
+        if let comment { body["comment"] = comment.isEmpty ? .null : .string(comment) }
+        return try await request("PUT", "/api/v1/messages/\(messageId)/poll/answers", body: .object(body))
+    }
+
+    /// M53: decide a candidate (its author, the channel's owners, administrators): the channel's event (`createEvent`;
+    /// never in a DM) and a reply in the thread. 403 posting_restricted when the event cannot be made by me.
+    func decidePoll(messageId: String, index: Int, createEvent: Bool = true) async throws -> MessageOut {
+        try await request("POST", "/api/v1/messages/\(messageId)/poll/decide",
+                          body: .object(["index": .number(Double(index)), "create_event": .bool(createEvent)]))
+    }
+
+    /// M53: take the decision back (answering opens again; the event stays).
+    func undecidePoll(messageId: String) async throws -> MessageOut {
+        try await request("DELETE", "/api/v1/messages/\(messageId)/poll/decide", body: nil)
+    }
+
     // MARK: invite links (M12h)
 
     /// No login: what the link offers. 404 = unknown, 410 = expired / used up / revoked.
