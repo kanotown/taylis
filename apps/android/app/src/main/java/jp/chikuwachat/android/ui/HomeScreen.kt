@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DynamicFeed
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Group
@@ -48,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -106,6 +108,8 @@ fun HomeScreen(
     onAllDms: () -> Unit,
     /** M24: make (or open) my times. */
     onCreateTimes: () -> Unit,
+    /** L8 (TIMES_FEED.md §7): the Times section header's 「フィード」. */
+    onTimesFeed: () -> Unit,
     /** M14f: long-press on a conversation, and the 「…」 of one of my sections. */
     onChannelMenu: (String) -> Unit,
     onSectionMenu: (SidebarSectionOut, Int) -> Unit,
@@ -197,7 +201,18 @@ fun HomeScreen(
                 // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
                 if (sections.times.isNotEmpty() || canCreateTimes) {
                     val timesFolded = FoldedSections.TIMES in folded
-                    item(key = "header:times") { Box(Modifier.folding(this)) { SectionHeader("Times", timesFolded) { onToggleFolded(FoldedSections.TIMES) } } }
+                    item(key = "header:times") {
+                        Box(Modifier.folding(this)) {
+                            // L8: 「フィード」 at the header's end, folded or not (TIMES_FEED.md §7).
+                            SectionHeader("Times", timesFolded, action = {
+                                TextButton(onClick = onTimesFeed) {
+                                    Icon(Icons.Default.DynamicFeed, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("フィード", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }) { onToggleFolded(FoldedSections.TIMES) }
+                        }
+                    }
                     items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { row(it) }
                     if (canCreateTimes && !timesFolded) item(key = "times-create") { ActionRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes, modifier = Modifier.folding(this)) }
                 }
@@ -281,6 +296,7 @@ private fun Tile(state: TileState, onClick: () -> Unit) {
 
 private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.THREADS -> Icons.Default.Forum
+    HomeTile.TIMES -> Icons.Default.DynamicFeed
     HomeTile.DRAFTS -> Icons.Default.Description
     HomeTile.SAVED -> Icons.Default.Bookmark
     HomeTile.REMINDERS -> Icons.Default.Alarm
@@ -330,13 +346,17 @@ private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Compos
 
 /** A default section's title; M26: tapping it folds it on this device. */
 @Composable
-private fun SectionHeader(title: String, collapsed: Boolean, onToggle: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(min = ROW_MIN).foldable(title, collapsed, onToggle).padding(start = 12.dp, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FoldChevron(collapsed)
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+private fun SectionHeader(title: String, collapsed: Boolean, action: (@Composable () -> Unit)? = null, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.weight(1f).heightIn(min = ROW_MIN).foldable(title, collapsed, onToggle).padding(start = 12.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FoldChevron(collapsed)
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+        }
+        // Beside the folding part, not in it: its own button for TalkBack (L8's 「フィード」).
+        if (action != null) Box(Modifier.padding(end = 4.dp)) { action() }
     }
 }
 

@@ -203,7 +203,7 @@ class FakeServer {
         }
         /** When set, the next PUT read waits for it (a read mark still on its way, §10). */
         var readGate: CompletableDeferred<Unit>? = null
-        override suspend fun readAll(): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
+        override suspend fun readAll(scope: String?): List<ChannelReadStateOut> { maybeFail(); return this@FakeServer.readAll(userId) }
         override suspend fun listScheduled(): List<ScheduledOut> { maybeFail(); return scheduled[userId]?.toList() ?: emptyList() }
         override suspend fun listReminders(): List<ReminderOut> { maybeFail(); return reminders[userId]?.toList() ?: emptyList() }
         override suspend fun setReadPosition(channelId: String, lastReadSeq: Int): ReadStateOut {

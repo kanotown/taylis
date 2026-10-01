@@ -36,7 +36,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -60,8 +62,8 @@ interface SyncApi {
     ): Pair<MessageOut, Boolean>
     suspend fun publicChannels(): List<ChannelOut>
     suspend fun markRead(channelId: String, lastReadSeq: Int): ReadStateOut
-    /** M12a: every channel read to its end; returns the new states. */
-    suspend fun readAll(): List<ChannelReadStateOut>
+    /** M12a: every channel read to its end; returns the new states. `scope` "times" (L8): only the Times feed's channels. */
+    suspend fun readAll(scope: String? = null): List<ChannelReadStateOut>
     /** M12d: my pending scheduled messages. */
     suspend fun listScheduled(): List<ScheduledOut>
     /** M12e: my open reminders. */
@@ -154,6 +156,14 @@ class SyncEngine(
 ) {
     private val _status = MutableStateFlow(EngineStatus.IDLE)
     val status: StateFlow<EngineStatus> = _status
+
+    private val _timelineEvents = MutableSharedFlow<TimelineEvent>(extraBufferCapacity = 64)
+    /**
+     * L8 (TIMES_FEED.md §5): every live message.created / updated / deleted as it arrives, for lists kept outside the
+     * store (the Times feed) while they are on screen. Nothing is replayed: such a list reads the server again on opening
+     * and after reconnecting.
+     */
+    val timelineEvents: SharedFlow<TimelineEvent> = _timelineEvents
     /** M15d: my drafts across devices. */
     val drafts = DraftSync(api as? DraftApi, store, scope, { _status.value == EngineStatus.ONLINE }, options.draftSaveMs)
 
@@ -609,9 +619,12 @@ class SyncEngine(
         runCatching { store.replaceScheduled(api.listScheduled()) }
     }
 
-    /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
-    suspend fun markAllRead() {
-        val states = api.readAll()
+    /**
+     * 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. `scope` "times"
+     * (L8, TIMES_FEED.md §4): only the Times feed's channels (my unmuted times).
+     */
+    suspend fun markAllRead(scope: String? = null) {
+        val states = api.readAll(scope)
         enqueue {
             states.forEach {
                 applyReadState(it.channelId, ReadStateOut(lastReadSeq = it.lastReadSeq, unreadCount = it.unreadCount, mentionCount = it.mentionCount, firstUnreadAt = it.firstUnreadAt))
@@ -765,6 +778,9 @@ class SyncEngine(
 
     // --- §7.4 live timeline events -----------------------------------------------------------
 
+    /** A live message event as [timelineEvents] hands it on; `thread` is the parent's counts after a reply. */
+    data class TimelineEvent(val event: String, val message: MessageOut, val thread: ParentThread?)
+
     private suspend fun applyTimelineEvent(frame: EventFrame) {
         val channelId = frame.channelId ?: return
         val seq = frame.seq ?: return
@@ -772,6 +788,7 @@ class SyncEngine(
         val message = Codec.snake.decodeFromJsonElement(MessageOut.serializer(), frame.data["message"]?.jsonObject ?: return)
         val thread = (frame.data["parent_thread"] as? JsonObject)?.let { Codec.snake.decodeFromJsonElement(ParentThread.serializer(), it) }
         val isNew = frame.event == "message.created"
+        _timelineEvents.tryEmit(TimelineEvent(frame.event, message, thread))
         val synced = channel.syncedSeq
         // M39: a mention of me or a reply in a thread I follow is an activity item (not an event applied already).
         if (isNew && (synced == null || seq > synced) && ActivityRules.isActivity(message, store.me, thread, message.parentId?.let { store.threads[it]?.state?.following } == true)) {

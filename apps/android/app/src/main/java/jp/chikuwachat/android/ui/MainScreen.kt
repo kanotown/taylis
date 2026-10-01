@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -115,6 +116,9 @@ fun MainScreen(controller: AppController) {
     val mentionsListState = rememberLazyListState()
     val threadsListState = rememberLazyListState()
     val activityListState = rememberLazyListState()
+    // L8: the Times feed keeps its place while a row's conversation is open over it.
+    val timesFeedListState = rememberLazyListState()
+    var confirmReadTimes by remember { mutableStateOf(false) }
     // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
     var activityReadAll by remember { mutableStateOf(false) }
     val youScrollState = rememberScrollState()
@@ -316,6 +320,8 @@ fun MainScreen(controller: AppController) {
     fun returnToSearch() { stack = MainNav.returnToSearch(stack) }
     /** A result: its conversation (or thread) around the message, with the way back to the results. */
     fun openFromSearch(messageId: String, channelId: String, parentId: String?, message: jp.chikuwachat.android.api.MessageOut? = null) {
+        // L8: a times I have not joined (an archived one too) is known from the answer; it opens as a preview (M27).
+        searchResults.channels[channelId]?.let { if (store.channel(channelId) == null) store.upsertChannel(it, isMember = false) }
         scope.launch {
             val shown = if (message != null) controller.revealMessage(message) else controller.revealMessage(messageId, channelId, parentId)
             if (!shown) return@launch
@@ -531,6 +537,7 @@ fun MainScreen(controller: AppController) {
                                 )
                             }
                             pane == Route.Threads -> Text("スレッド")
+                            pane == Route.TimesFeed -> Text("Times フィード")
                             pane == Route.Saved -> Text("保存済み")
                             pane == Route.Mentions -> Text("メンション")
                             pane == Route.Drafts -> Text("下書き")
@@ -566,6 +573,8 @@ fun MainScreen(controller: AppController) {
                             channel = isChannel,
                             archived = selectedChannel?.channel?.archived == true,
                             activityFeed = top is Route.Activity && store.activity != null,
+                            timesFeed = top == Route.TimesFeed,
+                            myTimes = TimesFeed.myTimes(store.channels.values, me?.id) != null || !controller.isGuest,
                         )
                         val barButtons = top != Route.You && top !is Route.Settings
                         // THREADS.md §5: follow / unfollow the open thread.
@@ -654,6 +663,28 @@ fun MainScreen(controller: AppController) {
                                         text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
                                         onClick = { menuOpen = false; openDetails() },
                                     )
+                                    // L8 (TIMES_FEED.md §4, §7): the feed's channels only, asked first like the home's.
+                                    BarMenuItem.READ_ALL_TIMES -> DropdownMenuItem(
+                                        text = { Text("すべて既読にする") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                        onClick = { menuOpen = false; confirmReadTimes = true },
+                                    )
+                                    BarMenuItem.MY_TIMES -> {
+                                        val mine = TimesFeed.myTimes(store.channels.values, me?.id)
+                                        DropdownMenuItem(
+                                            text = { Text(if (mine != null) "自分の times に書く" else "自分の times を作る") },
+                                            leadingIcon = { Icon(if (mine != null) Icons.Default.Edit else Icons.Default.Add, contentDescription = null) },
+                                            onClick = {
+                                                menuOpen = false
+                                                scope.launch {
+                                                    // The server makes it on the first call (M24); either way its composer takes the cursor.
+                                                    val id = mine?.id ?: controller.ensureTimes() ?: return@launch
+                                                    controller.messageFocus = null
+                                                    controller.composerFocus = id
+                                                    openConversation(id)
+                                                }
+                                            },
+                                        )
+                                    }
                                     BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
                                         text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                                         onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
@@ -777,6 +808,16 @@ fun MainScreen(controller: AppController) {
                         controller.messageFocus = null
                         stack = MainNav.openDraft(stack, channelId, parentId)
                     }
+                } else if (pane == Route.TimesFeed) {
+                    // L8: a row shows its message in its channel, 「返信 N 件」 its thread; back returns to the feed.
+                    TimesFeedPane(
+                        controller, version, timesFeedListState,
+                        onOpen = ::reveal,
+                        onOpenThread = { message ->
+                            controller.messageFocus = null
+                            stack = MainNav.openFromThreadList(stack, message.channelId, message.parentId ?: message.id)
+                        },
+                    )
                 } else if (pane == Route.Threads) {
                     ThreadsPane(controller, version, onOpen = { entry ->
                         controller.messageFocus = null
@@ -830,6 +871,7 @@ fun MainScreen(controller: AppController) {
                                 stack,
                                 when (tile) {
                                     HomeTile.THREADS -> Route.Threads
+                                    HomeTile.TIMES -> Route.TimesFeed
                                     HomeTile.DRAFTS -> Route.Drafts
                                     HomeTile.SAVED -> Route.Saved
                                     HomeTile.REMINDERS -> Route.Reminders
@@ -840,6 +882,7 @@ fun MainScreen(controller: AppController) {
                             )
                         },
                         onAddChannel = { dialog = MainDialog.BROWSE },
+                        onTimesFeed = { stack = MainNav.open(stack, Route.TimesFeed) },
                         onAllDms = { selectMainTab(MainTab.DM) },
                         onCreateTimes = {
                             scope.launch {
@@ -867,6 +910,15 @@ fun MainScreen(controller: AppController) {
         })
     }
     if (confirmLogout) LogoutConfirmDialog(controller, onDismiss = { confirmLogout = false })
+    if (confirmReadTimes) {
+        AlertDialog(
+            onDismissRequest = { confirmReadTimes = false },
+            title = { Text("すべて既読にしますか？") },
+            text = { Text("フィードに出ている times (参加中でミュートしていないもの) を既読にします。") },
+            confirmButton = { TextButton(onClick = { confirmReadTimes = false; scope.launch { controller.markAllRead(TimesFeed.READ_ALL_SCOPE) } }) { Text("既読にする") } },
+            dismissButton = { TextButton(onClick = { confirmReadTimes = false }) { Text("キャンセル") } },
+        )
+    }
     if (confirmReadAll) {
         AlertDialog(
             onDismissRequest = { confirmReadAll = false },

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.DynamicFeed
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
@@ -152,6 +153,12 @@ class SearchResults {
         private set
     var unresolved by mutableStateOf<List<String>>(emptyList())
         private set
+    /**
+     * L8 (TIMES_FEED.md §6): the hits' channels I am not a member of (an `is:times` search finds times I have not joined,
+     * archived ones too, which the store may not know): their names, and the preview a hit opens (M27).
+     */
+    var channels by mutableStateOf<Map<String, jp.chikuwachat.android.api.ChannelOut>>(emptyMap())
+        private set
     var loading by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
@@ -180,6 +187,7 @@ class SearchResults {
         capped = false
         hasMore = false
         unresolved = emptyList()
+        channels = emptyMap()
         loaded = false
         load(controller, 0)
     }
@@ -206,6 +214,7 @@ class SearchResults {
                 capped = out.totalCapped
                 hasMore = out.hasMore
                 unresolved = out.filters?.unresolved ?: emptyList()
+                channels = (if (offset == 0) emptyMap() else channels) + out.channels.associateBy { it.id }
                 loaded = true
             }.onFailure { failed = true }
         } finally {
@@ -503,7 +512,7 @@ private fun ColumnScope.SuggestionList(
 ) {
     fun group(row: Suggestion?): String? = when (row) {
         null -> null
-        is Suggestion.Kind, Suggestion.Thread -> "filter"
+        is Suggestion.Kind, Suggestion.Thread, Suggestion.Times -> "filter"
         is Suggestion.Recent -> "recent"
         is Suggestion.Words -> "words"
         is Suggestion.Person -> "person"
@@ -559,6 +568,7 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
                 is Suggestion.Conversation -> Text(channelTitle(row.channel, store).removePrefix("#"), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 is Suggestion.Kind -> Text((Search.HAS_LABELS[row.flag] ?: row.flag) + "のメッセージ")
                 Suggestion.Thread -> Text("スレッド内のメッセージ")
+                Suggestion.Times -> Text("Times の投稿 (is:times)")
             }
         },
         supportingContent = (row as? Suggestion.Person)?.let { { Text("@" + it.user.username, color = muted) } },
@@ -570,6 +580,7 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
                 is Suggestion.Conversation -> Icon(conversationIcon(row.channel), contentDescription = null, tint = muted)
                 is Suggestion.Kind -> Icon(kindIcon(row.flag), contentDescription = null, tint = muted)
                 Suggestion.Thread -> Icon(Icons.Default.Forum, contentDescription = null, tint = muted)
+                Suggestion.Times -> Icon(Icons.Default.DynamicFeed, contentDescription = null, tint = muted)
             }
         },
         trailingContent = onRemove?.let { remove -> { IconButton(onClick = remove) { Icon(Icons.Default.Close, contentDescription = "履歴から消す", tint = muted) } } },
@@ -820,7 +831,7 @@ private fun MessageResults(
                 EmptyResults(filtered = Search.hasFilters(params), onClear = { onChange(Search.cleared(params)) })
             }
             else -> items(results.hits, key = { it.message.id }) { hit ->
-                ResultRow(controller, version, hit.message, results.keywords, onOpen = { onOpen(hit.message) })
+                ResultRow(controller, version, hit.message, results.keywords, results.channels[hit.message.channelId], onOpen = { onOpen(hit.message) })
                 HorizontalDivider()
             }
         }
@@ -880,9 +891,14 @@ private fun EmptyResults(filtered: Boolean, onClear: () -> Unit) {
 
 /** Conversation, 「スレッドの返信」, sender, time, the body with the matched words marked, attached file names. */
 @Composable
-private fun ResultRow(controller: AppController, version: Int, message: MessageOut, keywords: List<String>, onOpen: () -> Unit) {
+private fun ResultRow(
+    controller: AppController, version: Int, message: MessageOut, keywords: List<String>,
+    /** L8: the hit's channel from the answer when I am not a member (the store may not know it). */
+    outside: jp.chikuwachat.android.api.ChannelOut? = null,
+    onOpen: () -> Unit,
+) {
     val store = controller.store
-    val channel = store.channel(message.channelId)
+    val channel = store.channel(message.channelId) ?: outside?.let { ChannelState(it, isMember = false) }
     val sender = store.users[message.senderId]?.displayName ?: "?"
     // 仕上げ A (MOBILE_POLISH.md X1): the one-line excerpt every list uses (apps/shared/dm-preview.json's rule); the
     // attachments are listed below it by name, so no 「画像を送信しました」 stands in for an empty body.
@@ -1008,6 +1024,15 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
                     onClick = { onChange(params.copy(isThread = !params.isThread)) },
                     label = { Text("スレッド内") },
                     leadingIcon = { Icon(if (params.isThread) Icons.Default.Check else Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+                )
+            }
+            // L8 (TIMES_FEED.md §6): the times only, those I have not joined included.
+            item(key = "times") {
+                FilterChip(
+                    selected = params.isTimes,
+                    onClick = { onChange(params.copy(isTimes = !params.isTimes)) },
+                    label = { Text("Times") },
+                    leadingIcon = { Icon(if (params.isTimes) Icons.Default.Check else Icons.Default.DynamicFeed, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
                 )
             }
         }

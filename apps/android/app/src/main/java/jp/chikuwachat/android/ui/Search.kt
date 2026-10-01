@@ -28,6 +28,8 @@ data class SearchParams(
     /** file / link / pin / reaction / poll, all required (AND). */
     val has: List<String> = emptyList(),
     val isThread: Boolean = false,
+    /** L8 (TIMES_FEED.md §6): times channels only, those I have not joined included (the 「Times」 chip). */
+    val isTimes: Boolean = false,
     /** "relevance" or "newest"; searches without words are always newest first. */
     val sort: String = Search.RELEVANCE,
 )
@@ -44,6 +46,8 @@ sealed class Suggestion {
     data class Conversation(val channel: ChannelState) : Suggestion()
     data class Kind(val flag: String) : Suggestion()
     data object Thread : Suggestion()
+    /** L8: 「is:times」, the times only. */
+    data object Times : Suggestion()
 
     /** What choosing the row searches for; people, conversations and kinds list the newest first. */
     fun toParams(): SearchParams = when (this) {
@@ -53,6 +57,7 @@ sealed class Suggestion {
         is Conversation -> SearchParams(channelId = channel.id, sort = Search.NEWEST)
         is Kind -> SearchParams(has = listOf(flag), sort = Search.NEWEST)
         Thread -> SearchParams(isThread = true, sort = Search.NEWEST)
+        Times -> SearchParams(isTimes = true, sort = Search.NEWEST)
     }
 }
 
@@ -71,7 +76,7 @@ object Search {
     private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     fun hasFilters(params: SearchParams): Boolean =
-        params.fromUserId != null || params.channelId != null || params.date != null || params.has.isNotEmpty() || params.isThread
+        params.fromUserId != null || params.channelId != null || params.date != null || params.has.isNotEmpty() || params.isThread || params.isTimes
 
     /** Nothing to look for: no words and no filters (the server refuses it as empty_query). */
     fun isEmpty(params: SearchParams): Boolean = params.q.isBlank() && !hasFilters(params)
@@ -126,6 +131,7 @@ object Search {
             before = before,
             has = params.has.filter { it in HAS_FLAGS },
             isThread = params.isThread,
+            isTimes = params.isTimes,
             sort = if (q.isEmpty()) NEWEST else params.sort,
         )
     }
@@ -159,6 +165,7 @@ object Search {
         dateLabel(params.date)?.let(parts::add)
         params.has.forEach { flag -> HAS_LABELS[flag]?.let(parts::add) }
         if (params.isThread) parts.add("スレッド内")
+        if (params.isTimes) parts.add("Times")
         return parts.joinToString(" · ")
     }
 
@@ -181,7 +188,8 @@ object Search {
             // All the remembered ones (IMPLEMENTATION_PLAN.md M16b: 10); the full-screen list has room for them.
             return recent.take(RecentSearches.MAX).map { Suggestion.Recent(it) } +
                 HAS_FLAGS.take(3).map { Suggestion.Kind(it) } +
-                Suggestion.Thread
+                Suggestion.Thread +
+                Suggestion.Times
         }
         val collator = Collator.getInstance(Locale.JAPANESE)
         val needle = fold(text.removePrefix("@").removePrefix("#"))

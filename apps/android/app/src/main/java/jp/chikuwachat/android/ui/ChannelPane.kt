@@ -90,6 +90,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -544,6 +547,14 @@ fun MessageRow(
     onOpenThread: (() -> Unit)? = null,
     onMarkUnread: (() -> Unit)? = null,
     readOnly: Boolean = false,
+    /**
+     * L8 (TIMES_FEED.md §7): a row of the Times feed. `channelLabel` (the times' name) follows the sender's name, `newDot`
+     * (non-null: a slot left of the avatar) marks a row after its times' read position, and `onTap` replaces the tap's
+     * 「スレッドを開く」 (the feed shows the row in its channel; 「返信 N 件」 still opens the thread).
+     */
+    channelLabel: String? = null,
+    newDot: Boolean? = null,
+    onTap: (() -> Unit)? = null,
 ) {
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
@@ -560,16 +571,24 @@ fun MessageRow(
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
-        onClickLabel = if (onOpenThread != null) "スレッドを開く" else null,
+        onClickLabel = if (onTap != null) "チャンネルで表示" else if (onOpenThread != null) "スレッドを開く" else null,
         onLongClickLabel = "メッセージの操作",
         onLongClick = if (message.pending || readOnly) null else ({ menuOpen = true }),
         // A tap on a message in the channel opens its thread, to read or to reply (Slack; testers, 2026-09-29; a grouped
         // row showed its time before, which its gutter shows now). With the keyboard up the tap only closes it
         // (closesKeyboardOnTap), as on iOS.
-        onClick = { if (!message.pending && onOpenThread != null && !KeyboardBehavior.upAtTouch) onOpenThread() },
+        onClick = {
+            if (!message.pending && onTap != null) onTap()
+            else if (!message.pending && onOpenThread != null && !KeyboardBehavior.upAtTouch) onOpenThread()
+        },
     )
     Box(Modifier.fillMaxWidth().background(if (controller.messageFocus?.messageId == message.id) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
+            if (newDot != null) {
+                Box(Modifier.width(12.dp).padding(top = 14.dp), contentAlignment = Alignment.TopStart) {
+                    if (newDot) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "新しい投稿" })
+                }
+            }
             // Grouped under the previous message: its time where the avatar would be, so where one message ends and the
             // next begins shows (testers, 2026-09-28; the same on iOS and the web).
             if (compact) {
@@ -606,6 +625,12 @@ fun MessageRow(
                             }
                         }
                         StatusEmoji(store.users[message.senderId], modifier = Modifier.padding(start = 6.dp))
+                        if (channelLabel != null) {
+                            Text(
+                                channelLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false),
+                            )
+                        }
                         Spacer(Modifier.width(8.dp))
                         Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (message.editedAt != null) {
