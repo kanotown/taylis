@@ -38,9 +38,11 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -587,6 +589,48 @@ private fun CanvasEditorField(
         if (result.text != current.text) commit(result.text)
     }
 
+    // M57 (CANVAS.md §17): 「表」 opens the table at the caret (or a new one after the caret's line) full screen. The editor
+    // works on this field's text (mentions as @username, like the cells); its 「完了」 goes through apply() like any
+    // toolbar edit, so it is saved and merged as usual.
+    var tableEdit by rememberSaveable(section, stateSaver = TABLE_EDIT_SAVER) { mutableStateOf<TableEditState?>(null) }
+
+    fun openTable() {
+        val current = field
+        val caretLine = CanvasTable.lineOf(current.text, current.selection.min)
+        CanvasTable.open(current.text, caretLine)?.let { session ->
+            tableEdit = TableEditState(session, session.table)
+            return
+        }
+        // A new table is put into the text only at 「完了」 (キャンセル then has nothing to undo).
+        val session = CanvasTable.openNew(current.text, caretLine)
+        tableEdit = TableEditState(session, session.table)
+    }
+
+    /** 「完了」 (`done`) writes the table back; 「キャンセル」 changes nothing. */
+    fun closeTable(done: Boolean) {
+        val state = tableEdit ?: return
+        tableEdit = null
+        if (!done) return
+        when (val result = CanvasTable.writeBack(field.text, state.session, state.edited)) {
+            CanvasTable.WriteBack.Unchanged -> return
+            is CanvasTable.WriteBack.Replaced -> apply { CanvasText.Edit(result.text, CanvasTable.endOfLine(result.text, result.range.last)) }
+            is CanvasTable.WriteBack.Added -> {
+                apply { CanvasText.Edit(result.text, CanvasTable.endOfLine(result.text, result.range.last)) }
+                controller.notice = "表がほかの人に変更されていたため、編集した表を別の表として入れました"
+            }
+        }
+        saver.flush() // like leaving the field: the table is saved now
+    }
+
+    tableEdit?.let { state ->
+        CanvasTableEditor(
+            controller, state,
+            onChange = { tableEdit = state.copy(edited = it) },
+            onDone = { closeTable(done = true) },
+            onCancel = { closeTable(done = false) },
+        )
+    }
+
     val focus = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
@@ -596,7 +640,7 @@ private fun CanvasEditorField(
     val candidates = query?.let { q -> Mentions.candidates(q, store.users.values, store.groups.values, limit = 8).filter { it.kind != "all" } } ?: emptyList()
 
     Column(modifier) {
-        EditorToolbar(::apply)
+        EditorToolbar(::apply, onTable = ::openTable)
         HorizontalDivider()
         if (candidates.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -644,9 +688,15 @@ private fun CanvasEditorField(
     }
 }
 
-/** 見出し, 太字, 箇条書き, 番号, チェックリスト, 引用, リンク, メンション, 区切り線 (the desktop's toolbar, for a thumb). */
+/** The open table editor across a rotation (the activity is recreated). */
+private val TABLE_EDIT_SAVER = Saver<TableEditState?, String>(
+    save = { state -> state?.let { jp.chikuwachat.android.api.Codec.plain.encodeToString(TableEditState.serializer(), it) } },
+    restore = { runCatching { jp.chikuwachat.android.api.Codec.plain.decodeFromString(TableEditState.serializer(), it) }.getOrNull() },
+)
+
+/** 見出し, 太字, 箇条書き, 番号, チェックリスト, 引用, リンク, メンション, 区切り線, 表 (the desktop's toolbar, for a thumb). */
 @Composable
-private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit) {
+private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit, onTable: () -> Unit) {
     var headingMenu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
@@ -665,6 +715,7 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit)
         IconButton(onClick = { apply { CanvasText.insertLink(it) } }) { Icon(Icons.Outlined.Link, contentDescription = "リンク") }
         IconButton(onClick = { apply { CanvasText.insertMention(it) } }) { Icon(Icons.Outlined.AlternateEmail, contentDescription = "メンション") }
         IconButton(onClick = { apply { CanvasText.insertRule(it) } }) { Icon(Icons.Outlined.HorizontalRule, contentDescription = "区切り線") }
+        IconButton(onClick = onTable) { Icon(Icons.Outlined.TableChart, contentDescription = "表") }
     }
 }
 
