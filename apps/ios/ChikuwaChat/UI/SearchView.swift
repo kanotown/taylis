@@ -49,6 +49,8 @@ final class SearchModel {
     private(set) var capped = false
     private(set) var hasMore = false
     private(set) var unresolved: [String] = []
+    /// L8: the hits' channels I am not a member of (SearchOut.channels: public times found with is:times), by id.
+    private(set) var channels: [String: ChannelOut] = [:]
     private(set) var loading = false
     private(set) var loaded = false
     private(set) var failure: String?
@@ -134,6 +136,7 @@ final class SearchModel {
         capped = false
         hasMore = false
         unresolved = []
+        channels = [:]
         loading = false
         loaded = false
         failure = nil
@@ -169,6 +172,8 @@ final class SearchModel {
             capped = result.totalCapped ?? false
             hasMore = result.hasMore
             unresolved = result.filters?.unresolved ?? []
+            if !more { channels = [:] }
+            for channel in result.channels ?? [] { channels[channel.id] = channel }
             loaded = true
         } catch {
             guard id == request else { return }
@@ -346,7 +351,7 @@ struct SearchView: View {
             }
         }
         Section {
-            Text("語の中で from:@名前、in:#チャンネル、before:2026-09-01、has:file、is:thread のような条件も使えます。")
+            Text("語の中で from:@名前、in:#チャンネル、before:2026-09-01、has:file、is:thread、is:times のような条件も使えます。is:times は参加していない公開の times も探します。")
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -432,6 +437,8 @@ struct SearchView: View {
             if !next.has.contains(flag) { next.has.append(flag) }
         case .thread:
             next.isThread = true
+        case .times:
+            next.isTimes = true
         }
         run(next, remember: true)
     }
@@ -481,8 +488,20 @@ struct SearchView: View {
         if !tokens.isEmpty { tokens = [] }
     }
 
-    /// A result: its conversation around the message (or the thread for a reply), pushed on this screen.
+    /// A result: its conversation around the message (or the thread for a reply), pushed on this screen. A channel I am
+    /// not in (a public times found with is:times, L8) opens as its preview (M27) on the main screen, around the message.
     private func open(messageId: String, channelId: String, parentId: String?) {
+        if store.channel(channelId)?.isMember != true {
+            if store.channel(channelId) == nil {
+                guard let channel = model.channels[channelId] else {
+                    controller.error = "この会話は開けません"
+                    return
+                }
+                store.upsertChannel(channel, isMember: false)
+            }
+            NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channelId, "messageId": messageId])
+            return
+        }
         Task {
             guard await controller.revealMessage(id: messageId, channelId: channelId, parentId: parentId) else { return }
             revealed.insert(messageId)
@@ -522,6 +541,8 @@ struct SearchSuggestionLabel: View {
             Label { Text("\(flag.label)のメッセージ") } icon: { Image(systemName: flag.systemImage).foregroundStyle(.secondary) }
         case .thread:
             Label { Text("スレッド内のメッセージ") } icon: { Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(.secondary) }
+        case .times:
+            Label { Text("Times の投稿 (is:times)") } icon: { Image(systemName: "newspaper").foregroundStyle(.secondary) }
         }
     }
 }
@@ -579,7 +600,8 @@ struct SearchResultsView: View {
         List {
             ForEach(model.hits) { hit in
                 Button { onOpen(hit.message.id, hit.message.channelId, hit.message.parentId) } label: {
-                    SearchResultRow(controller: controller, message: hit.message, keywords: model.keywords)
+                    SearchResultRow(controller: controller, message: hit.message, keywords: model.keywords,
+                                    otherChannel: model.channels[hit.message.channelId])
                 }
                 .buttonStyle(.plain)
                 .onAppear {
@@ -737,6 +759,13 @@ struct SearchFilterBar: View {
                         }
                         .accessibilityAddTraits(params.isThread ? .isSelected : [])
                     }
+                    // L8 (TIMES_FEED.md §6): only times, the ones I am not in too.
+                    SearchChip(active: params.isTimes, onClear: nil) {
+                        Button { onUpdate { $0.isTimes.toggle() } } label: {
+                            SearchChipLabel(title: "Times", systemImage: "newspaper", active: params.isTimes, menu: false)
+                        }
+                        .accessibilityAddTraits(params.isTimes ? .isSelected : [])
+                    }
                 }
                 if filesOnly ? params.channelId != nil : params.hasFilters {
                     Button("条件をクリア") { onUpdate { $0 = $0.withoutFilters } }
@@ -802,6 +831,8 @@ struct SearchResultRow: View {
     @Bindable var controller: AppController
     let message: MessageOut
     let keywords: [String]
+    /// L8: the hit's channel when the store does not know it (SearchOut.channels: an archived public times).
+    var otherChannel: ChannelOut? = nil
 
     var body: some View {
         let store = controller.store
@@ -810,8 +841,16 @@ struct SearchResultRow: View {
         let text = Timeline.excerpt(message.body, attachments: [], users: store.users, groups: store.groups)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: conversationImage(channel?.channel)).imageScale(.small).foregroundStyle(.secondary)
+                Image(systemName: conversationImage(channel?.channel ?? otherChannel)).imageScale(.small).foregroundStyle(.secondary)
                 Text(conversationName(channel)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                if channel?.isMember != true && (channel != nil || otherChannel != nil) {
+                    Text("未参加")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Color(.tertiarySystemFill), in: Capsule())
+                        .fixedSize()
+                }
                 if message.parentId != nil {
                     Text("スレッドの返信")
                         .font(.caption2.weight(.medium))
@@ -849,7 +888,7 @@ struct SearchResultRow: View {
     }
 
     private func conversationName(_ channel: ChannelState?) -> String {
-        guard let channel else { return "?" }
+        guard let channel else { return SearchLogic.otherChannelName(otherChannel) }
         let title = channelTitle(channel, store: controller.store)
         return channel.channel.isDm ? title : String(title.drop(while: { $0 == "#" }))
     }

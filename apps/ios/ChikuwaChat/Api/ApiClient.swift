@@ -413,6 +413,17 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }
     func unfavoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("DELETE", "/api/v1/channels/\(id)/favorite") }
     func readAll() async throws -> [ChannelReadStateOut] { try await request("POST", "/api/v1/channels/read-all", body: .object([:])) }
+    /// L8: `scope` "times" reads only the Times feed's channels (member, not muted) to their end; "all" is readAll().
+    func readAll(scope: String) async throws -> [ChannelReadStateOut] {
+        try await request("POST", "/api/v1/channels/read-all", body: .object(["scope": .string(scope)]))
+    }
+
+    /// GET /times/feed (L8, TIMES_FEED.md §3): `cursor` is the previous page's next_cursor.
+    func timesFeed(cursor: String? = nil, limit: Int = 50) async throws -> TimesFeedOut {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/times/feed", items))
+    }
 
     // MARK: pins and bookmarks (M11c)
 

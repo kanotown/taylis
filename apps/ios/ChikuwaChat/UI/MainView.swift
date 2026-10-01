@@ -62,6 +62,11 @@ struct MainView: View {
         return nil
     }
 
+    /// L8: the Times feed is on a tab's stack.
+    private var timesFeedShown: Bool {
+        paths.values.contains { $0.contains(.list(TimesFeedView.selectionId)) }
+    }
+
     /// A conversation left the store (I left it or was removed, it went private while previewed, a bootstrap dropped it).
     private var goneChannel: Bool {
         paths.values.contains { path in path.contains { if case .channel(let id) = $0 { store.channel(id) == nil } else { false } } }
@@ -156,6 +161,10 @@ struct MainView: View {
             guard let id else { return }
             homeSelection = nil
             push(id.isListId ? .list(id) : .channel(id), on: .home)
+        }
+        .onChange(of: timesFeedShown, initial: true) { _, shown in
+            // L8 (TIMES_FEED.md §5 feedVisible): live events add rows while the feed is on a stack (a thread over it too).
+            controller.timesFeed.visible = shown
         }
         .onChange(of: frontChannelId, initial: true) { _, id in
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
@@ -332,6 +341,16 @@ struct MainView: View {
     private func list(_ id: String, on tab: MainTab) -> some View {
         switch id {
         case ThreadsListView.selectionId: ThreadsListView(controller: controller)
+        case TimesFeedView.selectionId:
+            // L8: a row shows its message in the channel (a reply shared there too, as the channel's row), on this stack.
+            TimesFeedView(controller: controller, onOpen: { message in
+                let parentId = message.alsoInChannel ? nil : message.parentId
+                Task {
+                    if await controller.revealMessage(id: message.id, channelId: message.channelId, parentId: parentId) {
+                        show(message.channelId, parentId: parentId, on: tab)
+                    }
+                }
+            }, onOpenChannel: { id in show(id, parentId: nil, on: tab) })
         case SavedView.selectionId:
             SavedView(controller: controller) { message in
                 Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
@@ -367,7 +386,8 @@ private extension String {
     /// A selection naming one of the lists rather than a conversation.
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
-         SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId].contains(self)
+         SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
+         TimesFeedView.selectionId].contains(self)
     }
 }
 

@@ -90,19 +90,22 @@ final class HomeTests: XCTestCase {
 
     func testTiles() {
         let tiles = HomeTile.tiles(threads: ThreadSummary(unreadCount: 3, mentionCount: 1), drafts: 0, saved: 5, firedReminders: 2)
-        // M52: カレンダー after リマインダー; M56: タスク after カレンダー.
-        XCTAssertEqual(tiles.map(\.kind), [.threads, .drafts, .saved, .reminders, .calendar, .tasks, .files])
-        XCTAssertEqual(tiles.map(\.count), [3, 0, 5, 2, nil, nil, nil])
-        XCTAssertEqual(tiles.map(\.alert), [true, false, false, true, false, false, false])
-        XCTAssertEqual(tiles.map(\.dimmed), [false, true, false, false, false, false, false])
-        XCTAssertEqual(tiles[4].title, "カレンダー")
-        XCTAssertEqual(tiles[4].selectionId, CalendarView.selectionId)
-        XCTAssertEqual(tiles[5].title, "タスク")
-        XCTAssertEqual(tiles[5].icon, "checklist")
-        XCTAssertEqual(tiles[5].selectionId, MyTasksView.selectionId)
+        // M52: カレンダー after リマインダー; M56: タスク after カレンダー; L8: Times (the feed) after スレッド.
+        XCTAssertEqual(tiles.map(\.kind), [.threads, .times, .drafts, .saved, .reminders, .calendar, .tasks, .files])
+        XCTAssertEqual(tiles.map(\.count), [3, nil, 0, 5, 2, nil, nil, nil])
+        XCTAssertEqual(tiles.map(\.alert), [true, false, false, false, true, false, false, false])
+        XCTAssertEqual(tiles.map(\.dimmed), [false, false, true, false, false, false, false, false])
+        XCTAssertEqual(tiles[1].title, "Times")
+        XCTAssertEqual(tiles[1].selectionId, TimesFeedView.selectionId)
+        XCTAssertEqual(tiles[1].accessibilityValue, "")
+        XCTAssertEqual(tiles[5].title, "カレンダー")
+        XCTAssertEqual(tiles[5].selectionId, CalendarView.selectionId)
+        XCTAssertEqual(tiles[6].title, "タスク")
+        XCTAssertEqual(tiles[6].icon, "checklist")
+        XCTAssertEqual(tiles[6].selectionId, MyTasksView.selectionId)
         let quiet = HomeTile.tiles(threads: ThreadSummary(unreadCount: 2, mentionCount: 0), drafts: 1, saved: 0, firedReminders: 0)
-        XCTAssertEqual(quiet.map(\.alert), [false, false, false, false, false, false, false])
-        XCTAssertEqual(quiet.map(\.dimmed), [false, false, true, true, false, false, false])
+        XCTAssertEqual(quiet.map(\.alert), [false, false, false, false, false, false, false, false])
+        XCTAssertEqual(quiet.map(\.dimmed), [false, false, false, true, true, false, false, false])
         XCTAssertEqual(quiet[0].selectionId, ThreadsListView.selectionId)
     }
 }
