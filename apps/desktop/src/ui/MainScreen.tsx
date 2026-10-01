@@ -1,4 +1,4 @@
-import { ArrowLeft, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -56,6 +56,8 @@ import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
+import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, visit } from "./placeHistory";
+import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
 import { focusChatRegion } from "./messageKeyboard";
 import { ActivityView } from "./ActivityView";
 import { DmListView } from "./DmListView";
@@ -69,6 +71,8 @@ import { YouView } from "./YouView";
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
 // "tasks" (M55): 「自分のタスク」 and 「自分の担当」. "times" (L8): the Times feed (TIMES_FEED.md §7).
 type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "times";
+/** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
+type Focus = NonNullable<AppController["messageFocus"]>;
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -694,6 +698,72 @@ export function MainScreen({ controller }: { controller: AppController }) {
     } else setThreadId(null);
   };
 
+  // M67: back / forward between places (a conversation or a centre view), the wide layout only. The place on screen is
+  // recorded whatever opened it (the sidebar, ⌘K, a permalink, Alt+↑↓, a search result); a restored entry is the same
+  // place again, so recording it adds nothing. A phone's layout has its own back (the bottom tabs' stacks, and the
+  // browser's history on the web) and records nothing here.
+  const [places, setPlaces] = useState<PlaceHistory<Focus>>(emptyHistory);
+  const livePlace: Place<Focus> | null = compact
+    ? null
+    : view === "channel"
+      ? currentId ? { kind: "channel", channelId: currentId, focus: focus?.channelId === currentId ? focus : null } : null
+      : { kind: "view", view, search: view === "search" ? search : null, filesChannelId: view === "files" ? filesChannelId : null };
+  const livePlaceRef = useRef(livePlace);
+  livePlaceRef.current = livePlace;
+  const livePlaceKey = livePlace ? `${placeKey(livePlace)}|${livePlace.kind === "channel" ? (livePlace.focus?.messageId ?? "") : ""}` : null;
+  useEffect(() => {
+    const place = livePlaceRef.current;
+    if (place) setPlaces((history) => visit(history, place));
+  }, [livePlaceKey]);
+  /** A conversation can be shown again while it is in the store and readable (mine, or a public one to preview). */
+  const placeAvailable = (place: Place<Focus>): boolean => {
+    const readable = (id: string) => {
+      const channel = store.getChannel(id);
+      return !!channel && (channel.isMember || (channel.type === "public" && !controller.isGuest));
+    };
+    if (place.kind === "channel") return readable(place.channelId);
+    return place.view !== "files" || !place.filesChannelId || readable(place.filesChannelId);
+  };
+  /** A place back on screen as a plain open shows it (a conversation lands as on opening, or at the message it was revealed at). */
+  const showPlace = (place: Place<Focus>) => {
+    setSearchOpen(false);
+    setSwitcher(false);
+    if (place.kind === "channel") {
+      open(place.channelId);
+      if (place.focus) {
+        controller.messageFocus = place.focus;
+        setThreadChannelId(place.channelId);
+        setThreadId(place.focus.parentId);
+      }
+      return;
+    }
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setBackToSearch(false);
+    setPinsOpen(false);
+    resetConversation();
+    setPane("main");
+    if (place.view === "search") {
+      searchSnapshot.current = null;
+      setSearch(place.search);
+    }
+    if (place.view === "files") setFilesChannelId(place.filesChannelId);
+    setView(place.view);
+  };
+  const canGoBack = !compact && canGo(places, -1, placeAvailable);
+  const canGoForward = !compact && canGo(places, 1, placeAvailable);
+  const goHistory = (step: -1 | 1) => {
+    const moved = go(places, step, placeAvailable);
+    if (!moved) return;
+    setPlaces(moved.history);
+    showPlace(moved.place);
+  };
+  const goHistoryRef = useRef(goHistory);
+  goHistoryRef.current = goHistory;
+  const historyLabels = historyShortcutLabels();
+
   const toggleUnreadOnly = () => {
     setUnreadOnly((value) => {
       try {
@@ -721,6 +791,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
       // A dialog or the switcher on top has the keyboard: the shortcuts that open or move things would act under it
       // (the search box under a modal, a channel switched behind the settings). Esc and ⌘/ still work there.
       const covered = !!s.dialog || s.switcher || !!s.homeOverlay;
+      // M67: back / forward, the wide layout only (a phone-width web page leaves ⌘[ / Alt+← to the browser, whose
+      // history is that layout's back). Kept from the browser under a dialog too, where they do nothing.
+      const step = s.compact ? null : historyStep(event);
+      if (step !== null) {
+        event.preventDefault();
+        if (!covered) goHistoryRef.current(step);
+        return;
+      }
       if (event.key === "F6" && !mod && !event.altKey && !covered && !s.searchOpen) {
         if (focusChatRegion(event.shiftKey)) event.preventDefault();
       } else if (mod && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && controller.multiWorkspace) {
@@ -781,7 +859,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
     window.addEventListener("chikuwa:quick-switch", onSwitch);
     window.addEventListener("chikuwa:open-channel", onOpenChannel);
     window.addEventListener("chikuwa:open-status", onOpenStatus);
+    // M67: the mouse's back / forward buttons in the desktop app (a browser makes them its own Back / Forward, which the
+    // web build's history entries already follow).
+    const onMouse = (event: MouseEvent) => {
+      const step = mouseHistoryStep(event.button);
+      const s = state.current;
+      if (step === null || s.compact) return;
+      event.preventDefault();
+      if (!s.dialog && !s.switcher && !s.homeOverlay) goHistoryRef.current(step);
+    };
+    if (!isWeb()) window.addEventListener("mouseup", onMouse);
     return () => {
+      window.removeEventListener("mouseup", onMouse);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("chikuwa:quick-switch", onSwitch);
       window.removeEventListener("chikuwa:open-channel", onOpenChannel);
@@ -1412,7 +1501,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
       >
         <WorkspaceMenu controller={controller} />
       </div>
-      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center bg-sidebar px-3">
+      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center gap-2 bg-sidebar px-3">
+        {/* M67: back / forward between places, beside the search box as in Slack. */}
+        <nav aria-label="履歴" className="flex shrink-0 items-center gap-0.5">
+          <IconButton tone="sidebar" label={historyLabels.back} disabled={!canGoBack} onClick={() => goHistory(-1)} className="h-7 w-7 disabled:opacity-40">
+            <ArrowLeft size={16} />
+          </IconButton>
+          <IconButton tone="sidebar" label={historyLabels.forward} disabled={!canGoForward} onClick={() => goHistory(1)} className="h-7 w-7 disabled:opacity-40">
+            <ArrowRight size={16} />
+          </IconButton>
+        </nav>
         {searchBar}
       </div>
       {sidebar}
