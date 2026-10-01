@@ -130,11 +130,14 @@ async def count_owners(db: AsyncSession, channel_id: uuid.UUID) -> int:
     )
 
 
-async def channel_memberships_of(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Channel, str]]:
+async def channel_memberships_of(
+    db: AsyncSession, user_id: uuid.UUID, *, include_dms: bool = False
+) -> list[tuple[Channel, str]]:
+    kinds = ("public", "private", "dm", "group_dm") if include_dms else ("public", "private")
     stmt = (
         select(Channel, ChannelMember.role)
         .join(ChannelMember, ChannelMember.channel_id == Channel.id)
-        .where(ChannelMember.user_id == user_id, Channel.type.in_(("public", "private")))
+        .where(ChannelMember.user_id == user_id, Channel.type.in_(kinds))
         .order_by(Channel.name)
     )
     return [(channel, role) for channel, role in (await db.execute(stmt)).all()]

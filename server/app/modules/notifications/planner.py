@@ -30,7 +30,7 @@ from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
 from app.modules.tasks import service as tasks
-from app.modules.tasks.events import TASK_ASSIGNED, TASK_DUE
+from app.modules.tasks.events import TASK_ASSIGNED, TASK_DUE, TASK_REVIEW_DONE
 from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
@@ -58,7 +58,7 @@ class PushPlanner:
         if event.event_type == CALENDAR_ALARM_UPDATED:
             await self.handle_calendar(db, event)
             return
-        if event.event_type in (TASK_ASSIGNED, TASK_DUE):
+        if event.event_type in (TASK_ASSIGNED, TASK_DUE, TASK_REVIEW_DONE):
             await self.handle_task(db, event)
             return
         if (
@@ -246,12 +246,12 @@ class PushPlanner:
         channel_id = uuid.UUID(str(data["channel_id"])) if data.get("channel_id") else None
         title = str(data.get("title") or "")
         where = f" (#{data['channel_name']})" if data.get("channel_name") else ""
-        if event.event_type == TASK_ASSIGNED:
+        if event.event_type in (TASK_ASSIGNED, TASK_REVIEW_DONE):
             if self.is_active(user_id) or channel_id is None:
                 return
             if await channels.membership_of(db, user_id, channel_id) is None:
                 return
-            if not await tasks.still_open(db, task_id):
+            if event.event_type == TASK_ASSIGNED and not await tasks.still_open(db, task_id):
                 return
             channel = await channels.require_channel(db, channel_id)
             pref = (await repo.preferences_for_channel(db, channel_id, [user_id])).get(user_id)
@@ -266,8 +266,15 @@ class PushPlanner:
                 return
             actor = await users.get_user(db, uuid.UUID(str(data["by_user_id"])))
             who = actor.display_name if actor else "誰か"
-            body = f"{who} がタスクを割り当てました: {title}{where}"
-            hidden = "タスクが割り当てられました"
+            if event.event_type == TASK_REVIEW_DONE:  # L9 (REVIEWS.md §4)
+                body = f"{who} がレビューを完了しました: {title}{where}"
+                hidden = "レビューが完了しました"
+            elif data.get("kind") == "review":
+                body = f"{who} がレビューを依頼しました: {title}{where}"
+                hidden = "レビューを依頼されました"
+            else:
+                body = f"{who} がタスクを割り当てました: {title}{where}"
+                hidden = "タスクが割り当てられました"
         else:
             body = f"今日が期限: {title}{where}"
             hidden = "今日が期限のタスクがあります"

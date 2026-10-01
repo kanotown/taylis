@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.tasks.models import MAX_CLIENT_ID_LENGTH, MAX_NOTES_LENGTH, MAX_TITLE_LENGTH
 
 TaskStatus = Literal["todo", "doing", "done"]
+# L9: "review" is a review request made from a message (REVIEWS.md).
+TaskKind = Literal["task", "review"]
 # A shared task's assignees at most (a channel of several dozen people).
 MAX_ASSIGNEES = 50
 
@@ -65,6 +67,7 @@ class TaskData(BaseModel):
     channel_name: str | None
     # Who made it (the only one who sees a personal task).
     owner_id: UUID
+    kind: TaskKind = "task"
     title: str
     # Markdown (the messages' syntax).
     notes: str | None
@@ -99,9 +102,11 @@ class TaskCreate(BaseModel):
     due_on: date | None = None
     # Members of the channel; must be empty (or left out) for a personal task.
     assignee_ids: list[UUID] = Field(default_factory=list, max_length=MAX_ASSIGNEES)
-    # A message I can see. A shared task's must be in the same channel; from a DM, make a
-    # personal task (leave channel_id out).
+    # A message I can see. A shared task's must be in the same channel. L9: a DM's task (shared
+    # with its members) must come from one of its messages.
     source_message_id: UUID | None = None
+    # L9: "review" (「レビューを依頼」) changes the wording of its chip and pushes.
+    kind: TaskKind = "task"
     # Idempotency key: a retry returns the task made by the first request (200).
     client_task_id: str | None = Field(default=None, min_length=1, max_length=MAX_CLIENT_ID_LENGTH)
     # The device's IANA zone: my due-date notification goes out at 8:00 in it. Left out: my
@@ -166,6 +171,18 @@ class TaskDeletedData(BaseModel):
 
 class TaskAssignedData(BaseModel):
     """task.assigned: someone else added me to a task's assignees (the push of TASKS.md §5)."""
+
+    task_id: UUID
+    channel_id: UUID
+    channel_name: str
+    title: str
+    by_user_id: UUID
+    # L9: "review": the push says a review was requested.
+    kind: TaskKind = "task"
+
+
+class TaskReviewDoneData(BaseModel):
+    """task.review_done: an assignee completed my review request (L9, REVIEWS.md §4)."""
 
     task_id: UUID
     channel_id: UUID

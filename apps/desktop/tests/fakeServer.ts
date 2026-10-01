@@ -493,6 +493,7 @@ export class FakeServer {
     const seq = ++record.channel.last_seq;
     const message: MessageOut = {
       id: nextId(),
+      tasks: [],
       channel_id: channelId,
       sender_id: senderId,
       parent_id: parentId,

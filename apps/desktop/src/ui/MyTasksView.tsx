@@ -43,7 +43,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   const addPersonal = async (title: string): Promise<boolean> => {
     if (!hub) return false;
     try {
-      await hub.create({ title, status: "todo", client_task_id: crypto.randomUUID(), tz: localZone() });
+      await hub.create({ title, status: "todo", kind: "task", client_task_id: crypto.randomUUID(), tz: localZone() });
       return true;
     } catch (err) {
       controller.setError(err);

@@ -2473,6 +2473,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/requested": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Requested
+         * @description L9: the shared tasks I made with someone else assigned (my review requests and the like):
+         *     open ones by due date, then the 50 most recently completed.
+         */
+        get: operations["list_requested_api_v1_tasks_requested_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -4414,6 +4435,11 @@ export interface components {
             /** Seq */
             seq: number;
             /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["MessageTaskOut"][];
+            /**
              * Type
              * @default user
              */
@@ -4438,6 +4464,37 @@ export interface components {
              * Format: date-time
              */
             written_at: string;
+        };
+        /**
+         * MessageTaskOut
+         * @description L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).
+         *     Personal tasks are never listed (only their owner sees them).
+         */
+        MessageTaskOut: {
+            /** Assignee Ids */
+            assignee_ids: string[];
+            /** Due On */
+            due_on: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "task" | "review";
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
         };
         /**
          * MonthlySchedule
@@ -5402,6 +5459,12 @@ export interface components {
             client_task_id?: string | null;
             /** Due On */
             due_on?: string | null;
+            /**
+             * Kind
+             * @default task
+             * @enum {string}
+             */
+            kind: "task" | "review";
             /** Notes */
             notes?: string | null;
             /** Source Message Id */
@@ -5461,6 +5524,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Kind
+             * @default task
+             * @enum {string}
+             */
+            kind: "task" | "review";
             /** Notes */
             notes: string | null;
             /**
@@ -11139,6 +11208,26 @@ export interface operations {
         };
     };
     list_mine_api_v1_tasks_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+        };
+    };
+    list_requested_api_v1_tasks_requested_get: {
         parameters: {
             query?: never;
             header?: never;

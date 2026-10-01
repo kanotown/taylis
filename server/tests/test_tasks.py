@@ -526,6 +526,7 @@ async def test_events_and_audiences(
     assigned = await _outbox(db, "task.assigned")
     assert len(assigned) == 1 and assigned[0].audience_id == erin.id
     assert assigned[0].payload == {
+        "kind": "task",
         "task_id": shared["id"],
         "channel_id": general["id"],
         "channel_name": "general",

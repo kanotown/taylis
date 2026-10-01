@@ -42,6 +42,8 @@ class Task(Base):
     title: Mapped[str] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(8), default="todo", server_default="todo")
+    # L9 (REVIEWS.md): "review" = a review request made from a message (its chip and pushes say so).
+    kind: Mapped[str] = mapped_column(String(8), default="task", server_default="task")
     position: Mapped[float] = mapped_column(Double)
     due_on: Mapped[date | None] = mapped_column(Date)
     # Made from a message: the link, its channel and a one-line excerpt. An edit of the message
@@ -72,6 +74,7 @@ class Task(Base):
             f"notes IS NULL OR char_length(notes) <= {MAX_NOTES_LENGTH}", name="notes_length"
         ),
         CheckConstraint("status IN ('todo', 'doing', 'done')", name="status_values"),
+        CheckConstraint("kind IN ('task', 'review')", name="kind_values"),
         CheckConstraint(
             "(status = 'done') = (completed_at IS NOT NULL)", name="completed_when_done"
         ),

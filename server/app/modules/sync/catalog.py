@@ -104,6 +104,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     ),
     task_events.TASK_ASSIGNED: (task_events.TaskAssignedData, "user", False),
     task_events.TASK_DUE: (task_events.TaskDueData, "user", False),
+    task_events.TASK_REVIEW_DONE: (task_events.TaskReviewDoneData, "user", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

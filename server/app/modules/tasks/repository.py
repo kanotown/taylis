@@ -107,6 +107,30 @@ async def assigned_to(
     return list((await db.execute(stmt.limit(limit))).scalars().all())
 
 
+async def requested_by(
+    db: AsyncSession, owner_id: uuid.UUID, channel_ids: list[uuid.UUID], *, done: bool, limit: int
+) -> list[Task]:
+    """L9: shared tasks I made with someone else among the assignees: open ones by due date
+    (none last), or the most recently completed `limit`."""
+    if not channel_ids:
+        return []
+    others = select(TaskAssignee.task_id).where(
+        TaskAssignee.task_id == Task.id, TaskAssignee.user_id != owner_id
+    )
+    stmt = select(Task).where(
+        Task.owner_id == owner_id,
+        Task.channel_id.in_(channel_ids),
+        Task.deleted_at.is_(None),
+        Task.status == "done" if done else Task.status != "done",
+        others.exists(),
+    )
+    if done:
+        stmt = stmt.order_by(Task.completed_at.desc(), Task.id.desc())
+    else:
+        stmt = stmt.order_by(Task.due_on.asc().nulls_last(), Task.created_at, Task.id)
+    return list((await db.execute(stmt.limit(limit))).scalars().all())
+
+
 async def personal(db: AsyncSession, owner_id: uuid.UUID, *, done: bool, limit: int) -> list[Task]:
     stmt = select(Task).where(
         _board(None, owner_id), Task.status == "done" if done else Task.status != "done"

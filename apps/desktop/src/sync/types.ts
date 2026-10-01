@@ -1,4 +1,4 @@
-import type { AckOut, AttachmentOut, ChannelLinkOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
+import type { AckOut, AttachmentOut, MessageTaskOut, ChannelLinkOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, PollOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic } from "../api/types";
 
 export type { AckOut, AttachmentOut, ChannelLinkOut, ChannelOut, CustomEmojiOut, DraftOut, DraftUpdated, GroupOut, MessageOut, Priority, SidebarSectionOut, NotificationLevel, ParentThread, PresenceEntry, PresenceStatus, ReactionOut, ReadStateOut, ReminderOut, ScheduledOut, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, ThreadUpdated, UserMe, UserPublic };
 
@@ -46,13 +46,15 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "reply_user_ids" | "attachments" | "pinned_at" | "pinned_by" | "poll" | "priority" | "ack_requested" | "acks"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "reply_user_ids" | "attachments" | "pinned_at" | "pinned_by" | "poll" | "priority" | "ack_requested" | "acks" | "tasks"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
   mentioned_user_ids?: string[];
   mention_all?: boolean;
   reactions?: ReactionOut[];
+  /** L9: shared tasks made from it (review requests); optional like the other server-filled fields. */
+  tasks?: MessageTaskOut[];
   parent_id?: string | null;
   /** M15c: a reply shown in the channel timeline as well as in its thread. */
   also_in_channel?: boolean;

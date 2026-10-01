@@ -7,6 +7,8 @@ export type TokenResponse = components["schemas"]["TokenResponse"];
 export type ChannelOut = components["schemas"]["ChannelOut"];
 /** M49: a member's conversation's newest message as one line (MOBILE_UI.md §7.1). */
 export type LastMessageOut = components["schemas"]["LastMessageOut"];
+/** L9 (REVIEWS.md §2.2): a shared task made from a message (its chip). */
+export type MessageTaskOut = components["schemas"]["MessageTaskOut"];
 export type MessageOut = components["schemas"]["MessageOut"];
 export type ReactionOut = components["schemas"]["ReactionOut"];
 export type ReadStateOut = components["schemas"]["ReadStateOut"];
