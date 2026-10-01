@@ -37,7 +37,7 @@ struct DirectoryView: View {
         if let topic = controller.store.roster[user.id]?.researchTopic, !topic.isEmpty { parts.append(topic) }
         if let status = activeStatus(user) { parts.append("\(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces)) }
         if !parts.isEmpty { return parts.joined(separator: " · ") }
-        if user.role == "bot" { return "受信 Webhook" }
+        if user.role == "bot" { return controller.isAiBot(user.id) ? "AI のボット" : "受信 Webhook" }
         switch controller.store.presenceOf(user.id) {
         case "online": return "オンライン"
         case "away": return "離席中"
@@ -55,7 +55,7 @@ struct DirectoryView: View {
                     if let line = controller.store.roster[user.id] { RosterBadge(profile: line) }
                     if user.role == "admin" { Text("管理者").font(.caption2).foregroundStyle(Color.accentColor) }
                     if user.role == "guest" { Text("ゲスト").font(.caption2).foregroundStyle(.secondary) }
-                    if user.role == "bot" { Text("BOT").font(.caption2).bold().foregroundStyle(.secondary) }
+                    if controller.isAiBot(user.id) { AiBadge() } else if user.role == "bot" { Text("BOT").font(.caption2).bold().foregroundStyle(.secondary) }
                     if user.dndUntil != nil { Text("🔕").font(.caption2) }
                 }
                 StatusGlyph.text(subtitle(user), controller: controller, height: 16).font(.footnote).foregroundStyle(.secondary).lineLimit(1)

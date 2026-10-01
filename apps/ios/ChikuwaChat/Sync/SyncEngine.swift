@@ -152,6 +152,8 @@ final class SyncEngine {
     @ObservationIgnored private(set) var calendar: CalendarHub!
     /// M56: the boards, 「自分のタスク」 and the calendar ranges of tasks on screen (TASKS.md §4).
     @ObservationIgnored private(set) var tasks: TaskHub!
+    /// M66: whether the server has AI, its bots, and the summary sheet's run (docs/AI.md §5).
+    @ObservationIgnored private(set) var ai: AiHub!
 
     /// error frame codes that mean the auth frame was refused (a close 4001 follows).
     private static let authRefusals: Set<String> = ["auth_required", "token_expired", "invalid_token", "session_revoked", "session_expired",
@@ -176,6 +178,7 @@ final class SyncEngine {
         calendar.onAlarm = { [weak self] event in self?.onCalendarAlarm?(event) }
         tasks = TaskHub(api: api as? TaskApi, me: { [weak store] in store?.me?.id })
         tasks.onNotice = { [weak self] notice in self?.onTaskNotice?(notice) }
+        ai = AiHub(api: api as? AiApi)
         store.onChannelRemoved = { [weak self] channelId in self?.channelRemoved(channelId) }
         store.onStalePreview = { [weak self] channelId in Task { await self?.refreshLastMessage(channelId) } }
     }
@@ -316,6 +319,7 @@ final class SyncEngine {
         canvases.online() // M45: canvas saves that failed, open canvases read again, edits kept from before a relaunch
         calendar.online() // M52: the ranges on screen and the channels' counts read again (CALENDAR.md §5)
         tasks.online() // M56: the boards, 「自分のタスク」 and the calendar's tasks read again (TASKS.md §4)
+        ai.online() // M66: the AI status, and the open summary's run read again (docs/AI.md §5)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         if let current = currentChannelId { Task { await openChannel(current) } }
@@ -640,6 +644,8 @@ final class SyncEngine {
             calendar.applyEvent(frame.event, frame.data)
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9
             tasks.applyEvent(frame.event, frame.data)
+        case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state
+            ai.applyEvent(frame.data)
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }
             store.replaceSidebar(try frame.data.decode(Payload.self).sections)

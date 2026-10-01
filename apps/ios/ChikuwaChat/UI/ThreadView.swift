@@ -34,6 +34,8 @@ struct ThreadView: View {
     @State private var landingInterrupted = false
     /// A message's sheet, presented here rather than by its row (MessageSheet).
     @State private var messageSheet: MessageSheet?
+    /// M66: the 「このスレッドを要約」 sheet's request.
+    @State private var aiSummary: AiSummaryRequest?
     /// The row the list is kept at (ChannelView.keptRowId): a reply arriving below does not move what is on screen.
     @State private var keptRowId: String?
     /// The landing on the first unread reply, in a task of its own (ChannelView.landingTask: a `.task` cancelled by the
@@ -166,7 +168,22 @@ struct ThreadView: View {
                     .accessibilityLabel(state.following ? "スレッドのフォローを外す" : "スレッドをフォロー")
                 }
             }
+            if controller.canSummarize(channelId) {  // M66 (docs/AI.md §6)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("このスレッドを要約", systemImage: "sparkles") {
+                            let request = AiSummaryRequest(channelId: channelId, scope: .thread(parentId: parentId))
+                            aiSummary = request
+                            controller.summarize(request)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("スレッドのメニュー")
+                }
+            }
         }
+        .aiSummarySheet(controller, request: $aiSummary)
         .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false):\(loadAttempt)") {
             guard let engine = controller.engine else { return }
             guard engine.status == .online else { fetchedOnline = false; return }

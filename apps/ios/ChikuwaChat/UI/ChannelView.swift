@@ -10,6 +10,8 @@ struct ChannelView: View {
     /// M29: the thread and the channel's details are pages pushed over the conversation (Slack), not sheets.
     @State private var thread: ThreadTarget?
     @State private var showInfo = false
+    /// M66: the summary sheet's request (the ⋯ 「要約」).
+    @State private var aiSummary: AiSummaryRequest?
     /// M29: 「メッセージ」, or the pins or files covering the conversation (which stays as it was underneath).
     @State private var tab: ChannelTab = .messages
     @Environment(\.scenePhase) private var scenePhase
@@ -639,6 +641,9 @@ struct ChannelView: View {
                         }
                         NotificationMenu(controller: controller, channel: channel)
                     }
+                    if controller.canSummarize(channelId) {  // M66
+                        AiSummaryMenu(channelId: channelId) { request in aiSummary = request; controller.summarize(request) }
+                    }
                     Button("チャンネル情報", systemImage: "info.circle") { showInfo = true }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -652,6 +657,7 @@ struct ChannelView: View {
             case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
             }
         }
+        .aiSummarySheet(controller, request: $aiSummary)
         .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
         .navigationDestination(isPresented: $showInfo) { ChannelInfoView(controller: controller, channelId: channelId) }
         .onChange(of: thread == nil && !showInfo) { _, back in if back { sheetClosed() } }
@@ -1021,7 +1027,9 @@ struct MessageRow: View {
                 if !compact {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(senderName).bold().onTapGesture { if !message.pending { show(.profile) } }
-                        if store.users[message.senderId]?.role == "bot" {
+                        if controller.isAiBot(message.senderId) {
+                            AiBadge()  // M66
+                        } else if store.users[message.senderId]?.role == "bot" {
                             Text("BOT").font(.caption2).bold().foregroundStyle(.secondary)
                                 .padding(.horizontal, 4).padding(.vertical, 1).background(Color.secondary.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 3))
                         }
@@ -1369,7 +1377,8 @@ struct ComposerView: View {
     }
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
-        return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
+        return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [],
+                                   aiBotIds: controller?.aiHub?.botUserIds ?? [])
     }
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {
@@ -1670,6 +1679,7 @@ struct ComposerView: View {
                         ForEach(candidates) { candidate in
                             Button { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) } label: {
                                 Text("@\(candidate.username)").fontWeight(.semibold) + Text("  \(candidate.label)").foregroundStyle(.secondary)
+                                    + (candidate.kind == "ai" ? Text("  AI").font(.caption2).bold().foregroundStyle(Color.accentColor) : Text(""))
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)

@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi, RecurringApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi, RecurringApi, AiApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -993,6 +993,18 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     func runRecurringPost(id: String) async throws -> RecurringRunOut {
         try await request("POST", "/api/v1/recurring-posts/\(id)/run", body: .object([:]))
     }
+
+    // MARK: AI (M66, docs/AI.md §5)
+
+    /// 404 on a server before M65: no AI anywhere.
+    func aiStatus() async throws -> AiStatusOut { try await request("GET", "/api/v1/ai/status") }
+
+    /// 202 with the run pending; its states follow as ai.run_updated.
+    func createSummary(_ request: AiSummaryRequest) async throws -> AiRunOut {
+        try await self.request("POST", "/api/v1/ai/summaries", body: request.json)
+    }
+
+    func aiRun(id: String) async throws -> AiRunOut { try await request("GET", "/api/v1/ai/runs/\(id)") }
 
     // MARK: transport
 
