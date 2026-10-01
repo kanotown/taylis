@@ -113,6 +113,27 @@ export interface paths {
         patch: operations["update_agent_api_v1_admin_ai_agents__agent_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/ai/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description The model providers (anthropic, openai): whether the server has each one's API key, and
+         *     the models it serves (docs/AI.md §12).
+         */
+        get: operations["list_providers_api_v1_admin_ai_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/ai/usage": {
         parameters: {
             query?: never;
@@ -3110,7 +3131,7 @@ export interface components {
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
             /** Username */
@@ -3148,7 +3169,7 @@ export interface components {
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
             /**
@@ -3175,7 +3196,7 @@ export interface components {
              * Model
              * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
             /** Name */
             name: string;
         };
@@ -3193,9 +3214,24 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
             /** Model */
-            model?: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5") | null;
+            model?: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna") | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * AiProviderOut
+         * @description docs/AI.md §12 (admin only): a provider, whether its key file is configured, its models.
+         */
+        AiProviderOut: {
+            /** Configured */
+            configured: boolean;
+            /** Models */
+            models: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna")[];
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "anthropic" | "openai";
         };
         /** AiRunOut */
         AiRunOut: {
@@ -6642,6 +6678,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_v1_admin_ai_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiProviderOut"][];
                 };
             };
         };

@@ -165,7 +165,10 @@ def test_the_key_file(tmp_path: Any) -> None:
     key.write_text("sk-ant-test\n")
     assert read_api_key(str(key)) == "sk-ant-test"
     runtime = AiRuntime(str(key))
-    assert runtime.available and runtime.get_provider() is runtime.get_provider()
+    opus = runtime.get_provider("claude-opus-5-5")
+    assert runtime.available and opus is not None
+    assert opus is runtime.get_provider("claude-opus-5-5")
+    assert runtime.get_provider("gpt-6.1-sol") is None  # no OpenAI key file
     assert not AiRuntime(str(tmp_path / "missing")).available
 
 

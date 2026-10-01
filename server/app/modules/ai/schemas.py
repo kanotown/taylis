@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field, field_validator
 from app.modules.admin.schemas import USERNAME_PATTERN
 from app.modules.ai.models import MAX_CHARACTER_LENGTH, MAX_NAME_LENGTH, AiAgent, AiRun
 
-AiModel = Literal["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"]
+AiModel = Literal[
+    "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5", "gpt-6.1-sol", "gpt-6-luna"
+]
+AiProviderName = Literal["anthropic", "openai"]
 AiEffort = Literal["low", "medium", "high"]
 AiRunKind = Literal["mention", "summary"]
 AiRunStatus = Literal["pending", "running", "done", "failed"]
@@ -83,6 +86,14 @@ class AiStatusOut(BaseModel):
     available: bool
     summary_available: bool
     agents: list[AiAgentPublic]
+
+
+class AiProviderOut(BaseModel):
+    """docs/AI.md §12 (admin only): a provider, whether its key file is configured, its models."""
+
+    name: AiProviderName
+    configured: bool
+    models: list[AiModel]
 
 
 class AiSummaryCreate(BaseModel):

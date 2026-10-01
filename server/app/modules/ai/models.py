@@ -24,7 +24,8 @@ from app.core.time import utcnow
 
 MAX_NAME_LENGTH = 80  # the bot's display name (users.display_name)
 MAX_CHARACTER_LENGTH = 4000
-MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5")
+# docs/AI.md §12: Anthropic and OpenAI models; the provider follows from the model (llm.py).
+MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5", "gpt-6.1-sol", "gpt-6-luna")
 EFFORTS = ("low", "medium", "high")
 
 
@@ -56,7 +57,8 @@ class AiAgent(Base):
     __table_args__ = (
         CheckConstraint(f"char_length(character) <= {MAX_CHARACTER_LENGTH}", name="character_len"),
         CheckConstraint(
-            "model IN ('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5')",
+            "model IN ('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', "
+            "'gpt-6.1-sol', 'gpt-6-luna')",
             name="model_values",
         ),
         CheckConstraint("effort IN ('low', 'medium', 'high')", name="effort_values"),

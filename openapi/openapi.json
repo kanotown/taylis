@@ -372,7 +372,9 @@
             "enum": [
               "claude-opus-5-5",
               "claude-sonnet-5-5",
-              "claude-haiku-4-5"
+              "claude-haiku-4-5",
+              "gpt-6.1-sol",
+              "gpt-6-luna"
             ],
             "title": "Model",
             "type": "string"
@@ -440,7 +442,9 @@
             "enum": [
               "claude-opus-5-5",
               "claude-sonnet-5-5",
-              "claude-haiku-4-5"
+              "claude-haiku-4-5",
+              "gpt-6.1-sol",
+              "gpt-6-luna"
             ],
             "title": "Model",
             "type": "string"
@@ -491,7 +495,9 @@
             "enum": [
               "claude-opus-5-5",
               "claude-sonnet-5-5",
-              "claude-haiku-4-5"
+              "claude-haiku-4-5",
+              "gpt-6.1-sol",
+              "gpt-6-luna"
             ],
             "title": "Model",
             "type": "string"
@@ -569,7 +575,9 @@
                 "enum": [
                   "claude-opus-5-5",
                   "claude-sonnet-5-5",
-                  "claude-haiku-4-5"
+                  "claude-haiku-4-5",
+                  "gpt-6.1-sol",
+                  "gpt-6-luna"
                 ],
                 "type": "string"
               },
@@ -594,6 +602,44 @@
           }
         },
         "title": "AiAgentUpdate",
+        "type": "object"
+      },
+      "AiProviderOut": {
+        "description": "docs/AI.md §12 (admin only): a provider, whether its key file is configured, its models.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "models": {
+            "items": {
+              "enum": [
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+                "claude-haiku-4-5",
+                "gpt-6.1-sol",
+                "gpt-6-luna"
+              ],
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "enum": [
+              "anthropic",
+              "openai"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "configured",
+          "models"
+        ],
+        "title": "AiProviderOut",
         "type": "object"
       },
       "AiRunOut": {
@@ -9747,6 +9793,37 @@
           }
         ],
         "summary": "Update Agent",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/providers": {
+      "get": {
+        "description": "The model providers (anthropic, openai): whether the server has each one's API key, and\nthe models it serves (docs/AI.md §12).",
+        "operationId": "list_providers_api_v1_admin_ai_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiProviderOut"
+                  },
+                  "title": "Response List Providers Api V1 Admin Ai Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Providers",
         "tags": [
           "ai"
         ]

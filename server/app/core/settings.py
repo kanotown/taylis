@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     # clients); without it the AI features report unavailable. Budget per calendar month (UTC)
     # and runs per person per rolling 24 hours (mentions and summaries together).
     ai_api_key_file: str = "/run/secrets/anthropic_api_key"
+    # docs/AI.md §12: the OpenAI key, for bots whose model is an OpenAI one (same rules).
+    ai_openai_api_key_file: str = "/run/secrets/openai_api_key"
     ai_monthly_budget_usd: float = 30.0
     ai_user_daily_runs: int = 50
     ai_worker_interval_seconds: float = 2.0

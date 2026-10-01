@@ -1,6 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
-import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "./ai";
+import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -907,6 +907,11 @@ export class ApiClient {
   /** `month` "YYYY-MM"; this month when left out. */
   adminAiUsage(month?: string): Promise<AiUsageOut> {
     return this.request("GET", `/api/v1/admin/ai/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+  }
+
+  /** docs/AI.md §12: the providers and whether each has its API key (404 on a server before it). */
+  adminAiProviders(): Promise<AiProviderOut[]> {
+    return this.request("GET", "/api/v1/admin/ai/providers");
   }
 
   // --- polls (M14b) ------------------------------------------------------------------------

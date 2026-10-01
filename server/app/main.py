@@ -369,6 +369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M65: the model provider, built from the key file on first use (docs/AI.md §2.4).
     app.state.ai = AiRuntime(
         settings.ai_api_key_file,
+        openai_key_file=settings.ai_openai_api_key_file,
         monthly_budget_usd=settings.ai_monthly_budget_usd,
         user_daily_runs=settings.ai_user_daily_runs,
     )

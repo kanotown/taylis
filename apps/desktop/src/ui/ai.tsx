@@ -5,7 +5,7 @@
 import { Loader2, RotateCw, Sparkles } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
-import { describeAiError } from "../api/ai";
+import { AI_PROVIDERS, aiProviderOf, type AiProviderName, describeAiError } from "../api/ai";
 import type { AppController } from "../state/app";
 import { type AiHub, isFinished, type SummaryTarget, summaryTitle } from "../sync/ai";
 import type { Store } from "../sync/store";
@@ -25,12 +25,18 @@ export function AiBadge({ className }: { className?: string }) {
 /** The §4 notice for a conversation whose members include AI bots; null when none does. */
 export function aiNoticeText(store: Pick<Store, "aiAgentOf">, memberIds: Iterable<string>): string | null {
   const names: string[] = [];
+  const providers = new Set<AiProviderName>();
   for (const id of memberIds) {
     const agent = store.aiAgentOf(id);
-    if (agent) names.push(agent.name);
+    if (agent) {
+      names.push(agent.name);
+      providers.add(aiProviderOf(agent.model));
+    }
   }
   if (names.length === 0) return null;
-  return `AI (${names.join("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます`;
+  // §12: each bot's model decides where its part goes (Anthropic, OpenAI or both).
+  const where = AI_PROVIDERS.filter((p) => providers.has(p.value)).map((p) => p.label).join(" と ");
+  return `AI (${names.join("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が ${where} の API に送られます`;
 }
 
 export function AiChannelNotice({ controller, memberIds }: { controller: AppController; memberIds: string[] | null }) {

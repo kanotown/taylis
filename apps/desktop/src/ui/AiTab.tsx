@@ -1,7 +1,7 @@
 import { Bot, Pencil, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, type AiUsageOut, aiModelLabel, DEFAULT_AI_MODEL, describeAiError } from "../api/ai";
+import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, aiModelLabel, aiProviderLabel, type AiProviderName, aiProviderOf, type AiProviderOut, type AiUsageOut, DEFAULT_AI_MODEL, describeAiError } from "../api/ai";
 import type { AppController } from "../state/app";
 import { Badge, Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 
@@ -48,10 +48,16 @@ export function AiTab({ controller }: { controller: AppController }) {
   const [editing, setEditing] = useState<AiAgentOut | "new" | null>(null);
   const [deleting, setDeleting] = useState<AiAgentOut | null>(null);
   const [busy, setBusy] = useState(false);
+  // §12: which providers have a key; null when unknown (an older server: no marks at all).
+  const [providers, setProviders] = useState<AiProviderOut[] | null>(null);
 
   const load = async () => {
     const api = controller.api;
     if (!api) return;
+    api.adminAiProviders().then(
+      (list) => setProviders(Array.isArray(list) && list.length > 0 ? list : null),
+      () => setProviders(null),
+    );
     try {
       const [agents, month] = await Promise.all([api.adminAiAgents(), api.adminAiUsage()]);
       setRows(agents);
@@ -83,7 +89,7 @@ export function AiTab({ controller }: { controller: AppController }) {
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted">メンションに返事をするボットです。要約には最初の有効なボットのモデルを使います。</span>
+        <span className="text-sm text-muted">メンションに返事をするボットです。要約には、API キーのある最初の有効なボットのモデルを使います。</span>
         <Button size="sm" className="shrink-0" onClick={() => setEditing("new")}>
           <Bot size={14} /> ボットを作成
         </Button>
@@ -99,6 +105,7 @@ export function AiTab({ controller }: { controller: AppController }) {
                   <span className="text-xs text-muted">@{row.username}</span>
                   <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? "有効" : "停止中"}</Badge>
                   {row.allow_private && <Badge>非公開も可</Badge>}
+                  {keyMissing(providers, row.model) && <Badge tone="danger">API キー未設定</Badge>}
                 </div>
                 <div className="truncate text-[11px] text-muted">
                   {aiModelLabel(row.model)} · 考える量 {AI_EFFORTS.find((e) => e.value === row.effort)?.label ?? row.effort}
@@ -120,6 +127,7 @@ export function AiTab({ controller }: { controller: AppController }) {
         <AgentEditor
           row={editing === "new" ? null : editing}
           busy={busy}
+          providers={providers}
           onClose={() => setEditing(null)}
           onSave={(form) =>
             void run(async () => {
@@ -206,7 +214,17 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
   );
 }
 
-function AgentEditor({ row, busy, onClose, onSave }: { row: AiAgentOut | null; busy: boolean; onClose: () => void; onSave: (form: AgentForm) => void }) {
+/** Whether the server has the provider's key: true / false, or null when the server does not say (§12). */
+export function providerConfigured(providers: AiProviderOut[] | null, name: AiProviderName): boolean | null {
+  return providers?.find((p) => p.name === name)?.configured ?? null;
+}
+
+/** True only when the server said the model's provider has no key. */
+export function keyMissing(providers: AiProviderOut[] | null, model: string): boolean {
+  return providerConfigured(providers, aiProviderOf(model)) === false;
+}
+
+function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOut | null; busy: boolean; providers: AiProviderOut[] | null; onClose: () => void; onSave: (form: AgentForm) => void }) {
   const [form, setForm] = useState<AgentForm>(() => agentForm(row));
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -234,9 +252,15 @@ function AgentEditor({ row, busy, onClose, onSave }: { row: AiAgentOut | null; b
           <Textarea value={form.character} rows={6} className={cn(tooLong && "border-danger")} placeholder="例: 研究室の先輩。やさしく、短く答える。わからないことはわからないと言う。" onChange={(e) => setForm({ ...form, character: e.target.value })} />
         </Field>
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
-          <Field label="モデル">
+          <Field label="モデル" hint={keyMissing(providers, form.model) ? `サーバーに ${aiProviderLabel(aiProviderOf(form.model))} の API キーが設定されていません (このボットは応答できません)` : undefined}>
             <select value={form.model} className={SELECT} onChange={(e) => setForm({ ...form, model: e.target.value as AiModel })}>
-              {AI_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}{m.value === DEFAULT_AI_MODEL ? " (既定)" : ""}</option>)}
+              {AI_PROVIDERS.map((p) => (
+                <optgroup key={p.value} label={`${p.label}${providerConfigured(providers, p.value) === false ? " (キー未設定)" : ""}`}>
+                  {AI_MODELS.filter((m) => m.provider === p.value).map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}{m.value === DEFAULT_AI_MODEL ? " (既定)" : ""}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </Field>
           <Field label="考える量">

@@ -79,6 +79,10 @@ describe("rules", () => {
     expect(aiNoticeText(store, ["u1", "u2"])).toBeNull();
     expect(aiNoticeText(store, ["u1", "b1"])).toBe("AI (ちくわ) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
     expect(aiNoticeText(store, ["b2", "b1"])).toContain("AI (はんぺん、ちくわ)");
+    // §12: the provider follows each bot's model.
+    store.setAiStatus({ available: true, summary_available: true, agents: [{ id: "a1", bot_user_id: "b1", name: "ちくわ", model: "claude-opus-5-5" }, { id: "a3", bot_user_id: "b3", name: "ソル", model: "gpt-6.1-sol" }] });
+    expect(aiNoticeText(store, ["b3"])).toBe("AI (ソル) が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます");
+    expect(aiNoticeText(store, ["b3", "b1"])).toContain("Anthropic と OpenAI の API");
   });
 
   it("mention candidates mark the AI bots", () => {
