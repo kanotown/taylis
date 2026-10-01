@@ -18,11 +18,11 @@ uv run alembic upgrade head
 uv run uvicorn app.main:create_app --factory --reload
 
 # 5. 検証 (マイルストーンごとに必ず実行)
-uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q -n auto
 uv run python -m app.cli export-openapi     # openapi/openapi.json の再生成
 ```
 
-テストは実 PostgreSQL に対して走る。既定の接続先は `postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test`
+テストは実 PostgreSQL に対して走る。`-n auto` (pytest-xdist) は CPU の数だけ並列に走らせ、ワーカーごとに別のデータベース (`chikuwa_test_gw0` …) を作って使う (M1 Max で約 150 秒 → 約 35 秒)。CI は 1 本ずつ (`-n` なし)。既定の接続先は `postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test`
 (`TEST_DATABASE_URL` で変更可)。データベースが無ければ作成し、毎回 `downgrade base` → `upgrade head` で
 マイグレーションも検証する。
 

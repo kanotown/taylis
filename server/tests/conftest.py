@@ -26,6 +26,13 @@ SERVER_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test"
 )
+# `pytest -n auto` (pytest-xdist): each worker gets its own database (chikuwa_test_gw0, …),
+# created and migrated on its first test, so the workers never truncate each other's rows.
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+if _WORKER:
+    _url = make_url(TEST_DATABASE_URL)
+    _url = _url.set(database=f"{_url.database}_{_WORKER}")
+    TEST_DATABASE_URL = _url.render_as_string(hide_password=False)
 TABLES = [
     "sso_tickets",
     "sso_requests",
