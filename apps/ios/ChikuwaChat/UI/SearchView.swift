@@ -10,10 +10,21 @@ struct SearchRoute: Hashable {
 }
 
 enum SearchTab: String, CaseIterable, Identifiable {
-    case messages, files
+    case messages, files, canvases // M58: 「キャンバス」 beside メッセージ / ファイル (CANVAS.md §4.8)
 
     var id: String { rawValue }
-    var label: String { self == .messages ? "メッセージ" : "ファイル" }
+    var label: String {
+        switch self {
+        case .messages: "メッセージ"
+        case .files: "ファイル"
+        case .canvases: "キャンバス"
+        }
+    }
+}
+
+/// M58: a canvas search result opened inside the search screen (back returns to the results).
+struct SearchCanvasRoute: Hashable {
+    let canvasId: String
 }
 
 /// The filter pickers that need more room than a menu.
@@ -48,6 +59,9 @@ final class SearchModel {
     private(set) var filesLoaded = false
     private(set) var filesFailure: String?
 
+    /// M58: the 「キャンバス」 tab's results (read when the tab shows).
+    var canvases = CanvasSearchResults()
+
     @ObservationIgnored private var nextOffset = 0
     @ObservationIgnored private var request = 0
     @ObservationIgnored private var fileRequest = 0
@@ -74,6 +88,7 @@ final class SearchModel {
         params = nil
         resetMessages()
         resetFiles()
+        canvases.reset()
     }
 
     /// A new search takes the screen at once; `load` fetches its first page.
@@ -83,6 +98,7 @@ final class SearchModel {
         self.params = params
         resetMessages()
         resetFiles()
+        canvases.reset()
     }
 
     func load(api: ApiClient?) async {
@@ -198,7 +214,7 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var model = SearchModel()
-    @State private var path: [SearchRoute] = []
+    @State private var path = NavigationPath()
     @State private var text = ""
     @State private var tokens: [SearchToken] = []
     @State private var searchPresented = false
@@ -253,6 +269,9 @@ struct SearchView: View {
                 .navigationDestination(for: SearchRoute.self) { route in
                     SearchConversationView(controller: controller, route: route)
                 }
+                .navigationDestination(for: SearchCanvasRoute.self) { route in
+                    CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
+                }
         }
         .overlay(alignment: .bottom) { ErrorToast(controller: controller) }
         .sheet(item: $picker) { which in
@@ -289,7 +308,8 @@ struct SearchView: View {
             SearchResultsView(controller: controller, model: model,
                               onUpdate: { change in update(change) },
                               onPick: { picker = $0 },
-                              onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) })
+                              onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) },
+                              onOpenCanvas: { canvas in path.append(SearchCanvasRoute(canvasId: canvas.id)) })
         } else {
             List { startRows }
                 .listStyle(.insetGrouped)
@@ -515,6 +535,8 @@ struct SearchResultsView: View {
     let onUpdate: ((inout SearchParams) -> Void) -> Void
     let onPick: (SearchPicker) -> Void
     let onOpen: (_ messageId: String, _ channelId: String, _ parentId: String?) -> Void
+    /// M58: a canvas hit of the 「キャンバス」 tab.
+    var onOpenCanvas: (CanvasMeta) -> Void = { _ in }
 
     private var params: SearchParams { model.params ?? SearchParams() }
 
@@ -526,10 +548,13 @@ struct SearchResultsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.top, 8)
-            SearchFilterBar(controller: controller, params: params, filesOnly: model.tab == .files, onUpdate: onUpdate, onPick: onPick)
-            if model.tab == .messages {
+            SearchFilterBar(controller: controller, params: params, tab: model.tab, onUpdate: onUpdate, onPick: onPick)
+            if model.tab != .files {
+                let canvases = model.canvases
+                let loaded = model.tab == .messages ? model.loaded : canvases.loaded
                 HStack {
-                    Text(model.loaded ? SearchLogic.totalLabel(model.total, capped: model.capped) : " ")
+                    Text(loaded ? (model.tab == .messages ? SearchLogic.totalLabel(model.total, capped: model.capped)
+                                                          : SearchLogic.totalLabel(canvases.total, capped: canvases.capped)) : " ")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -539,7 +564,11 @@ struct SearchResultsView: View {
                 .padding(.bottom, 6)
             }
             Divider()
-            if model.tab == .messages { messages } else { files }
+            switch model.tab {
+            case .messages: messages
+            case .files: files
+            case .canvases: CanvasSearchList(controller: controller, results: model.canvases, params: params, onOpen: onOpenCanvas)
+            }
         }
         .onChange(of: model.tab) { _, tab in
             if tab == .files { Task { await model.showFiles(api: controller.api) } }
@@ -642,8 +671,10 @@ struct SearchResultsView: View {
 struct SearchFilterBar: View {
     @Bindable var controller: AppController
     let params: SearchParams
-    /// The files tab filters by conversation only (GET /files).
-    let filesOnly: Bool
+    /// The files tab filters by conversation only (GET /files); the canvases tab by person, conversation and dates (M58).
+    let tab: SearchTab
+    private var filesOnly: Bool { tab == .files }
+    private var canvases: Bool { tab == .canvases }
     let onUpdate: ((inout SearchParams) -> Void) -> Void
     let onPick: (SearchPicker) -> Void
 
@@ -655,7 +686,11 @@ struct SearchFilterBar: View {
                 if !filesOnly {
                     let sender = params.fromUserId.map { store.users[$0]?.displayName ?? "?" }
                     SearchChip(active: sender != nil, onClear: { onUpdate { $0.fromUserId = nil } }) {
-                        Button { onPick(.sender) } label: { SearchChipLabel(title: sender.map { "送信者: \($0)" } ?? "送信者", systemImage: "person", active: sender != nil) }
+                        Button { onPick(.sender) } label: {
+                            // A canvas's person is who made it or changed it last.
+                            SearchChipLabel(title: sender.map { (canvases ? "作成・更新: " : "送信者: ") + $0 } ?? (canvases ? "作成・更新した人" : "送信者"),
+                                            systemImage: "person", active: sender != nil)
+                        }
                     }
                 }
                 let channel = params.channelId.map { id in store.channel(id).map { channelTitle($0, store: store) } ?? "?" }
@@ -677,6 +712,8 @@ struct SearchFilterBar: View {
                             SearchChipLabel(title: date ?? "期間", systemImage: "calendar", active: date != nil)
                         }
                     }
+                }
+                if !filesOnly && !canvases {
                     SearchChip(active: !params.has.isEmpty, onClear: { onUpdate { $0.has = [] } }) {
                         Menu {
                             ForEach(SearchHasFlag.allCases) { flag in

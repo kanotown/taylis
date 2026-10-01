@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7E2B5B4B79437C3FB91524B3 /* CanvasCatchUpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */; };
+		85A3F97DF7831B3EBC32DA93 /* CanvasSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2613FD78FD9732ED70949EE1 /* CanvasSearch.swift */; };
+		12F298467859EDDBBE06C67C /* CanvasHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 920EA708723289523AFAA527 /* CanvasHistory.swift */; };
+		A2B1D5818B13ACDAAF4DA5BA /* CanvasDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4BBE06484512B78C827323 /* CanvasDiff.swift */; };
 		01058071D83FDB3831C7411A /* Frames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF56C1D17673E9A46D280F6D /* Frames.swift */; };
 		028223C1DFF0E6A8C39B3726 /* Permalink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B17C0044CEFA7773C29BDC /* Permalink.swift */; };
 		072F46A639D7FAE65117A223 /* Share.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B2BB586E878AEEC2A31668 /* Share.swift */; };
@@ -199,6 +203,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasCatchUpTests.swift; sourceTree = "<group>"; };
+		2613FD78FD9732ED70949EE1 /* CanvasSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSearch.swift; sourceTree = "<group>"; };
+		920EA708723289523AFAA527 /* CanvasHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasHistory.swift; sourceTree = "<group>"; };
+		FC4BBE06484512B78C827323 /* CanvasDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasDiff.swift; sourceTree = "<group>"; };
 		00D8D7E37A6EBA67685667F3 /* Timeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeline.swift; sourceTree = "<group>"; };
 		01E6DB8D06A8D7946BFF70FC /* CanvasEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasEditor.swift; sourceTree = "<group>"; };
 		021AEEA95E1D9DCF12F13504 /* RosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RosterTests.swift; sourceTree = "<group>"; };
@@ -489,6 +497,7 @@
 				989AE8D5D6BB658A4E7C78C7 /* CalendarTests.swift */,
 				607C1E9E7402F661214D90A0 /* CanvasTableTests.swift */,
 				0397FFA9C50A7ED2CC1BCCFF /* CanvasTests.swift */,
+				F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */,
 				888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */,
 				9FA4770AB270A20E2EC6ED9D /* ChannelRulesTests.swift */,
 				6D6ACD361FF6151716ED35A5 /* CommandsTests.swift */,
@@ -561,6 +570,9 @@
 				9761DD00E522FC1A599CF65C /* CanvasAccess.swift */,
 				BF9B09A8597E4C56E7828D8D /* CanvasBodyView.swift */,
 				01E6DB8D06A8D7946BFF70FC /* CanvasEditor.swift */,
+				2613FD78FD9732ED70949EE1 /* CanvasSearch.swift */,
+				920EA708723289523AFAA527 /* CanvasHistory.swift */,
+				FC4BBE06484512B78C827323 /* CanvasDiff.swift */,
 				7647529BD8EB1DF7739B541D /* CanvasTable.swift */,
 				51631C2959FF754883E5F784 /* CanvasTableEditor.swift */,
 				787B30B2EE2CE4147E54945D /* CanvasText.swift */,
@@ -779,6 +791,7 @@
 				550E3B084AFF70246660C746 /* CalendarTests.swift in Sources */,
 				60835B65D7A929055ECFF067 /* CanvasTableTests.swift in Sources */,
 				37B851B524C60ED03CED733D /* CanvasTests.swift in Sources */,
+				7E2B5B4B79437C3FB91524B3 /* CanvasCatchUpTests.swift in Sources */,
 				26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */,
 				34C9B61D2DB29833F7AFF2AF /* ChannelRulesTests.swift in Sources */,
 				8613449A516B8C7EA5D701A8 /* CommandsTests.swift in Sources */,
@@ -861,6 +874,9 @@
 				5C069F9A853941A01B687E9D /* CanvasAccess.swift in Sources */,
 				39DDBCAF3AF2C64C501B0CB8 /* CanvasBodyView.swift in Sources */,
 				405556EA596AE507DBDF1D69 /* CanvasEditor.swift in Sources */,
+				85A3F97DF7831B3EBC32DA93 /* CanvasSearch.swift in Sources */,
+				12F298467859EDDBBE06C67C /* CanvasHistory.swift in Sources */,
+				A2B1D5818B13ACDAAF4DA5BA /* CanvasDiff.swift in Sources */,
 				9FE00E5EE37687842E6BA362 /* CanvasHub.swift in Sources */,
 				9FBDEF1808F26E2BC1702A0A /* CanvasModels.swift in Sources */,
 				EDDA7B56DBA5B948E7557B5B /* CanvasSave.swift in Sources */,

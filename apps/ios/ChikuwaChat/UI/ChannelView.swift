@@ -558,7 +558,7 @@ struct ChannelView: View {
                 if tab != .messages {
                     Group {
                         if tab == .canvas, let channel {
-                            CanvasPane(controller: controller, channel: channel)  // M45
+                            CanvasPane(controller: controller, channel: channel) { thread = ThreadTarget(id: $0) }  // M45; M58 コメント
                         } else if tab == .events, let channel {
                             ChannelEventsPane(controller: controller, channel: channel)  // M52
                         } else if tab == .tasks, let channel {

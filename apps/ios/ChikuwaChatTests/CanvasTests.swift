@@ -184,22 +184,22 @@ final class CanvasRightsTests: XCTestCase {
         let owners = (createdBy: "alice", editPolicy: "owners")
         let mine = (createdBy: "me", editPolicy: "owners")
         // A member: edits a members canvas, only ticks an owners one, manages neither.
-        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: alices), CanvasRights(create: true, edit: true, tick: true, manage: false, trash: false))
-        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: owners), CanvasRights(create: true, edit: false, tick: true, manage: false, trash: false))
+        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: alices), CanvasRights(create: true, edit: true, tick: true, manage: false, trash: false, share: true))
+        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: owners), CanvasRights(create: true, edit: false, tick: true, manage: false, trash: false, share: true))
         // Its creator, the conversation's owner, an administrator: everything.
-        let all = CanvasRights(create: true, edit: true, tick: true, manage: true, trash: true)
+        let all = CanvasRights(create: true, edit: true, tick: true, manage: true, trash: true, share: true)
         XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: mine), all)
         XCTAssertEqual(CanvasRights.of(channel(role: "owner"), actor: me, canvas: owners), all)
         XCTAssertEqual(CanvasRights.of(channel(), actor: admin, canvas: owners), all)
-        // A guest reads only.
-        XCTAssertEqual(CanvasRights.of(channel(), actor: guest, canvas: alices), .none)
+        // A guest reads, and shares (posting a message is open to a guest in a channel they are in, M58).
+        XCTAssertEqual(CanvasRights.of(channel(), actor: guest, canvas: alices), CanvasRights(share: true))
         // An announcement channel: members do not make canvases nor edit a members one, but tick.
-        XCTAssertEqual(CanvasRights.of(channel(posting: "owners"), actor: me, canvas: alices), CanvasRights(create: false, edit: false, tick: true, manage: false, trash: false))
+        XCTAssertEqual(CanvasRights.of(channel(posting: "owners"), actor: me, canvas: alices), CanvasRights(create: false, edit: false, tick: true, manage: false, trash: false, share: false))
         // Archived, or not a member: nothing.
         XCTAssertEqual(CanvasRights.of(channel(archived: true), actor: admin, canvas: mine), .none)
         XCTAssertEqual(CanvasRights.of(channel(member: false), actor: me, canvas: alices), .none)
         // A DM: its members do everything; only the creator trashes.
-        XCTAssertEqual(CanvasRights.of(channel(type: "dm", role: nil), actor: me, canvas: owners), CanvasRights(create: true, edit: true, tick: true, manage: true, trash: false))
+        XCTAssertEqual(CanvasRights.of(channel(type: "dm", role: nil), actor: me, canvas: owners), CanvasRights(create: true, edit: true, tick: true, manage: true, trash: false, share: true))
         XCTAssertTrue(CanvasRights.of(channel(type: "dm", role: nil), actor: me, canvas: mine).trash)
         // Making one: the conversation decides.
         XCTAssertTrue(CanvasRights.of(channel(), actor: me, canvas: nil).create)

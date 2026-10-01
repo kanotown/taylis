@@ -6,6 +6,8 @@ import SwiftUI
 struct CanvasPane: View {
     @Bindable var controller: AppController
     let channel: ChannelState
+    /// M58: 「コメント」 opens the shared message's thread (pushed on the conversation).
+    var onOpenThread: ((String) -> Void)? = nil
     @State private var selectedId: String?
     @State private var dialog: CanvasDialog?
 
@@ -26,7 +28,7 @@ struct CanvasPane: View {
                 ContentUnavailableView("キャンバスを使えません", systemImage: "exclamationmark.circle", description: Text("サーバがキャンバスに対応していません。"))
             } else if let selectedId {
                 CanvasScreen(controller: controller, channel: channel, canvasId: selectedId,
-                             onOpenList: { dialog = .list }, onTrashed: { self.selectedId = nil })
+                             onOpenList: { dialog = .list }, onTrashed: { self.selectedId = nil }, onOpenThread: onOpenThread)
                     .id(selectedId)
             } else if list == nil, let failure = controller.store.canvasListFailure(channel.id) {
                 switch failure {
@@ -111,12 +113,15 @@ struct CanvasScreen: View {
     /// nil: no list to go to (a canvas opened from a link).
     var onOpenList: (() -> Void)?
     var onTrashed: () -> Void = {}
+    /// M58: 「コメント」 (nil: not offered here).
+    var onOpenThread: ((String) -> Void)? = nil
     @State private var saver: CanvasSaver?
 
     var body: some View {
         Group {
             if let saver {
-                CanvasDocument(controller: controller, channel: channel, saver: saver, onOpenList: onOpenList, onTrashed: onTrashed)
+                CanvasDocument(controller: controller, channel: channel, saver: saver, onOpenList: onOpenList, onTrashed: onTrashed,
+                               onOpenThread: onOpenThread)
             } else {
                 ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -140,12 +145,13 @@ private struct SectionTarget: Identifiable {
     var id: Int { line }
 }
 
-private struct CanvasDocument: View {
+struct CanvasDocument: View {
     @Bindable var controller: AppController
     let channel: ChannelState
     let saver: CanvasSaver
     var onOpenList: (() -> Void)?
     var onTrashed: () -> Void
+    var onOpenThread: ((String) -> Void)?
     /// The phone's default is reading (§1: reading, ticking and short edits).
     @State private var mode: CanvasMode = .view
     @State private var section: SectionTarget?
@@ -154,12 +160,10 @@ private struct CanvasDocument: View {
     @State private var newTitle = ""
     @State private var history = false
     @State private var confirmTrash = false
+    /// M58: 「コメント」 is asking the server (sharing first when the canvas never was).
+    @State private var openingComments = false
 
-    private var meta: CanvasMeta? {
-        let listed = controller.store.canvasMeta(saver.id)
-        if let listed, saver.canvas.map({ listed.version >= $0.version }) ?? true { return listed }
-        return saver.canvas?.meta ?? listed
-    }
+    private var meta: CanvasMeta? { saver.meta(in: controller.store) }
 
     private var rights: CanvasRights {
         guard let meta else { return .none }
@@ -218,7 +222,7 @@ private struct CanvasDocument: View {
             }
         }
         .sheet(isPresented: $history) {
-            CanvasHistorySheet(controller: controller, canvasId: saver.id)
+            CanvasHistorySheet(controller: controller, channel: channel, saver: saver, model: CanvasHistoryModel(canvasId: saver.id))
         }
         .alert("題名を変更", isPresented: $renaming) {
             TextField("題名", text: $newTitle)
@@ -262,6 +266,18 @@ private struct CanvasDocument: View {
             .accessibilityValue(meta?.title ?? "")
             Spacer(minLength: 4)
             CanvasSaveStateLabel(saver: saver) { choiceOpen = true }
+            if let meta, saver.status != .gone, onOpenThread != nil, CanvasShare.showsComments(meta, rights: rights) {
+                Button { Task { await openComments(meta) } } label: {
+                    Group {
+                        if openingComments { ProgressView().controlSize(.small) } else { Image(systemName: "bubble.left.and.bubble.right") }
+                    }
+                    .frame(width: 36, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .disabled(openingComments)
+                .accessibilityLabel("コメント")
+                .accessibilityHint(meta.shareMessageId == nil ? "会話に共有してスレッドを開きます" : "共有したメッセージのスレッドを開きます")
+            }
             if rights.edit && saver.status != .gone {
                 Picker("表示", selection: $mode) {
                     Text("閲覧").tag(CanvasMode.view)
@@ -303,6 +319,14 @@ private struct CanvasDocument: View {
                         .pickerStyle(.menu)
                     }
                 }
+                if CanvasShare.offersShare(meta, rights: rights) {
+                    Button("会話に共有", systemImage: "square.and.arrow.up") {
+                        Task { if await controller.shareCanvas(meta.id) != nil { controller.notice = "会話に共有しました" } }
+                    }
+                }
+                if onOpenThread != nil && CanvasShare.showsComments(meta, rights: rights) {
+                    Button("コメント", systemImage: "bubble.left.and.bubble.right") { Task { await openComments(meta) } }
+                }
                 Button("履歴", systemImage: "clock.arrow.circlepath") { history = true }
                 Button("本文をコピー", systemImage: "doc.on.doc") { controller.copyCanvasText(saver.text) }
                 Button("リンクをコピー", systemImage: "link") { controller.copyCanvasLink(meta.id) }
@@ -315,6 +339,15 @@ private struct CanvasDocument: View {
             Image(systemName: "ellipsis.circle").font(.title3).frame(width: 36, height: 44).contentShape(Rectangle())
         }
         .accessibilityLabel("キャンバスの操作")
+    }
+
+    /// §4.13: the shared message's thread; a canvas never shared is shared first (a message is posted).
+    private func openComments(_ meta: CanvasMeta) async {
+        guard !openingComments, let onOpenThread else { return }
+        openingComments = true
+        let messageId = await controller.canvasCommentsMessage(meta)
+        openingComments = false
+        if let messageId { onOpenThread(messageId) }
     }
 
     /// A line under the bar: why this canvas cannot be changed here, or what happened to it.
@@ -791,121 +824,32 @@ private struct CanvasExpiredSheet: View {
     }
 }
 
-/// The history, read only on the phone (CANVAS.md §5: 「履歴 (MVP は閲覧 …)」): who saved what when; a version opens
-/// rendered. Restoring, labels and erasing are the desktop's (M44).
-private struct CanvasHistorySheet: View {
-    @Bindable var controller: AppController
-    let canvasId: String
-    @Environment(\.dismiss) private var dismiss
-    @State private var rows: [CanvasRevisionMeta]?
-    @State private var next: String?
-    @State private var failed = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let rows {
-                    ForEach(rows) { revision in
-                        NavigationLink {
-                            CanvasRevisionView(controller: controller, canvasId: canvasId, revision: revision)
-                        } label: { row(revision) }
-                        .disabled(revision.kind == "erased")
-                    }
-                    if let next {
-                        Button("さらに読み込む") { Task { await load(cursor: next) } }
-                    }
-                } else if failed {
-                    Text("履歴を読み込めませんでした。").foregroundStyle(.secondary)
-                } else {
-                    ProgressView()
-                }
-            }
-            .navigationTitle("履歴")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
-            .task { await load(cursor: nil) }
-        }
-    }
-
-    private func load(cursor: String?) async {
-        guard let api = controller.api else { return }
-        do {
-            let page = try await api.canvasRevisions(id: canvasId, cursor: cursor)
-            rows = (cursor == nil ? [] : rows ?? []) + page.items
-            next = page.nextCursor
-        } catch {
-            failed = rows == nil
-            controller.error = controller.describe(error)
-        }
-    }
-
-    static func kindLabel(_ kind: String) -> String {
-        switch kind {
-        case "create": "作成"
-        case "merge": "保存 (マージ)"
-        case "restore": "復元"
-        case "erased": "消去済み"
-        default: "保存"
-        }
-    }
-
-    private func row(_ revision: CanvasRevisionMeta) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(controller.store.users[revision.authorId]?.displayName ?? "メンバー").fontWeight(.medium)
-                Text(Self.kindLabel(revision.kind)).font(.caption).foregroundStyle(.secondary)
-                if let label = revision.label, !label.isEmpty {
-                    Text(label).font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.14), in: Capsule())
-                }
-            }
-            HStack(spacing: 8) {
-                Text(Timeline.fullLabel(revision.createdAt))
-                if revision.linesAdded > 0 { Text("+\(revision.linesAdded)").foregroundStyle(.green) }
-                if revision.linesRemoved > 0 { Text("−\(revision.linesRemoved)").foregroundStyle(.red) }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct CanvasRevisionView: View {
-    @Bindable var controller: AppController
-    let canvasId: String
-    let revision: CanvasRevisionMeta
-    @State private var body_: String?
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(revision.title).font(.title3.bold())
-                Text("\(controller.store.users[revision.authorId]?.displayName ?? "メンバー") · \(Timeline.fullLabel(revision.createdAt))")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let body_ {
-                    CanvasBodyView(body: body_, controller: controller, onToggleTask: nil).padding(.top, 8)
-                } else {
-                    ProgressView().padding(.top, 24)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .navigationTitle(CanvasHistorySheet.kindLabel(revision.kind))
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            guard let api = controller.api else { return }
-            do { body_ = try await api.canvasRevision(id: canvasId, revisionId: revision.id).body } catch { controller.error = controller.describe(error) }
-        }
-    }
-}
-
 /// M45: a canvas link tapped in a message (`<server>/c/<id>`, §4.13): the canvas's screen for members of its
 /// conversation; 「メンバーではありません」 for others (403), 「見つかりません」 when it is gone (404).
 struct CanvasLinkSheet: View {
     @Bindable var controller: AppController
     let canvasId: String
     @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            CanvasOpenView(controller: controller, canvasId: canvasId, onTrashed: { dismiss() }, onLeave: { dismiss() })
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
+        }
+    }
+}
+
+/// A canvas opened by its id, inside a navigation stack (a link's sheet, M45; a canvas search result, M58): read to
+/// learn its conversation, then its screen; 「会話へ」 goes to the conversation; 「コメント」 pushes the shared message's
+/// thread here.
+struct CanvasOpenView: View {
+    @Bindable var controller: AppController
+    let canvasId: String
+    var onTrashed: () -> Void = {}
+    /// Before 「会話へ」 lands on the conversation (a sheet closes itself).
+    var onLeave: () -> Void = {}
     @State private var state: LoadState = .loading
+    @State private var thread: ThreadTarget?
 
     private enum LoadState {
         case loading
@@ -916,47 +860,52 @@ struct CanvasLinkSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch state {
-                case .loading:
-                    ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .open(let channelId):
-                    if let channel = controller.store.channel(channelId), channel.isMember {
-                        CanvasScreen(controller: controller, channel: channel, canvasId: canvasId, onOpenList: nil, onTrashed: { dismiss() })
-                    } else {
-                        notMember
-                    }
-                case .notMember:
+        Group {
+            switch state {
+            case .loading:
+                ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .open(let channelId):
+                if let channel = controller.store.channel(channelId), channel.isMember {
+                    CanvasScreen(controller: controller, channel: channel, canvasId: canvasId, onOpenList: nil, onTrashed: onTrashed,
+                                 onOpenThread: { thread = ThreadTarget(id: $0) })
+                } else {
                     notMember
-                case .missing:
-                    ContentUnavailableView("キャンバスが見つかりません", systemImage: "doc.questionmark",
-                                           description: Text("ゴミ箱に移されたか、削除されました。"))
-                case .failed(let message):
-                    ContentUnavailableView {
-                        Label("キャンバスを開けませんでした", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(message)
-                    } actions: {
-                        Button("再試行") { Task { await load() } }
-                    }
+                }
+            case .notMember:
+                notMember
+            case .missing:
+                ContentUnavailableView("キャンバスが見つかりません", systemImage: "doc.questionmark",
+                                       description: Text("ゴミ箱に移されたか、削除されました。"))
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("キャンバスを開けませんでした", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("再試行") { Task { await load() } }
                 }
             }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
-                if case .open(let channelId) = state, let channel = controller.store.channel(channelId) {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("会話へ") {
-                            dismiss()
-                            NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channel.id])
-                        }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if case .open(let channelId) = state, let channel = controller.store.channel(channelId) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("会話へ") {
+                        onLeave()
+                        NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channel.id])
                     }
                 }
             }
         }
-        .task { await load() }
+        .navigationDestination(item: $thread) { target in
+            if case .open(let channelId) = state {
+                ThreadView(controller: controller, channelId: channelId, parentId: target.id)
+            }
+        }
+        .task {
+            if case .loading = state { await load() }
+        }
     }
 
     private var title: String {

@@ -170,6 +170,16 @@ struct SearchRequest: Equatable {
         items.append(URLQueryItem(name: "offset", value: String(offset)))
         return items
     }
+
+    /// M58: GET /search/canvases takes the same words, person, conversation, dates and order; not has: / is:thread
+    /// (a canvas has neither: typed ones come back as unresolved).
+    func canvasQueryItems(limit: Int, offset: Int) -> [URLQueryItem] {
+        let skipped: Set<String> = ["has", "is_thread"]
+        return queryItems(limit: limit, offset: offset).filter { !skipped.contains($0.name) }
+    }
+
+    /// Nothing a canvas search could look for: no words, conversation, person or dates (it is not sent).
+    var canvasIsEmpty: Bool { q.isEmpty && channelId == nil && fromUserId == nil && after == nil && before == nil }
 }
 
 enum SearchLogic {
