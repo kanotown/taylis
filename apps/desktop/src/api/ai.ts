@@ -8,7 +8,9 @@
 import { ERROR_MESSAGES } from "./errorMessages";
 import { ApiError, describeError } from "./errors";
 
-export type AiModel = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5";
+export type AiModel = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
+/** docs/AI.md §12: the model decides the provider. */
+export type AiProviderName = "anthropic" | "openai";
 export type AiEffort = "low" | "medium" | "high";
 export type AiRunKind = "mention" | "summary";
 export type AiRunStatus = "pending" | "running" | "done" | "failed";
@@ -82,6 +84,13 @@ export interface AiUsageOut {
   by_user: AiUsageByUser[];
 }
 
+/** GET /admin/ai/providers (docs/AI.md §12): whether the server has each provider's API key. */
+export interface AiProviderOut {
+  name: AiProviderName;
+  configured: boolean;
+  models: AiModel[];
+}
+
 export interface AiAgentCreate {
   username: string;
   name: string;
@@ -108,12 +117,27 @@ export interface AiRunUpdated {
   run: AiRunOut;
 }
 
-/** The choices of the admin form (§1: Opus 5.5 is the default). */
-export const AI_MODELS: ReadonlyArray<{ value: AiModel; label: string }> = [
-  { value: "claude-opus-5-5", label: "Claude Opus 5.5" },
-  { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
-  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+/** The choices of the admin form, grouped by provider (§1: Opus 5.5 is the default; §12: OpenAI). */
+export const AI_MODELS: ReadonlyArray<{ value: AiModel; label: string; provider: AiProviderName }> = [
+  { value: "claude-opus-5-5", label: "Claude Opus 5.5", provider: "anthropic" },
+  { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", provider: "anthropic" },
+  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "anthropic" },
+  { value: "gpt-6.1-sol", label: "GPT-6.1 Sol", provider: "openai" },
+  { value: "gpt-6-luna", label: "GPT-6 Luna", provider: "openai" },
 ];
+export const AI_PROVIDERS: ReadonlyArray<{ value: AiProviderName; label: string }> = [
+  { value: "anthropic", label: "Anthropic" },
+  { value: "openai", label: "OpenAI" },
+];
+
+/** The provider of a model id (an unknown id counts as Anthropic's, as on the server). */
+export function aiProviderOf(model: string): AiProviderName {
+  return AI_MODELS.find((m) => m.value === model)?.provider ?? "anthropic";
+}
+
+export function aiProviderLabel(name: AiProviderName): string {
+  return AI_PROVIDERS.find((p) => p.value === name)?.label ?? name;
+}
 export const DEFAULT_AI_MODEL: AiModel = "claude-opus-5-5";
 
 export const AI_EFFORTS: ReadonlyArray<{ value: AiEffort; label: string }> = [

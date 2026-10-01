@@ -136,6 +136,40 @@ it("deletes a bot after asking", async () => {
   expect(screen.getByText("ボットはまだありません")).toBeTruthy();
 });
 
+it("models are grouped by provider and a provider without a key is marked (§12)", async () => {
+  const { server } = await setup();
+  server.createAiAgent({ username: "ai-sol", name: "ソル", character: "", model: "gpt-6.1-sol" });
+  await openTab();
+  const list = screen.getByRole("list", { name: "AI のボット" });
+  expect(within(within(list).getByText("ソル").closest("li")!).getByText("API キー未設定")).toBeTruthy();
+  expect(within(within(list).getByText("ちくわ").closest("li")!).queryByText("API キー未設定")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
+  await settle();
+  const dialog = screen.getByRole("dialog");
+  const select = within(dialog).getByLabelText("モデル") as HTMLSelectElement;
+  const groups = Array.from(select.querySelectorAll("optgroup")).map((g) => [g.label, Array.from(g.querySelectorAll("option")).map((o) => o.value)]);
+  expect(groups).toEqual([
+    ["Anthropic", ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"]],
+    ["OpenAI (キー未設定)", ["gpt-6.1-sol", "gpt-6-luna"]],
+  ]);
+  fireEvent.change(select, { target: { value: "gpt-6-luna" } });
+  expect(within(dialog).getByText(/OpenAI の API キーが設定されていません/)).toBeTruthy();
+  fireEvent.change(within(dialog).getByLabelText("名前 (投稿者として表示されます)"), { target: { value: "ルナ" } });
+  fireEvent.change(within(dialog).getByLabelText(/ユーザー名/), { target: { value: "ai-luna" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
+  await settle();
+  expect(server.aiAgents.at(-1)).toMatchObject({ username: "ai-luna", model: "gpt-6-luna" });
+});
+
+it("an older server without /admin/ai/providers: no key marks", async () => {
+  const { server } = await setup();
+  server.aiProviders = null;
+  server.createAiAgent({ username: "ai-sol", name: "ソル", character: "", model: "gpt-6.1-sol" });
+  await openTab();
+  expect(screen.queryByText("API キー未設定")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "AI のボット" })).getByText(/GPT-6\.1 Sol · 考える量/)).toBeTruthy();
+});
+
 it("no 「AI」 tab on a server without AI", async () => {
   await setup({ aiMissing: true });
   expect(screen.queryByRole("tab", { name: "AI" })).toBeNull();

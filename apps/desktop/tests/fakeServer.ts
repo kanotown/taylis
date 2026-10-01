@@ -6,7 +6,7 @@
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { LastMessageOut } from "../src/api/types";
-import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "../src/api/ai";
+import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import { lastMessageOf } from "../src/ui/dmPreview";
@@ -1717,6 +1717,11 @@ export class FakeServer {
   readonly aiAgents: AiAgentOut[] = [];
   readonly aiRuns = new Map<string, { run: AiRunOut; userId: string }>();
   aiUsage: AiUsageOut = { month: "2026-10", budget_usd: 30, total_cost_usd: 0, total_runs: 0, by_agent: [], by_user: [] };
+  /** GET /admin/ai/providers (docs/AI.md §12); null: an older server (404). */
+  aiProviders: AiProviderOut[] | null = [
+    { name: "anthropic", configured: true, models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] },
+    { name: "openai", configured: false, models: ["gpt-6.1-sol", "gpt-6-luna"] },
+  ];
 
   private aiGate(): void {
     if (this.aiMissing) throw new ApiError(404, "not_found", "Not Found");
@@ -1856,6 +1861,11 @@ export class FakeServer {
         admin();
         return { ...this.aiUsage, month: month ?? this.aiUsage.month };
       },
+      adminAiProviders: async () => {
+        admin();
+        if (!this.aiProviders) throw new ApiError(404, "not_found", "Not Found");
+        return this.aiProviders.map((p) => ({ ...p }));
+      },
     };
   }
 
@@ -1880,6 +1890,7 @@ export interface FakeAiApi {
   adminUpdateAiAgent(agentId: string, patch: AiAgentUpdate): Promise<AiAgentOut>;
   adminDeleteAiAgent(agentId: string): Promise<void>;
   adminAiUsage(month?: string): Promise<AiUsageOut>;
+  adminAiProviders(): Promise<AiProviderOut[]>;
 }
 
 export interface FakeCanvasApi {

@@ -1,14 +1,37 @@
-"""What a run cost (docs/AI.md §3): Anthropic's prices of 2026-09, per million tokens."""
+"""What a run cost (docs/AI.md §3, §12), per million tokens.
 
+Token counts are disjoint here (LlmResult): `input_tokens` is the uncached input only, cache reads
+and cache writes are counted apart, and `output_tokens` includes any reasoning tokens.
+"""
+
+from dataclasses import dataclass
 from decimal import Decimal
 
-# model: (input, output, cache read) in USD per million tokens. A cache write is 1.25 x input.
-PRICES: dict[str, tuple[Decimal, Decimal, Decimal]] = {
-    "claude-opus-5-5": (Decimal("4"), Decimal("20"), Decimal("0.20")),
-    "claude-sonnet-5-5": (Decimal("2"), Decimal("10"), Decimal("0.20")),
-    "claude-haiku-4-5": (Decimal("1"), Decimal("5"), Decimal("0.10")),
+
+@dataclass(frozen=True)
+class Price:
+    """USD per million tokens."""
+
+    input: Decimal
+    output: Decimal
+    cache_read: Decimal
+    cache_write: Decimal
+
+
+def _anthropic(inp: str, out: str, cache_read: str) -> Price:
+    # Anthropic, 2026-09: a cache write is 1.25 x the input price.
+    return Price(Decimal(inp), Decimal(out), Decimal(cache_read), Decimal(inp) * Decimal("1.25"))
+
+
+PRICES: dict[str, Price] = {
+    "claude-opus-5-5": _anthropic("4", "20", "0.20"),
+    "claude-sonnet-5-5": _anthropic("2", "10", "0.20"),
+    "claude-haiku-4-5": _anthropic("1", "5", "0.10"),
+    # OpenAI, checked 2026-10-02 on https://developers.openai.com/api/docs/models/gpt-6.1-sol and
+    # …/models/gpt-6-luna (input, output, cached input, cache writes).
+    "gpt-6.1-sol": Price(Decimal("2"), Decimal("10"), Decimal("0.10"), Decimal("2.50")),
+    "gpt-6-luna": Price(Decimal("0.10"), Decimal("0.50"), Decimal("0.01"), Decimal("0.125")),
 }
-CACHE_WRITE_FACTOR = Decimal("1.25")
 _MILLION = Decimal(1_000_000)
 _PLACES = Decimal("0.000001")
 
@@ -16,7 +39,7 @@ _PLACES = Decimal("0.000001")
 def price_model(model: str, requested: str) -> str:
     """The model whose prices apply: the one that answered when we know it (a server-side
     fallback may answer with another), else the one asked for. Dated ids
-    (claude-…-20260901) count as their family."""
+    (claude-…-20260901, gpt-…-2026-10-01) count as their family."""
     for candidate in (model, requested):
         for known in PRICES:
             if candidate == known or candidate.startswith(known + "-"):
@@ -32,11 +55,11 @@ def cost_usd(
     cache_read_tokens: int,
     cache_write_tokens: int,
 ) -> Decimal:
-    inp, out, cache_read = PRICES[model]
+    price = PRICES[model]
     total = (
-        Decimal(input_tokens) * inp
-        + Decimal(output_tokens) * out
-        + Decimal(cache_read_tokens) * cache_read
-        + Decimal(cache_write_tokens) * inp * CACHE_WRITE_FACTOR
+        Decimal(input_tokens) * price.input
+        + Decimal(output_tokens) * price.output
+        + Decimal(cache_read_tokens) * price.cache_read
+        + Decimal(cache_write_tokens) * price.cache_write
     ) / _MILLION
     return total.quantize(_PLACES)

@@ -58,6 +58,8 @@ services:
       - ${GOOGLE_CLIENT_SECRET_FILE:-./secrets/google_client_secret}:/run/secrets/google_client_secret:ro
       # Anthropic API キー (M65、docs/AI.md。infra/.env の ANTHROPIC_API_KEY_FILE で指定)。無ければ AI は「使えない」になるだけ
       - ${ANTHROPIC_API_KEY_FILE:-./secrets/anthropic_api_key}:/run/secrets/anthropic_api_key:ro
+      # OpenAI API キー (docs/AI.md §12。infra/.env の OPENAI_API_KEY_FILE で指定)。無ければ OpenAI のモデルのボットが「使えない」になるだけ
+      - ${OPENAI_API_KEY_FILE:-./secrets/openai_api_key}:/run/secrets/openai_api_key:ro
     restart: unless-stopped
 
   caddy:

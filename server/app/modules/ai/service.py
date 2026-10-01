@@ -32,13 +32,21 @@ from app.modules.admin import service as admin
 from app.modules.ai import prompts
 from app.modules.ai import repository as repo
 from app.modules.ai.events import AI_RUN_UPDATED, AiRunUpdatedData
-from app.modules.ai.llm import AiRuntime, LlmError, LlmRequest, LlmResult
+from app.modules.ai.llm import (
+    MODEL_PROVIDERS,
+    PROVIDERS,
+    AiRuntime,
+    LlmError,
+    LlmRequest,
+    LlmResult,
+)
 from app.modules.ai.models import AiAgent, AiRun
 from app.modules.ai.pricing import cost_usd, price_model
 from app.modules.ai.schemas import (
     AiAgentCreate,
     AiAgentOut,
     AiAgentUpdate,
+    AiProviderOut,
     AiRunOut,
     AiStatusOut,
     AiSummaryCreate,
@@ -276,6 +284,18 @@ async def usage(db: AsyncSession, runtime: AiRuntime, month: str | None) -> AiUs
     )
 
 
+def providers(runtime: AiRuntime) -> list[AiProviderOut]:
+    """docs/AI.md §12: which providers have a key (admin only; the key itself never leaves)."""
+    return [
+        AiProviderOut(
+            name=name,  # type: ignore[arg-type]
+            configured=runtime.configured(name),
+            models=[m for m, p in MODEL_PROVIDERS.items() if p == name],  # type: ignore[misc]
+        )
+        for name in PROVIDERS
+    ]
+
+
 # --- bots in conversations ----------------------------------------------------------------------
 
 
@@ -299,9 +319,14 @@ async def check_private_allowed(
 # --- status, summaries and runs -----------------------------------------------------------------
 
 
+async def _usable_agents(db: AsyncSession, runtime: AiRuntime) -> list[AiAgent]:
+    """Enabled bots whose provider has a key, oldest first (the first is the default bot)."""
+    return [a for a in await repo.list_agents(db, enabled_only=True) if runtime.serves(a.model)]
+
+
 async def status(db: AsyncSession, runtime: AiRuntime) -> AiStatusOut:
     agents = await repo.list_agents(db, enabled_only=True)
-    available = runtime.available and bool(agents)
+    available = any(runtime.serves(a.model) for a in agents)
     budget_left = await month_cost(db, utcnow()) < Decimal(str(runtime.monthly_budget_usd))
     return AiStatusOut(
         available=available,
@@ -380,8 +405,8 @@ async def create_summary(
     except AppError as exc:  # a conversation one cannot read does not exist for them
         raise not_found("channel_not_found", "Channel not found") from exc
     now = utcnow()
-    agents = await repo.list_agents(db, enabled_only=True)
-    if not agents or not runtime.available:
+    agents = await _usable_agents(db, runtime)
+    if not agents:
         raise conflict("ai_unavailable", "AI is not available on this server")
     problem = await _limit_problem(db, runtime, actor.id, now)
     if problem is not None:
@@ -511,7 +536,7 @@ async def handle_mention(
         return None
     thread_root = message.parent_id or message.id
     now = utcnow()
-    problem = None if runtime.available else "ai_unavailable"
+    problem = None if runtime.serves(agent.model) else "ai_unavailable"
     problem = problem or await _limit_problem(db, runtime, sender.id, now)
     if problem is not None:
         await _post_as_bot(
@@ -624,17 +649,20 @@ async def _prepare(
             return None, None
         if run.attempts > MAX_ATTEMPTS:  # a run that kept crashing the process
             return None, "処理が完了しませんでした"
-        if runtime.get_provider() is None:
-            return None, _LIMIT_NOTICES["ai_unavailable"]
         if run.input is None:
             return None, "送る内容がありません"
         agent = await repo.get_agent_any(db, run.agent_id) if run.agent_id else None
         if run.kind == "summary":
-            if agent is None or agent.deleted_at is not None or not agent.enabled:
-                enabled = await repo.list_agents(db, enabled_only=True)
-                agent = enabled[0] if enabled else None
+            if (
+                agent is None
+                or agent.deleted_at is not None
+                or not agent.enabled
+                or not runtime.serves(agent.model)
+            ):
+                usable = await _usable_agents(db, runtime)
+                agent = usable[0] if usable else None
             if agent is None:
-                return None, "使える AI のボットがありません"
+                return None, _LIMIT_NOTICES["ai_unavailable"]
             return (
                 LlmRequest(
                     model=agent.model,
@@ -647,6 +675,8 @@ async def _prepare(
             )
         if agent is None or agent.deleted_at is not None or not agent.enabled:
             return None, "このボットは無効になっています"
+        if not runtime.serves(agent.model):
+            return None, _LIMIT_NOTICES["ai_unavailable"]
         return (
             LlmRequest(
                 model=agent.model,
@@ -664,9 +694,10 @@ async def _execute(database: Database, runtime: AiRuntime, run_id: uuid.UUID) ->
     result: LlmResult | None = None
     failure: LlmError | None = None
     if request is not None:
-        provider = runtime.get_provider()
-        assert provider is not None
+        provider = runtime.get_provider(request.model)
         try:
+            if provider is None:  # the key went away since _prepare
+                raise LlmError(_LIMIT_NOTICES["ai_unavailable"], retryable=False)
             result = await provider.complete(request)
         except LlmError as exc:
             failure = exc

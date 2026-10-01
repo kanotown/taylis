@@ -10,6 +10,7 @@ from app.modules.ai.schemas import (
     AiAgentCreate,
     AiAgentOut,
     AiAgentUpdate,
+    AiProviderOut,
     AiRunOut,
     AiStatusOut,
     AiSummaryCreate,
@@ -63,6 +64,13 @@ async def get_usage(
 ) -> AiUsageOut:
     """A month's use (UTC month; default this one): per bot and per person."""
     return await service.usage(db, _runtime(request), month)
+
+
+@router.get("/admin/ai/providers", response_model=list[AiProviderOut])
+async def list_providers(_: CurrentAdmin, request: Request) -> list[AiProviderOut]:
+    """The model providers (anthropic, openai): whether the server has each one's API key, and
+    the models it serves (docs/AI.md §12)."""
+    return service.providers(_runtime(request))
 
 
 @router.get("/ai/status", response_model=AiStatusOut)
