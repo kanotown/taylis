@@ -3,7 +3,10 @@ name: ci
 on:
   push:
     branches: [main]
+    # Docs alone change nothing the checks look at.
+    paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md"]
   # release.yml runs the server and web checks before it builds and deploys a tag.
   workflow_call:
     inputs:
@@ -13,6 +16,13 @@ on:
 
 permissions:
   contents: read
+
+# One self-hosted runner takes every job in turn: a newer push to main makes the older run's result
+# moot, so it is cancelled instead of holding up the queue (and a release's deploy) for 20-40 min.
+# Tag releases call this workflow under their own ref and are never cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   server:
