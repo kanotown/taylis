@@ -76,6 +76,10 @@ sealed interface Route {
     @Serializable @SerialName("calendar")
     data object Calendar : Pane { override val keptUnderConversation get() = true }
 
+    /** M56 (TASKS.md §6): 「タスク」, from the home's tile or a tapped notification of a personal task. */
+    @Serializable @SerialName("tasks")
+    data object Tasks : Pane { override val keptUnderConversation get() = true }
+
     /** A draft row closes the list itself before opening its conversation ([MainNav.openDraft]). */
     @Serializable @SerialName("drafts")
     data object Drafts : Pane { override val keptUnderConversation get() = true }
@@ -206,6 +210,14 @@ object MainNav {
     /** M52: the calendar over the home's list (the tile, or an alarm of my own calendar); one already open stays as it is. */
     fun openCalendar(stack: List<Route>): List<Route> =
         if (top(stack) == Route.Calendar) stack else stack.filter { it is Route.Root } + Route.Calendar
+
+    /** M56: a channel's 「タスク」 tab (a shared task's notification, 「自分の担当」's channel), as [openConversation] does. */
+    fun openTasks(stack: List<Route>, channelId: String): List<Route> =
+        base(stack) + Route.Channel(channelId, tab = ConversationTab.TASKS)
+
+    /** M56: 「タスク」 over the home's list (the tile, or a personal task's notification); one already open stays as it is. */
+    fun openMyTasks(stack: List<Route>): List<Route> =
+        if (top(stack) == Route.Tasks) stack else stack.filter { it is Route.Root } + Route.Tasks
 
     /** M29: the conversation's details page, over whichever tab. */
     fun openDetails(stack: List<Route>): List<Route> = updateChannel(stack) { it.copy(detailsOpen = true) }

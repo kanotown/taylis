@@ -317,6 +317,12 @@ class MainTabsTest {
         val toCalendar = MainTabs.landCalendar(busy)
         assertEquals(MainTab.HOME, toCalendar.selected)
         assertEquals(listOf(Route.ChannelList, Route.Calendar), MainTabs.stack(toCalendar))
+        // M56: a task's notification lands on the home tab too: its board, or 「タスク」 for a personal one.
+        val toBoard = MainTabs.landTasks(busy, "c1")
+        assertEquals(MainTab.HOME, toBoard.selected)
+        assertEquals(listOf(Route.ChannelList, Route.Channel("c1", tab = ConversationTab.TASKS)), MainTabs.stack(toBoard))
+        assertEquals(listOf(Route.Activity(), Route.Channel("c9")), MainTabs.stack(toBoard, MainTab.ACTIVITY))
+        assertEquals(listOf(Route.ChannelList, Route.Tasks), MainTabs.stack(MainTabs.landMyTasks(busy)))
     }
 
     @Test

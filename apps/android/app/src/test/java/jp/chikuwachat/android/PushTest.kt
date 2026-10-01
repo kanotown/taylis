@@ -62,6 +62,23 @@ class PushTest {
         assertEquals(false, PushMessage.parse(mapOf("kind" to "silent", "channel_id" to "c1"))!!.shown)
     }
 
+    @Test fun aTaskNotificationStandsApartAndMayHaveNoConversation() { // M56 (PUSH_NOTIFICATIONS.md, TASKS.md §8)
+        val shared = PushMessage.parse(
+            mapOf("kind" to "task", "channel_id" to "c1", "task_id" to "t1", "title" to "タスク", "body" to "ボブ がタスクを割り当てました: 資料 (#lab)", "collapse_key" to "task:t1"),
+        )!!
+        assertEquals("t1", shared.taskId)
+        assertEquals(true, shared.isTask)
+        assertEquals("task:t1", shared.notificationKey) // never replaced by the channel's messages, nor cleared by a read
+        assertEquals(true, shared.shown)
+        assertEquals("タスク", shared.displayTitle)
+        // A personal task's due date: no channel_id, still shown, keyed by the task.
+        val own = PushMessage.parse(mapOf("kind" to "task", "task_id" to "t2", "title" to "タスク", "body" to "今日が期限: 買い物"))!!
+        assertNull(own.channelId)
+        assertEquals("task:t2", own.notificationKey)
+        assertEquals(true, own.shown)
+        assertEquals(false, PushMessage.parse(mapOf("kind" to "task", "title" to "タスク", "body" to "b"))!!.shown)
+    }
+
     @Test fun readsTheThreadParentOfAReply() { // M28c: the tap opens the thread at the reply
         val reply = PushMessage.parse(mapOf("kind" to "message", "channel_id" to "c1", "message_id" to "m2", "parent_id" to "m1", "title" to "t", "body" to "b"))!!
         assertEquals("m1", reply.parentId)

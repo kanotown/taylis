@@ -43,6 +43,8 @@ enum class ConversationTab(val label: String) {
     CANVAS("キャンバス"),
     /** M52 (CALENDAR.md §7): the channel's shared calendar (public and private channels only, never a DM). */
     EVENTS("予定"),
+    /** M56 (TASKS.md §6): the channel's board (public and private channels only, never a DM). */
+    TASKS("タスク"),
     PINS("ピン留め"),
     FILES("ファイル"),
 }
@@ -65,9 +67,17 @@ object ConversationNav {
      */
     fun conversationOnScreen(tab: ConversationTab, detailsOpen: Boolean): Boolean = tab == ConversationTab.MESSAGES && !detailsOpen
 
-    /** M52: the tabs of a conversation: 「予定」 only where there is a shared calendar (CALENDAR.md §9 5.: not in a DM). */
-    fun tabs(channel: ChannelState): List<ConversationTab> =
-        ConversationTab.entries.filter { it != ConversationTab.EVENTS || CalendarChannels.hasCalendar(channel.channel) }
+    /**
+     * M52: the tabs of a conversation: 「予定」 only where there is a shared calendar (CALENDAR.md §9 5.: not in a DM); M56:
+     * 「タスク」 only where there is a board (TASKS.md §2: the same channels).
+     */
+    fun tabs(channel: ChannelState): List<ConversationTab> = ConversationTab.entries.filter {
+        when (it) {
+            ConversationTab.EVENTS -> CalendarChannels.hasCalendar(channel.channel)
+            ConversationTab.TASKS -> TaskRules.hasBoard(channel.channel)
+            else -> true
+        }
+    }
 
     /** A tab's name; 「予定 2」 with events today or tomorrow (CALENDAR.md §7). */
     fun label(tab: ConversationTab, upcoming: Int): String =

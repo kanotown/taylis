@@ -663,6 +663,16 @@ fun MessageRow(
             onCopyLink = { controller.copyPermalink(message.id) },
             onCopyText = if (message.body.isNotEmpty()) ({ controller.copyText(message) }) else null,
             onRemind = { reminding = true },
+            // M56: the message as a task (its channel's board, or 「自分のタスク」 from a DM or a board I may not add to).
+            onMakeTask = if (controller.tasks?.available == true) ({
+                controller.taskForm = TaskForm(
+                    null,
+                    TaskRules.messageTaskInit(
+                        message.id, message.body, message.attachments.map { it.contentType }, store.channel(message.channelId),
+                        store.users, store.groups, controller.isAdmin,
+                    ),
+                )
+            }) else null,
             onShare = { sharing = true },
             quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs)),  // M50
             onMoreReactions = { pickingReaction = true },

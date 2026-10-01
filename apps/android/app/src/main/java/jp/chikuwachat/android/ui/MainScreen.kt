@@ -401,6 +401,24 @@ fun MainScreen(controller: AppController) {
     }
     val upcomingEvents = remember(calendarChanges, upcomingChannel) { upcomingChannel?.let { calendarHub?.upcomingOf(it)?.size } ?: 0 }
     controller.calendarForm?.let { form -> CalendarEventForm(controller, form, onDismiss = { controller.calendarForm = null }) }
+    // M56: a tapped task notification: its channel's 「タスク」 tab (once the store knows the channel), or 「タスク」 for a
+    // personal one, then the task's form over it (read from the server when no window on screen holds it).
+    LaunchedEffect(controller.pendingTask, version) {
+        val target = controller.pendingTask ?: return@LaunchedEffect
+        val channelId = target.channelId
+        if (channelId != null && store.channel(channelId)?.isMember != true) return@LaunchedEffect
+        controller.pendingTask = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = if (channelId != null) MainTabs.landTasks(tabs, channelId) else MainTabs.landMyTasks(tabs)
+        val hub = controller.tasks ?: return@LaunchedEffect
+        scope.launch {
+            runCatching { hub.load(target.taskId) }
+                .onSuccess { controller.taskForm = TaskForm(it, null) }
+                .onFailure { controller.report(it) }
+        }
+    }
+    controller.taskForm?.let { form -> TaskFormScreen(controller, form, version, onDismiss = { controller.taskForm = null }) }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
@@ -499,6 +517,7 @@ fun MainScreen(controller: AppController) {
                             pane is Route.Files -> Text("ファイル")
                             pane == Route.Reminders -> Text("リマインダー")
                             pane == Route.Calendar -> Text("カレンダー")
+                            pane == Route.Tasks -> Text("タスク")
                             // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                             top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -699,6 +718,8 @@ fun MainScreen(controller: AppController) {
                             }
                             // M52 (CALENDAR.md §7): the channel's shared calendar, the next 60 days.
                             conversationTab == ConversationTab.EVENTS -> CoveringPage { ChannelEventsPane(controller, selectedChannel, version) }
+                            // M56 (TASKS.md §6): the channel's board, a column at a time.
+                            conversationTab == ConversationTab.TASKS -> CoveringPage { ChannelTasksPane(controller, selectedChannel, version) }
                             conversationTab == ConversationTab.FILES -> CoveringPage {
                                 FilesPane(controller, version, channelId = selectedChannel.id, onScopeChange = null) { messageId, channelId, parentId ->
                                     scope.launch {
@@ -713,6 +734,13 @@ fun MainScreen(controller: AppController) {
                 } else if (pane == Route.Calendar) {
                     // M52 (CALENDAR.md §7): 一覧 and 月, filtered by calendar; a row opens the event's form.
                     CalendarPane(controller, version)
+                } else if (pane == Route.Tasks) {
+                    // M56 (TASKS.md §6): 「自分のタスク」 and 「自分の担当」; a channel's name opens its 「タスク」 tab.
+                    MyTasksPane(controller, version, onOpenBoard = { channelId ->
+                        controller.messageFocus = null
+                        focusManager.clearFocus()
+                        stack = MainNav.openTasks(stack, channelId)
+                    })
                 } else if (pane == Route.Mentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (pane == Route.Drafts) {
@@ -778,6 +806,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.SAVED -> Route.Saved
                                     HomeTile.REMINDERS -> Route.Reminders
                                     HomeTile.CALENDAR -> Route.Calendar
+                                    HomeTile.TASKS -> Route.Tasks
                                     HomeTile.FILES -> Route.Files()
                                 },
                             )

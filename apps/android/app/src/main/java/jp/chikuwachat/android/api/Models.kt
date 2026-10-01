@@ -77,6 +77,11 @@ data class UserMe(
      * differs from one where I have not chosen any (null). Read it through [quickReactions] / [knowsQuickReactions].
      */
     @SerialName("quick_reactions") val quickReactionsJson: JsonElement = QUICK_REACTIONS_ABSENT,
+    /**
+     * M56 (TASKS.md §5): pushes for task assignments and due dates (default on). Null from a server before M55 (no key):
+     * 自分 → 通知 then hides the switch.
+     */
+    val notifyTasks: Boolean? = null,
 ) {
     /** M50: the long-press sheet's reactions I chose (1–6 plain emoji, in order); null = not chosen (or an older server). */
     val quickReactions: List<String>?

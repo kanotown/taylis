@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.CalendarEventOut
+import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.CalendarHub
 import jp.chikuwachat.android.sync.CalendarWindow
@@ -81,7 +82,7 @@ fun calendarVersion(hub: CalendarHub?): Int {
 
 /** Today, turning over at midnight while the screen stays open. */
 @Composable
-private fun rememberToday(): LocalDate {
+internal fun rememberToday(): LocalDate {
     val today by produceState(CalendarDates.today()) {
         while (true) {
             delay(60_000)
@@ -129,6 +130,15 @@ fun CalendarPane(controller: AppController, version: Int) {
     if (filter != CalendarDates.FILTER_ALL && filter != CalendarDates.FILTER_ME && channels.none { it.id == filter }) filter = CalendarDates.FILTER_ALL
     val events = remember(window, filter) { CalendarDates.filterEvents(window?.events ?: emptyList(), filter) }
     val loading = window == null || window.state == CalendarWindowState.LOADING
+    // M56 (TASKS.md §6): the tasks due in the range, as all-day rows 「☐ 題名」; a tap opens the task.
+    val taskHub = controller.tasks
+    val taskChanges = taskVersion(taskHub)
+    LaunchedEffect(taskHub, start, end) { if (taskHub?.available == true) taskHub.openDue(TASK_WINDOW_KEY, start.toString(), end.toString()) }
+    DisposableEffect(taskHub) { onDispose { taskHub?.closeDue(TASK_WINDOW_KEY) } }
+    val dueTasks = remember(taskChanges, taskHub, filter) {
+        TaskRules.filterTasks(taskHub?.dueWindow(TASK_WINDOW_KEY)?.tasks ?: emptyList(), filter, controller.store.me?.id)
+    }
+    val openTask: (TaskOut) -> Unit = { controller.taskForm = TaskForm(it, null) }
 
     fun setMode(next: CalendarMode) {
         controller.prefs.putString(MODE_KEY, next.name)
@@ -175,12 +185,12 @@ fun CalendarPane(controller: AppController, version: Int) {
             when (mode) {
                 CalendarMode.LIST -> AgendaList(
                     events, start, end, today, onOpen = { controller.calendarForm = CalendarForm(it, null) }, loading = loading,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f), tasks = dueTasks, onOpenTask = openTask,
                 )
                 CalendarMode.MONTH -> {
-                    MonthGrid(anchor, events, today, selected, onSelect = { selectedText = it.toString() })
+                    MonthGrid(anchor, events, today, selected, onSelect = { selectedText = it.toString() }, tasks = dueTasks)
                     HorizontalDivider()
-                    DayList(events, selected, today, onOpen = { controller.calendarForm = CalendarForm(it, null) }, modifier = Modifier.weight(1f))
+                    DayList(events, selected, today, onOpen = { controller.calendarForm = CalendarForm(it, null) }, modifier = Modifier.weight(1f), tasks = dueTasks, onOpenTask = openTask)
                 }
             }
         }
@@ -194,6 +204,7 @@ fun CalendarPane(controller: AppController, version: Int) {
 }
 
 private const val WINDOW_KEY = "view"
+private const val TASK_WINDOW_KEY = "calendar"
 
 /** すべて / 自分 / each channel I belong to (with its colour). */
 @Composable
@@ -222,7 +233,7 @@ private fun ColorDot(channelId: String?, size: Int = 10) {
 }
 
 @Composable
-private fun NoteStrip(text: String) {
+internal fun NoteStrip(text: String) {
     Text(
         text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 6.dp),
@@ -234,8 +245,10 @@ private fun NoteStrip(text: String) {
 fun AgendaList(
     events: List<CalendarEventOut>, start: LocalDate, end: LocalDate, today: LocalDate, onOpen: (CalendarEventOut) -> Unit,
     loading: Boolean, modifier: Modifier = Modifier, empty: String = "この期間の予定はありません", showCalendar: Boolean = true,
+    /** M56: the tasks due in the range (all-day rows after the all-day events). */
+    tasks: List<TaskOut> = emptyList(), onOpenTask: (TaskOut) -> Unit = {},
 ) {
-    val days = remember(events, start, end) { CalendarDates.agenda(events, start, end) }
+    val days = remember(events, tasks, start, end) { TaskRules.agendaDays(CalendarDates.agenda(events, start, end), tasks, start, end) }
     if (days.isEmpty()) {
         EmptyNote(if (loading) "読み込み中…" else empty, modifier)
         return
@@ -243,13 +256,24 @@ fun AgendaList(
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 88.dp)) {
         days.forEach { (day, list) ->
             item(key = "d:$day") { DayHeader(day, today) }
-            items(list, key = { "e:$day:${it.id}" }) { event -> EventRow(event, day, onOpen, showCalendar) }
+            dayRows(day, list, tasks, onOpen, onOpenTask, showCalendar)
         }
     }
 }
 
+/** A day's rows: all-day events (and those running through it), the tasks due, then the timed events (as the web's). */
+private fun androidx.compose.foundation.lazy.LazyListScope.dayRows(
+    day: LocalDate, events: List<CalendarEventOut>, tasks: List<TaskOut>, onOpen: (CalendarEventOut) -> Unit, onOpenTask: (TaskOut) -> Unit,
+    showCalendar: Boolean,
+) {
+    val (allDay, timed) = events.partition { CalendarDates.timeOnDay(it, day) == "終日" }
+    items(allDay, key = { "e:$day:${it.id}" }) { event -> EventRow(event, day, onOpen, showCalendar) }
+    items(TaskRules.tasksForDay(tasks, day.toString()), key = { "t:$day:${it.id}" }) { task -> TaskDayRow(task, onOpenTask, showBoard = showCalendar) }
+    items(timed, key = { "e:$day:${it.id}" }) { event -> EventRow(event, day, onOpen, showCalendar) }
+}
+
 @Composable
-private fun EmptyNote(text: String, modifier: Modifier = Modifier) {
+internal fun EmptyNote(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.TopCenter) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -304,9 +328,12 @@ private fun EventRow(event: CalendarEventOut, day: LocalDate, onOpen: (CalendarE
 
 /** The month, Sunday first (日 red, 土 blue): a dot per calendar (up to 3) on the days with events; a tap picks the day. */
 @Composable
-private fun MonthGrid(anchor: LocalDate, events: List<CalendarEventOut>, today: LocalDate, selected: LocalDate, onSelect: (LocalDate) -> Unit) {
+private fun MonthGrid(
+    anchor: LocalDate, events: List<CalendarEventOut>, today: LocalDate, selected: LocalDate, onSelect: (LocalDate) -> Unit,
+    tasks: List<TaskOut> = emptyList(),
+) {
     val weeks = remember(anchor) { CalendarDates.monthGrid(anchor) }
-    val dots = remember(events, anchor) {
+    val dots = remember(events, tasks, anchor) {
         val first = weeks.first().first()
         val last = weeks.last().last()
         val out = HashMap<LocalDate, MutableList<String?>>()
@@ -315,6 +342,12 @@ private fun MonthGrid(anchor: LocalDate, events: List<CalendarEventOut>, today: 
                 val list = out.getOrPut(day) { ArrayList() }
                 if (event.channelId !in list) list += event.channelId
             }
+        }
+        // M56: a task's day gets its board's dot too.
+        tasks.forEach { task ->
+            val day = task.dueOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return@forEach
+            val list = out.getOrPut(day) { ArrayList() }
+            if (task.channelId !in list) list += task.channelId
         }
         out
     }
@@ -368,12 +401,16 @@ internal fun weekdayColor(index: Int): Color? = when (index) {
 
 /** The month's chosen day: its events. */
 @Composable
-private fun DayList(events: List<CalendarEventOut>, day: LocalDate, today: LocalDate, onOpen: (CalendarEventOut) -> Unit, modifier: Modifier = Modifier) {
+private fun DayList(
+    events: List<CalendarEventOut>, day: LocalDate, today: LocalDate, onOpen: (CalendarEventOut) -> Unit, modifier: Modifier = Modifier,
+    tasks: List<TaskOut> = emptyList(), onOpenTask: (TaskOut) -> Unit = {},
+) {
     val list = remember(events, day) { CalendarDates.eventsOn(events, day) }
+    val due = remember(tasks, day) { tasks.any { it.dueOn == day.toString() } }
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 88.dp)) {
         item(key = "h") { DayHeader(day, today) }
-        if (list.isEmpty()) item(key = "empty") { EmptyNote("この日の予定はありません") }
-        items(list, key = { it.id }) { event -> EventRow(event, day, onOpen, showCalendar = true) }
+        if (list.isEmpty() && !due) item(key = "empty") { EmptyNote("この日の予定はありません") }
+        dayRows(day, list, tasks, onOpen, onOpenTask, showCalendar = true)
     }
 }
 

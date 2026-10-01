@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Forum
@@ -284,6 +285,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.SAVED -> Icons.Default.Bookmark
     HomeTile.REMINDERS -> Icons.Default.Alarm
     HomeTile.CALENDAR -> Icons.Default.CalendarMonth
+    HomeTile.TASKS -> Icons.Default.Checklist
     HomeTile.FILES -> Icons.Outlined.Folder
 }
 
