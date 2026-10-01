@@ -205,7 +205,8 @@ struct VideoTile: View {
     @State private var poster: UIImage?
     @State private var found: CGSize?
 
-    private var shape: CGSize? { VideoFit.recorded(attachment) ?? found }
+    /// Known from the first layout when this device has seen it before (VideoSizes), not after the task ran.
+    private var shape: CGSize? { VideoFit.recorded(attachment) ?? found ?? VideoSizes.size(attachment.id) }
 
     var body: some View {
         let box = VideoFit.box(for: shape)
@@ -247,7 +248,7 @@ struct VideoTile: View {
 
     /// The poster (a server thumbnail, when it makes one) and the video's shape where the server did not record it.
     private func findShape() async {
-        if found == nil, let known = VideoSizes.size(attachment.id) { found = known }
+        if found == nil, let known = VideoSizes.size(attachment.id) { found = known } // the same box: no change
         if attachment.hasThumbnail, poster == nil, let api = controller.api,
            let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail"), let image = UIImage(data: data) {
             poster = image
@@ -326,6 +327,31 @@ final class AttachmentImageLoader {
     }
 }
 
+/// A single photo in a message: the largest box of its shape within maxWidth × maxHeight (the row's width permitting).
+enum ImageFit {
+    static let maxWidth: CGFloat = 280
+    static let maxHeight: CGFloat = 240
+
+    /// Width / height as the server recorded it; nil when it did not (the photo then shapes its box once loaded).
+    static func ratio(_ attachment: AttachmentOut) -> CGFloat? {
+        guard let width = attachment.width, let height = attachment.height, width > 0, height > 0 else { return nil }
+        return CGFloat(width) / CGFloat(height)
+    }
+
+    /// The box of a photo of this shape on a row at least `maxWidth` wide.
+    static func box(_ ratio: CGFloat) -> CGSize {
+        let width = min(maxWidth, maxHeight * ratio)
+        return CGSize(width: width, height: width / ratio)
+    }
+}
+
+extension View {
+    /// In a photo's box (ImageFit.box), narrower on a row narrower than that, keeping its shape.
+    func photoBox(_ ratio: CGFloat) -> some View {
+        aspectRatio(ratio, contentMode: .fit).frame(maxWidth: ImageFit.box(ratio).width)
+    }
+}
+
 struct ThumbnailView: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
@@ -345,10 +371,19 @@ struct ThumbnailView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("写真 \(attachment.filename)")
+            } else if let image = loader.image, let ratio = ImageFit.ratio(attachment) {
+                // The shape the server recorded, as the frame shown while loading had: the row keeps its height.
+                Button { viewing = true } label: {
+                    Color.clear.photoBox(ratio)
+                        .overlay(Image(uiImage: image).resizable().scaledToFill())
+                        .clipped()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("写真 \(attachment.filename)")
             } else if let image = loader.image {
                 Button { viewing = true } label: { Image(uiImage: image).resizable().scaledToFit() }
                     .buttonStyle(.plain)
-                    .frame(maxWidth: 280, maxHeight: 240)
+                    .frame(maxWidth: ImageFit.maxWidth, maxHeight: ImageFit.maxHeight)
                     .accessibilityLabel("写真 \(attachment.filename)")
             } else if loader.failed, let square {
                 Button { attempt += 1 } label: {
@@ -371,6 +406,10 @@ struct ThumbnailView: View {
                 .font(.footnote)
                 .padding(12)
                 .background(Color.secondary.opacity(0.12))
+            } else if square == nil, let ratio = ImageFit.ratio(attachment) {
+                // Loading, in the photo's own shape: it was a 160 × 120 box and the row grew when the photo came,
+                // which moved the conversation as it opened (testers, 2026-10-01).
+                Color.secondary.opacity(0.12).photoBox(ratio).overlay(ProgressView())
             } else {
                 ZStack {
                     Color.secondary.opacity(0.12)
@@ -379,7 +418,7 @@ struct ThumbnailView: View {
                 .frame(width: square ?? 160, height: square ?? 120)
             }
         }
-        .frame(maxWidth: square ?? 280, alignment: .leading)
+        .frame(maxWidth: square ?? ImageFit.maxWidth, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .task(id: "\(attachment.id):\(attempt)") {

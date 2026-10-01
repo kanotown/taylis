@@ -1032,8 +1032,13 @@ struct MessageRow: View {
                     AttachmentsView(attachments: message.attachments, controller: controller,
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
                 }
-                if let link = previewLink, let preview = controller.linkPreviews[link] ?? nil {
-                    LinkPreviewCard(preview: preview, url: link)
+                if let link = previewLink {
+                    // The card's frame from the start, so the row does not grow when the preview comes (LinkPreviewSlot).
+                    switch controller.linkPreviewSlot(link) {
+                    case .card(let preview): LinkPreviewCard(preview: preview, url: link)
+                    case .placeholder: LinkPreviewCard(preview: nil, url: link)
+                    case .none: EmptyView()
+                    }
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
                 if message.ackRequested && !message.pending { AckBarView(message: message, controller: controller, readOnly: readOnly, present: present) }  // M15e

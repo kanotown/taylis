@@ -47,12 +47,43 @@ enum VideoFit {
 }
 
 /// M38: videos' shapes found on this device (from their poster or their downloaded file), by attachment id, so a
-/// video's box keeps its shape when its row comes back.
+/// video's box keeps its shape when its row comes back. Kept across launches: a tile learning its shape from the file
+/// again after a restart grew under the rows above it as the conversation opened (testers, 2026-10-01).
 @MainActor
 enum VideoSizes {
-    private static var known: [String: CGSize] = [:]
-    static func size(_ id: String) -> CGSize? { known[id] }
-    static func note(_ id: String, _ size: CGSize) { known[id] = size }
+    static let key = "video_sizes"
+    /// The newest this many stay (a shape is a few bytes; ids only, no names).
+    static let kept = 300
+    static var defaults = UserDefaults.standard
+    private static var known: [String: CGSize]?
+    private static var order: [String] = []
+
+    static func size(_ id: String) -> CGSize? { load()[id] }
+
+    static func note(_ id: String, _ size: CGSize) {
+        guard size.width > 0, size.height > 0, load()[id] != size else { return }
+        known?[id] = size
+        order.removeAll { $0 == id }
+        order.append(id)
+        while order.count > kept { known?[order.removeFirst()] = nil }
+        defaults.set(order.compactMap { id in known?[id].map { [id, "\($0.width)", "\($0.height)"] } }, forKey: key)
+    }
+
+    /// Forgets what was loaded (tests).
+    static func reset() { known = nil; order = [] }
+
+    private static func load() -> [String: CGSize] {
+        if let known { return known }
+        var loaded: [String: CGSize] = [:]
+        order = []
+        for row in defaults.array(forKey: key) as? [[String]] ?? [] {
+            guard row.count == 3, let width = Double(row[1]), let height = Double(row[2]), width > 0, height > 0 else { continue }
+            loaded[row[0]] = CGSize(width: width, height: height)
+            order.append(row[0])
+        }
+        known = loaded
+        return loaded
+    }
 }
 
 /// M38: a video full screen, like the photo viewer: the system player (play, pause, timeline, sound), share (to save it

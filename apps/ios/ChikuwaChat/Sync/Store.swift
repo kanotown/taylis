@@ -550,6 +550,7 @@ final class Store {
                 canvasPending[String(key.dropFirst(Self.canvasPrefix.count))] = state
             }
         }
+        applyPreviews(snapshot.meta)
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
         if let raw = snapshot.meta[Self.activityKey], let data = raw.data(using: .utf8) {
             activity = try? JSON.plainDecoder.decode(ActivitySummary.self, from: data) // corrupt: the next bootstrap brings it
@@ -668,6 +669,50 @@ final class Store {
     // MARK: threads (THREADS.md §5)
 
     func setThreadSummary(_ summary: ThreadSummary) { threadSummary = summary }
+
+    // MARK: link previews (M11g)
+
+    static let previewPrefix = "preview:"
+    /// url → its preview, or nil when the page gives none. Kept with the account, so a conversation opened again, even
+    /// after a restart, lays its cards out at once: a card that came in late made the rows above it jump (testers,
+    /// 2026-10-01). A failure that may pass (offline, rate limited) is only `sessionPreviewFailures`.
+    private(set) var linkPreviews: [String: LinkPreviewOut?] = [:]
+    @ObservationIgnored private var previewSavedAt: [String: Date] = [:]
+    /// Links whose preview could not be asked for this session: no card, and not asked again until the next launch.
+    private(set) var sessionPreviewFailures: Set<String> = []
+
+    func setLinkPreview(_ url: String, _ preview: LinkPreviewOut?, at now: Date = Date()) {
+        sessionPreviewFailures.remove(url)
+        if linkPreviews[url] != .some(preview) { linkPreviews[url] = .some(preview) }
+        previewSavedAt[url] = now
+        let stored = StoredLinkPreview(preview: preview, savedAt: now.timeIntervalSince1970)
+        let encoded = (try? JSON.plainEncoder.encode(stored)).flatMap { String(data: $0, encoding: .utf8) }
+        persist { try $0.saveMeta(key: Self.previewPrefix + url, value: encoded) }
+    }
+
+    func setLinkPreviewFailed(_ url: String) { sessionPreviewFailures.insert(url) }
+
+    /// Whether the row should ask the server: never asked, or kept longer than the server keeps it (LinkPreviewSlot.stale).
+    func linkPreviewWanted(_ url: String, now: Date = Date()) -> Bool {
+        if sessionPreviewFailures.contains(url) { return false }
+        guard let known = linkPreviews[url] else { return true }
+        return LinkPreviewSlot.stale(savedAt: previewSavedAt[url], ok: known != nil, now: now)
+    }
+
+    /// The stored previews, the newest `LinkPreviewSlot.kept` (older ones leave the database).
+    private func applyPreviews(_ meta: [String: String]) {
+        var rows: [(url: String, stored: StoredLinkPreview)] = []
+        for (key, value) in meta where key.hasPrefix(Self.previewPrefix) {
+            guard let data = value.data(using: .utf8), let stored = try? JSON.plainDecoder.decode(StoredLinkPreview.self, from: data) else { continue }
+            rows.append((String(key.dropFirst(Self.previewPrefix.count)), stored))
+        }
+        rows.sort { $0.stored.savedAt > $1.stored.savedAt }
+        for row in rows.prefix(LinkPreviewSlot.kept) {
+            linkPreviews[row.url] = .some(row.stored.preview)
+            previewSavedAt[row.url] = Date(timeIntervalSince1970: row.stored.savedAt)
+        }
+        for row in rows.dropFirst(LinkPreviewSlot.kept) { persist { try $0.saveMeta(key: Self.previewPrefix + row.url, value: nil) } }
+    }
 
     // MARK: activity (M39, MOBILE_UI.md §7.2)
 
@@ -1106,6 +1151,10 @@ final class Store {
         }
         for (id, state) in canvasPending {
             if let data = try? JSON.plainEncoder.encode(state) { snapshot.meta[Self.canvasPrefix + id] = String(data: data, encoding: .utf8) }
+        }
+        for (url, preview) in linkPreviews {
+            let stored = StoredLinkPreview(preview: preview, savedAt: (previewSavedAt[url] ?? Date()).timeIntervalSince1970)
+            if let data = try? JSON.plainEncoder.encode(stored) { snapshot.meta[Self.previewPrefix + url] = String(data: data, encoding: .utf8) }
         }
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
         if let activity, let data = try? JSON.plainEncoder.encode(activity) { snapshot.meta[Self.activityKey] = String(data: data, encoding: .utf8) }
