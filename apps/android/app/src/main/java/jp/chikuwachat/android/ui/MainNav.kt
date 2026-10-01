@@ -203,6 +203,12 @@ object MainNav {
     fun openCanvas(stack: List<Route>, channelId: String, canvasId: String): List<Route> =
         base(stack) + Route.Channel(channelId, tab = ConversationTab.CANVAS, canvasId = canvasId)
 
+    /** M58: a canvas found by the search's 「キャンバス」 tab: its conversation's 「キャンバス」 tab, the results kept behind it. */
+    fun openCanvasFromSearch(stack: List<Route>, channelId: String, canvasId: String): List<Route> {
+        val search = search(stack) ?: return openCanvas(stack, channelId, canvasId)
+        return base(stack) + search.copy(expanded = false) + Route.Channel(channelId, tab = ConversationTab.CANVAS, canvasId = canvasId)
+    }
+
     /** M52: a channel calendar's alarm tapped: the channel opens on its 「予定」 tab, as [openConversation] does. */
     fun openEvents(stack: List<Route>, channelId: String): List<Route> =
         base(stack) + Route.Channel(channelId, tab = ConversationTab.EVENTS)

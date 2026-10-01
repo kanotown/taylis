@@ -76,13 +76,22 @@ fun MessageBody(
      * body render again, so names and custom emoji images appear once they arrive (strong skipping).
      */
     version: Int = 0,
+    /** M58: a canvas link on a line of its own (`<base>/c/<id>`) drawn as this card (CANVAS.md §4.13); null: a link. */
+    canvasCard: (@Composable (canvasId: String) -> Unit)? = null,
 ) {
     val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
     val blocks = remember(text) { parseBlocks(text) }
     Column(modifier = modifier) {
-        for (block in blocks) BodyBlockView(block, inline)
+        for (block in blocks) {
+            if (canvasCard != null && block is BodyBlock.Paragraph) {
+                for (piece in CanvasCards.split(block.lines, internalBase)) when (piece) {
+                    is CanvasCards.Piece.Card -> canvasCard(piece.canvasId)
+                    is CanvasCards.Piece.Lines -> BodyBlockView(BodyBlock.Paragraph(piece.lines), inline)
+                }
+            } else BodyBlockView(block, inline)
+        }
     }
 }
 

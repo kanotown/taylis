@@ -91,13 +91,15 @@ data class CanvasTemplateOut(
     val hidden: Boolean = false,
 )
 
-/** A version in the history list (no body). `kind`: create | save | merge | restore | erased. */
+/** A version in the history list (no body). `kind`: create | save | merge | side | restore | erased. */
 @Serializable
 data class CanvasRevisionMeta(
     val id: String,
     val canvasId: String,
     val version: Long? = null,
     val kind: String,
+    /** M58: the version it was written on (the comparison's 「前の版」 for the oldest one listed). */
+    val parentRevId: String? = null,
     val authorId: String,
     val title: String = "",
     val label: String? = null,
@@ -120,4 +122,31 @@ data class CanvasRevisionOut(
     val label: String? = null,
     val createdAt: String,
     val body: String = "",
+)
+
+/** M58 (CANVAS.md §4.8): one canvas found by GET /search/canvases, with the server's plain-text excerpt. */
+@Serializable
+data class CanvasSearchHit(val canvas: CanvasMeta, val snippet: String = "", val score: Double = 0.0)
+
+@Serializable
+data class CanvasSearchOut(
+    val hits: List<CanvasSearchHit> = emptyList(),
+    val keywords: List<String> = emptyList(),
+    val filters: SearchFilters? = null,
+    val limit: Int = 0,
+    val offset: Int = 0,
+    val hasMore: Boolean = false,
+    val total: Int = 0,
+    val totalCapped: Boolean = false,
+)
+
+/** M58: GET /search/canvases parameters (the message search's words, person, conversation and dates; no has: / thread). */
+data class CanvasSearchRequest(
+    val q: String,
+    val channelId: String? = null,
+    /** The canvas's creator or its last editor. */
+    val fromUserId: String? = null,
+    val after: String? = null,
+    val before: String? = null,
+    val sort: String = "relevance",
 )

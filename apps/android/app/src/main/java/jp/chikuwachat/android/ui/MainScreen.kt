@@ -130,6 +130,7 @@ fun MainScreen(controller: AppController) {
     val searchResults = remember { SearchResults() }
     val searchListState = rememberLazyListState()
     val searchFilesState = rememberLazyListState()
+    val searchCanvasesState = rememberLazyListState()
     val recentKey = controller.accountKey?.let { RecentSearches.key(it) }
     var recentSearches by remember(recentKey) { mutableStateOf(recentKey?.let { RecentSearches.read(controller.prefs, it) } ?: emptyList()) }
     // Saveable (M28c): an open dialog (and what was typed in it) survives a rotation.
@@ -300,11 +301,14 @@ fun MainScreen(controller: AppController) {
         stack = MainNav.changeSearch(stack, params)
         searchListState.requestScrollToItem(0)
         searchFilesState.requestScrollToItem(0)
+        searchCanvasesState.requestScrollToItem(0)
     }
     fun runSearch(params: SearchParams) {
         recentKey?.let { recentSearches = RecentSearches.push(controller.prefs, it, params) }
         // The files tab reads only the words and the channel: a search by sender, date, kind or thread shows messages.
-        if (params.fromUserId != null || params.date != null || params.has.isNotEmpty() || params.isThread) searchTab = 0
+        // M58: the canvases tab also reads the person and the dates, not kinds nor 「スレッド内」.
+        val kinds = params.has.isNotEmpty() || params.isThread
+        if (kinds || (searchTab == SEARCH_TAB_FILES && (params.fromUserId != null || params.date != null))) searchTab = 0
         changeSearch(params)
         searchText = params.q
         stack = MainNav.runSearch(stack, params)
@@ -323,6 +327,22 @@ fun MainScreen(controller: AppController) {
     LaunchedEffect(searching, searchTab, searchParams?.q, searchParams?.channelId) {
         val params = searchParams
         if (searching && searchTab == SEARCH_TAB_FILES && params != null) searchResults.showFiles(controller, params.q.trim().ifEmpty { null }, params.channelId)
+    }
+    // M58: the 「キャンバス」 tab asks when it shows (and again for a different search).
+    LaunchedEffect(searching, searchTab, searchParams) {
+        val params = searchParams
+        if (searching && searchTab == SEARCH_TAB_CANVASES && params != null) searchResults.showCanvases(controller, params)
+    }
+    /** M58: a canvas found by the search, in its conversation's 「キャンバス」 tab with the results kept behind it. */
+    fun openCanvasFromSearch(canvas: jp.chikuwachat.android.api.CanvasMeta) {
+        val channel = store.channel(canvas.channelId)
+        if (channel?.isMember != true) {
+            scope.launch { controller.openCanvasLink(canvas.id) } // says why it cannot open
+            return
+        }
+        focusManager.clearFocus()
+        controller.messageFocus = null
+        tabs = MainTabs.landCanvasFromSearch(tabs, MainTabs.landingTab(channel), canvas.channelId, canvas.id)
     }
 
     // M29 / M33: back (the system's, the app bar's ← and the search bar's) closes the details page, then a pins / files
@@ -669,11 +689,15 @@ fun MainScreen(controller: AppController) {
                             onChange = ::changeSearch,
                             listState = searchListState,
                             filesState = searchFilesState,
+                            canvasesState = searchCanvasesState,
                             onLoadMore = { scope.launch { searchResults.loadMore(controller) } },
                             onLoadMoreFiles = { scope.launch { searchResults.loadMoreFiles(controller) } },
+                            onLoadMoreCanvases = { scope.launch { searchResults.loadMoreCanvases(controller) } },
                             onRetry = { scope.launch { searchResults.retry(controller) } },
+                            onRetryCanvases = { scope.launch { searchResults.retryCanvases(controller) } },
                             onOpen = { message -> openFromSearch(message.id, message.channelId, message.parentId, message) },
                             onOpenFile = { item -> openFromSearch(item.messageId, item.channelId, item.parentId) },
+                            onOpenCanvas = ::openCanvasFromSearch,
                         )
                     }
                 } else if (pane is Route.Files) {
@@ -714,6 +738,10 @@ fun MainScreen(controller: AppController) {
                                 CanvasPane(controller, selectedChannel, version, conversation.canvasId, onSelect = { id ->
                                     focusManager.clearFocus()
                                     stack = MainNav.selectCanvas(stack, id)
+                                }, onOpenThread = { parentId ->
+                                    // M58 「コメント」: the shared message's thread over the canvas (back returns to it).
+                                    focusManager.clearFocus()
+                                    openThread(parentId)
                                 })
                             }
                             // M52 (CALENDAR.md §7): the channel's shared calendar, the next 60 days.

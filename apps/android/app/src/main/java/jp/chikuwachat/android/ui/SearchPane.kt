@@ -108,6 +108,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.CanvasMeta
+import jp.chikuwachat.android.api.CanvasSearchHit
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.FileItem
 import jp.chikuwachat.android.api.MessageOut
@@ -208,6 +210,73 @@ class SearchResults {
             }.onFailure { failed = true }
         } finally {
             if (id == request) loading = false
+        }
+    }
+
+    // --- M58: the 「キャンバス」 tab (GET /search/canvases) ---
+
+    var canvasHits by mutableStateOf<List<CanvasSearchHit>>(emptyList())
+        private set
+    var canvasKeywords by mutableStateOf<List<String>>(emptyList())
+        private set
+    var canvasTotal by mutableIntStateOf(0)
+        private set
+    var canvasCapped by mutableStateOf(false)
+        private set
+    var canvasHasMore by mutableStateOf(false)
+        private set
+    var canvasUnresolved by mutableStateOf<List<String>>(emptyList())
+        private set
+    var canvasLoading by mutableStateOf(false)
+        private set
+    var canvasLoaded by mutableStateOf(false)
+        private set
+    var canvasFailed by mutableStateOf(false)
+        private set
+    private var canvasParams: SearchParams? = null
+    private var canvasRequest = 0
+
+    /** The canvases for a search (the same one again keeps what is shown); nothing is sent without anything to look for. */
+    suspend fun showCanvases(controller: AppController, next: SearchParams) {
+        if (next == canvasParams && (canvasLoaded || canvasLoading)) return
+        canvasParams = next
+        canvasHits = emptyList()
+        canvasKeywords = emptyList()
+        canvasTotal = 0
+        canvasCapped = false
+        canvasHasMore = false
+        canvasUnresolved = emptyList()
+        canvasLoaded = false
+        canvasFailed = false
+        loadCanvases(controller, 0)
+    }
+
+    suspend fun loadMoreCanvases(controller: AppController) {
+        if (canvasHasMore && !canvasLoading) loadCanvases(controller, canvasHits.size)
+    }
+
+    suspend fun retryCanvases(controller: AppController) = loadCanvases(controller, canvasHits.size)
+
+    private suspend fun loadCanvases(controller: AppController, offset: Int) {
+        val current = canvasParams ?: return
+        if (Search.canvasEmpty(current)) return
+        val id = ++canvasRequest
+        canvasLoading = true
+        canvasFailed = false
+        try {
+            val result = controller.searchCanvases(Search.canvasQuery(current), offset)
+            if (id != canvasRequest) return
+            result.onSuccess { out ->
+                canvasHits = if (offset == 0) out.hits else (canvasHits + out.hits).distinctBy { it.canvas.id }
+                canvasKeywords = out.keywords
+                canvasTotal = out.total
+                canvasCapped = out.totalCapped
+                canvasHasMore = out.hasMore
+                canvasUnresolved = out.filters?.unresolved ?: emptyList()
+                canvasLoaded = true
+            }.onFailure { canvasFailed = true }
+        } finally {
+            if (id == canvasRequest) canvasLoading = false
         }
     }
 
@@ -546,6 +615,9 @@ fun BackToSearchStrip(description: String, onClick: () -> Unit) {
 /** Tab index of the files tab. */
 const val SEARCH_TAB_FILES = 1
 
+/** M58: tab index of the canvases tab (CANVAS.md §4.8: 「メッセージ / ファイル」 の隣). */
+const val SEARCH_TAB_CANVASES = 2
+
 @Composable
 fun SearchResultsPane(
     controller: AppController,
@@ -557,23 +629,147 @@ fun SearchResultsPane(
     onChange: (SearchParams) -> Unit,
     listState: LazyListState,
     filesState: LazyListState,
+    canvasesState: LazyListState,
     onLoadMore: () -> Unit,
     onLoadMoreFiles: () -> Unit,
+    onLoadMoreCanvases: () -> Unit,
     onRetry: () -> Unit,
+    onRetryCanvases: () -> Unit,
     onOpen: (MessageOut) -> Unit,
     onOpenFile: (FileItem) -> Unit,
+    onOpenCanvas: (CanvasMeta) -> Unit,
 ) {
-    val filesOnly = tab == SEARCH_TAB_FILES
     Column(Modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text("メッセージ") })
-            Tab(selected = filesOnly, onClick = { onTabChange(SEARCH_TAB_FILES) }, text = { Text("ファイル") })
+            Tab(selected = tab == SEARCH_TAB_FILES, onClick = { onTabChange(SEARCH_TAB_FILES) }, text = { Text("ファイル") })
+            Tab(selected = tab == SEARCH_TAB_CANVASES, onClick = { onTabChange(SEARCH_TAB_CANVASES) }, text = { Text("キャンバス") })
         }
-        FilterRow(controller, version, params, onChange, filesOnly)
-        if (filesOnly) {
-            FileResults(controller, results, filesState, onLoadMoreFiles, onOpenFile)
-        } else {
-            MessageResults(controller, version, params, results, onChange, listState, onLoadMore, onRetry, onOpen)
+        FilterRow(controller, version, params, onChange, tab)
+        when (tab) {
+            SEARCH_TAB_FILES -> FileResults(controller, results, filesState, onLoadMoreFiles, onOpenFile)
+            SEARCH_TAB_CANVASES -> CanvasResults(controller, version, params, results, onChange, canvasesState, onLoadMoreCanvases, onRetryCanvases, onOpenCanvas)
+            else -> MessageResults(controller, version, params, results, onChange, listState, onLoadMore, onRetry, onOpen)
+        }
+    }
+}
+
+/**
+ * M58 (CANVAS.md §4.8, the desktop's CanvasSearch.tsx): canvases of my conversations whose title or body matches. A hit
+ * shows its conversation, who changed it last and when, the title and the server's plain-text excerpt with the words
+ * marked (an image reads 「[画像]」), and opens the canvas in its conversation's 「キャンバス」 tab.
+ */
+@Composable
+private fun CanvasResults(
+    controller: AppController,
+    version: Int,
+    params: SearchParams,
+    results: SearchResults,
+    onChange: (SearchParams) -> Unit,
+    state: LazyListState,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+    onOpen: (CanvasMeta) -> Unit,
+) {
+    val words = params.q.isNotBlank()
+    LaunchedEffect(state, results) {
+        snapshotFlow {
+            val info = state.layoutInfo
+            val count = results.canvasHits.size
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            results.canvasHasMore && !results.canvasLoading && count > 0 && info.totalItemsCount >= count && last >= count - 5
+        }.distinctUntilChanged().collect { near -> if (near) onLoadMore() }
+    }
+    if (Search.canvasEmpty(params)) {
+        Text(
+            "語を入れると、キャンバスの題名と本文から探します。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+        )
+        return
+    }
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (results.canvasLoaded) Search.totalLabel(results.canvasTotal, results.canvasCapped) else "",
+            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+        )
+        SortMenu(sort = if (words) params.sort else Search.NEWEST, enabled = words, onChange = { onChange(params.copy(sort = it)) })
+    }
+    if (results.canvasUnresolved.isNotEmpty()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("キャンバスには使えない条件があります: " + results.canvasUnresolved.joinToString(" "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+        }
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = state) {
+        when {
+            results.canvasLoaded && results.canvasHits.isEmpty() -> item(key = "empty") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                    Text("キャンバスは見つかりませんでした", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        "自分が参加している会話のキャンバスを、題名と本文から探します。", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            else -> items(results.canvasHits, key = { it.canvas.id }) { hit ->
+                CanvasResultRow(controller, version, hit, results.canvasKeywords, onOpen = { onOpen(hit.canvas) })
+                HorizontalDivider()
+            }
+        }
+        if (results.canvasLoading) {
+            item(key = "loading:" + results.canvasHits.size) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (results.canvasHits.isEmpty()) "検索しています…" else "続きを読み込んでいます…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else if (results.canvasFailed) {
+            item(key = "retry") {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    OutlinedButton(onClick = onRetry) { Text("もう一度読み込む") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CanvasResultRow(controller: AppController, version: Int, hit: CanvasSearchHit, keywords: List<String>, onOpen: () -> Unit) {
+    val store = controller.store
+    val canvas = hit.canvas
+    val channel = store.channel(canvas.channelId)
+    val who = store.users[canvas.updatedBy]?.displayName ?: "メンバー"
+    val progress = CanvasText.taskProgress(canvas.taskTotal, canvas.taskDone)
+    val snippet = remember(hit.snippet, version) { CanvasText.readableSnippet(Mentions.toNames(hit.snippet, store.users, store.groups)) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = "キャンバスを開く", onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                (channel?.let { channelTitle(it, store) } ?: "会話") + " · " + who,
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = muted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(YouSettings.lastUsedLabel(canvas.updatedAt), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
+        }
+        Row(Modifier.padding(top = 6.dp)) {
+            Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(highlighted(canvas.title, keywords), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (progress != null) Text(progress, style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.padding(start = 8.dp))
+                }
+                if (snippet.isNotBlank()) Text(highlighted(snippet, keywords), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -768,13 +964,17 @@ private fun FileResults(controller: AppController, results: SearchResults, state
 // --- filter chips ---------------------------------------------------------------------------------------
 
 @Composable
-private fun FilterRow(controller: AppController, version: Int, params: SearchParams, onChange: (SearchParams) -> Unit, filesOnly: Boolean) {
+private fun FilterRow(controller: AppController, version: Int, params: SearchParams, onChange: (SearchParams) -> Unit, tab: Int) {
     val store = controller.store
     var picker by remember { mutableStateOf<String?>(null) }
     val sender = params.fromUserId?.let { store.users[it] }
     val channel = params.channelId?.let { store.channel(it) }
+    val filesOnly = tab == SEARCH_TAB_FILES
+    // M58: a canvas's person is whoever made it or changed it last; its kinds and 「スレッド内」 do not apply.
+    val canvases = tab == SEARCH_TAB_CANVASES
+    val personLabel = if (canvases) "作成・更新した人" else "送信者"
     // Per tab: the row keeps its place by the first chip's key, which would hide 送信者 after the files tab.
-    key(filesOnly) { LazyRow(
+    key(tab) { LazyRow(
         Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -782,7 +982,7 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
     ) {
         if (!filesOnly) item(key = "from") {
             FilterPill(
-                label = if (params.fromUserId != null) "送信者: " + (sender?.displayName ?: "?") else "送信者",
+                label = if (params.fromUserId != null) "$personLabel: " + (sender?.displayName ?: "?") else personLabel,
                 icon = Icons.Default.Person,
                 selected = params.fromUserId != null,
                 onClick = { picker = "from" },
@@ -798,7 +998,8 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
                 onClear = { onChange(params.copy(channelId = null)) },
             )
         }
-        if (!filesOnly) {
+        if (canvases) item(key = "date") { DateFilter(params, onChange) }
+        if (!filesOnly && !canvases) {
             item(key = "date") { DateFilter(params, onChange) }
             item(key = "kind") { KindFilter(params, onChange) }
             item(key = "thread") {
@@ -810,7 +1011,11 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
                 )
             }
         }
-        val clearable = if (filesOnly) params.channelId != null else Search.hasFilters(params)
+        val clearable = when {
+            filesOnly -> params.channelId != null
+            canvases -> params.channelId != null || params.fromUserId != null || params.date != null
+            else -> Search.hasFilters(params)
+        }
         if (clearable) item(key = "clear") {
             TextButton(onClick = { onChange(Search.cleared(params)) }) { Text("条件をクリア") }
         }

@@ -424,6 +424,9 @@ class AppController(private val app: Application) {
         linkPreviews.clear()
         previewLoads.clear()
         emojiLoads.clear()
+        canvasLinks.clear()
+        canvasLinksAsked.clear()
+        canvasAttachments.clear()
         attachedKey = null
         openChannelId = null
         AvatarCache.reset()
@@ -1443,21 +1446,90 @@ class AppController(private val app: Application) {
         val api = api ?: return false
         return try {
             val canvas = api.getCanvas(canvasId, null) ?: return false
+            canvasLinks[canvasId] = jp.chikuwachat.android.sync.CanvasLinkState.Ok(canvas.meta) // a tap asks again (joined since, restored)
             if (store.channel(canvas.channelId)?.isMember != true) {
                 error = "このキャンバスの会話のメンバーではありません"
                 return false
             }
             pendingCanvas = canvas.channelId to canvas.id
             true
-        } catch (e: ApiException.Api) {
-            error = when {
-                e.status == 403 -> "このキャンバスの会話のメンバーではありません"
-                e.status == 404 -> ErrorMessages.byCode["canvas_not_found"] ?: describe(e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val state = jp.chikuwachat.android.sync.CanvasLinkState.of(e)
+            if (state != jp.chikuwachat.android.sync.CanvasLinkState.Failed) canvasLinks[canvasId] = state
+            error = when (state) {
+                jp.chikuwachat.android.sync.CanvasLinkState.Forbidden -> "このキャンバスの会話のメンバーではありません"
+                jp.chikuwachat.android.sync.CanvasLinkState.Missing -> ErrorMessages.byCode["canvas_not_found"] ?: describe(e)
                 else -> describe(e)
             }
             false
-        } catch (e: Exception) { report(e); false }
+        }
     }
+
+    /**
+     * M58: what a `/c/<id>` card shows, read once per session (the card prefers the store's list, which events keep
+     * current). A failure on the network is not kept: the card asks again the next time it is drawn.
+     */
+    val canvasLinks = mutableStateMapOf<String, jp.chikuwachat.android.sync.CanvasLinkState>()
+    private val canvasLinksAsked = HashSet<String>()
+
+    fun loadCanvasLink(canvasId: String) {
+        val api = api ?: return
+        if (canvasLinks.containsKey(canvasId) || !canvasLinksAsked.add(canvasId)) return
+        scope.launch {
+            val state = try {
+                api.getCanvas(canvasId, null)?.let { jp.chikuwachat.android.sync.CanvasLinkState.Ok(it.meta) } ?: jp.chikuwachat.android.sync.CanvasLinkState.Failed
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) { jp.chikuwachat.android.sync.CanvasLinkState.of(e) }
+            canvasLinksAsked.remove(canvasId)
+            canvasLinks[canvasId] = state
+        }
+    }
+
+    /** A card that could not be read: tapped, it asks again. */
+    fun forgetCanvasLink(canvasId: String) { canvasLinks.remove(canvasId) }
+
+    /**
+     * M58 「会話に共有」 (§4.13): the canvas's link posted to its conversation as an ordinary message (nothing new while
+     * that message exists). The answer names the message, whose thread holds the comments.
+     */
+    suspend fun shareCanvas(canvasId: String): jp.chikuwachat.android.api.CanvasOut? {
+        val api = api ?: return null
+        return attempt { api.shareCanvas(canvasId) }
+            .onSuccess { canvas ->
+                store.applyCanvasMeta(canvas.meta)
+                engine?.canvases?.current(canvasId)?.applyMeta(canvas.meta)
+            }
+            .onFailure { report(it) }.getOrNull()
+    }
+
+    /**
+     * M58 「コメント」: the shared message (its thread holds the comments), sharing the canvas first when it never was or
+     * its message is gone. The message is put in the store so the thread shows it as its parent.
+     */
+    suspend fun canvasCommentsMessage(canvas: jp.chikuwachat.android.api.CanvasMeta): String? {
+        val api = api ?: return null
+        canvas.shareMessageId?.let { id ->
+            if (store.message(canvas.channelId, id)?.deleted == false) return id
+            val message = try { api.message(id) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            if (message != null && !message.deleted) {
+                store.upsertMessage(message)
+                return id
+            }
+        }
+        val shared = shareCanvas(canvas.id) ?: return null
+        val id = shared.shareMessageId ?: return null
+        if (store.message(shared.channelId, id) == null) {
+            attempt { api.message(id) }.onSuccess { store.upsertMessage(it) }
+        }
+        return id
+    }
+
+    /** M58 (§4.8): one page of canvases whose title or body matches (the search's 「キャンバス」 tab). */
+    suspend fun searchCanvases(query: jp.chikuwachat.android.api.CanvasSearchRequest, offset: Int = 0): Result<jp.chikuwachat.android.api.CanvasSearchOut> =
+        attempt { api!!.searchCanvases(query, limit = 20, offset = offset) }.onFailure { error = describe(it) }
 
     /** The templates to start a canvas from (read each time the picker opens: they send no events, CANVAS.md §11). */
     suspend fun canvasTemplates(): List<jp.chikuwachat.android.api.CanvasTemplateOut>? {
@@ -1518,10 +1590,10 @@ class AppController(private val app: Application) {
         return attempt { api.restoreCanvas(canvasId) }.onSuccess { store.applyCanvasMeta(it.meta) }.onFailure { report(it) }.getOrNull()
     }
 
-    /** The history (read only on Android, M46): versions newest first, and one version's body. */
-    suspend fun canvasRevisions(canvasId: String): List<jp.chikuwachat.android.api.CanvasRevisionMeta>? {
+    /** The history: a page of versions, newest first (`cursor`: the page after). */
+    suspend fun canvasRevisions(canvasId: String, cursor: String? = null): jp.chikuwachat.android.api.CanvasRevisionPage? {
         val api = api ?: return null
-        return attempt { api.canvasRevisions(canvasId).items }.onFailure { report(it) }.getOrNull()
+        return attempt { api.canvasRevisions(canvasId, cursor) }.onFailure { report(it) }.getOrNull()
     }
 
     suspend fun canvasRevision(canvasId: String, revisionId: String): jp.chikuwachat.android.api.CanvasRevisionOut? {
@@ -1529,10 +1601,57 @@ class AppController(private val app: Application) {
         return attempt { api.canvasRevision(canvasId, revisionId) }.onFailure { report(it) }.getOrNull()
     }
 
+    /**
+     * M58 (§4.9): that version's body as a new version. What is typed here is saved first (it stays in the history); a
+     * failure on the network is sent again with the same key, so a retry never makes a second version.
+     */
+    suspend fun restoreCanvasRevision(canvasId: String, revisionId: String): jp.chikuwachat.android.api.CanvasOut? {
+        val api = api ?: return null
+        val saver = engine?.canvases?.current(canvasId)
+        saver?.flush()
+        saver?.settled()
+        return attempt {
+            jp.chikuwachat.android.sync.CanvasRequests.sameKey(UUID.randomUUID().toString()) { key -> api.restoreCanvasRevision(canvasId, revisionId, key) }
+        }.onSuccess { canvas ->
+            store.applyCanvasMeta(canvas.meta)
+            saver?.remoteVersion(canvas.version)
+        }.onFailure { report(it) }.getOrNull()
+    }
+
+    /** M58: a version's name; null takes it off. */
+    suspend fun labelCanvasRevision(canvasId: String, revisionId: String, label: String?): jp.chikuwachat.android.api.CanvasRevisionMeta? {
+        val api = api ?: return null
+        return attempt { api.labelCanvasRevision(canvasId, revisionId, label) }.onFailure { report(it) }.getOrNull()
+    }
+
+    /** M58: a version's body erased (§4.7: owners and administrators; in a DM its creator). The server audits it. */
+    suspend fun eraseCanvasRevision(canvasId: String, revisionId: String): jp.chikuwachat.android.api.CanvasRevisionMeta? {
+        val api = api ?: return null
+        return attempt { api.eraseCanvasRevision(canvasId, revisionId) }.onFailure { report(it) }.getOrNull()
+    }
+
+    /** Canvas images' metadata, once per session (M58: an image uploaded here is known at once). */
+    private val canvasAttachments = HashMap<String, AttachmentOut>()
+
     /** A canvas image's metadata (the body names only its id); null when it cannot be seen. */
     suspend fun canvasAttachment(attachmentId: String): AttachmentOut? {
+        canvasAttachments[attachmentId]?.let { return it }
         val api = api ?: return null
-        return attempt { api.attachment(attachmentId) }.getOrNull()
+        return attempt { api.attachment(attachmentId) }.getOrNull()?.also { canvasAttachments[attachmentId] = it }
+    }
+
+    /**
+     * M58 (§4.10): a photo picked or taken for a canvas, uploaded as pending; the save that names it binds it. Only images:
+     * a canvas draws nothing else (the picker offers images only; a file that is not one is refused here).
+     */
+    suspend fun uploadCanvasImage(uri: Uri): AttachmentOut? {
+        val uploaded = uploadAttachment(uri).getOrNull() ?: return null
+        if (!uploaded.contentType.startsWith("image/")) {
+            error = "キャンバスに入れられるのは画像だけです"
+            return null
+        }
+        canvasAttachments[uploaded.id] = uploaded
+        return uploaded
     }
 
     /** A canvas's text to the clipboard (mentions as @names), e.g. when saving it stopped. */
