@@ -150,8 +150,18 @@ export type Role = components["schemas"]["AdminUserCreate"]["role"];
  * Polls (M14b). `anonymous`, `counts` and `mine` came with M27: a server before it sends none of them, and rows stored
  * here before it lack them, so they are optional when read (ui/PollCard.tsx pollCounts / pollMine fall back).
  */
-export type PollOut = Omit<components["schemas"]["PollOut"], "anonymous" | "counts"> & { anonymous?: boolean; counts?: number[] };
+type ServerPoll = components["schemas"]["PollOut"];
+/** M53 (SCHEDULING.md): a scheduling poll's fields; a server before M53 and rows stored before it have none. */
+type SchedulePollFields = "kind" | "slots" | "tz" | "decided" | "answers" | "respondents" | "comments" | "my_answers" | "my_comment";
+export type PollOut = Omit<ServerPoll, "anonymous" | "counts" | SchedulePollFields> & { anonymous?: boolean; counts?: number[] } & Partial<Pick<ServerPoll, SchedulePollFields>>;
 export type PollCreate = components["schemas"]["PollCreate"];
+/** M53: one candidate of a scheduling poll (a time, or a whole day) and the answers to it. */
+export type ScheduleSlotIn = components["schemas"]["ScheduleSlotIn"];
+export type ScheduleSlotOut = components["schemas"]["ScheduleSlotOut"];
+export type SlotAnswersOut = components["schemas"]["SlotAnswersOut"];
+export type PollAnswer = components["schemas"]["PollAnswerIn"]["answer"];
+export type PollAnswersIn = components["schemas"]["PollAnswersIn"];
+export type PollDecidedOut = components["schemas"]["PollDecidedOut"];
 
 /** Edit history (M14c). */
 export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];

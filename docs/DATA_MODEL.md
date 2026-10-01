@@ -736,7 +736,8 @@ CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, 
   「文」を続ける。ボタンからの挿入で入力欄に何か書いてあれば、その後ろに空行を挟んで足す。`/` の候補の一覧にも、組み込み
   コマンドの後にテンプレートを出す (選ぶとすぐ挿入)。`/help` の一覧にも名前を出す。
 - **並び**: 共通 → 個人、それぞれ position → 名前。times のチャンネル (M24) では `suggest_in = times` のものを先に出す。
-- **`/日程`** (LAB.md G。サーバの変更なし、既存の投票 (M14b、`POST /channels/{id}/messages` の `poll`) を複数選択で作る):
+- **`/日程`** (LAB.md G。サーバの変更なし、既存の投票 (M14b、`POST /channels/{id}/messages` の `poll`) を複数選択で作る。
+  **M53 から Web は日程調整 (SCHEDULING.md) のフォームを開き、下の書き方の日付を候補として入れる**。iOS / Android は M54 まで下のまま):
   - `/日程 ゼミ 10/3 10/4 10/6` → 質問「ゼミ」、選択肢「10/3 (土)」「10/4 (日)」「10/6 (火)」。空白で区切り、先頭から
     日付でない語を質問にする (無ければ「日程調整」)。最初の日付より後ろは日付の書き方だけ。
   - 日付: `M/D` または `YYYY/M/D`。範囲 `A-B` / `A〜B` / `A~B` (B は日付か、同じ月の日 `D`。14 日まで)。日付の直後の
@@ -1057,6 +1058,33 @@ CREATE TABLE poll_votes (
   値を保つ (SYNC_PROTOCOL.md §8)。記名の投票でも `mine` は入るが、クライアントは記名の投票の自分の票を `votes` から
   導く (イベントにも毎回入るので常に新しい。保った `mine` は別の端末で取り消した票のことがある)。
   匿名の投票で同じ人の別の端末は、次に履歴か差分を取るまで自分の票の表示が古いことがある。
+
+#### 日程調整 (M53、SCHEDULING.md)
+
+`messages.poll` に `"kind": "schedule"`、`"slots"` (`{"starts_at", "ends_at"}` (UTC) か `{"date"}`)、`"tz"`、`"decided"`
+(`{"index", "event_id", "by", "at"}` か null) を足す。`kind` の無い行は `"choice"`。`options` は候補の見出し (サーバが
+`tz` で作る)。回答は `poll_votes` に 1 人 1 候補 1 行で、`answer` 列が ○ △ × (移行 0052):
+
+```sql
+ALTER TABLE poll_votes ADD COLUMN answer varchar(8) NOT NULL DEFAULT 'yes';   -- CHECK answer IN ('yes','maybe','no')
+
+CREATE TABLE poll_comments (
+  message_id  uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES users(id),
+  text        text NOT NULL,                                   -- CHECK char_length(text) BETWEEN 1 AND 100
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, user_id)
+);
+```
+
+- choice の投票の行は全部 `yes`。schedule の `PollOut.votes` / `counts` / `mine` は ○ だけを数える (古いアプリはそれを見る)。
+- `PUT /messages/{id}/poll/answers` (自分の回答の置き換えとコメント)、`POST` / `DELETE /messages/{id}/poll/decide` (決定と
+  取り消し、作成者・チャンネルのオーナー・管理者)。変化は投票と同じく seq を 1 つ取り `message.updated` (`change = poll`)。
+  回答の変更で行の `created_at` は変えない (表の人の並びが動かない)。
+- 決定は poll の更新・チャンネルのカレンダーの予定 (DM と `create_event: false` は作らない)・スレッドへの返信を 1 つの
+  トランザクションで行う。取り消しても予定は消さない。
+- `PollOut` の追加 (`answers`、`respondents`、`comments`、`my_answers`、`my_comment` など) は SCHEDULING.md §7。
+  `my_answers` / `my_comment` は `mine` と同じく本人宛ての応答だけ (イベントでは null)。
 
 ### message_acks と messages.priority (重要度と確認、M15e)
 

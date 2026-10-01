@@ -1,5 +1,7 @@
 # 日程調整 (M53〜M54)
 
+状態: **M53 (サーバと Desktop / Web) 完了 (2026-10-01)**。M54 (iOS / Android) は予定。実装で決めたこと・直したことは §7。
+
 調整さんのような日程調整を、メッセージに付くアンケート (M14b の poll) の一種として作る。候補の日時ごとに
 ○ △ × で答え、集計を表で見る。決めたら、その日時をチャンネルのカレンダー (CALENDAR.md) の予定にする。
 今の `/日程` (日付を選択肢にした複数選択の投票、M30) はこれに置き換える。
@@ -71,3 +73,44 @@
 
 - **M53**: サーバ (poll の kind・answers・comments・決定・予定の作成) と Desktop / Web。
 - **M54**: iOS と Android。
+
+## 7. M53 で決めたこと・直したこと
+
+API と形 (openapi/openapi.json が正):
+
+- 作成: `poll: {kind: "schedule", question, slots: [{starts_at, ends_at} | {date}], tz, anonymous?}`。`tz` は必須 (IANA 名)。
+  候補は 2〜20 個、同じ候補 (同じ時刻・同じ日) の重複は 422。`options` は送られても無視し、`multiple` は常に true。
+  本文は今までどおり 「📊 題名」 (古いアプリが本文を隠す規則がそのまま効く)。候補の順は送られた順 (Web は日付順に並べて送る)。
+- 見出しは `tz` で 「10/3 (土) 14:00〜15:00」「10/5 (月) 終日」。日をまたぐ候補は 「22:00〜24:00」「23:00〜翌1:30」。
+  Web は同じ規則で手元でも見出しを出す (`apps/desktop/src/ui/scheduling.ts` の slotLabel)。
+- `PollOut` に足したもの: `kind` (`"choice"` | `"schedule"`)、`slots` (`{starts_at, ends_at, date}` のどちらか一方)、`tz`、
+  `decided` (`{index, event_id, by, at}`)、`answers` (候補ごとの `yes` / `maybe` / `no` と `*_count`)、`respondents`
+  (答えたかコメントした人、最初に答えた順。表の行)、`comments` (`[{user_id, text}]`)、`my_answers` (候補ごとの
+  `"yes"|"maybe"|"no"|null`)、`my_comment` (`""` = なし)。`my_*` は `mine` と同じく本人宛ての応答だけで、イベントでは null
+  (SYNC_PROTOCOL.md §8 のマージ)。schedule の `votes` / `counts` / `mine` は ○ だけ (古いアプリの表示)。
+- `PUT /messages/{id}/poll/answers`: `answers` は置き換え (送らない候補は未回答)。`comment` は **送らなければ今のまま**、
+  文字列で設定、`null` か空白だけで削除 (1〜100 文字、改行と連続する空白は 1 つの空白に)。何も変わらなければ 200 で seq を
+  取らない、変われば 201。候補の番号が範囲外は 400 `poll_option_invalid`、同じ番号 2 回は 422。
+- 決定すると `closed_at` も入れる (古いアプリが締め切りとして見る)。取り消すと `decided` と `closed_at` を両方 null にする
+  (決める前に「締め切る」していても回答を再開する)。締め切った後でも決められる。
+- `POST …/poll/decide` を同じ候補でもう一度送ると何もしない (200、再送の扱い)。別の候補は 409 `poll_decided` (先に取り消す)。
+  決定・取り消しの権限が無いと 403 `poll_decide_restricted`。choice の投票に answers / decide は 400 `poll_not_schedule`。
+  決定後の回答・古いアプリの投票は 409 `poll_decided` (締め切りだけなら今までどおり `poll_closed`)。
+- 決定は 1 つのトランザクション: poll の更新 (`message.updated` change `poll`)、予定 (`calendar.event.updated`)、スレッドの
+  返信 (`message.created`、親の `parent_thread` 付き)。投票がスレッドの返信なら、決定の返信も同じスレッド (親) に付く。
+
+問題だった点と直し方:
+
+1. **匿名の日程調整で決定の返信が答えた人をメンションすると、誰が答えたかが分かる** (匿名の約束 M27 に反する)。
+   匿名のときはメンションを付けない (件数だけ)。コメントも匿名では `user_id = null` で、自分のコメントは `my_comment` で知る。
+2. **メンションする「答えた人」が決まっていなかった**。どれかの候補に ○ △ × のどれかを付けた人かコメントした人で、
+   決めた本人とチャンネルを抜けた人を除く (最初に答えた順)。
+3. **予定を作れない人が決めることがある** (投稿制限のチャンネルで、オーナーではない作成者がスレッドに作った日程調整)。
+   カレンダーの規則 (CALENDAR.md §3) はそのまま守り、決定ごと 403 `posting_restricted` にする (`create_event: false` なら決められる)。
+   アーカイブされたチャンネルでは回答も決定もできない (409 `channel_archived`)。
+4. **予定の説明のリンクの URL の元** が無かった。`PUBLIC_BASE_URL` があればそれ、無ければ要求の来た URL
+   (本番は uvicorn の `--proxy-headers` で公開の URL になる)。説明は 「日程調整で決定\n<URL>/m/<メッセージ id>」。
+   予定の持ち主は決めた人 (変更・削除は今までどおり作成者・オーナー・管理者)。通知 (アラーム) は付けない。
+5. **`/日程` の置き換え**: Web では `/日程` だけで空のフォーム、`/日程 題名 日付 …` (M30 の書き方、時刻の終わりが無ければ 1 時間、
+   時刻が無ければ終日) で候補を入れたフォームを開く (すぐには作らない)。読めない引数は今までどおり使い方を出す。
+   iOS / Android の `/日程` は M54 まで M30 のまま (`apps/shared/templates.json` の検証ケースも変えていない)。
