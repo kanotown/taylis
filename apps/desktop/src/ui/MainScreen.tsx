@@ -50,6 +50,7 @@ import { Timeline } from "./Timeline";
 import { NoticeToast, Toast } from "./Toast";
 import { TypingIndicator } from "./Typing";
 import { presenceLabel } from "./Avatar";
+import { StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
@@ -1057,7 +1058,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   {presenceLabel(store.presenceOf(dmOther[0]))}
                   {activeStatus(store.users.get(dmOther[0])) && (
                     <span className="ml-1 truncate">
-                      {activeStatus(store.users.get(dmOther[0]))!.emoji} {activeStatus(store.users.get(dmOther[0]))!.text}
+                      <StatusGlyph controller={controller} emoji={activeStatus(store.users.get(dmOther[0]))!.emoji} /> {activeStatus(store.users.get(dmOther[0]))!.text}
                     </span>
                   )}
                 </span>

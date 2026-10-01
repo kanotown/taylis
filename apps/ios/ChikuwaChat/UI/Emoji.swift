@@ -83,6 +83,18 @@ struct EmojiUsage: Codable, Equatable {
     /// The picker's 「よく使う」: the most used first, the latest first among equals.
     var frequent: [String] { entries.sorted(by: Self.ranked).prefix(Self.shown).map(\.glyph) }
 
+    /// 「よく使う」 as the picker draws it: each glyph once (the grid's ids; a stored list written elsewhere may repeat
+    /// one), no empty ones, and a custom `:name:` only while `customNames` has it (removed, renamed, from another
+    /// workspace, or the list not loaded yet: it has no image to show and nothing valid to pick).
+    static func shown(_ glyphs: [String], customNames: Set<String>) -> [String] {
+        var seen: Set<String> = []
+        return glyphs.filter { glyph in
+            guard !glyph.isEmpty, seen.insert(glyph).inserted else { return false }
+            guard let name = CustomEmoji.name(of: glyph) else { return true }
+            return customNames.contains(name)
+        }
+    }
+
     mutating func record(_ glyph: String) {
         guard !glyph.isEmpty else { return }
         let next = (entries.map(\.last).max() ?? 0) + 1

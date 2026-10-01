@@ -46,6 +46,25 @@ final class EmojiTests: XCTestCase {
         defaults.removePersistentDomain(forName: "EmojiUsageTests")
     }
 
+    /// 2026-10-02 (picking a custom emoji in 「よく使う」 crashed now and then): what the grid draws has each glyph once
+    /// (its ForEach ids) and only the custom emoji that exist, whatever the stored usage says.
+    @MainActor
+    func testFrequentShownSkipsUnknownCustomEmojiAndRepeats() {
+        // A stored list with a repeat (written by another build or by hand) and the fallback from a repeating recent list.
+        let stored = #"{"entries":[{"glyph":":party:","count":3,"last":3},{"glyph":"👍","count":2,"last":2},{"glyph":":party:","count":1,"last":1},{"glyph":":gone:","count":1,"last":4},{"glyph":"","count":5,"last":5}]}"#
+        let frequent = EmojiUsage.decode(stored).frequent
+        XCTAssertEqual(EmojiUsage.shown(frequent, customNames: ["party"]), [":party:", "👍"])
+        XCTAssertEqual(EmojiUsage.shown(EmojiUsage.decode("", recent: "🎉 :party: 🎉").frequent, customNames: ["party"]), ["🎉", ":party:"])
+        // The custom list not loaded yet (or another workspace's): standard emoji only.
+        XCTAssertEqual(EmojiUsage.shown(frequent, customNames: []), ["👍"])
+
+        // A custom emoji list with a name twice no longer traps (Dictionary(uniqueKeysWithValues:)).
+        let store = Store()
+        let row = { (id: String) in CustomEmojiOut(id: id, name: "party", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "") }
+        store.replaceCustomEmoji([row("a"), row("b")])
+        XCTAssertEqual(store.customEmoji["party"]?.id, "b")
+    }
+
     func testQueryAndCompletion() {
         XCTAssertEqual(Emoji.query("hello :ta"), "ta")
         XCTAssertNil(Emoji.query("hello :t"))

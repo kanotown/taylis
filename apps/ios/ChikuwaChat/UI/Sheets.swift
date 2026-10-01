@@ -240,7 +240,7 @@ struct ChannelInfoView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 6) {
                         Text(user?.displayName ?? "?")
-                        StatusEmojiView(user: user)
+                        StatusEmojiView(user: user, controller: controller)
                     }
                     Text("@\(user?.username ?? "")" + ((user?.title).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
                 }

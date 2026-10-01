@@ -14,7 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.activeStatus
 import jp.chikuwachat.android.app.AppController
@@ -69,7 +72,8 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                 }
                 if (status != null) {
                     Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text((status.first + " " + status.second).trim())
+                        if (status.first.isNotEmpty()) SectionIcon(controller, status.first, version, size = 20.dp)
+                        Text(status.second, modifier = Modifier.padding(start = if (status.first.isNotEmpty()) 6.dp else 0.dp))
                         Spacer(Modifier.weight(1f))
                         expiryLabel(user?.statusExpiresAt)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
@@ -115,11 +119,42 @@ fun expiryAt(choice: String, now: Instant = Instant.now()): String? {
     return at.toInstant().toString()
 }
 
-/** The status emoji next to a name when the person has an active custom status. */
+/**
+ * The status emoji next to a name when the person has an active custom status; a custom emoji (`:name:`) is its image
+ * (SectionIcon), as on a reaction chip.
+ */
 @Composable
-fun StatusEmoji(user: jp.chikuwachat.android.api.UserPublic?, modifier: Modifier = Modifier) {
-    val status = activeStatus(user)
+fun StatusEmoji(user: jp.chikuwachat.android.api.UserPublic?, controller: AppController, version: Int, modifier: Modifier = Modifier) {
+    val emoji = activeStatus(user)?.first.orEmpty()
     val quiet = Dnd.isActive(user)
-    if ((status == null || status.first.isEmpty()) && !quiet) return
-    Text((status?.first ?: "") + (if (quiet) "🔕" else ""), style = MaterialTheme.typography.labelMedium, modifier = modifier)
+    if (emoji.isEmpty() && !quiet) return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (emoji.isNotEmpty()) SectionIcon(controller, emoji, version, size = 14.dp)
+        if (quiet) Text("🔕", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/**
+ * A line with a status in it (the DM header, the directory): custom emoji (`:name:`) as their images, as in a message
+ * (2026-10-02: a custom status emoji showed as its text).
+ */
+@Composable
+fun EmojiLineText(
+    text: String,
+    controller: AppController,
+    version: Int,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+) {
+    val store = controller.store
+    val inline = bodyInline(
+        store.users, customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
+        onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
+    )
+    Text(
+        inline.build(listOf(BodyToken.Text(text))), inlineContent = inline.inlineContent, style = style, color = color,
+        maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
+    )
 }

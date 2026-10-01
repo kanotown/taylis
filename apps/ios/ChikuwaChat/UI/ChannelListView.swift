@@ -356,7 +356,7 @@ struct ChannelListView: View {
                            presence: meId.map { controller.store.presenceOf($0) })
                 Text(controller.store.me?.displayName ?? "…").foregroundStyle(Color.primary.opacity(0.72)).lineLimit(1)
                 Spacer(minLength: 4)
-                StatusEmojiView(user: controller.store.me?.asPublic) // M38: mine too, as on the others' rows
+                StatusEmojiView(user: controller.store.me?.asPublic, controller: controller) // M38: mine too, as on the others' rows
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
@@ -414,7 +414,7 @@ struct ChannelListView: View {
                 Spacer(minLength: 4)
                 // The (first) other person's status; M38: mine in my DM with myself.
                 if channel.channel.isDm, let statusId = (channel.channel.dmUserIds ?? []).first(where: { $0 != store.me?.id }) ?? store.me?.id {
-                    StatusEmojiView(user: store.statusUser(statusId))
+                    StatusEmojiView(user: store.statusUser(statusId), controller: controller)
                 }
                 if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
                 if unread && badge > 0 {

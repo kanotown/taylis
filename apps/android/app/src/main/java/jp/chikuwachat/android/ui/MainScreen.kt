@@ -534,6 +534,7 @@ fun MainScreen(controller: AppController) {
                                 TwoLineTitle(
                                     channelTitle(selectedChannel, store),
                                     selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
+                                    emoji = controller to version, // a custom status emoji in a DM's subtitle as its image
                                 )
                             }
                             pane == Route.Threads -> Text("スレッド")
@@ -987,10 +988,15 @@ private fun CoveringPage(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TwoLineTitle(title: String, subtitle: String?) {
+private fun TwoLineTitle(title: String, subtitle: String?, emoji: Pair<AppController, Int>? = null) {
     Column {
         Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (subtitle != null) {
+            val style = MaterialTheme.typography.bodySmall
+            val color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (emoji != null) EmojiLineText(subtitle, emoji.first, emoji.second, style, color)
+            else Text(subtitle, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

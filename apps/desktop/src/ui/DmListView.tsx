@@ -10,6 +10,7 @@ import { fullTimestamp } from "./format";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { dmList, dmTimeLabel, isSelfNotes, showsSelfNotesPlaceholder } from "./mobileTabs";
 import { Badge, cn, IconButton } from "./primitives";
+import { EmojiText, StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 
 /**
@@ -139,7 +140,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             <span className={cn("min-w-0 truncate text-[15px]", unread ? "font-bold text-ink" : "font-medium text-ink/90")}>{title}</span>
             {preview && status?.emoji && (
               <span className="shrink-0 text-[13px]" title={status.text ?? undefined} aria-label={status.text ?? undefined}>
-                {status.emoji}
+                <StatusGlyph controller={controller} emoji={status.emoji} />
               </span>
             )}
             <span className="flex-1" />
@@ -151,7 +152,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
           </span>
           <span className="mt-0.5 flex items-center gap-2">
             <span data-dm-preview={preview ? "" : undefined} className={cn("min-w-0 flex-1 truncate text-[13px]", preview && unread ? "font-semibold text-ink" : "text-muted")}>
-              {second}
+              {preview ? second : <EmojiText controller={controller} text={second} />}
             </span>
             {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label="ミュート中" />}
             {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}

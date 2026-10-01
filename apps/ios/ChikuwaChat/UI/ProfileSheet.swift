@@ -46,7 +46,7 @@ struct ProfileSheet: View {
                 if let status = activeStatus(user) {
                     Section("ステータス") {
                         HStack(spacing: 8) {
-                            if !status.emoji.isEmpty { Text(status.emoji) }
+                            if !status.emoji.isEmpty { StatusGlyph(controller: controller, emoji: status.emoji, size: 20) }
                             Text(status.text)
                             Spacer()
                             if let label = expiryLabel(user?.statusExpiresAt) { Text(label).font(.caption).foregroundStyle(.secondary) }
@@ -227,12 +227,52 @@ struct StatusEditorView: View {
 /// The status emoji next to a name when the person has an active custom status.
 struct StatusEmojiView: View {
     let user: UserPublic?
+    let controller: AppController
     var body: some View {
-        let status = activeStatus(user)
+        let emoji = activeStatus(user)?.emoji ?? ""
         let quiet = DND.isActive(user)
-        if (status != nil && !status!.emoji.isEmpty) || quiet {
-            Text((status?.emoji ?? "") + (quiet ? "🔕" : "")).font(.caption)
-                .accessibilityLabel([status?.text, quiet ? "通知を一時停止中" : nil].compactMap { $0 }.joined(separator: " · "))
+        if !emoji.isEmpty || quiet {
+            HStack(spacing: 2) {
+                if !emoji.isEmpty { StatusGlyph(controller: controller, emoji: emoji, size: 15) }
+                if quiet { Text("🔕") }
+            }
+            .font(.caption)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel([activeStatus(user)?.text, quiet ? "通知を一時停止中" : nil].compactMap { $0 }.joined(separator: " · "))
+        }
+    }
+}
+
+/// A status emoji. Picked from the emoji picker since build 40, it can be a custom one (`:name:`): drawn from its image
+/// as on a reaction chip (2026-10-02: it showed as its text), its `:name:` until the image is here. A standard emoji, or
+/// a custom one this workspace does not have, is text in the surrounding font.
+struct StatusGlyph: View {
+    let controller: AppController
+    let emoji: String
+    /// The custom emoji image's height.
+    var size: CGFloat = 16
+
+    /// The custom emoji `emoji` is, when it is one that exists.
+    static func custom(_ emoji: String, in custom: [String: CustomEmojiOut]) -> CustomEmojiOut? {
+        CustomEmoji.name(of: emoji.trimmingCharacters(in: .whitespaces)).flatMap { custom[$0] }
+    }
+
+    /// A line with a status in it (the DM header, the directory): custom emoji as their images, as in a message.
+    static func text(_ line: String, controller: AppController, height: CGFloat) -> Text {
+        CustomEmoji.text(line, custom: controller.store.customEmoji, images: controller.store.emojiImages,
+                         onNeed: { controller.loadEmojiImage($0) }, height: height)
+    }
+
+    var body: some View {
+        let store = controller.store
+        if let custom = Self.custom(emoji, in: store.customEmoji) {
+            if let image = store.emojiImages[custom.id] {
+                EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: size, height: size)
+            } else {
+                Text(emoji).lineLimit(1).onAppear { controller.loadEmojiImage(custom) }
+            }
+        } else {
+            Text(emoji)
         }
     }
 }
