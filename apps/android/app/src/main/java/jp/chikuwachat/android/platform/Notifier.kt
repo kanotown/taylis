@@ -43,6 +43,8 @@ class Notifier(private val context: Context) {
         badge: Int? = null,
         /** M52: a calendar alarm's event: the tap opens it (in its channel's 「予定」 tab, or the calendar for my own). */
         eventId: String? = null,
+        /** M56: a task's notification: the tap opens it (in its channel's 「タスク」 tab, or 「自分のタスク」 for a personal one). */
+        taskId: String? = null,
     ) {
         if (!permitted) return
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
@@ -50,6 +52,7 @@ class Notifier(private val context: Context) {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
             if (channelId != null) putExtra(EXTRA_CHANNEL_ID, channelId)
             if (eventId != null) putExtra(EXTRA_EVENT_ID, eventId)
+            if (taskId != null) putExtra(EXTRA_TASK_ID, taskId)
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
             if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
@@ -104,6 +107,8 @@ class Notifier(private val context: Context) {
         const val EXTRA_REVEAL = "reveal"
         /** M52: the calendar event of an alarm's notification. */
         const val EXTRA_EVENT_ID = "event_id"
+        /** M56: the task of an assignment's or a due date's notification. */
+        const val EXTRA_TASK_ID = "task_id"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

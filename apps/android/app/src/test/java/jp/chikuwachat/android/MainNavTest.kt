@@ -152,6 +152,21 @@ class MainNavTest {
     }
 
     @Test
+    fun myTasksStayBehindAConversationAndATaskNotificationLandsOnItsBoard() { // M56
+        val tasks = MainNav.open(root, Route.Tasks)
+        assertEquals(root + Route.Tasks + channel(), MainNav.openConversation(tasks, "c1"))
+        assertEquals(root, MainNav.back(tasks))
+        // 「自分の担当」's channel or a shared task's notification: its 「タスク」 tab, back to 「メッセージ」 then 「タスク」.
+        val board = MainNav.openTasks(tasks, "c1")
+        assertEquals(root + Route.Tasks + channel(tab = ConversationTab.TASKS), board)
+        assertEquals(root + Route.Tasks + channel(), MainNav.back(board))
+        // A personal task's notification: 「タスク」 over the list, whatever was open; one already on screen stays.
+        assertEquals(root + Route.Tasks, MainNav.openMyTasks(root + Route.Saved + channel()))
+        assertEquals(tasks, MainNav.openMyTasks(tasks))
+        assertEquals(board, MainNav.decode(MainNav.encode(board)))
+    }
+
+    @Test
     fun aDraftRowClosesTheDraftsList() {
         assertEquals(root + channel() + Route.Thread("c1", "p1"), MainNav.openDraft(MainNav.open(root, Route.Drafts), "c1", "p1"))
         assertEquals(root + channel(), MainNav.openDraft(MainNav.open(root, Route.Drafts), "c1", null))

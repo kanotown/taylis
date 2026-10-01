@@ -2,6 +2,7 @@ package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.CalendarApi
+import jp.chikuwachat.android.sync.TaskApi
 import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
@@ -62,7 +63,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, TaskApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -673,6 +674,30 @@ class ApiClient(
 
     override suspend fun clearCalendarAlarm(eventId: String) {
         requestRaw("DELETE", "/api/v1/calendar/events/$eventId/alarm", null, auth = true, retry401 = true)
+    }
+
+    // --- tasks (TASKS.md §3, M56) ---------------------------------------------------------------
+
+    override suspend fun listTasks(channelId: String, includeDone: String): List<TaskOut> =
+        request("GET", "/api/v1/tasks?channel_id=$channelId&include_done=" + Enc.encode(includeDone, "UTF-8"))
+
+    override suspend fun myTasks(): List<TaskOut> = request("GET", "/api/v1/tasks/mine")
+
+    override suspend fun dueTasks(from: String, to: String): List<TaskOut> =
+        request("GET", "/api/v1/tasks/due?from=" + Enc.encode(from, "UTF-8") + "&to=" + Enc.encode(to, "UTF-8"))
+
+    override suspend fun getTask(taskId: String): TaskOut = request("GET", "/api/v1/tasks/$taskId")
+
+    override suspend fun createTask(body: TaskCreate): TaskOut =
+        request("POST", "/api/v1/tasks", Codec.snake.encodeToJsonElement(TaskCreate.serializer(), body))
+
+    override suspend fun updateTask(taskId: String, patch: TaskUpdate): TaskOut = request("PATCH", "/api/v1/tasks/$taskId", patch.toJson())
+
+    override suspend fun moveTask(taskId: String, status: String, neighbors: TaskNeighbors): TaskOut =
+        request("POST", "/api/v1/tasks/$taskId/move", taskMoveJson(status, neighbors))
+
+    override suspend fun deleteTask(taskId: String) {
+        requestRaw("DELETE", "/api/v1/tasks/$taskId", null, auth = true, retry401 = true)
     }
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------

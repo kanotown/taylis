@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddReaction
+import androidx.compose.material.icons.outlined.AddTask
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.BookmarkRemove
@@ -137,6 +138,8 @@ fun MessageMenu(
     onMoreReactions: (() -> Unit)? = null,
     onCopyLink: (() -> Unit)? = null,
     onRemind: (() -> Unit)? = null,
+    /** M56 (TASKS.md §6): 「タスクにする」, after 「リマインド…」 (as on the web). */
+    onMakeTask: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onCopyText: (() -> Unit)? = null,
     /** M27: 「リアクションした人」, offered when the message has reactions. */
@@ -192,6 +195,7 @@ fun MessageMenu(
             if (onCopyText != null) item("テキストをコピー", Icons.Outlined.ContentCopy, action = onCopyText)
             if (onBookmark != null) item(if (bookmarked) "保存を解除" else "あとで見る (保存)", if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
             if (onRemind != null) item("リマインド…", Icons.Outlined.Alarm, action = onRemind)
+            if (onMakeTask != null) item("タスクにする", Icons.Outlined.AddTask, action = onMakeTask)
             if (onMarkUnread != null) item("ここから未読にする", Icons.Outlined.MarkEmailUnread, action = onMarkUnread)
             if (onCopyLink != null) item("リンクをコピー", Icons.Outlined.Link, action = onCopyLink)
             if (onShare != null) item("別のチャンネルに共有…", Icons.Outlined.Share, action = onShare)

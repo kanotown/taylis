@@ -524,6 +524,18 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
                 }
             }
         }
+        // M56 (TASKS.md §5): only against a server that has tasks (it sends notify_tasks).
+        me?.notifyTasks?.let { notifyTasks ->
+            var savingTasks by remember { mutableStateOf(false) }
+            Spacer(Modifier.padding(top = 8.dp))
+            SwitchRow("タスク (割り当て・期限)", "担当に加えられたときと、期限の日の 8:00 に通知します", checked = notifyTasks, enabled = !savingTasks) { on ->
+                scope.launch {
+                    savingTasks = true
+                    controller.setNotifyTasks(on)
+                    savingTasks = false
+                }
+            }
+        }
         SectionTitle("通知キーワード")
         val savedKeywords = me?.notifyKeywords ?: emptyList()
         var keywords by rememberSaveable { mutableStateOf(savedKeywords.joinToString(", ")) }

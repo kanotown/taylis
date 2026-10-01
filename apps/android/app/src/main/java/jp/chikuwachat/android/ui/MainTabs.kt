@@ -135,6 +135,14 @@ object MainTabs {
     fun landCalendar(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openCalendar(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
 
+    /** M56: a shared task's notification lands on its channel's 「タスク」 tab (home tab: never a DM). */
+    fun landTasks(state: TabStacks, channelId: String): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.openTasks(rootStack(MainTab.HOME), channelId)).copy(selected = MainTab.HOME)
+
+    /** M56: a personal task's notification: the home tab shows 「タスク」 over its list. */
+    fun landMyTasks(state: TabStacks): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.openMyTasks(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
+
     /**
      * A search result lands on its tab. On the tab the search is on, the results stay behind the conversation (M16b:
      * back and 「検索結果に戻る」 return to them); on another tab, the search's tab keeps its results for when it comes back.

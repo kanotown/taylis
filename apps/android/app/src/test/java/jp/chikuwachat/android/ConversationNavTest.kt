@@ -34,7 +34,8 @@ class ConversationNavTest {
     fun theTabsAreInTheSpecsOrder() {
         // M46: 「キャンバス」 second (CANVAS.md §4.1, as the desktop's phone width).
         // M52: 「予定」 after it, as the desktop's 「メッセージ | キャンバス | 予定」.
-        assertEquals(listOf("メッセージ", "キャンバス", "予定", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
+        // M56: 「タスク」 after 「予定」 (TASKS.md §6).
+        assertEquals(listOf("メッセージ", "キャンバス", "予定", "タスク", "ピン留め", "ファイル"), ConversationTab.entries.map { it.label })
     }
 
     @Test
@@ -46,6 +47,12 @@ class ConversationNavTest {
         )
         assertTrue(ConversationTab.EVENTS in ConversationNav.tabs(state("public")))
         assertTrue(ConversationTab.EVENTS in ConversationNav.tabs(state("private")))
+        // M56 (TASKS.md §2): a board in the same channels, none in a DM.
+        assertTrue(ConversationTab.TASKS in ConversationNav.tabs(state("public")))
+        assertTrue(ConversationTab.TASKS in ConversationNav.tabs(state("private")))
+        assertFalse(ConversationTab.TASKS in ConversationNav.tabs(state("group_dm")))
+        assertEquals("タスク", ConversationNav.label(ConversationTab.TASKS, 3))
+        assertFalse(ConversationNav.conversationOnScreen(ConversationTab.TASKS, detailsOpen = false))
         assertEquals(listOf(ConversationTab.MESSAGES, ConversationTab.CANVAS, ConversationTab.PINS, ConversationTab.FILES), ConversationNav.tabs(state("dm")))
         assertFalse(ConversationTab.EVENTS in ConversationNav.tabs(state("group_dm")))
         assertEquals("予定 2", ConversationNav.label(ConversationTab.EVENTS, 2))

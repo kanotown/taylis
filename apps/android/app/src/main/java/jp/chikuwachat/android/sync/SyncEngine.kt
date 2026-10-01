@@ -163,6 +163,9 @@ class SyncEngine(
     /** M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5, §15). */
     val calendar = CalendarHub(api as? CalendarApi, scope, { store.me?.id })
 
+    /** M56: the boards, 「自分のタスク」 and the calendar's due tasks on screen (TASKS.md §4, SYNC_PROTOCOL.md §16). */
+    val tasks = TaskHub(api as? TaskApi, scope, { store.me?.id })
+
     init {
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
         store.onStalePreview = { channelId -> post { refreshLastMessage(channelId) } }
@@ -289,6 +292,7 @@ class SyncEngine(
         stopped = true
         canvases.stop()
         calendar.stop()
+        tasks.stop()
         cancelReconnect()
         stopHeartbeat()
         threadRefresh?.cancel()
@@ -391,6 +395,7 @@ class SyncEngine(
         scope.launch { drafts.flush() } // edited while offline (M15d)
         canvases.online() // M46: canvas saves that failed, open canvases read again, edits kept from before a restart
         calendar.online() // M52: the calendar's ranges on screen and the counts read again (CALENDAR.md §5)
+        tasks.online() // M56: the boards, 「自分のタスク」 and the due ranges on screen read again (SYNC_PROTOCOL.md §16)
         // Open the conversation again: its links may have changed while away (M15f), and one opened while this
         // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
         currentChannelId?.let { current -> scope.launch { openChannel(current) } }
@@ -665,6 +670,8 @@ class SyncEngine(
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
             "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
+            // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.
+            "task.updated", "task.deleted", "task.assigned", "task.due" -> tasks.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
@@ -923,6 +930,7 @@ class SyncEngine(
         forgetThreads(channelId)
         canvases.removeChannel(channelId)
         calendar.removeChannel(channelId) // M52: its shared calendar leaves every range (CALENDAR.md §3)
+        tasks.removeChannel(channelId) // M56: its board closes, its tasks leave 「自分のタスク」 and the calendar
         store.removeChannel(channelId)
     }
 

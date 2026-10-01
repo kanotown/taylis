@@ -113,8 +113,10 @@ class HomeTest {
         assertEquals(TileState(HomeTile.REMINDERS, 1, alert = true), tiles[3])
         // M52 (CALENDAR.md §7): 「カレンダー」 next to リマインダー, without a number.
         assertEquals(TileState(HomeTile.CALENDAR, null), tiles[4])
-        assertEquals(TileState(HomeTile.FILES, null), tiles[5])
-        assertFalse(tiles[5].dimmed) // no number: never dimmed
+        // M56 (TASKS.md §6): 「タスク」 next to カレンダー, without a number.
+        assertEquals(TileState(HomeTile.TASKS, null), tiles[5])
+        assertEquals(TileState(HomeTile.FILES, null), tiles[6])
+        assertFalse(tiles[6].dimmed) // no number: never dimmed
         // Unread threads without a mention are not red; nothing fired: no red either.
         val calm = HomeTiles.tiles(ThreadSummary(unreadCount = 2), drafts = 0, saved = 5, firedReminders = 0)
         assertFalse(calm[0].alert)
@@ -124,7 +126,8 @@ class HomeTest {
         assertEquals("スレッド、未読 3 件、メンションあり", HomeTiles.description(tiles[0]))
         assertEquals("リマインダー、通知済み 1 件", HomeTiles.description(tiles[3]))
         assertEquals("カレンダー", HomeTiles.description(tiles[4]))
-        assertEquals("ファイル", HomeTiles.description(tiles[5]))
+        assertEquals("タスク", HomeTiles.description(tiles[5]))
+        assertEquals("ファイル", HomeTiles.description(tiles[6]))
     }
 
     // --- recent conversations ---
