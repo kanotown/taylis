@@ -28,6 +28,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "boto3-stubs[s3]>=1.43.103",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.uv]
