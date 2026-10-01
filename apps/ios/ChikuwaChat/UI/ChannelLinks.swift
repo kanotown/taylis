@@ -81,22 +81,25 @@ struct ChannelLinkChips: View {
 
 /// M29: what a conversation's body shows (Slack's tabs under the header).
 enum ChannelTab: Hashable, CaseIterable {
-    /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1). M52: 「予定」 third (CALENDAR.md §7).
-    case messages, canvas, events, pins, files
+    /// M45: the canvas second, as the desktop's phone width (CANVAS.md §4.1). M52: 「予定」 third (CALENDAR.md §7). M56:
+    /// 「タスク」 after 「予定」 (TASKS.md §6).
+    case messages, canvas, events, tasks, pins, files
 
     var title: String {
         switch self {
         case .messages: "メッセージ"
         case .canvas: "キャンバス"
         case .events: "予定"
+        case .tasks: "タスク"
         case .pins: "ピン留め"
         case .files: "ファイル"
         }
     }
 
-    /// The conversation's tabs: 「予定」 only in public and private channels (a DM has no shared calendar, §9 5.).
+    /// The conversation's tabs: 「予定」 and 「タスク」 only in public and private channels (a DM has no shared calendar,
+    /// CALENDAR.md §9 5., and no board, TASKS.md §2).
     static func tabs(for channel: ChannelState) -> [ChannelTab] {
-        allCases.filter { $0 != .events || AppController.hasCalendar(channel) }
+        allCases.filter { ($0 != .events || AppController.hasCalendar(channel)) && ($0 != .tasks || TaskRules.hasBoard(channel)) }
     }
 
     /// The tab's name: 「予定 2」 while the channel has events today or tomorrow.

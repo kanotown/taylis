@@ -331,6 +331,16 @@ struct NotificationSettingsView: View {
                     Text("オフでもアクティビティに表示されます")
                 }
             }
+            // M56 (TASKS.md §5): task assignments and due dates; a server before M55 has no tasks.
+            if let notifyTasks = me?.notifyTasks {
+                Section {
+                    Toggle("タスク (割り当て・期限)", isOn: Binding(get: { notifyTasks }, set: { on in
+                        Task { _ = await controller.updateProfile(notifyTasks: on) }
+                    }))
+                } footer: {
+                    Text("担当に加えられたときと、担当のタスクの期限の日の朝 8 時に通知します")
+                }
+            }
             // M12g: words that notify me like a mention, edited as a comma-separated line.
             Section {
                 TextField("例: リリース, 締切", text: $keywords, axis: .vertical)

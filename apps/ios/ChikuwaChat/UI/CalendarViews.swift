@@ -15,10 +15,13 @@ enum CalendarFormTarget: Identifiable {
 
 /// M52 (CALENDAR.md §7, the phone column): 「カレンダー」 from the home's tile. 一覧: the days with events from today, 60 days
 /// ahead; 月: the month's days with a dot per event (in its calendar's colour), the chosen day's events below. 「すべて /
-/// 自分 / #チャンネル」 filters. Weeks start on Sunday, as the web's.
+/// 自分 / #チャンネル」 filters. Weeks start on Sunday, as the web's. M56 (TASKS.md §6): the tasks due in the range show as
+/// all-day rows 「☐ 題名」 (done 「☑」, struck through), and a dot in the month; a tap opens the task.
 struct CalendarView: View {
     static let selectionId = "calendar"
     static let windowKey = "view"
+    /// M56: the tasks due in the range shown (TaskHub's calendar window).
+    static let taskWindowKey = "calendar"
     static let modeKey = "chikuwa.calendar.mode"
 
     enum Mode: String, CaseIterable {
@@ -29,6 +32,7 @@ struct CalendarView: View {
     @Bindable var controller: AppController
     /// Tests pass their own hub and day.
     var hub: CalendarHub? = nil
+    var tasks: TaskHub? = nil
     var today: DayKey? = nil
     @AppStorage(CalendarView.modeKey) private var modeRaw = Mode.list.rawValue
     @State private var filter: CalendarFilter = .all
@@ -37,8 +41,10 @@ struct CalendarView: View {
     /// The day whose events the month lists; nil: today.
     @State private var selectedDay: DayKey?
     @State private var form: CalendarFormTarget?
+    @State private var taskForm: TaskFormTarget?
 
     private var calendarHub: CalendarHub? { hub ?? controller.calendarHub }
+    private var taskHub: TaskHub? { tasks ?? controller.taskHub }
     private var now: DayKey { today ?? CalendarDates.today() }
     private var mode: Mode { Mode(rawValue: modeRaw) ?? .list }
     private var shownMonth: DayKey { month ?? CalendarDates.addMonths(now, 0) }
@@ -52,6 +58,7 @@ struct CalendarView: View {
         let hub = calendarHub
         let window = hub?.window(Self.windowKey)
         let events = (window?.events ?? []).filter(filter.matches)
+        let dueTasks = TaskRules.filter(taskHub?.dueWindow(Self.taskWindowKey)?.tasks ?? [], filter, me: controller.store.me?.id)
         VStack(spacing: 0) {
             controls
             Divider()
@@ -60,9 +67,9 @@ struct CalendarView: View {
             } else if window?.state == .unsupported {
                 CalendarNote(title: "このサーバはカレンダーに対応していません", systemImage: "calendar", detail: "サーバの更新後に使えるようになります。")
             } else if mode == .month {
-                monthView(events, window: window)
+                monthView(events, tasks: dueTasks, window: window)
             } else {
-                listView(events, window: window)
+                listView(events, tasks: dueTasks, window: window)
             }
         }
         .navigationTitle("カレンダー")
@@ -77,7 +84,15 @@ struct CalendarView: View {
         .task(id: "\(range.start) \(range.end)") {
             await calendarHub?.open(Self.windowKey, from: CalendarDates.parseDay(range.start), to: CalendarDates.parseDay(range.end))
         }
-        .onDisappear { if form == nil { calendarHub?.close(Self.windowKey) } }
+        .task(id: "tasks \(range.start) \(range.end)") {
+            await taskHub?.openDue(Self.taskWindowKey, from: range.start, to: range.end) // M56 (dates, the end excluded)
+        }
+        .onDisappear {
+            if form == nil && taskForm == nil {
+                calendarHub?.close(Self.windowKey)
+                taskHub?.closeDue(Self.taskWindowKey)
+            }
+        }
         .onChange(of: controller.calendarOpen, initial: true) { _, open in
             // A notification of my own calendar's event (M52): shown here.
             guard let open, open.channelId == nil, let hub = calendarHub else { return }
@@ -87,6 +102,14 @@ struct CalendarView: View {
         .fullScreenCover(item: $form) { target in
             CalendarEventForm(controller: controller, hub: calendarHub, target: target)
         }
+        .fullScreenCover(item: $taskForm) { target in
+            TaskForm(controller: controller, hub: taskHub, target: target)
+        }
+    }
+
+    /// M56: a task row's tap: the task as it is now.
+    private func openTask(_ task: TaskOut) {
+        taskForm = .task(taskHub?.find(task.id) ?? task)
     }
 
     /// A new event on the day, in the calendar filtered to (if I may add to it).
@@ -135,9 +158,9 @@ struct CalendarView: View {
     // MARK: 一覧
 
     @ViewBuilder
-    private func listView(_ events: [CalendarEventOut], window: CalendarWindow?) -> some View {
+    private func listView(_ events: [CalendarEventOut], tasks: [TaskOut], window: CalendarWindow?) -> some View {
         let days = CalendarDates.agenda(events, from: range.start, to: range.end)
-        if days.isEmpty {
+        if days.isEmpty && tasks.isEmpty {
             if window == nil || window?.state == .loading {
                 ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if window?.state == .failed {
@@ -147,18 +170,20 @@ struct CalendarView: View {
                              detail: "右上の＋で予定を追加できます。")
             }
         } else {
-            CalendarAgendaList(days: days, today: now, showCalendar: true, failed: window?.state == .failed) { form = .event($0) }
+            CalendarAgendaList(days: days, today: now, showCalendar: true, failed: window?.state == .failed, tasks: tasks,
+                               onOpenTask: openTask) { form = .event($0) }
                 .refreshable { await calendarHub?.reload(Self.windowKey) }
         }
     }
 
     // MARK: 月
 
-    private func monthView(_ events: [CalendarEventOut], window: CalendarWindow?) -> some View {
+    private func monthView(_ events: [CalendarEventOut], tasks: [TaskOut], window: CalendarWindow?) -> some View {
         let dayEvents = CalendarDates.eventsOn(events, chosenDay)
+        let dayTasks = TaskRules.tasksForDay(tasks, chosenDay)
         return ScrollView {
             VStack(spacing: 0) {
-                CalendarMonthGrid(month: shownMonth, today: now, selected: chosenDay, events: events) { day in
+                CalendarMonthGrid(month: shownMonth, today: now, selected: chosenDay, events: events, tasks: tasks) { day in
                     selectedDay = day
                     if !CalendarDates.sameMonth(day, shownMonth) { month = CalendarDates.addMonths(day, 0) }
                 } onMove: { step in
@@ -180,12 +205,19 @@ struct CalendarView: View {
                 .padding(.vertical, 10)
                 if window?.state == .failed {
                     CalendarLoadFailed { await calendarHub?.reload(Self.windowKey) }.padding(.vertical, 12)
-                } else if dayEvents.isEmpty {
+                } else if dayEvents.isEmpty && dayTasks.isEmpty {
                     Text(window?.state == .loading ? "読み込み中…" : "予定はありません")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else {
                     VStack(spacing: 0) {
+                        ForEach(dayTasks) { task in
+                            Button { openTask(task) } label: {
+                                CalendarTaskRow(task: task, showCalendar: true).padding(.horizontal, 16).padding(.vertical, 9)
+                            }
+                            .buttonStyle(.plain)
+                            Divider().padding(.leading, 16)
+                        }
                         ForEach(dayEvents) { event in
                             Button { form = .event(event) } label: {
                                 CalendarEventRow(event: event, day: chosenDay, showCalendar: true)
@@ -209,6 +241,8 @@ struct CalendarMonthGrid: View {
     let today: DayKey
     let selected: DayKey
     let events: [CalendarEventOut]
+    /// M56: the tasks due in the month (a dot each, after the events').
+    var tasks: [TaskOut] = []
     let onSelect: (DayKey) -> Void
     let onMove: (Int) -> Void
     let onToday: () -> Void
@@ -253,6 +287,8 @@ struct CalendarMonthGrid: View {
 
     private func cell(_ day: DayKey, weekday: Int) -> some View {
         let list = CalendarDates.eventsOn(events, day)
+        let due = TaskRules.tasksForDay(tasks, day)
+        let dots = (list.map(\.channelId) + due.map(\.channelId)).prefix(Self.dots)
         let outside = !CalendarDates.sameMonth(day, month)
         let isToday = day == today
         let isSelected = day == selected
@@ -268,8 +304,8 @@ struct CalendarMonthGrid: View {
                         else if isSelected { Circle().fill(Color.accentColor.opacity(0.18)) }
                     }
                 HStack(spacing: 3) {
-                    ForEach(list.prefix(Self.dots)) { event in
-                        Circle().fill(CalendarDates.color(event.channelId)).frame(width: 6, height: 6)
+                    ForEach(Array(dots.enumerated()), id: \.offset) { _, channelId in
+                        Circle().fill(CalendarDates.color(channelId)).frame(width: 6, height: 6)
                     }
                 }
                 .frame(height: 6)
@@ -279,26 +315,40 @@ struct CalendarMonthGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(CalendarDates.dayLabel(day) + (list.isEmpty ? "" : "、予定 \(list.count) 件"))
+        .accessibilityLabel(CalendarDates.dayLabel(day) + (list.isEmpty ? "" : "、予定 \(list.count) 件") + (due.isEmpty ? "" : "、タスク \(due.count) 件"))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
-/// Day by day, the days with events only (「今日」「明日」 marked).
+/// Day by day, the days with events (or, M56, tasks due) only (「今日」「明日」 marked); a day's tasks come first, as
+/// all-day rows.
 struct CalendarAgendaList: View {
     let days: [(day: DayKey, events: [CalendarEventOut])]
     let today: DayKey
     let showCalendar: Bool
     var failed = false
+    /// M56: the tasks due in the range.
+    var tasks: [TaskOut] = []
+    var onOpenTask: (TaskOut) -> Void = { _ in }
     let onOpen: (CalendarEventOut) -> Void
+
+    private var entries: [(day: DayKey, events: [CalendarEventOut], tasks: [TaskOut])] {
+        let byDay = Dictionary(days.map { ($0.day, $0.events) }, uniquingKeysWith: { first, _ in first })
+        let allDays = Set(days.map(\.day)).union(tasks.compactMap(\.dueOn)).sorted()
+        return allDays.map { day in (day, byDay[day] ?? [], TaskRules.tasksForDay(tasks, day)) }
+    }
 
     var body: some View {
         List {
             if failed {
                 Text("予定を読み込めませんでした。下に引いて読み直せます。").font(.footnote).foregroundStyle(.secondary)
             }
-            ForEach(days, id: \.day) { entry in
+            ForEach(entries, id: \.day) { entry in
                 Section {
+                    ForEach(entry.tasks) { task in
+                        Button { onOpenTask(task) } label: { CalendarTaskRow(task: task, showCalendar: showCalendar) }
+                            .buttonStyle(.plain)
+                    }
                     ForEach(entry.events) { event in
                         Button { onOpen(event) } label: { CalendarEventRow(event: event, day: entry.day, showCalendar: showCalendar) }
                             .buttonStyle(.plain)

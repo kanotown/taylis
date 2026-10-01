@@ -68,13 +68,15 @@ struct PushPayload: Equatable, Sendable {
     var parentId: String?
     /// `aps.badge`: that server's count for this account.
     var badge: Int?
-    /// "message" (also when absent), "reminder", "reaction" (M39), "calendar" (M51) …
+    /// "message" (also when absent), "reminder", "reaction" (M39), "calendar" (M51), "task" (M55) …
     var kind: String?
     /// M52: a calendar alarm's event (`kind = calendar`; its `channel_id` is null for my own calendar).
     var eventId: String?
+    /// M56: an assigned or due task (`kind = task`; its `channel_id` is null for my own list).
+    var taskId: String?
 
     init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
-         kind: String? = nil, eventId: String? = nil) {
+         kind: String? = nil, eventId: String? = nil, taskId: String? = nil) {
         self.workspaceId = workspaceId
         self.channelId = channelId
         self.messageId = messageId
@@ -82,10 +84,14 @@ struct PushPayload: Equatable, Sendable {
         self.badge = badge
         self.kind = kind
         self.eventId = eventId
+        self.taskId = taskId
     }
 
     /// M52: a calendar alarm opens its event (in its channel's 「予定」 tab, or in the calendar for my own).
     var opensEvent: Bool { kind == "calendar" && eventId != nil }
+
+    /// M56: a task's notification opens the task (in its channel's 「タスク」 tab, or in 「自分のタスク」 for my own).
+    var opensTask: Bool { kind == "task" && taskId != nil }
 
     /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
     /// message push opens its conversation (and a reply's thread) as before.
@@ -102,6 +108,7 @@ struct PushPayload: Equatable, Sendable {
         parentId = text("parent_id")
         kind = text("kind")
         eventId = text("event_id")
+        taskId = text("task_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }
@@ -218,9 +225,9 @@ enum Workspaces {
 
     /// willPresent (§7): a notification that arrives with the app on screen shows, except for the conversation open
     /// in the workspace on screen (its WebSocket delivered the message already).
-    /// A calendar alarm always shows: the open conversation says nothing of it.
+    /// A calendar alarm and a task's notification (M56) always show: the open conversation says nothing of them.
     static func shouldPresent(_ payload: PushPayload, target: Workspace?, active: String?, openChannelId: String?) -> Bool {
-        if payload.kind == "calendar" { return true }
+        if payload.kind == "calendar" || payload.kind == "task" { return true }
         guard let target, target.serverUrl == active, let channelId = payload.channelId, let openChannelId else { return true }
         return channelId != openChannelId
     }

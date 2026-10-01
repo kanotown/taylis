@@ -904,6 +904,8 @@ final class FakeServer {
 
     /// M52: the calendar's events as each user sees them (the calendar calls of the Api read them, CalendarTests.swift).
     var calendarRows: [CalendarEventOut] = []
+    /// M56: the tasks as each user sees them (the task calls of the Api read them, TaskTests.swift).
+    var taskRows: [TaskOut] = []
 
     /// An event outside the channel seq (calendar.*, M52) to these users' sockets.
     func emitEvent(_ userIds: Set<String>, _ event: String, channelId: String?, data: JSONValue) {

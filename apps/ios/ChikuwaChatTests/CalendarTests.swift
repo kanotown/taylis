@@ -223,8 +223,8 @@ final class CalendarDatesTests: XCTestCase {
                                            lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: nil), isMember: true)
             return store.channel(type)!
         }
-        XCTAssertEqual(ChannelTab.tabs(for: state("public")), [.messages, .canvas, .events, .pins, .files])
-        XCTAssertEqual(ChannelTab.tabs(for: state("private")), [.messages, .canvas, .events, .pins, .files])
+        XCTAssertEqual(ChannelTab.tabs(for: state("public")), [.messages, .canvas, .events, .tasks, .pins, .files]) // M56: タスク
+        XCTAssertEqual(ChannelTab.tabs(for: state("private")), [.messages, .canvas, .events, .tasks, .pins, .files])
         XCTAssertEqual(ChannelTab.tabs(for: state("dm")), [.messages, .canvas, .pins, .files]) // no shared calendar in a DM (§9 5.)
         XCTAssertEqual(ChannelTab.tabs(for: state("group_dm")), [.messages, .canvas, .pins, .files])
         XCTAssertEqual(ChannelTab.events.label(upcoming: 3), "予定 3")

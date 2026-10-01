@@ -102,7 +102,7 @@ enum HomeSections {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String {
-        case threads, drafts, saved, reminders, calendar, files
+        case threads, drafts, saved, reminders, calendar, tasks, files
     }
 
     let kind: Kind
@@ -121,6 +121,7 @@ struct HomeTile: Identifiable, Equatable {
         case .saved: "保存"
         case .reminders: "リマインダー"
         case .calendar: "カレンダー"
+        case .tasks: "タスク"
         case .files: "ファイル"
         }
     }
@@ -132,6 +133,7 @@ struct HomeTile: Identifiable, Equatable {
         case .saved: "bookmark"
         case .reminders: "alarm"
         case .calendar: "calendar"
+        case .tasks: "checklist"
         case .files: "doc.on.doc"
         }
     }
@@ -144,6 +146,7 @@ struct HomeTile: Identifiable, Equatable {
         case .saved: SavedView.selectionId
         case .reminders: RemindersView.selectionId
         case .calendar: CalendarView.selectionId
+        case .tasks: MyTasksView.selectionId
         case .files: FilesView.selectionId
         }
     }
@@ -159,7 +162,8 @@ struct HomeTile: Identifiable, Equatable {
     }
 
     /// スレッド: followed threads with unread replies, red with a mention; 下書き: drafts and scheduled messages; 保存: saved
-    /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; ファイル: no number.
+    /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
+    /// TASKS.md §6): no number; ファイル: no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
         [
             HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
@@ -167,6 +171,7 @@ struct HomeTile: Identifiable, Equatable {
             HomeTile(kind: .saved, count: saved, alert: false),
             HomeTile(kind: .reminders, count: firedReminders, alert: firedReminders > 0),
             HomeTile(kind: .calendar, count: nil, alert: false),
+            HomeTile(kind: .tasks, count: nil, alert: false),
             HomeTile(kind: .files, count: nil, alert: false),
         ]
     }

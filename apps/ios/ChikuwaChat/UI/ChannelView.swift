@@ -561,6 +561,8 @@ struct ChannelView: View {
                             CanvasPane(controller: controller, channel: channel)  // M45
                         } else if tab == .events, let channel {
                             ChannelEventsPane(controller: controller, channel: channel)  // M52
+                        } else if tab == .tasks, let channel {
+                            ChannelTasksPane(controller: controller, channel: channel)  // M56
                         } else if tab == .pins {
                             PinsView(controller: controller, channelId: channelId) { message in
                                 Task { if await controller.revealMessage(message) { showMessage(parentId: message.parentId) } }
@@ -634,6 +636,16 @@ struct ChannelView: View {
         .onChange(of: controller.calendarOpen, initial: true) { _, open in
             // M52: a notification of this channel's event: its 「予定」 tab, which shows the event.
             if let open, open.channelId == channelId, channel.map(AppController.hasCalendar) == true { tab = .events }
+        }
+        .onChange(of: controller.taskOpen, initial: true) { _, open in
+            // M56: a task's notification, or 「自分の担当」's channel name: its 「タスク」 tab (which shows the task).
+            guard let open, open.channelId == channelId, channel.map(TaskRules.hasBoard) == true else { return }
+            tab = .tasks
+            if open.taskId == nil { controller.taskOpen = nil }
+        }
+        .onChange(of: controller.messageFocus?.messageId) { _, _ in
+            // M56: a message of this conversation to show (a task's 「メッセージを開く」): back to the messages.
+            if focus != nil, tab == .tasks { tab = .messages }
         }
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {
