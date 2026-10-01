@@ -246,6 +246,47 @@ data class ChannelPreview(
     }
 }
 
+/**
+ * L8 (TIMES_FEED.md §5): a change to a timeline row, for lists kept outside the store (the Times feed). `event`: a live
+ * message.created / message.updated / message.deleted, [SYNCED] (a row the store took from a catch-up page, a fetch or the
+ * answer to my own action), [MY_POLL] (the answer to my vote or answers: its own parts go in whatever the updated_seq,
+ * SYNC_PROTOCOL.md §8) or [PARENT_THREAD] (a reply moved its parent's counts; `message` is null).
+ */
+data class TimelineEvent(val event: String, val message: MessageOut?, val thread: ParentThread? = null) {
+    /** The version the event brings: lists kept apart re-apply what arrived during a page read in this order. */
+    val version: Int get() = message?.updatedSeq ?: thread?.updatedSeq ?: 0
+
+    companion object {
+        const val SYNCED = "message.synced"
+        const val MY_POLL = "poll.mine"
+        const val PARENT_THREAD = "parent_thread"
+    }
+}
+
+/**
+ * SYNC_PROTOCOL.md §8 poll.mine (M27), my_answers / my_comment (M53): the parts of a poll only a response to me carries
+ * (an event has them null). The conversation store and the Times feed merge them the same way.
+ */
+object MyPollPart {
+    /** `incoming` with the parts it lacks (null) taken from `local`; `incoming` itself if none. */
+    fun keep(incoming: PollOut, local: PollOut): PollOut {
+        val mine = if (incoming.mine == null) local.mine else incoming.mine
+        val answers = if (incoming.myAnswers == null) local.myAnswers else incoming.myAnswers
+        val comment = if (incoming.myComment == null) local.myComment else incoming.myComment
+        if (mine == incoming.mine && answers == incoming.myAnswers && comment == incoming.myComment) return incoming
+        return incoming.copy(mine = mine, myAnswers = answers, myComment = comment)
+    }
+
+    /** `local` with the parts `response` carries, or null when they change nothing. */
+    fun taken(local: PollOut, response: PollOut): PollOut? {
+        val mine = response.mine ?: local.mine
+        val answers = response.myAnswers ?: local.myAnswers
+        val comment = response.myComment ?: local.myComment
+        if (mine == local.mine && answers == local.myAnswers && comment == local.myComment) return null
+        return local.copy(mine = mine, myAnswers = answers, myComment = comment)
+    }
+}
+
 /** A confirmed local row in the server shape (thread rows built from the timeline). */
 fun MessageState.toOut(): MessageOut? {
     val seq = seq ?: return null
@@ -632,6 +673,12 @@ class Store(private val persistence: Persistence? = null) {
     var onStalePreview: ((channelId: String) -> Unit)? = null
 
     /**
+     * L8 (TIMES_FEED.md §5): each confirmed row the store is given ([upsertMessage]: live events, catch-up and history
+     * pages, the answers to my own actions), my poll answers and parents' reply counts, for lists kept apart (the feed).
+     */
+    var onTimelineRow: ((channelId: String, event: TimelineEvent) -> Unit)? = null
+
+    /**
      * M49 (SYNC_PROTOCOL.md §7.8): a timeline message of one of my conversations moves its preview. A newer one takes
      * its place; the one shown, edited, brings its new text; the one shown, deleted, falls back to the newest live row
      * held below it. When the rows held cannot say (no contiguous timeline down to it), the preview empties and
@@ -735,6 +782,7 @@ class Store(private val persistence: Persistence? = null) {
 
     /** A reply moved the parent's counters (message.created / message.deleted with parent_thread). */
     fun applyParentThread(channelId: String, thread: ParentThread) {
+        onTimelineRow?.invoke(channelId, TimelineEvent(TimelineEvent.PARENT_THREAD, null, thread))
         val parent = bucket(channelId)[thread.id] ?: return
         if (thread.updatedSeq <= parent.updatedSeq) return
         // C3: an older server sends no list; the parent keeps what it had.
@@ -998,6 +1046,8 @@ class Store(private val persistence: Persistence? = null) {
     fun upsertMessage(message: MessageOut): Boolean = upsertMessage(MessageState.from(message))
 
     fun upsertMessage(message: MessageState): Boolean {
+        // L8: the Times feed takes every confirmed row the store is given (not only live events), whatever the store keeps.
+        onTimelineRow?.let { notify -> message.toOut()?.let { notify(message.channelId, TimelineEvent(TimelineEvent.SYNCED, it)) } }
         val bucket = bucket(message.channelId)
         message.clientMsgId?.let { key ->
             val placeholder = LOCAL_PREFIX + key
@@ -1032,11 +1082,12 @@ class Store(private val persistence: Persistence? = null) {
      */
     fun applyMyPollResponse(message: MessageOut) {
         upsertMessage(message)
+        onTimelineRow?.invoke(message.channelId, TimelineEvent(TimelineEvent.MY_POLL, message))
         val response = message.poll ?: return
         val bucket = bucket(message.channelId)
         val stored = bucket[message.id] ?: return
         val poll = stored.poll ?: return
-        val merged = withMyPart(poll, response) ?: return
+        val merged = MyPollPart.taken(poll, response) ?: return
         val updated = stored.copy(poll = merged)
         bucket[message.id] = updated
         persist { it.saveMessage(updated) }
@@ -1050,7 +1101,7 @@ class Store(private val persistence: Persistence? = null) {
     private fun keepingMyVotes(message: MessageState, local: MessageState?): MessageState {
         val poll = message.poll ?: return message
         val known = local?.poll ?: return message
-        val kept = keepMyPart(poll, known)
+        val kept = MyPollPart.keep(poll, known)
         return if (kept === poll) message else message.copy(poll = kept)
     }
 
@@ -1062,25 +1113,7 @@ class Store(private val persistence: Persistence? = null) {
         if (message.updatedSeq != local.updatedSeq) return null
         val response = message.poll ?: return null
         val poll = local.poll ?: return null
-        return withMyPart(poll, response)?.let { local.copy(poll = it) }
-    }
-
-    /** `incoming` with the parts only responses to me carry (null in it) taken from `local`; `incoming` itself if none. */
-    private fun keepMyPart(incoming: PollOut, local: PollOut): PollOut {
-        val mine = if (incoming.mine == null) local.mine else incoming.mine
-        val answers = if (incoming.myAnswers == null) local.myAnswers else incoming.myAnswers
-        val comment = if (incoming.myComment == null) local.myComment else incoming.myComment
-        if (mine == incoming.mine && answers == incoming.myAnswers && comment == incoming.myComment) return incoming
-        return incoming.copy(mine = mine, myAnswers = answers, myComment = comment)
-    }
-
-    /** `local` with the parts `response` carries, or null when they change nothing. */
-    private fun withMyPart(local: PollOut, response: PollOut): PollOut? {
-        val mine = response.mine ?: local.mine
-        val answers = response.myAnswers ?: local.myAnswers
-        val comment = response.myComment ?: local.myComment
-        if (mine == local.mine && answers == local.myAnswers && comment == local.myComment) return null
-        return local.copy(mine = mine, myAnswers = answers, myComment = comment)
+        return MyPollPart.taken(poll, response)?.let { local.copy(poll = it) }
     }
 
     fun putPlaceholder(message: MessageState) {

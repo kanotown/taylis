@@ -833,12 +833,14 @@ fun MainScreen(controller: AppController) {
                     }
                 } else if (pane == Route.TimesFeed) {
                     // L8: a row shows its message in its channel, 「返信 N 件」 its thread; back returns to the feed.
+                    // A reply also sent to the channel shows as the channel's row (TIMES_FEED §7); its thread opens with its
+                    // parent from the feed, or fetched by id when the feed does not hold it (ThreadRows.parent).
                     TimesFeedPane(
                         controller, version, timesFeedListState,
-                        onOpen = ::reveal,
+                        onOpen = { reveal(TimesFeed.revealTarget(it)) },
                         onOpenThread = { message ->
                             controller.messageFocus = null
-                            stack = MainNav.openFromThreadList(stack, message.channelId, message.parentId ?: message.id)
+                            stack = MainNav.openFromThreadList(stack, message.channelId, TimesFeed.threadOf(message))
                         },
                     )
                 } else if (pane == Route.Threads) {
