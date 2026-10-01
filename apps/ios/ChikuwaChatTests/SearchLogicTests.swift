@@ -172,7 +172,7 @@ final class SearchLogicTests: XCTestCase {
         let recent = [SearchParams(q: "田中さんの資料")]
 
         let empty = SearchSuggestions.build("  ", users: users, channels: channels, recent: recent, title: title)
-        XCTAssertEqual(empty, [.recent(recent[0]), .has(.file), .has(.link), .has(.pin), .thread])
+        XCTAssertEqual(empty, [.recent(recent[0]), .has(.file), .has(.link), .has(.pin), .thread, .times])
         XCTAssertEqual(SearchSuggestions.grouped(empty).map(\.group), [.recent, .filters])
 
         let typing = SearchSuggestions.build("田中", users: users, channels: channels, recent: recent, title: title)

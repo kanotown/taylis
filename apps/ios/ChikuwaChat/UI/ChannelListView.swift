@@ -90,7 +90,10 @@ struct ChannelListView: View {
             if !layout.times.isEmpty || canMakeTimes {
                 let timesFolded = folded.contains("times")
                 Section {
-                    headerRow(foldHeader("Times", folded: timesFolded) { toggleFold("times") })
+                    headerRow(HStack(spacing: 8) {
+                        foldHeader("Times", folded: timesFolded) { toggleFold("times") }
+                        timesFeedButton
+                    })
                     ForEach(layout.times.rows) { row($0) }
                     if canMakeTimes && !timesFolded { makeTimesRow }
                 }
@@ -365,6 +368,21 @@ struct ChannelListView: View {
         .disabled(openingNotes)
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
+    }
+
+    /// L8 (TIMES_FEED.md §7): the Times feed, from the right of the section's title (folded or not).
+    private var timesFeedButton: some View {
+        Button { selection = TimesFeedView.selectionId } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "newspaper").imageScale(.small)
+                Text("フィード")
+            }
+            .font(.subheadline)
+                .padding(.top, 6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Times フィード")
     }
 
     /// 「自分の times を作る」 (M24): POST /times, then open it.

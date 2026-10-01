@@ -102,7 +102,7 @@ enum HomeSections {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String {
-        case threads, drafts, saved, reminders, calendar, tasks, files
+        case threads, times, drafts, saved, reminders, calendar, tasks, files
     }
 
     let kind: Kind
@@ -117,6 +117,7 @@ struct HomeTile: Identifiable, Equatable {
     var title: String {
         switch kind {
         case .threads: "スレッド"
+        case .times: "Times"
         case .drafts: "下書き"
         case .saved: "保存"
         case .reminders: "リマインダー"
@@ -129,6 +130,7 @@ struct HomeTile: Identifiable, Equatable {
     var icon: String {
         switch kind {
         case .threads: "bubble.left.and.text.bubble.right"
+        case .times: "newspaper"
         case .drafts: "square.and.pencil"
         case .saved: "bookmark"
         case .reminders: "alarm"
@@ -142,6 +144,7 @@ struct HomeTile: Identifiable, Equatable {
     var selectionId: String {
         switch kind {
         case .threads: ThreadsListView.selectionId
+        case .times: TimesFeedView.selectionId
         case .drafts: DraftsView.selectionId
         case .saved: SavedView.selectionId
         case .reminders: RemindersView.selectionId
@@ -163,10 +166,11 @@ struct HomeTile: Identifiable, Equatable {
 
     /// スレッド: followed threads with unread replies, red with a mention; 下書き: drafts and scheduled messages; 保存: saved
     /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
-    /// TASKS.md §6): no number; ファイル: no number.
+    /// TASKS.md §6): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
         [
             HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
+            HomeTile(kind: .times, count: nil, alert: false),
             HomeTile(kind: .drafts, count: drafts, alert: false),
             HomeTile(kind: .saved, count: saved, alert: false),
             HomeTile(kind: .reminders, count: firedReminders, alert: firedReminders > 0),

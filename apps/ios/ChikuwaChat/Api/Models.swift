@@ -1045,6 +1045,8 @@ struct SearchFilters: Codable, Equatable {
     /// M15h: the has: flags (file, link, pin, reaction, poll) and is:thread the server understood.
     var has: [String]? = nil
     var isThread: Bool? = nil
+    /// L8 (M61): is:times (or the is_times parameter) was understood; nil from older servers.
+    var isTimes: Bool? = nil
 }
 
 struct SearchOut: Codable {
@@ -1057,6 +1059,16 @@ struct SearchOut: Codable {
     /// M16b: how many messages match; the server stops counting at 1,000 (`totalCapped`).
     var total: Int? = nil
     var totalCapped: Bool? = nil
+    /// L8 (M61): the hits' channels I am not a member of (public times reached with is:times; an archived one is in
+    /// no bootstrap), to name the hits and open their preview. nil from older servers.
+    var channels: [ChannelOut]? = nil
+}
+
+/// GET /times/feed (L8, TIMES_FEED.md §3): the timeline posts of the times I follow, newest first; `nextCursor` is
+/// opaque (null at the end).
+struct TimesFeedOut: Codable, Equatable {
+    let items: [MessageOut]
+    let nextCursor: String?
 }
 
 /// GET /server (M16c): what the address serves; `product` is "chikuwachat" for a ChikuwaChat server.

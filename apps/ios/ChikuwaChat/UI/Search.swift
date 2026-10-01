@@ -102,20 +102,23 @@ struct SearchParams: Hashable, Codable {
     var date: SearchDate? = nil
     var has: [SearchHasFlag] = []
     var isThread = false
+    /// L8 (TIMES_FEED.md §6): only times channels (the 「Times」 chip; is:times typed in the words works too).
+    var isTimes = false
     var sort: SearchSort = .relevance
 
     init(q: String = "", fromUserId: String? = nil, channelId: String? = nil, date: SearchDate? = nil, has: [SearchHasFlag] = [],
-         isThread: Bool = false, sort: SearchSort = .relevance) {
+         isThread: Bool = false, isTimes: Bool = false, sort: SearchSort = .relevance) {
         self.q = q
         self.fromUserId = fromUserId
         self.channelId = channelId
         self.date = date
         self.has = has
         self.isThread = isThread
+        self.isTimes = isTimes
         self.sort = sort
     }
 
-    private enum CodingKeys: String, CodingKey { case q, fromUserId, channelId, date, has, isThread, sort }
+    private enum CodingKeys: String, CodingKey { case q, fromUserId, channelId, date, has, isThread, isTimes, sort }
 
     /// Lenient: a remembered search keeps what it can (unknown kinds are dropped, a bad date is forgotten).
     init(from decoder: Decoder) throws {
@@ -126,11 +129,12 @@ struct SearchParams: Hashable, Codable {
         date = try? c.decodeIfPresent(SearchDate.self, forKey: .date)
         has = ((try? c.decodeIfPresent([String].self, forKey: .has)) ?? []).compactMap(SearchHasFlag.init(rawValue:))
         isThread = (try? c.decodeIfPresent(Bool.self, forKey: .isThread)) ?? false
+        isTimes = (try? c.decodeIfPresent(Bool.self, forKey: .isTimes)) ?? false
         sort = (try? c.decodeIfPresent(SearchSort.self, forKey: .sort)) ?? .relevance
     }
 
     var words: String { q.trimmingCharacters(in: .whitespacesAndNewlines) }
-    var hasFilters: Bool { fromUserId != nil || channelId != nil || date != nil || !has.isEmpty || isThread }
+    var hasFilters: Bool { fromUserId != nil || channelId != nil || date != nil || !has.isEmpty || isThread || isTimes }
     /// Nothing to look for: no words and no filters (the server answers empty_query).
     var isEmpty: Bool { words.isEmpty && !hasFilters }
     /// 「条件をクリア」: the words and the order stay.
@@ -148,6 +152,7 @@ struct SearchRequest: Equatable {
     var before: Date?
     var has: [SearchHasFlag]
     var isThread: Bool
+    var isTimes = false
     var sort: SearchSort
     /// The caller's zone for typed before: / after: / on: dates (DATA_MODEL.md 検索).
     var tzOffsetMinutes: Int
@@ -164,6 +169,7 @@ struct SearchRequest: Equatable {
         if let before { items.append(URLQueryItem(name: "before", value: iso.string(from: before))) }
         for flag in has { items.append(URLQueryItem(name: "has", value: flag.rawValue)) }
         if isThread { items.append(URLQueryItem(name: "is_thread", value: "true")) }
+        if isTimes { items.append(URLQueryItem(name: "is_times", value: "true")) }
         items.append(URLQueryItem(name: "sort", value: sort.rawValue))
         items.append(URLQueryItem(name: "tz_offset_minutes", value: String(tzOffsetMinutes)))
         items.append(URLQueryItem(name: "limit", value: String(limit)))
@@ -171,10 +177,10 @@ struct SearchRequest: Equatable {
         return items
     }
 
-    /// M58: GET /search/canvases takes the same words, person, conversation, dates and order; not has: / is:thread
-    /// (a canvas has neither: typed ones come back as unresolved).
+    /// M58: GET /search/canvases takes the same words, person, conversation, dates and order; not has: / is:thread /
+    /// is:times (a canvas has none of them: typed ones come back as unresolved).
     func canvasQueryItems(limit: Int, offset: Int) -> [URLQueryItem] {
-        let skipped: Set<String> = ["has", "is_thread"]
+        let skipped: Set<String> = ["has", "is_thread", "is_times"]
         return queryItems(limit: limit, offset: offset).filter { !skipped.contains($0.name) }
     }
 
@@ -232,8 +238,15 @@ enum SearchLogic {
     static func request(_ params: SearchParams, now: Date = Date(), calendar: Calendar = .current) -> SearchRequest {
         let range = dateRange(params.date, now: now, calendar: calendar)
         return SearchRequest(q: params.words, channelId: params.channelId, fromUserId: params.fromUserId, after: range.after, before: range.before,
-                             has: params.has, isThread: params.isThread, sort: params.effectiveSort,
+                             has: params.has, isThread: params.isThread, isTimes: params.isTimes, sort: params.effectiveSort,
                              tzOffsetMinutes: calendar.timeZone.secondsFromGMT(for: now) / 60, timeZone: calendar.timeZone)
+    }
+
+    /// L8: a hit's channel the store does not know (SearchOut.channels): its bare name, 「(アーカイブ済み)」 after an
+    /// archived one; 「?」 without one.
+    static func otherChannelName(_ channel: ChannelOut?) -> String {
+        guard let channel, let name = channel.name else { return "?" }
+        return channel.archived ? "\(name) (アーカイブ済み)" : name
     }
 
     /// 「123 件」, or 「1,000 件以上」 when the server stopped counting.
@@ -253,6 +266,7 @@ enum SearchLogic {
         if let date = dateLabel(params.date) { parts.append(date) }
         parts += params.has.map(\.label)
         if params.isThread { parts.append("スレッド内") }
+        if params.isTimes { parts.append("Times") }
         return parts.joined(separator: " · ")
     }
 }
@@ -324,6 +338,8 @@ enum SearchSuggestion: Hashable, Identifiable {
     case channel(id: String, title: String, type: String)
     case has(SearchHasFlag)
     case thread
+    /// L8: is:times (TIMES_FEED.md §6).
+    case times
 
     var id: String {
         switch self {
@@ -335,6 +351,7 @@ enum SearchSuggestion: Hashable, Identifiable {
         case .channel(let id, _, _): return "channel:\(id)"
         case .has(let flag): return "has:\(flag.rawValue)"
         case .thread: return "thread"
+        case .times: return "times"
         }
     }
 
@@ -345,7 +362,7 @@ enum SearchSuggestion: Hashable, Identifiable {
         case .recent: return .recent
         case .user: return .people
         case .channel: return .conversations
-        case .has, .thread: return .filters
+        case .has, .thread, .times: return .filters
         }
     }
 }
@@ -374,7 +391,7 @@ enum SearchSuggestions {
                       title: (ChannelState) -> String) -> [SearchSuggestion] {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
-            return recent.prefix(RecentSearches.limit).map { SearchSuggestion.recent($0) } + [.has(.file), .has(.link), .has(.pin), .thread]
+            return recent.prefix(RecentSearches.limit).map { SearchSuggestion.recent($0) } + [.has(.file), .has(.link), .has(.pin), .thread, .times]
         }
         var bare = text
         if bare.hasPrefix("@") || bare.hasPrefix("#") { bare.removeFirst() }

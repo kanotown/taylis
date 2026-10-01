@@ -22,6 +22,8 @@ final class AppController {
     var messageFocus: MessageFocus?
     /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
     var canvasLink: CanvasLinkTarget?
+    /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
+    private(set) var timesFeed = TimesFeedModel()
     /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
     var calendarOpen: CalendarOpen?
     /// M56: a task to show, or a board to open (a task's notification, 「自分の担当」's channel): its channel's 「タスク」 tab
@@ -219,6 +221,7 @@ final class AppController {
         me = nil
         messageFocus = nil
         canvasLink = nil
+        timesFeed = TimesFeedModel()
         previewLoads = [:]
         emojiLoads = []
         AvatarCache.shared.reset()
@@ -469,6 +472,12 @@ final class AppController {
         engine.onCalendarAlarm = { [weak self] event in self?.notice = "📅 " + CalendarDates.alarmText(event) }
         // M56: an assignment or a due date while the app is open, worded like the push (not with notify_tasks off or in DND).
         engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
+        // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
+        timesFeed = TimesFeedModel()
+        engine.onTimelineMessage = { [weak self, weak engine] event, message in
+            guard let self, self.engine === engine else { return }
+            self.timesFeed.live(event, message, channel: self.store.channel(message.channelId))
+        }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
             self.activeBadgeChanged(count)
@@ -897,6 +906,25 @@ final class AppController {
     func markAllRead() async {
         guard let engine else { return }
         do { try await engine.markAllRead() } catch { self.error = describe(error) }
+    }
+
+    /// L8 (TIMES_FEED.md §4): the Times feed's 「すべて既読にする」: only its channels (member, not muted) are read to
+    /// their end; the rows apply like read.updated.
+    func markTimesRead() async {
+        guard let api, let engine else { return }
+        do { engine.applyReadAll(try await api.readAll(scope: "times")) } catch { self.error = describe(error) }
+    }
+
+    /// L8: the feed's first page again (TimesFeedModel.refresh).
+    func refreshTimesFeed() async {
+        guard let api else { return }
+        let store = store
+        await timesFeed.refresh(fetch: { try await api.timesFeed(cursor: $0, limit: TimesFeedModel.pageSize) }, channel: { store.channel($0) })
+    }
+
+    func loadMoreTimesFeed() async {
+        guard let api else { return }
+        await timesFeed.loadMore { try await api.timesFeed(cursor: $0, limit: TimesFeedModel.pageSize) }
     }
 
     /// M11c: saved for me only; the flag moves at once, bookmark.updated confirms on every device.

@@ -52,6 +52,62 @@ final class LiveBackendTests: XCTestCase {
         await bob.logout()
     }
 
+    /// L8 (TIMES_FEED.md): the Times feed against a live server: someone's post reaches my feed page and, live, the model
+    /// the engine feeds; is:times finds it; 「すべて既読にする」 (scope times) reads that times to its end. Enabled with
+    /// TEST_RUNNER_LIVE_TIMES_URL / TEST_RUNNER_LIVE_TIMES_PASS (users LIVE_TIMES_USERS, "me,owner").
+    func testTimesFeed() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let liveUrl = environment["LIVE_TIMES_URL"], let url = URL(string: liveUrl) else { throw XCTSkip("LIVE_TIMES_URL not set") }
+        let password = environment["LIVE_TIMES_PASS"] ?? ""
+        let names = (environment["LIVE_TIMES_USERS"] ?? "dtuser1,dtuser2").split(separator: ",").map(String.init)
+        let me = ApiClient(baseUrl: url)
+        let owner = ApiClient(baseUrl: url)
+        let device = DeviceInfo(platform: "ios", deviceName: "live-test", appVersion: "0.1.0")
+        _ = try await me.login(username: names[0], password: password, device: device)
+        _ = try await owner.login(username: names[1], password: password, device: device)
+        let times = try await owner.ensureTimes()
+        _ = try? await me.joinChannel(id: times.id)
+
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: me, connect: { url, _ in try await WebSocketTransport.connect(url: url) }, wsUrl: me.wsUrl,
+                                store: store, getAccessToken: { me.accessToken }, options: options)
+        let model = TimesFeedModel()
+        engine.onTimelineMessage = { event, message in model.live(event, message, channel: store.channel(message.channelId)) }
+        await engine.start()
+        await engine.idle()
+        XCTAssertEqual(store.channel(times.id)?.channel.timesOwnerId, times.timesOwnerId)
+        model.visible = true
+        await model.refresh(fetch: { try await me.timesFeed(cursor: $0, limit: 5) }, channel: { store.channel($0) })
+        XCTAssertTrue(model.loaded)
+
+        let word = "feedcheck\(Int(Date().timeIntervalSince1970))"
+        let (posted, _) = try await owner.postMessage(channelId: times.id, clientMsgId: UUID().uuidString.lowercased(), body: "作業ログ \(word)")
+        for _ in 0..<100 where model.list.items.first?.id != posted.id {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            await engine.idle()
+        }
+        XCTAssertEqual(model.list.items.first?.id, posted.id) // live, at the top
+        let page = try await me.timesFeed(limit: 5)
+        XCTAssertEqual(page.items.first?.id, posted.id)
+        XCTAssertTrue(TimesFeedList.isNew(posted, channel: store.channel(times.id), meId: store.me?.id))
+
+        var params = SearchParams(q: word, isTimes: true)
+        params.sort = .newest
+        let found = try await me.searchMessages(SearchLogic.request(params))
+        XCTAssertEqual(found.filters?.isTimes, true)
+        XCTAssertEqual(found.hits.map(\.message.id), [posted.id])
+
+        engine.applyReadAll(try await me.readAll(scope: "times"))
+        XCTAssertEqual(store.channel(times.id)?.lastReadSeq, posted.seq)
+        XCTAssertFalse(TimesFeedList.isNew(posted, channel: store.channel(times.id), meId: store.me?.id))
+
+        engine.stop()
+        await me.logout()
+        await owner.logout()
+    }
+
     /// M52: the calendar against a live server (CALENDAR.md §4, §5): a shared event made twice with one key, seen by the other
     /// member through calendar.event.updated (can_edit from editor_ids), my alarm, the tab count, the deletion, a personal
     /// all-day event. Enabled with TEST_RUNNER_LIVE_CAL_URL / TEST_RUNNER_LIVE_CAL_PASS (users LIVE_CAL_USERS, "a,b").

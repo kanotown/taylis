@@ -912,6 +912,9 @@ struct MessageRow: View {
     var present: ((MessageSheet) -> Void)? = nil
     /// A channel read before joining (M27): its reactions, poll and confirmation show but take nothing.
     var readOnly = false
+    /// L8: a tap on the message does this instead of opening its thread (the Times feed: the message in its channel);
+    /// 「N 件の返信」 still opens the thread.
+    var onTap: (() -> Void)? = nil
 
     private var store: Store { controller.store }
     private var engine: SyncEngine? { controller.engine }
@@ -930,8 +933,9 @@ struct MessageRow: View {
     /// A tap on the message opens its thread (Slack; testers, 2026-09-29), to read or to reply. With the keyboard up the
     /// tap only closes it, as a tap on the list always did (`dismissesKeyboardOnTap`).
     private func tapped() {
-        guard !message.pending, let onOpenThread, !KeyboardBehavior.isUp else { return }
-        onOpenThread()
+        guard !message.pending, !KeyboardBehavior.isUp else { return }
+        if let onTap { return onTap() }
+        onOpenThread?()
     }
 
     /// The link a preview card is shown for (M11g): the body's first, unless it opens a message or a canvas here.
@@ -1125,6 +1129,9 @@ struct MessageRow: View {
         .accessibilityActions {
             if !message.pending && present != nil {
                 Button("メッセージの操作") { openActions(haptic: false) }
+            }
+            if !message.pending, let onTap {
+                Button("チャンネルで開く") { onTap() }
             }
             if !message.pending, let onOpenThread {
                 Button("スレッドを開く") { onOpenThread() }

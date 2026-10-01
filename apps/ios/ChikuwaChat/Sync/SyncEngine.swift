@@ -94,6 +94,9 @@ final class SyncEngine {
     var onRead: ((String) -> Void)?
     /// The app badge (unread DMs + mentions) changed.
     var onBadge: ((Int) -> Void)?
+    /// L8 (TIMES_FEED.md §5): every live message.created / .updated / .deleted of a channel the store knows, as it
+    /// arrives (the Times feed keeps its rows with them).
+    var onTimelineMessage: ((_ event: String, _ message: MessageOut) -> Void)?
     private var pendingReads: [String: Task<Void, Never>] = [:]
     /// Channels marked unread by hand: visible-range marking pauses until the reader opens another one (§10).
     private(set) var unreadHold: [String: Int] = [:]
@@ -699,6 +702,7 @@ final class SyncEngine {
         let message = payload.message
         let thread = payload.parentThread
         let isNew = frame.event == "message.created"
+        onTimelineMessage?(frame.event, message)
         if isNew {
             noteActivity(message)
             // M39: a mention of me or a reply in a thread I follow moves the activity badge (the server counts it).
@@ -825,7 +829,12 @@ final class SyncEngine {
 
     /// 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated.
     func markAllRead() async throws {
-        for row in try await api.readAll() {
+        applyReadAll(try await api.readAll())
+    }
+
+    /// The rows a read-all answered with (M12a; L8's scope "times" too), applied like read.updated.
+    func applyReadAll(_ rows: [ChannelReadStateOut]) {
+        for row in rows {
             applyReadState(row.channelId, ReadStateOut(lastReadSeq: row.lastReadSeq, unreadCount: row.unreadCount, mentionCount: row.mentionCount,
                                                        firstUnreadAt: row.firstUnreadAt))
         }
