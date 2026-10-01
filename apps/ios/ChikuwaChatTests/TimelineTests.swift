@@ -129,4 +129,11 @@ final class TimelineTests: XCTestCase {
         // A chip wider than the row still gets a line of its own.
         XCTAssertEqual(ChipsLayout.frames([chip, CGSize(width: 260, height: 22)], width: 200, spacing: 6).map(\.minY), [0, 28])
     }
+
+    /// Japanese whatever the device's region.
+    func testFullLabelIsJapanese() {
+        var tokyo = Calendar(identifier: .gregorian)
+        tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        XCTAssertEqual(Timeline.fullLabel("2026-10-01T05:30:00Z", calendar: tokyo), "2026年10月1日 (木) 14:30")
+    }
 }
