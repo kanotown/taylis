@@ -80,6 +80,8 @@ export interface SyncApi {
   /** M55: tasks (TASKS.md §3). Optional (older fakes). */
   listTasks?: TaskApi["listTasks"];
   myTasks?: TaskApi["myTasks"];
+  /** L9 「自分が依頼した」. */
+  requestedTasks?: TaskApi["requestedTasks"];
   dueTasks?: TaskApi["dueTasks"];
   getTask?: TaskApi["getTask"];
   createTask?: TaskApi["createTask"];
@@ -834,6 +836,7 @@ export class SyncEngine {
       case "task.deleted":
       case "task.assigned":
       case "task.due":
+      case "task.review_done":
         this.tasks.applyEvent(frame.event, frame.data);
         return;
       case "sidebar.updated": {

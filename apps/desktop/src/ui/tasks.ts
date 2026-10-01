@@ -3,7 +3,7 @@
  * POST /tasks/{id}/move), the optimistic move, the event reducer, due dates, who may edit a board, and the groups of
  * 「自分のタスク」. No store, no React: the hub (sync/tasks.ts) and the screens share them, and the tests read them.
  */
-import type { GroupOut, TaskData, TaskOut, TaskStatus, TaskUpdate, UserPublic } from "../api/types";
+import type { GroupOut, MessageTaskOut, TaskCreate, TaskData, TaskOut, TaskStatus, TaskUpdate, UserPublic } from "../api/types";
 import type { ChannelState } from "../sync/types";
 import { canPostTopLevel } from "./channels";
 import { type DayKey, parseDay } from "./calendarDates";
@@ -12,6 +12,14 @@ import { mentionsToNames } from "./mentions";
 
 export const TASK_STATUSES: readonly TaskStatus[] = ["todo", "doing", "done"];
 export const STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "未着手", doing: "進行中", done: "完了" };
+/** L9 (REVIEWS.md §2.2): a review request's states. */
+export const REVIEW_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "依頼中", doing: "対応中", done: "完了" };
+export type TaskKind = TaskOut["kind"];
+
+/** A status in the words of the task's kind (a review request: 依頼中 / 対応中 / 完了). */
+export function statusLabel(kind: TaskKind | undefined, status: TaskStatus): string {
+  return (kind === "review" ? REVIEW_STATUS_LABELS : STATUS_LABELS)[status];
+}
 export const MAX_TASK_TITLE = 200;
 export const MAX_TASK_NOTES = 4000;
 /** A board brings this many completed cards (then 「完了をすべて表示」 reads them all). */
@@ -159,9 +167,29 @@ export function canEditBoard(channel: ChannelState | undefined, isAdmin: boolean
   return !!channel && channel.isMember && hasBoard(channel) && !channel.archived && canPostTopLevel(channel, isAdmin);
 }
 
-/** A task I may change: a personal one always (only I see it), a shared one when I may edit its board. */
+/**
+ * Whether I may add and change the tasks of a conversation: a board's rule for a channel; in a DM or a group DM (L9: its
+ * messages' shared tasks, no board) being a member of a conversation not archived.
+ */
+export function canEditConversationTasks(channel: ChannelState | undefined, isAdmin: boolean): boolean {
+  if (!channel) return false;
+  if (hasBoard(channel)) return canEditBoard(channel, isAdmin);
+  return channel.isMember && !channel.archived;
+}
+
+/** A task I may change: a personal one always (only I see it), a shared one when I may edit its conversation's tasks. */
 export function canEditTask(task: Pick<TaskOut, "channel_id">, channel: ChannelState | undefined, isAdmin: boolean): boolean {
-  return task.channel_id === null || canEditBoard(channel, isAdmin);
+  return task.channel_id === null || canEditConversationTasks(channel, isAdmin);
+}
+
+/**
+ * Where a task lives, in a line: 「#lab」, a DM by its other members (L9: a DM's task has no channel_name), or
+ * 「自分のタスク」. `dmTitle` names a DM from the store; without it (or the DM unknown) a DM's task says 「DM」.
+ */
+export function taskPlace(task: Pick<TaskOut, "channel_id" | "channel_name">, dmTitle?: (channelId: string) => string | null): string {
+  if (task.channel_id === null) return "自分のタスク";
+  if (task.channel_name) return `#${task.channel_name}`;
+  return dmTitle?.(task.channel_id) ?? "DM";
 }
 
 // --- 「自分のタスク」 -------------------------------------------------------------------------------
@@ -195,6 +223,40 @@ export function groupMineByChannel(tasks: readonly TaskOut[], me: string | null,
   }
   const groups = [...byChannel.values()].sort((a, b) => a.channelName.localeCompare(b.channelName, "ja"));
   return { personal, groups };
+}
+
+/** 「自分が依頼した」 (L9): shared tasks I made with someone besides me assigned (GET /tasks/requested's rule). */
+export function isRequestedByMe(task: Pick<TaskOut, "channel_id" | "owner_id" | "assignee_ids">, me: string | null): boolean {
+  return me !== null && task.channel_id !== null && task.owner_id === me && task.assignee_ids.some((id) => id !== me);
+}
+
+/** 「自分が依頼した」's order (the server's): open ones by due date (none last), then the completed ones, newest first. */
+export function sortRequested<T extends Pick<TaskOut, "status" | "due_on" | "created_at" | "completed_at" | "id">>(tasks: readonly T[]): { open: T[]; done: T[] } {
+  const byId = (a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const open = tasks
+    .filter((t) => t.status !== "done")
+    .sort((a, b) => (a.due_on ?? "9999-99-99").localeCompare(b.due_on ?? "9999-99-99") || a.created_at.localeCompare(b.created_at) || byId(a, b));
+  const done = tasks.filter((t) => t.status === "done").sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? "") || byId(a, b));
+  return { open, done };
+}
+
+// --- the chip under a message (L9, REVIEWS.md §2.2) ------------------------------------------------
+
+export type TaskChipTone = "open" | "overdue" | "done";
+
+/**
+ * A message's task as its chip says it: 「レビュー依頼 · 加納 · 依頼中 · 10/9 まで」 (a task: 「タスク · … · 未着手」):
+ * the assignees by name (three, then 「他 N 人」), the status in the kind's words, the due date while open (「今日まで」).
+ * Done is grey, an open one past its due date red.
+ */
+export function taskChip(task: MessageTaskOut, nameOf: (userId: string) => string | null, today: DayKey): { text: string; tone: TaskChipTone } {
+  const parts = [task.kind === "review" ? "レビュー依頼" : "タスク"];
+  const names = task.assignee_ids.map((id) => nameOf(id) ?? "?");
+  if (names.length > 0) parts.push(names.length > 3 ? `${names.slice(0, 3).join("、")} 他 ${names.length - 3} 人` : names.join("、"));
+  parts.push(statusLabel(task.kind, task.status));
+  if (task.due_on && task.status !== "done") parts.push(task.due_on === today ? "今日まで" : `${dueLabel(task.due_on, today)} まで`);
+  const tone: TaskChipTone = task.status === "done" ? "done" : isOverdue(task, today) ? "overdue" : "open";
+  return { text: parts.join(" · "), tone };
 }
 
 // --- the detail dialog -----------------------------------------------------------------------------
@@ -268,12 +330,65 @@ export interface TaskCreateInit {
   sourceExcerpt?: string | null;
   /** The boards offered besides 「自分のタスク」 (a channel message: its channel's; none from a DM). */
   boardChoices?: string[];
+  /**
+   * L9: a DM's (or group DM's) message: the DM whose members may be assigned. With assignees the task is shared in the
+   * DM; without, it stays personal (TASKS.md §6's rule).
+   */
+  shareChannelId?: string | null;
+  /** L9 「レビューを依頼」: kind review, in the message's conversation (channelId), with at least one 依頼先. */
+  kind?: TaskKind;
+}
+
+/** Where a new task goes: the board chosen, else a DM shared once someone is assigned, else 「自分のタスク」 (null). */
+export function newTaskChannel(init: TaskCreateInit | undefined, board: string, assigneeIds: readonly string[]): string | null {
+  if (board !== "me") return board;
+  return init?.shareChannelId && assigneeIds.length > 0 ? init.shareChannelId : null;
+}
+
+/** POST /tasks for the dialog's draft. */
+export function taskCreateBody(draft: TaskDraft, init: TaskCreateInit | undefined, board: string, clientTaskId: string, tz: string): TaskCreate {
+  const channelId = newTaskChannel(init, board, draft.assigneeIds);
+  return {
+    title: cleanTitle(draft.title),
+    status: draft.status,
+    kind: init?.kind ?? "task",
+    client_task_id: clientTaskId,
+    tz,
+    ...(channelId ? { channel_id: channelId } : {}),
+    ...(draft.notes.trim() ? { notes: draft.notes } : {}),
+    ...(draft.dueOn ? { due_on: draft.dueOn } : {}),
+    ...(channelId && draft.assigneeIds.length > 0 ? { assignee_ids: [...new Set(draft.assigneeIds)] } : {}),
+    ...(init?.sourceMessageId ? { source_message_id: init.sourceMessageId } : {}),
+  };
+}
+
+/**
+ * 「レビューを依頼」 (REVIEWS.md §2.3): 「レビュー: <the message's one line>」 (200 characters in all), the message as its
+ * source, in the message's conversation (a DM too).
+ */
+export function messageReviewInit(
+  message: { id: string; channel_id: string; body: string; attachments?: ReadonlyArray<{ content_type: string }> },
+  users: Map<string, UserPublic>,
+  groups: ReadonlyMap<string, GroupOut>,
+): TaskCreateInit {
+  const prefix = "レビュー: ";
+  const excerpt = plainText(mentionsToNames(message.body, users, groups), MAX_TASK_TITLE - prefix.length) || attachmentText(message.attachments);
+  return {
+    channelId: message.channel_id,
+    status: "todo",
+    title: `${prefix}${excerpt}`.trim(),
+    sourceMessageId: message.id,
+    sourceExcerpt: excerpt || null,
+    boardChoices: [message.channel_id],
+    kind: "review",
+  };
 }
 
 /**
  * 「タスクにする」 (TASKS.md §6): the message's one-line text (the notifications' and the DM list's rule, cut to the
  * title's 200) as the title, the message as the source, and its channel's board — or 「自分のタスク」 for a DM, a group
- * DM, or a board I may not add to (switchable to 「自分のタスク」 from a channel's).
+ * DM, or a board I may not add to (switchable to 「自分のタスク」 from a channel's). L9: a DM's message may be shared in
+ * the DM by choosing assignees (`shareChannelId`).
  */
 export function messageTaskInit(
   message: { id: string; body: string; attachments?: ReadonlyArray<{ content_type: string }> },
@@ -284,7 +399,9 @@ export function messageTaskInit(
 ): TaskCreateInit {
   const title = plainText(mentionsToNames(message.body, users, groups), MAX_TASK_TITLE) || attachmentText(message.attachments);
   const board = channel && canEditBoard(channel, isAdmin) ? channel.id : null;
-  return { channelId: board, status: "todo", title, sourceMessageId: message.id, sourceExcerpt: title || null, boardChoices: board ? [board] : [] };
+  // L9: a DM's message may be shared with the DM's members (assignees chosen).
+  const share = channel && !hasBoard(channel) && canEditConversationTasks(channel, isAdmin) ? channel.id : null;
+  return { channelId: board, status: "todo", title, sourceMessageId: message.id, sourceExcerpt: title || null, boardChoices: board ? [board] : [], shareChannelId: share };
 }
 
 /** The calendar's filter (すべて / 自分 / #channel) on tasks: 「自分」 is 「自分のタスク」 (personal and assigned to me). */
@@ -296,19 +413,27 @@ export function filterTasks<T extends Pick<TaskOut, "channel_id" | "assignee_ids
 
 // --- notifications ---------------------------------------------------------------------------------
 
+type ByNotice = { task_id: string; channel_id: string; channel_name: string; title: string; by_user_id: string };
+
 /**
- * The open app's notification for task.assigned / task.due (TASKS.md §5, the push's wording): 「<name> がタスクを割り当て
- * ました: <title> (#<channel>)」 / 「今日が期限: <title>」 (+ 「 (#<channel>)」 for a shared one), and the task to open on
- * a click.
+ * The open app's notification for task.assigned / task.due / task.review_done (TASKS.md §5, REVIEWS.md §4, the push's
+ * wording): 「<name> がタスクを割り当てました: <title> (#<channel>)」 (a review request: 「<name> がレビューを依頼しました:
+ * <title>」), 「<name> がレビューを完了しました: <title>」, 「今日が期限: <title>」 (+ 「 (#<channel>)」 for a shared one;
+ * a DM has no channel name and adds nothing), and the task to open on a click.
  */
 export function taskNoticeText(
-  notice: { kind: "assigned"; data: { task_id: string; channel_id: string; channel_name: string; title: string; by_user_id: string } } | { kind: "due"; data: { task_id: string; channel_id: string | null; channel_name: string | null; title: string } },
+  notice:
+    | { kind: "assigned"; data: ByNotice & { kind?: TaskKind } }
+    | { kind: "review_done"; data: ByNotice }
+    | { kind: "due"; data: { task_id: string; channel_id: string | null; channel_name: string | null; title: string } },
   nameOf: (userId: string) => string | null,
 ): { body: string; taskId: string; channelId: string | null } {
-  if (notice.kind === "assigned") {
+  const where = (name: string | null | undefined) => (name ? ` (#${name})` : "");
+  if (notice.kind === "assigned" || notice.kind === "review_done") {
     const { data } = notice;
-    return { body: `${nameOf(data.by_user_id) ?? "メンバー"} がタスクを割り当てました: ${data.title} (#${data.channel_name})`, taskId: data.task_id, channelId: data.channel_id };
+    const what = notice.kind === "review_done" ? "レビューを完了しました" : notice.data.kind === "review" ? "レビューを依頼しました" : "タスクを割り当てました";
+    return { body: `${nameOf(data.by_user_id) ?? "メンバー"} が${what}: ${data.title}${where(data.channel_name)}`, taskId: data.task_id, channelId: data.channel_id };
   }
   const { data } = notice;
-  return { body: `今日が期限: ${data.title}${data.channel_id && data.channel_name ? ` (#${data.channel_name})` : ""}`, taskId: data.task_id, channelId: data.channel_id };
+  return { body: `今日が期限: ${data.title}${data.channel_id ? where(data.channel_name) : ""}`, taskId: data.task_id, channelId: data.channel_id };
 }

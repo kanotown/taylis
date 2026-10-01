@@ -243,7 +243,8 @@
 | `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null }` (M51)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
 | `task.updated` | channel (自分用: user) | — | `{ task: TaskData, deleter_ids }` (M55)。タスクの作成・変更・移動 (並べ替えで振り直したカードも 1 件ずつ)。人ごとに違う `can_delete` は載せない: `deleter_ids` に自分がいるか。手順は §16 |
 | `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
-| `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (M55)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。アプリ内でも通知する (プッシュは PushPlanner) |
+| `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id, kind }` (M55。`kind` は L9、M63)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。DM のタスクの `channel_name` は空文字。アプリ内でも通知する (プッシュは PushPlanner) |
+| `task.review_done` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (L9、M63)。自分が出したレビュー依頼を依頼先が完了にした。アプリ内でも通知する (REVIEWS.md §4) |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する。`kind` は `personal` / `ack` (L4) / `collect` (L6: 回収の締切後の催促。本人にだけ届く) |

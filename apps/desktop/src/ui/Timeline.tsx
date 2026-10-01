@@ -1,4 +1,4 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Forward, Hash, Link, ListTodo, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
+import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, ClipboardCheck, Forward,Hash, Link, ListTodo, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
@@ -36,7 +36,8 @@ import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 import { TaskDialog } from "./TaskDialog";
-import { messageTaskInit } from "./tasks";
+import { MessageTaskChips } from "./MessageTaskChips";
+import { canEditConversationTasks, messageReviewInit, messageTaskInit } from "./tasks";
 
 
 export function Timeline({ controller, channel, onOpenThread, active = true }: {
@@ -765,6 +766,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   // M55 「タスクにする」: the task dialog, new, from this message.
   const [taskOpen, setTaskOpen] = useState(false);
   const canMakeTask = !!engine?.tasks?.available && !message.deleted;
+  // L9 「レビューを依頼」: a shared task of kind review in this conversation (a DM too), where I may add tasks. The
+  // conversation's state (archived, posting policy, my role) is not a prop of the memoized row: it is read whenever the
+  // row renders, so a change made while the row stays put shows late at worst (the server checks it again).
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const canRequestReview = canMakeTask && message.seq !== null && !message.pending && canEditConversationTasks(store.getChannel(message.channel_id), isAdmin);
   // M25: the long-press sheet on touch screens (a mouse has the hover bar), and where it opens.
   const [sheet, setSheet] = useState<"actions" | "emoji" | null>(null);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -941,6 +947,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         {message.poll && <PollCard poll={message.poll} message={message} controller={controller} readOnly={readOnly} />}
         {message.ack_requested && !message.pending && <AckBar controller={controller} message={message} readOnly={readOnly} />}
         {message.collection && !message.deleted && <CollectionChip controller={controller} message={message} />}
+        {/* L9: the chips come from the message itself (message.updated change="tasks" replaces it: the row re-renders). */}
+        {(message.tasks?.length ?? 0) > 0 && !message.deleted && <MessageTaskChips controller={controller} tasks={message.tasks!} readOnly={readOnly} />}
         {(message.reply_count ?? 0) > 0 && onOpenThread && <ThreadSummaryLine message={message} store={store} onOpen={() => onOpenThread(message.id)} />}
         {reactions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -1064,6 +1072,11 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               <ListTodo size={15} />
             </IconButton>
           )}
+          {canRequestReview && (
+            <IconButton label="レビューを依頼" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setReviewOpen(true)}>
+              <ClipboardCheck size={15} />
+            </IconButton>
+          )}
           <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
             {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
@@ -1114,6 +1127,14 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onClose={() => setTaskOpen(false)}
         />
       )}
+      {reviewOpen && (
+        <TaskDialog
+          controller={controller}
+          task={null}
+          init={messageReviewInit(message, store.users, store.groups)}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
       {sheet && (
         <MessageActionsSheet
           controller={controller}
@@ -1124,6 +1145,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onShare={() => setShareOpen(true)}
           onShowReactions={() => setReactionsOpen(true)}
           onMakeTask={canMakeTask ? () => setTaskOpen(true) : undefined}
+          onRequestReview={canRequestReview ? () => setReviewOpen(true) : undefined}
           unreadOffered={unreadOffered}
           saved={saved}
           isAdmin={isAdmin}

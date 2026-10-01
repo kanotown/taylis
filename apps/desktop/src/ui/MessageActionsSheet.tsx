@@ -1,4 +1,4 @@
-import { AlarmClock, Bookmark, BookmarkCheck, Copy, Forward, Link, ListTodo, Mail, MessageSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy,Forward, Link, ListTodo, Mail, MessageSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -32,7 +32,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, onMakeTask, unreadOffered, saved, isAdmin }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -44,6 +44,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   onShowReactions?: () => void;
   /** M55 「タスクにする」 (offered when the server has tasks). */
   onMakeTask?: () => void;
+  /** L9 「レビューを依頼」 (offered where I may add the conversation's tasks). */
+  onRequestReview?: () => void;
   unreadOffered: boolean;
   saved: boolean;
   isAdmin: boolean;
@@ -172,6 +174,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
               </li>
               <li><SheetButton icon={<AlarmClock size={18} />} onClick={() => { if (settled()) setView("remind"); }}>リマインド…</SheetButton></li>
               {onMakeTask && <li><SheetButton icon={<ListTodo size={18} />} onClick={then(onMakeTask)}>タスクにする</SheetButton></li>}
+              {onRequestReview && <li><SheetButton icon={<ClipboardCheck size={18} />} onClick={then(onRequestReview)}>レビューを依頼</SheetButton></li>}
               {unreadOffered && <li><SheetButton icon={<Mail size={18} />} onClick={then(() => controller.engine?.markUnread(message.channel_id, message.seq!))}>ここから未読にする</SheetButton></li>}
               <li><SheetButton icon={<Link size={18} />} onClick={then(() => void controller.copyPermalink(message.id))}>リンクをコピー</SheetButton></li>
               <li><SheetButton icon={<Forward size={18} />} onClick={then(onShare)}>別のチャンネルに共有…</SheetButton></li>

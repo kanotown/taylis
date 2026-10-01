@@ -317,15 +317,14 @@ describe("「タスクにする」", () => {
     return { api, controller, message, conversation };
   }
 
-  it("from a DM: a personal task with the message's text and the message as its source", async () => {
+  it("from a DM without assignees: a personal task with the message's text and the message as its source", async () => {
     const { api, controller, message } = timeline("dm");
     fireEvent.click(screen.getByRole("button", { name: "タスクにする" }));
     const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
-    const where = within(dialog).getByLabelText("追加先") as HTMLSelectElement;
-    expect(where.value).toBe("me");
-    expect(where.disabled).toBe(true);
+    // L9: no board to choose; assignees (the DM's members) would share it in the DM.
+    expect(within(dialog).queryByLabelText("追加先")).toBeNull();
+    expect(dialog.querySelector("[data-task-board]")?.textContent).toContain("選ばなければ自分のタスク");
     expect((within(dialog).getByLabelText("題名") as HTMLInputElement).value).toBe("明日までに 資料 をお願いします");
-    expect(within(dialog).queryByRole("group", { name: "担当者" })).toBeNull(); // personal: nobody to assign
     fireEvent.click(within(dialog).getByRole("button", { name: "追加" }));
     await flush();
     const body = (api.createTask.mock.calls[0] as unknown as [Record<string, unknown>])[0];

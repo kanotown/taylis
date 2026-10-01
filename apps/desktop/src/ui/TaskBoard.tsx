@@ -30,6 +30,7 @@ import {
   sortColumn,
   sourceState,
   STATUS_LABELS,
+  statusLabel,
   TASK_STATUSES,
 } from "./tasks";
 
@@ -74,7 +75,7 @@ export function AssigneeStack({ controller, ids }: { controller: AppController; 
 }
 
 /** One card: title, assignees, due date (red when overdue), notes and source marks. */
-export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu, leading, showStatus = false, draggable = false, dragging = false, onDragStart, onDragEnd }: {
+export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu, leading, showStatus = false, place, draggable = false, dragging = false, onDragStart, onDragEnd }: {
   controller: AppController;
   task: TaskOut;
   today: DayKey;
@@ -85,6 +86,8 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
   leading?: ReactNode;
   /** 「自分のタスク」: 「進行中」 on the card (the board has columns). */
   showStatus?: boolean;
+  /** L9 「自分が依頼した」: where the task lives (「#lab」, a DM's other member). */
+  place?: string;
   draggable?: boolean;
   dragging?: boolean;
   onDragStart?: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -93,7 +96,7 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
   const done = task.status === "done";
   const overdue = isOverdue(task, today);
   const source = sourceState(task);
-  const hasMeta = !!task.due_on || !!task.notes || source.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
+  const hasMeta = !!place || !!task.due_on || !!task.notes || source.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
   return (
     <div
       data-task-card={task.id}
@@ -115,7 +118,8 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
       </div>
       {hasMeta && (
         <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted">
-          {showStatus && task.status === "doing" && <span className="rounded bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">進行中</span>}
+          {showStatus && task.status === "doing" && <span className="rounded bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">{statusLabel(task.kind, "doing")}</span>}
+          {place && <span className="min-w-0 truncate" data-task-place>{place}</span>}
           {task.due_on && (
             <span
               data-due={task.due_on}
