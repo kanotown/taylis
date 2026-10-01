@@ -22,6 +22,13 @@ die() { log "$*" >&2; exit 1; }
 : "${REGISTRY:?set REGISTRY in infra/deploy.conf, e.g. ghcr.io/<owner>}"
 BACKUP_ROOT="${BACKUP_ROOT:-$HERE/backups}"
 
+# Optional secret files (the AI keys, docs/AI.md): compose bind-mounts each one, and a missing file would
+# make Docker create an empty root-owned directory in its place, which then stands in the way of the key.
+# An empty file means "not configured" to the app; the administrator writes the key into it later.
+for optional in anthropic_api_key openai_api_key; do
+  [ -e "secrets/$optional" ] || install -m 600 /dev/null "secrets/$optional"
+done
+
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)
 # Files for this server only, e.g. docker-compose.behind-proxy.yml when nginx already owns ports 80 and 443.
 for extra in ${EXTRA_COMPOSE_FILES:-}; do
