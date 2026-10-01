@@ -1208,7 +1208,7 @@ describe("thread pane waits for the whole thread (§10.2)", () => {
       await w.engine.idle();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    return { view, controller, list: view.container.querySelector<HTMLElement>("[data-replies]")!.parentElement! };
+    return { view, controller, list: view.container.querySelector<HTMLElement>("[data-replies]")!.closest<HTMLElement>("[data-message-list]")! };
   }
 
   it("V24: live replies alone sit at the bottom and are not read; once loaded, 「新しい返信」 goes to the top", async () => {
@@ -1370,7 +1370,7 @@ describe("thread pane waits for the whole thread (§10.2)", () => {
       return replies(id);
     };
     const view = render(<View w={w} controller={controllerFor(w)} parentId={w.parent.id} />);
-    fireEvent.scroll(view.container.querySelector<HTMLElement>("[data-replies]")!.parentElement!);
+    fireEvent.scroll(view.container.querySelector<HTMLElement>("[data-replies]")!.closest<HTMLElement>("[data-message-list]")!);
     await act(async () => {
       release();
       await w.engine.idle();

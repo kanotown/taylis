@@ -7,6 +7,7 @@ import type { ChannelState, MessageState } from "../sync/types";
 import { tapClosesKeyboard } from "../platform/viewport";
 import { buildTimeline, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
+import { useListAnchor } from "./scrollAnchor";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button } from "./primitives";
 import { ChannelIntro, MessageRow } from "./Timeline";
@@ -27,9 +28,13 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
   const group = controller.groupPosts;
   const items = useMemo(() => buildTimeline(messages, { firstUnreadAfterSeq: null, meId, group }), [messages, meId, today, group]);
   const container = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [tapHandlers] = useState(() => tapClosesKeyboard());
-  /** Older rows were put above: the reader stays on what they were looking at. */
-  const anchor = useRef<{ height: number; top: number } | null>(null);
+  /**
+   * Still while content changes height, as in the timeline (scrollAnchor.ts): at the end it follows photos and cards
+   * arriving until the reader scrolls up; elsewhere the topmost row on screen keeps its place, older rows put above too.
+   */
+  const anchor = useListAnchor(container, content, "article[id^='timeline-']");
   /** What the view last placed itself for (the channel, or the linked message in it). */
   const positioned = useRef("");
   const parents = preview?.parents;
@@ -39,12 +44,11 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
   openThreadRef.current = onOpenThread;
   const [openThread] = useState(() => (id: string) => openThreadRef.current?.(id));
 
+  // Older rows were put above (or rows came or went): the row the reader was looking at stays where it was. By that
+  // row, not by the height the list gained, which also counted photos and cards that grew meanwhile. At the end, the
+  // end (new rows included).
   useLayoutEffect(() => {
-    const el = container.current;
-    if (el && anchor.current) {
-      el.scrollTop = anchor.current.top + (el.scrollHeight - anchor.current.height);
-      anchor.current = null;
-    }
+    anchor.resized();
   }, [messages.length]);
 
   // Once per channel (or linked message): the newest row at the bottom, or the linked one in the middle.
@@ -54,20 +58,28 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
     if (!el || messages.length === 0 || positioned.current === key) return;
     positioned.current = key;
     const target = focus ? document.getElementById(`timeline-${focus.parentId ?? focus.messageId}`) : null;
-    if (target) target.scrollIntoView({ block: "center" });
-    else el.scrollTop = el.scrollHeight;
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      anchor.placed();
+    } else {
+      anchor.toBottom();
+    }
   }, [channel.id, focus?.messageId, messages.length]);
 
   const loadOlder = () => {
-    const el = container.current;
     if (!engine || focus || !preview?.hasOlder || preview.loading) return;
-    if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop };
     void engine.loadPreviewOlder().catch((error) => controller.setError(error));
+  };
+  const onScroll = () => {
+    anchor.scrolled();
+    if ((container.current?.scrollTop ?? 1000) < 120) loadOlder();
   };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" data-preview="" ref={container} className="flex-1 overflow-y-auto px-4 pb-2 pt-2" onScroll={() => { if ((container.current?.scrollTop ?? 1000) < 120) loadOlder(); }} {...tapHandlers}>
+      {/* Chromium's own scroll anchoring is off: the list anchors itself, the same on every engine (scrollAnchor.ts). */}
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" data-preview="" ref={container} className="flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" onScroll={onScroll} {...tapHandlers}>
+        <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
             <span>検索位置の前後の会話</span>
@@ -124,6 +136,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
           const parentId = item.message.parent_id;
           return <MessageRow key={rowKey(item.message)} controller={controller} message={item.message} compact={item.compact} onOpenThread={onOpenThread ? openThread : undefined} readOnly threadParent={parentId ? parentOf(parentId) : undefined} />;
         })}
+        </div>
       </div>
     </div>
   );
@@ -163,6 +176,9 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
   const parent: MessageState | undefined = preview?.messages.find((m) => m.id === parentId) ?? preview?.parents.get(parentId) ?? controller.messageFocus?.context.find((m) => m.id === parentId);
   const replies = preview?.replies.get(parentId);
   const list = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  /** As in the thread pane of a member (scrollAnchor.ts). */
+  const anchor = useListAnchor(list, content, "article[id^='thread-']");
   const [tapHandlers] = useState(() => tapClosesKeyboard());
   const hasPreview = !!preview;
 
@@ -175,10 +191,18 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
   const loaded = replies !== undefined;
   useLayoutEffect(() => {
     const el = list.current;
-    if (!el || !loaded) return;
+    if (!el) return;
+    if (!loaded) {
+      anchor.reset(); // another thread in the same pane
+      return;
+    }
     const hit = focus ? document.getElementById(`thread-${focus.messageId}`) : null;
-    if (hit) hit.scrollIntoView({ block: "center" });
-    else el.scrollTop = el.scrollHeight;
+    if (hit) {
+      hit.scrollIntoView({ block: "center" });
+      anchor.placed();
+    } else {
+      anchor.toBottom();
+    }
   }, [parentId, loaded]);
 
   return (
@@ -191,7 +215,8 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
         </div>
         <PaneCloseButton onClick={onClose} />
       </header>
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2" {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" onScroll={() => anchor.scrolled()} {...tapHandlers}>
+        <div ref={content}>
         {parent ? (
           <>
             <MessageRow thread readOnly message={parent} controller={controller} />
@@ -206,6 +231,7 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
         ) : (
           <div className="py-8 text-center text-sm text-muted">{loaded ? "メッセージが見つかりません" : "読み込み中…"}</div>
         )}
+        </div>
       </div>
       <div className="shrink-0 border-t border-line px-4 py-3 text-center text-xs text-muted">チャンネルに参加すると返信できます</div>
     </aside>
