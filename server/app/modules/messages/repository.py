@@ -19,6 +19,7 @@ from app.modules.messages.models import (
     timeline_filter,
 )
 from app.modules.recurring.models import Collection  # read-only (L6)
+from app.modules.tasks.models import Task, TaskAssignee  # read-only (L9)
 from app.modules.users.models import User  # read-only
 
 
@@ -505,6 +506,40 @@ async def collections_for(
         return {}
     stmt = select(Collection).where(Collection.message_id.in_(message_ids))
     return {row.message_id: row for row in (await db.execute(stmt)).scalars().all()}
+
+
+async def tasks_for(
+    db: AsyncSession, messages: list[Message]
+) -> dict[uuid.UUID, list[tuple[Task, list[uuid.UUID]]]]:
+    """L9: the live shared tasks made from each message, in its own channel, oldest first, with
+    their assignees. A personal task (channel_id NULL) is its owner's alone and never shown."""
+    if not messages:
+        return {}
+    stmt = (
+        select(Task)
+        .where(
+            Task.source_message_id.in_([m.id for m in messages]),
+            Task.deleted_at.is_(None),
+            Task.channel_id == Task.source_channel_id,
+        )
+        .order_by(Task.created_at, Task.id)
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    if not rows:
+        return {}
+    assigned = (
+        select(TaskAssignee)
+        .where(TaskAssignee.task_id.in_([t.id for t in rows]))
+        .order_by(TaskAssignee.created_at, TaskAssignee.user_id)
+    )
+    people: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for a in (await db.execute(assigned)).scalars().all():
+        people.setdefault(a.task_id, []).append(a.user_id)
+    out: dict[uuid.UUID, list[tuple[Task, list[uuid.UUID]]]] = {}
+    for task in rows:
+        assert task.source_message_id is not None
+        out.setdefault(task.source_message_id, []).append((task, people.get(task.id, [])))
+    return out
 
 
 async def repliers_for(

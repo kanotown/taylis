@@ -48,6 +48,7 @@ from app.modules.messages.schemas import (
     MessageEdit,
     MessageOut,
     MessageRevisionOut,
+    MessageTaskOut,
     PollAnswersIn,
     PollCreate,
     PollDecideIn,
@@ -324,6 +325,7 @@ async def messages_out(
         db, [m.id for m in rows if m.parent_id is None and not m.is_deleted]
     )
     repliers = await repo.repliers_for(db, list(collections))
+    tasks = await repo.tasks_for(db, [m for m in rows if not m.is_deleted])
     return [
         to_message_out(
             m,
@@ -334,6 +336,17 @@ async def messages_out(
             viewer,
             comments.get(m.id, []),
             _collection_of(collections.get(m.id), repliers.get(m.id, set())),
+            [
+                MessageTaskOut(
+                    id=t.id,
+                    kind=t.kind,  # type: ignore[arg-type]
+                    status=t.status,  # type: ignore[arg-type]
+                    assignee_ids=people,
+                    due_on=t.due_on,
+                    owner_id=t.owner_id,
+                )
+                for t, people in tasks.get(m.id, [])
+            ],
         )
         for m in rows
     ]

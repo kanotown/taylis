@@ -4498,6 +4498,14 @@
             "title": "Seq",
             "type": "integer"
           },
+          "tasks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MessageTaskOut"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
           "type": {
             "default": "user",
             "title": "Type",
@@ -4547,6 +4555,68 @@
           "replaced_at"
         ],
         "title": "MessageRevisionOut",
+        "type": "object"
+      },
+      "MessageTaskOut": {
+        "description": "L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).\nPersonal tasks are never listed (only their owner sees them).",
+        "properties": {
+          "assignee_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Assignee Ids",
+            "type": "array"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "task",
+              "review"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "assignee_ids",
+          "due_on",
+          "owner_id"
+        ],
+        "title": "MessageTaskOut",
         "type": "object"
       },
       "MonthlySchedule": {
@@ -7039,6 +7109,15 @@
             ],
             "title": "Due On"
           },
+          "kind": {
+            "default": "task",
+            "enum": [
+              "task",
+              "review"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "notes": {
             "anyOf": [
               {
@@ -7222,6 +7301,15 @@
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "task",
+            "enum": [
+              "task",
+              "review"
+            ],
+            "title": "Kind",
             "type": "string"
           },
           "notes": {
@@ -17375,6 +17463,37 @@
           }
         ],
         "summary": "List Mine",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/requested": {
+      "get": {
+        "description": "L9: the shared tasks I made with someone else assigned (my review requests and the like):\nopen ones by due date, then the 50 most recently completed.",
+        "operationId": "list_requested_api_v1_tasks_requested_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response List Requested Api V1 Tasks Requested Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Requested",
         "tags": [
           "tasks"
         ]

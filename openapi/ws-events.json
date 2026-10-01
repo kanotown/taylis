@@ -2183,6 +2183,14 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "tasks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/MessageTaskOut"
+                },
+                "title": "Tasks",
+                "type": "array"
+              },
               "type": {
                 "default": "user",
                 "title": "Type",
@@ -2206,6 +2214,68 @@
               "deleted"
             ],
             "title": "MessageOut",
+            "type": "object"
+          },
+          "MessageTaskOut": {
+            "description": "L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).\nPersonal tasks are never listed (only their owner sees them).",
+            "properties": {
+              "assignee_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Assignee Ids",
+                "type": "array"
+              },
+              "due_on": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Due On"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "task",
+                  "review"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "assignee_ids",
+              "due_on",
+              "owner_id"
+            ],
+            "title": "MessageTaskOut",
             "type": "object"
           },
           "ParentThread": {
@@ -3012,6 +3082,14 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "tasks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/MessageTaskOut"
+                },
+                "title": "Tasks",
+                "type": "array"
+              },
               "type": {
                 "default": "user",
                 "title": "Type",
@@ -3035,6 +3113,68 @@
               "deleted"
             ],
             "title": "MessageOut",
+            "type": "object"
+          },
+          "MessageTaskOut": {
+            "description": "L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).\nPersonal tasks are never listed (only their owner sees them).",
+            "properties": {
+              "assignee_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Assignee Ids",
+                "type": "array"
+              },
+              "due_on": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Due On"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "task",
+                  "review"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "assignee_ids",
+              "due_on",
+              "owner_id"
+            ],
+            "title": "MessageTaskOut",
             "type": "object"
           },
           "ParentThread": {
@@ -3842,6 +3982,14 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "tasks": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/MessageTaskOut"
+                },
+                "title": "Tasks",
+                "type": "array"
+              },
               "type": {
                 "default": "user",
                 "title": "Type",
@@ -3865,6 +4013,68 @@
               "deleted"
             ],
             "title": "MessageOut",
+            "type": "object"
+          },
+          "MessageTaskOut": {
+            "description": "L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).\nPersonal tasks are never listed (only their owner sees them).",
+            "properties": {
+              "assignee_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Assignee Ids",
+                "type": "array"
+              },
+              "due_on": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Due On"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "task",
+                  "review"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "assignee_ids",
+              "due_on",
+              "owner_id"
+            ],
+            "title": "MessageTaskOut",
             "type": "object"
           },
           "PollCommentOut": {
@@ -4245,7 +4455,8 @@
               "pin",
               "poll",
               "ack",
-              "collection"
+              "collection",
+              "tasks"
             ],
             "title": "Change",
             "type": "string"
@@ -4946,6 +5157,15 @@
             "title": "Channel Name",
             "type": "string"
           },
+          "kind": {
+            "default": "task",
+            "enum": [
+              "task",
+              "review"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "task_id": {
             "format": "uuid",
             "title": "Task Id",
@@ -5053,6 +5273,47 @@
         "type": "object"
       }
     },
+    "task.review_done": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "task.review_done: an assignee completed my review request (L9, REVIEWS.md §4).",
+        "properties": {
+          "by_user_id": {
+            "format": "uuid",
+            "title": "By User Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "channel_name": {
+            "title": "Channel Name",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "channel_id",
+          "channel_name",
+          "title",
+          "by_user_id"
+        ],
+        "title": "TaskReviewDoneData",
+        "type": "object"
+      }
+    },
     "task.updated": {
       "audience": "channel (a personal task: user)",
       "consumes_seq": false,
@@ -5136,6 +5397,15 @@
               "id": {
                 "format": "uuid",
                 "title": "Id",
+                "type": "string"
+              },
+              "kind": {
+                "default": "task",
+                "enum": [
+                  "task",
+                  "review"
+                ],
+                "title": "Kind",
                 "type": "string"
               },
               "notes": {

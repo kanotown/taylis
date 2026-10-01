@@ -7,6 +7,7 @@ from app.modules.tasks.schemas import (
     TaskAssignedData,
     TaskDeletedData,
     TaskDueData,
+    TaskReviewDoneData,
     TaskUpdatedData,
 )
 
@@ -14,14 +15,18 @@ TASK_UPDATED = "task.updated"
 TASK_DELETED = "task.deleted"
 TASK_ASSIGNED = "task.assigned"
 TASK_DUE = "task.due"
+# L9: to the requester when an assignee completes a review request.
+TASK_REVIEW_DONE = "task.review_done"
 
 __all__ = [
     "TASK_ASSIGNED",
     "TASK_DELETED",
     "TASK_DUE",
+    "TASK_REVIEW_DONE",
     "TASK_UPDATED",
     "TaskAssignedData",
     "TaskDeletedData",
     "TaskDueData",
+    "TaskReviewDoneData",
     "TaskUpdatedData",
 ]

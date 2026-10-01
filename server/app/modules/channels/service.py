@@ -538,10 +538,13 @@ async def set_archived_in_tx(db: AsyncSession, channel: Channel, archived: bool)
     return True
 
 
-async def conversations_of(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Channel, str]]:
+async def conversations_of(
+    db: AsyncSession, user_id: uuid.UUID, *, include_dms: bool = False
+) -> list[tuple[Channel, str]]:
     """For the lab module (L7) and the calendar (M51): the public and private channels someone
-    belongs to, with their role in each (DMs are left alone), by name."""
-    return await repo.channel_memberships_of(db, user_id)
+    belongs to, with their role in each (DMs are left alone unless asked for: tasks, L9), by
+    name."""
+    return await repo.channel_memberships_of(db, user_id, include_dms=include_dms)
 
 
 async def _free_times_name(db: AsyncSession, base: str) -> str:

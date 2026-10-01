@@ -47,7 +47,13 @@ from app.modules.channels.models import Channel
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_DELETED, MESSAGE_UPDATED
 from app.modules.tasks import repository as repo
-from app.modules.tasks.events import TASK_ASSIGNED, TASK_DELETED, TASK_DUE, TASK_UPDATED
+from app.modules.tasks.events import (
+    TASK_ASSIGNED,
+    TASK_DELETED,
+    TASK_DUE,
+    TASK_REVIEW_DONE,
+    TASK_UPDATED,
+)
 from app.modules.tasks.models import Task, TaskDueAlarm
 from app.modules.tasks.schemas import (
     TaskAssignedData,
@@ -57,6 +63,7 @@ from app.modules.tasks.schemas import (
     TaskDueData,
     TaskMove,
     TaskOut,
+    TaskReviewDoneData,
     TaskSourceOut,
     TaskUpdate,
     TaskUpdatedData,
@@ -116,6 +123,7 @@ def to_data(task: Task, channel: Channel | None, assignee_ids: list[uuid.UUID]) 
         channel_id=task.channel_id,
         channel_name=channel.name if channel is not None else None,
         owner_id=task.owner_id,
+        kind=task.kind,  # type: ignore[arg-type]
         title=task.title,
         notes=task.notes,
         status=task.status,  # type: ignore[arg-type]
@@ -233,6 +241,7 @@ async def _emit_assigned(
             channel_name=channel.name or "",
             title=task.title,
             by_user_id=actor_id,
+            kind=task.kind,  # type: ignore[arg-type]
         )
         await write_outbox(
             db,
@@ -242,6 +251,41 @@ async def _emit_assigned(
             channel_id=channel.id,
             payload=data.model_dump(mode="json"),
         )
+
+
+async def _announce_source(db: AsyncSession, task: Task) -> None:
+    """L9 (REVIEWS.md §2.2): a shared task's chip under its message changed (made, status,
+    assignees, due date, deleted): the message takes a new seq and message.updated (change tasks),
+    so devices that were away catch up through the delta. Personal tasks show no chip."""
+    if task.source_message_id is None or task.channel_id != task.source_channel_id:
+        return
+    message = await messages.find_message(db, task.source_message_id)
+    if message is None or message.is_deleted:
+        return
+    await messages.announce_change_in_tx(db, message, "tasks")
+
+
+async def _emit_review_done(
+    db: AsyncSession, task: Task, channel: Channel | None, actor_id: uuid.UUID
+) -> None:
+    """L9 (§4): the requester hears when someone else completes their review request."""
+    if task.kind != "review" or channel is None or actor_id == task.owner_id:
+        return
+    data = TaskReviewDoneData(
+        task_id=task.id,
+        channel_id=channel.id,
+        channel_name=channel.name or "",
+        title=task.title,
+        by_user_id=actor_id,
+    )
+    await write_outbox(
+        db,
+        event_type=TASK_REVIEW_DONE,
+        audience_type="user",
+        audience_id=task.owner_id,
+        channel_id=channel.id,
+        payload=data.model_dump(mode="json"),
+    )
 
 
 # --- access --------------------------------------------------------------------------------------
@@ -282,11 +326,12 @@ def _require_editor(actor: User, seen: _Seen) -> None:
 
 
 async def _board_channel(
-    db: AsyncSession, actor: User, channel_id: uuid.UUID
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, *, from_message: bool = False
 ) -> tuple[Channel, str]:
-    """A channel with a board the actor belongs to (public or private, not a DM)."""
+    """A channel with a board the actor belongs to (public or private). A DM has no board, but
+    (L9, REVIEWS.md §2.1) a task made from one of its messages is shared with its members."""
     channel, membership = await channels.require_member(db, actor.id, channel_id)
-    if channel.is_dm:
+    if channel.is_dm and not from_message:
         raise bad_request("task_channel_unsupported", "Direct messages have no task board")
     return channel, membership.role
 
@@ -311,8 +356,10 @@ async def _check_assignees(
 
 
 async def _joined(db: AsyncSession, actor: User) -> dict[uuid.UUID, tuple[Channel, str]]:
-    """The channels whose boards the actor sees, with their role in each."""
-    return {c.id: (c, role) for c, role in await channels.conversations_of(db, actor.id)}
+    """The conversations whose shared tasks the actor sees, with their role in each."""
+    # DMs too (L9): a task made from a DM's message is shared with its members.
+    pairs = await channels.conversations_of(db, actor.id, include_dms=True)
+    return {c.id: (c, role) for c, role in pairs}
 
 
 # --- positions -----------------------------------------------------------------------------------
@@ -495,6 +542,15 @@ async def list_mine(db: AsyncSession, actor: User) -> list[TaskOut]:
     return await _outs(db, actor, _order(rows + done[:MINE_DONE_LIMIT]), joined)
 
 
+async def list_requested(db: AsyncSession, actor: User) -> list[TaskOut]:
+    """L9 (REVIEWS.md §2.3): shared tasks I made with someone else assigned (my requests) in the
+    conversations I am in; open ones by due date, then the 50 most recently completed."""
+    joined = await _joined(db, actor)
+    rows = await repo.requested_by(db, actor.id, list(joined), done=False, limit=MAX_DUE_TASKS)
+    done = await repo.requested_by(db, actor.id, list(joined), done=True, limit=MINE_DONE_LIMIT)
+    return await _outs(db, actor, rows + done, joined)
+
+
 async def list_due(db: AsyncSession, actor: User, start: date, end: date) -> list[TaskOut]:
     """Tasks I can see due in [start, end): mine and my channels' boards (the calendar)."""
     if end <= start or (end - start).days > MAX_DUE_RANGE_DAYS:
@@ -553,8 +609,12 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
             return await get_task(db, actor, existing.id), False
     channel: Channel | None = None
     role: str | None = None
+    if data.kind == "review" and data.source_message_id is None:
+        raise bad_request("task_invalid_source", "A review request is made from a message")
     if data.channel_id is not None:
-        channel, role = await _board_channel(db, actor, data.channel_id)
+        channel, role = await _board_channel(
+            db, actor, data.channel_id, from_message=data.source_message_id is not None
+        )
         _require_poster(actor, channel, role)
     await _check_assignees(db, channel, data.assignee_ids)
     source = (
@@ -576,6 +636,7 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
         title=data.title,
         notes=data.notes,
         status=data.status,
+        kind=data.kind,
         due_on=data.due_on,
         source_message_id=source[0] if source else None,
         source_channel_id=source[1] if source else None,
@@ -606,6 +667,7 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     await _emit_updated(db, task, channel, assignees)
     if channel is not None:
         await _emit_assigned(db, task, channel, actor_id, assignees)
+    await _announce_source(db, task)
     await db.commit()
     return to_out(_Seen(task, channel, role), actor, assignees), True
 
@@ -630,11 +692,14 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         task.due_on = data.due_on
     now = utcnow()
     renumbered: list[Task] = []
+    shown_before = (task.status, task.due_on)
     if "status" in sent and data.status is not None and data.status != task.status:
         if data.status != "done" and task.status == "done":
             await _check_room(db, task)
         renumbered = await _place(db, task, data.status, None, None)
         _set_status(task, data.status, actor.id, now)
+        if data.status == "done":
+            await _emit_review_done(db, task, seen.channel, actor.id)
     task.updated_at = now
     if assignees != current:
         await repo.set_assignees(db, task.id, current, assignees)
@@ -644,6 +709,8 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
     if seen.channel is not None:
         added = [uid for uid in assignees if uid not in current]
         await _emit_assigned(db, task, seen.channel, actor.id, added)
+    if (task.status, task.due_on) != shown_before or assignees != current:
+        await _announce_source(db, task)
     await db.commit()
     return to_out(seen, actor, assignees)
 
@@ -687,6 +754,10 @@ async def move(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskMove
     if status_changed:
         await _sync_alarms(db, task, assignees, actor, None, now)
     await _emit_changes(db, task, seen.channel, assignees, renumbered)
+    if status_changed:
+        if data.status == "done":
+            await _emit_review_done(db, task, seen.channel, actor.id)
+        await _announce_source(db, task)
     await db.commit()
     return to_out(seen, actor, assignees)
 
@@ -708,6 +779,8 @@ async def delete(db: AsyncSession, actor: User, task_id: uuid.UUID) -> None:
     task.updated_at = now
     await _sync_alarms(db, task, assignees, actor, None, now)
     await _emit_deleted(db, task)
+    await db.flush()
+    await _announce_source(db, task)
     await db.commit()
 
 

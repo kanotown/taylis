@@ -35,6 +35,13 @@ async def list_mine(user: CurrentUser, db: Db) -> list[TaskOut]:
     return await service.list_mine(db, user)
 
 
+@router.get("/tasks/requested", response_model=list[TaskOut])
+async def list_requested(user: CurrentUser, db: Db) -> list[TaskOut]:
+    """L9: the shared tasks I made with someone else assigned (my review requests and the like):
+    open ones by due date, then the 50 most recently completed."""
+    return await service.list_requested(db, user)
+
+
 @router.get("/tasks/due", response_model=list[TaskOut])
 async def list_due(
     user: CurrentUser,

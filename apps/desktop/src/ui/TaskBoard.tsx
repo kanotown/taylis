@@ -339,7 +339,7 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   const add = async (status: TaskStatus, title: string): Promise<boolean> => {
     if (!hub) return false;
     try {
-      await hub.create({ channel_id: channel.id, title, status, client_task_id: crypto.randomUUID(), tz: localZone() });
+      await hub.create({ channel_id: channel.id, title, status, kind: "task", client_task_id: crypto.randomUUID(), tz: localZone() });
       return true;
     } catch (err) {
       controller.setError(err);

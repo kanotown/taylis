@@ -10,6 +10,7 @@ export function task(title: string, extra: Partial<TaskOut> = {}): TaskOut {
     channel_id: "c-lab",
     channel_name: "lab",
     owner_id: "u-me",
+    kind: "task",
     title,
     notes: null,
     status: "todo",

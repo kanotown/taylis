@@ -296,6 +296,18 @@ class ParentThread(BaseModel):
     participant_ids: list[UUID] = []
 
 
+class MessageTaskOut(BaseModel):
+    """L9 (REVIEWS.md §2.2): a shared task made from this message (its chip under the message).
+    Personal tasks are never listed (only their owner sees them)."""
+
+    id: UUID
+    kind: Literal["task", "review"]
+    status: Literal["todo", "doing", "done"]
+    assignee_ids: list[UUID]
+    due_on: dt.date | None
+    owner_id: UUID
+
+
 class CollectionOut(BaseModel):
     """L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when
     they have a live reply in the thread (also one sent to the channel too)."""
@@ -345,6 +357,8 @@ class MessageOut(BaseModel):
     acks: list[AckOut] = []
     # L6: present on a recurring post that collects replies (RECURRING.md §3).
     collection: CollectionOut | None = None
+    # L9: the shared tasks made from it (review requests and 「タスクにする」), oldest first.
+    tasks: list[MessageTaskOut] = []
 
 
 class MessageRevisionOut(BaseModel):
@@ -471,6 +485,7 @@ def to_message_out(
     viewer: UUID | None = None,
     comments: Sequence[PollComment] = (),
     collection: CollectionOut | None = None,
+    tasks: Sequence[MessageTaskOut] = (),
 ) -> MessageOut:
     """`viewer`: the user a response is for (their own poll votes, M27); None for events."""
     deleted = message.is_deleted
@@ -502,6 +517,7 @@ def to_message_out(
         ack_requested=message.ack_requested,
         acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],
         collection=None if deleted else collection,
+        tasks=[] if deleted else list(tasks),
     )
 
 

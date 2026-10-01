@@ -20,7 +20,8 @@ class MessageCreatedData(BaseModel):
 class MessageUpdatedData(BaseModel):
     message: MessageOut
     # "collection" (L6): the submissions of a collecting post changed (a reply came or went).
-    change: Literal["body", "reactions", "pin", "poll", "ack", "collection"]
+    # "tasks" (L9): the shared tasks made from it changed (MessageOut.tasks).
+    change: Literal["body", "reactions", "pin", "poll", "ack", "collection", "tasks"]
 
 
 class MessageDeletedData(BaseModel):

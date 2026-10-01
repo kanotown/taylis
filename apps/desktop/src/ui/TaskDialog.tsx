@@ -79,7 +79,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
         const body: TaskCreate = {
           title: cleanTitle(draft.title),
           status: draft.status,
-          client_task_id: clientId.current,
+          kind: "task", client_task_id: clientId.current,
           tz: localZone(),
           ...(channelId ? { channel_id: channelId } : {}),
           ...(draft.notes.trim() ? { notes: draft.notes } : {}),

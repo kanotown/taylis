@@ -4,7 +4,7 @@ ROADMAP の L9 (LAB.md §F)。学生が原稿 (添付や Overleaf のリンク) 
 希望日を決める。メッセージの下に状態 (依頼中 / 対応中 / 完了) が出て、依頼先は自分宛ての依頼を一覧で整理できる。修論・学会の
 締切前に教員へ 10 人分の依頼が集まるときに効く。
 
-**状態**: §7 は全部推奨の案に決まった (2026-10-02)。M63 から実装する。
+**状態**: §7 は全部推奨の案に決まった (2026-10-02)。M63 のサーバは完了 (移行 0056、§8)。Desktop / Web と M64 (iOS / Android) は作業中。
 
 ## 1. 方針: タスク (M55) の上に作る
 
@@ -59,7 +59,7 @@ LAB.md の設計時は専用の表 `review_requests` を想定していたが、
 - `POST /tasks` / `PATCH /tasks/{id}`: DM のメッセージからのタスクで `assignee_ids` を受け付ける (DM のメンバーに限る。
   それ以外は `400 task_invalid_assignee`)。
 - `MessageOut.tasks` (§2.2)、`message.updated` の `change = "tasks"`。
-- `GET /tasks/mine` の応答に `requested: TaskOut[]`。
+- `GET /tasks/requested` (自分が依頼した。§8 で `GET /tasks/mine` の応答を変えない形にした)。
 - 新しい表は無し。移行 0056 で `tasks.kind` (`task` / `review`、既定 `task`。`POST /tasks` で指定、`TaskOut.kind`) と、
   `MessageOut.tasks` のための索引 `(source_message_id) WHERE deleted_at IS NULL` を足す。`tasks.channel_id` に DM が入るように
   なる。
@@ -96,3 +96,18 @@ LAB.md の設計時は専用の表 `review_requests` を想定していたが、
 | 4 | 依頼した人への通知 | **完了したときだけ** | 対応中になったときも / 通知しない |
 
 あとで (今回は作らない): 差し戻し (完了 → 依頼中に戻すのは今の状態の変更で足りる)、版の比較、依頼のテンプレート。
+
+## 8. 実装で決めたこと (M63 サーバ)
+
+- **`GET /tasks/requested`** を足した (設計は `GET /tasks/mine` の応答に足す案だったが、配列の応答の形を変えると古い端末が読めない)。
+  自分が作り、自分以外の担当者がいる共有のタスク (DM を含む)。未完了は期限の近い順 (期限なしは後ろ)、完了は最近 50 件。
+- **DM のタスク**: `channel_id = DM` で作れるのは、その DM のメッセージから作るときだけ (`source_message_id` 無しは
+  `400 task_channel_unsupported`)。DM のボード (`GET /tasks?channel_id=DM`) は今までどおり 400。担当者は DM のメンバーだけ。DM の
+  タスクも「自分の担当」・カレンダー (`/tasks/due`)・`requested` に出る (タスクが読む会話に DM を含めた)。
+- **`kind = review` はメッセージから作るときだけ** (`400 task_invalid_source`)。`TaskOut.kind`、`task.assigned` の `kind`。
+- **`MessageOut.tasks`**: そのメッセージから作られ、同じ会話にある (共有の) 生きたタスク、作った順。個人用 (自分のリスト) は
+  載せない。作成・削除・状態・期限・担当の変更でメッセージの `updated_seq` を進めて `message.updated (change = "tasks")`。題名・
+  メモ・並べ替えだけでは出さない。読み込みは既存の索引 `tasks_source_idx` で足りたので、移行 0056 は `tasks.kind` の列だけ。
+- **プッシュ**: `kind = review` の割り当ては「〇〇 がレビューを依頼しました: 題名」。依頼先 (作った人以外) が完了にすると、作った
+  人に `task.review_done` →「〇〇 がレビューを完了しました: 題名」(プッシュの kind は `task`、設定は「タスク」に従う)。作った人
+  自身が完了にしたときは出さない。
