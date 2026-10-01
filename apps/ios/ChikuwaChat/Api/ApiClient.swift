@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi, RecurringApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -953,6 +953,31 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func deleteTask(id: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/tasks/\(id)", body: nil, auth: true, retry401: true)
+    }
+
+    // MARK: recurring posts (L6, M59/M60, RECURRING.md §3)
+
+    /// The channel's recurring posts (whoever reads the channel), oldest first.
+    func recurringPosts(channelId: String) async throws -> [RecurringPostOut] {
+        try await request("GET", "/api/v1/channels/\(channelId)/recurring-posts")
+    }
+
+    /// The channel's owners and the administrators among its members (403 recurring_manage_restricted).
+    func createRecurringPost(channelId: String, _ body: RecurringPostCreate) async throws -> RecurringPostOut {
+        try await request("POST", "/api/v1/channels/\(channelId)/recurring-posts", body: body.json)
+    }
+
+    func updateRecurringPost(id: String, _ patch: RecurringPostPatch) async throws -> RecurringPostOut {
+        try await request("PATCH", "/api/v1/recurring-posts/\(id)", body: patch.json)
+    }
+
+    func deleteRecurringPost(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/recurring-posts/\(id)", body: nil, auth: true, retry401: true)
+    }
+
+    /// 今すぐ投稿: the next scheduled time stays.
+    func runRecurringPost(id: String) async throws -> RecurringRunOut {
+        try await request("POST", "/api/v1/recurring-posts/\(id)/run", body: .object([:]))
     }
 
     // MARK: transport

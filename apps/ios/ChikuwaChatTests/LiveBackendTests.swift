@@ -218,6 +218,84 @@ final class LiveBackendTests: XCTestCase {
         await alice.logout()
         await bob.logout()
     }
+
+    /// L6 (M60): recurring posts against a live server (RECURRING.md §3, §7): the owner's create (this client's body), the
+    /// list a member reads, 今すぐ投稿, the collection reaching the other member's engine (message.updated, change
+    /// collection) and following its reply, 止める, a member refused, 削除. Enabled with TEST_RUNNER_LIVE_REC_URL /
+    /// TEST_RUNNER_LIVE_REC_PASS (users LIVE_REC_USERS, "a,b"); the channel is archived afterwards.
+    func testRecurring() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let liveUrl = environment["LIVE_REC_URL"], let url = URL(string: liveUrl) else { throw XCTSkip("LIVE_REC_URL not set") }
+        let password = environment["LIVE_REC_PASS"] ?? ""
+        let names = (environment["LIVE_REC_USERS"] ?? "dtuser1,dtuser2").split(separator: ",").map(String.init)
+        let device = DeviceInfo(platform: "ios", deviceName: "live-test", appVersion: "0.1.0")
+        let alice = ApiClient(baseUrl: url), bob = ApiClient(baseUrl: url)
+        _ = try await alice.login(username: names[0], password: password, device: device)
+        _ = try await bob.login(username: names[1], password: password, device: device)
+        let aliceMe = try await alice.me(), bobMe = try await bob.me()
+        let channel = try await alice.createChannel(name: "ios-rec-" + String(Int(Date().timeIntervalSince1970)), type: "public")
+        _ = try await bob.joinChannel(id: channel.id)
+
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: bob, connect: { url, _ in try await WebSocketTransport.connect(url: url) }, wsUrl: bob.wsUrl,
+                                store: store, getAccessToken: { bob.accessToken }, options: options)
+        await engine.openChannel(channel.id)
+        await engine.start()
+        await engine.idle()
+
+        var draft = RecurringDraft.empty()
+        draft.name = "週報"
+        draft.body = "**週報 {date}** ({weekday}, {week})"
+        draft.collect = true
+        draft.allMembers = true
+        draft.afterDays = 1
+        let post = try await alice.createRecurringPost(channelId: channel.id, draft.create(tz: CalendarDates.zoneId))
+        XCTAssertEqual(post.schedule, draft.schedule)
+        XCTAssertEqual(post.collect, draft.collectSpec)
+        XCTAssertTrue(post.enabled)
+        XCTAssertFalse(post.nextRunAt.isEmpty)
+        let listed = try await bob.recurringPosts(channelId: channel.id)
+        XCTAssertEqual(listed.map(\.id), [post.id])
+        await XCTAssertThrowsErrorAsync(try await bob.runRecurringPost(id: post.id)) // a member: 403 recurring_manage_restricted
+
+        let run = try await alice.runRecurringPost(id: post.id)
+        func row() -> MessageState? { store.message(channel.id, id: run.messageId) }
+        for _ in 0..<100 where row()?.collection == nil {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            await engine.idle()
+        }
+        let collection = try XCTUnwrap(row()?.collection)
+        XCTAssertEqual(Set(collection.targetUserIds), [aliceMe.id, bobMe.id])
+        XCTAssertEqual(collection.submittedUserIds, [])
+        XCTAssertFalse(row()?.body.contains("{date}") ?? true)
+        XCTAssertEqual(RecurringRules.chip(collection, meId: bobMe.id).mine, .pending)
+
+        _ = try await bob.postMessage(channelId: channel.id, clientMsgId: UUID().uuidString.lowercased(), body: "今週は実験", parentId: run.messageId)
+        for _ in 0..<100 where row()?.collection?.submittedUserIds != [bobMe.id] {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            await engine.idle()
+        }
+        XCTAssertEqual(row()?.collection?.submittedUserIds, [bobMe.id])
+        XCTAssertEqual(RecurringRules.chip(try XCTUnwrap(row()?.collection), meId: bobMe.id).mine, .submitted)
+        XCTAssertEqual(store.channel(channel.id)?.syncedSeq, store.channel(channel.id)?.lastSeq)
+
+        let paused = try await alice.updateRecurringPost(id: post.id, RecurringPostPatch(enabled: false))
+        XCTAssertFalse(paused.enabled)
+        var edited = RecurringDraft(post: paused)
+        edited.collect = false
+        let plain = try await alice.updateRecurringPost(id: post.id, edited.update)
+        XCTAssertNil(plain.collect)
+        try await alice.deleteRecurringPost(id: post.id)
+        let after = try await alice.recurringPosts(channelId: channel.id)
+        XCTAssertTrue(after.isEmpty)
+
+        engine.stop()
+        _ = try? await alice.archiveChannel(id: channel.id)
+        await alice.logout()
+        await bob.logout()
+    }
 }
 
 private func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async {

@@ -345,6 +345,17 @@ final class FakeServer {
         return updated
     }
 
+    /// L6 (RECURRING.md §7): a recurring post's collection changed (it was attached, a target replied or took the reply
+    /// back, the nudges went out): the parent takes a new seq and message.updated (change=collection) goes out.
+    @discardableResult
+    func setCollection(channelId: String, messageId: String, _ collection: CollectionOut?) -> MessageOut? {
+        guard let message = channels[channelId]?.messages.first(where: { $0.id == messageId }) else { return nil }
+        var updated = rebuild(message, updatedSeq: bumpSeq(channelId))
+        updated.collection = collection
+        replace(channelId, updated, event: "message.updated", change: "collection")
+        return updated
+    }
+
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
     /// Custom emoji by name (M12f); everyone gets emoji.updated.
@@ -765,7 +776,7 @@ final class FakeServer {
                    body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
                    mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions,
                    parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt, attachments: m.attachments,
-                   pinnedAt: m.pinnedAt, pinnedBy: m.pinnedBy)
+                   pinnedAt: m.pinnedAt, pinnedBy: m.pinnedBy, collection: m.collection)
     }
 
     private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {

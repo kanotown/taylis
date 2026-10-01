@@ -37,6 +37,8 @@ struct RemindersView: View {
                 HStack(spacing: 6) {
                     if row.kind == "ack" {  // L4: the author asked me to acknowledge
                         Label("確認のお願い", systemImage: "checkmark.circle").font(.caption.bold()).foregroundStyle(Color.accentColor)
+                    } else if row.kind == "collect" {  // L6: a recurring post's due time passed before my reply (the push's title)
+                        Label("提出のお願い", systemImage: "tray.and.arrow.up").font(.caption.bold()).foregroundStyle(Color.orange)
                     }
                     Text(store.channel(row.channelId).map { channelTitle($0, store: store) } ?? "?").font(.footnote).fontWeight(.semibold)
                     Text("· " + Schedule.label(iso: row.remindAt) + (row.status == "fired" ? " にリマインド" : " にリマインド予定")).font(.footnote).foregroundStyle(.secondary)

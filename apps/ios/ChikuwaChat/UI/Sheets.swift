@@ -481,7 +481,10 @@ struct ChannelInfoView: View {
                         }
                     }
                 }
-                if isChannel && channel.isMember { manageSection(channel) }
+                if isChannel && channel.isMember {
+                    RecurringPostsSection(controller: controller, channel: channel)  // L6 (M60)
+                    manageSection(channel)
+                }
             } else {
                 Text("チャンネルが見つかりません").foregroundStyle(.secondary)
             }
