@@ -280,8 +280,8 @@ final class CanvasEditorTableTests: XCTestCase {
     }
 
     func testSomeoneElsesEditToTheTableMeanwhileIsNotOverwritten() async throws {
-        let (model, saver, _) = await editor()
-        caret(model.textView!, line: 2)
+        let (model, saver, tv) = await editor() // keep tv: the model holds it weakly
+        caret(tv, line: 2)
         model.openTable()
         var table = try XCTUnwrap(model.table).table
         table.rows[0][0] = "本番"
