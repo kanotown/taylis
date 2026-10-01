@@ -118,7 +118,7 @@ ALTER TABLE channels ADD CONSTRAINT times_is_named_channel
   - SYNC_PROTOCOL.md に 3 端末共通の規則として書き、同じテストケースで確かめる。
   - サーバの `/sync/summary` の `has_unread` も同じ規則にする。
   - アプリのバッジは、チャンネルでは元々メンション数だけなので変更しない。
-- (L8) Times フィード: `GET /times/feed?before=&limit=`
+- (L8) Times フィード: `GET /times/feed?before=&limit=` (詳しい設計は [TIMES_FEED.md](TIMES_FEED.md))
   - 参加している times のトップレベル投稿を新しい順に返す。カーソルは (created_at, id)。
   - **チャンネルごとに LATERAL で上位 N 件を取ってから混ぜる**。計測では 0.95 ms。素直に `IN + ORDER BY` で書くと 43 ms で、履歴に比例して遅くなる。
 - (L8) 検索に `is:times` 修飾子を足す。卒業生の研究ログも「引き継ぎの資料」として検索できるようにする。
