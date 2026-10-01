@@ -116,7 +116,7 @@ struct ChannelView: View {
         let rows = messages
         // Under any page or sheet (the thread, channel info, a message's menu sheets, MainView's search or settings) or
         // the pins / files tab (M29) the list still follows the bottom; rows arriving there are not seen.
-        let looking = thread == nil && !showInfo && tab == .messages && sheet == nil && scenePhase == .active && !cover.covered
+        let looking = thread == nil && !showInfo && tab == .messages && sheet == nil && scenePhase == .active && !cover.covered && !veiled
         let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
         let onScreen = looking ? Set(visibleFrames.compactMap { partlyShown($0.value) ? $0.key : nil }) : []
         var next = anchor
@@ -210,7 +210,7 @@ struct ChannelView: View {
     /// 「新着 N 件」 / ↓ at the bottom right while the list is not at the end.
     @ViewBuilder
     private func jumpButton(_ proxy: ScrollViewProxy) -> some View {
-        if !atBottom && focus == nil {
+        if !atBottom && focus == nil && !veiled {
             Button { withAnimation { proxy.scrollTo(UpsideDown.newest, anchor: UpsideDown.anchor(.bottom)) } } label: {
                 if unseenBelow > 0 {
                     Label("新着 \(unseenBelow) 件", systemImage: "arrow.down")
@@ -225,6 +225,22 @@ struct ChannelView: View {
             .accessibilityLabel(unseenBelow > 0 ? "新着 \(unseenBelow) 件へ" : "最新のメッセージへ")
             .padding(12)
         }
+    }
+
+    /// The rows have been shown since this view opened: they are not hidden again (a later landing, a reconnect).
+    @State private var revealed = false
+    /// The rows are hidden while the conversation opens (ReadGate.hidesOpeningRows): they come into view once, final.
+    private var veiled: Bool {
+        guard !revealed, let channel else { return false }
+        let status = controller.engine?.status
+        let landsOnOpen: Bool = {
+            guard !positioned else { return false }
+            if case .top = ReadGate.openTarget(messages, focusId: nil, mark: dividerMark, meId: controller.store.me?.id) { return true }
+            return false
+        }()
+        return ReadGate.hidesOpeningRows(hasRows: !messages.isEmpty, focused: focus != nil, placed: positioned, connecting: status == .connecting,
+                                         waits: ReadGate.placementWaits(channel, status: status, userScrolled: userScrolled, waitOver: syncWaitOver),
+                                         landsOnOpen: landsOnOpen, landing: anchor.landing != nil)
     }
 
     /// What makes the placement look again: rows coming in, the window reaching the newest row.
@@ -264,6 +280,7 @@ struct ChannelView: View {
             guard (try? await Task.sleep(nanoseconds: 3_000_000_000)) != nil else { return }
             syncWaitOver = true
             position(proxy)
+            revealed = true // the rows are not kept from the reader any longer (a connection that does not come)
         }
     }
 
@@ -443,6 +460,15 @@ struct ChannelView: View {
                         .scrollPosition(id: $keptRowId, anchor: .top)
                         .upsideDown()
                         .clipped()
+                        // Laid out but not shown while the conversation opens (`veiled`): the catch-up, the placement and
+                        // the landing happen out of sight, and the rows come into view once, as they stay.
+                        .animation(.easeOut(duration: 0.15)) { $0.opacity(veiled ? 0 : 1) }
+                        .overlay { if veiled { OpeningProgress() } }
+                        .onChange(of: veiled, initial: true) { _, hidden in
+                            guard !hidden, !messages.isEmpty else { return }
+                            revealed = true
+                            markRead() // the rows on screen were not looked at while hidden
+                        }
                         .onNewestEdge { atBottom = $0 }
                         .onUserScroll {
                             if !positioned && !messages.isEmpty { userScrolled = true }
@@ -1065,7 +1091,10 @@ struct MessageRow: View {
                                         if let image = store.emojiImages[custom.id] {
                                             EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(height: 16)
                                         } else {
-                                            Text(reaction.emoji).font(.caption2).onAppear { controller.loadEmojiImage(custom) }
+                                            // The image's own size until it comes: `:name:` there made the chip wider and
+                                            // the chips re-wrapped, changing the row's height (CustomEmoji.text).
+                                            Color.clear.frame(width: CustomEmoji.size(of: custom, height: 16).width, height: 16)
+                                                .onAppear { controller.loadEmojiImage(custom) }
                                         }
                                         Text("\(reaction.count)").font(.caption)
                                     }
@@ -1819,6 +1848,22 @@ extension Notification.Name {
     static let chikuwaOpenChannel = Notification.Name("chikuwa.openChannel")
 }
 
+
+/// Over an opening conversation's hidden rows (ChannelView.veiled): a spinner only when the wait is long enough to see,
+/// so the usual round trip shows nothing at all.
+private struct OpeningProgress: View {
+    @State private var shown = false
+
+    var body: some View {
+        ProgressView()
+            .opacity(shown ? 1 : 0)
+            .task {
+                guard (try? await Task.sleep(nanoseconds: 400_000_000)) != nil else { return }
+                withAnimation(.easeIn(duration: 0.2)) { shown = true }
+            }
+            .accessibilityLabel("メッセージを読み込み中")
+    }
+}
 
 /// Row frames and the viewport's height, kept out of view state (ChannelView.frames).
 final class RowFrames {

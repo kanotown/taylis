@@ -348,4 +348,23 @@ final class ReadGateTests: XCTestCase {
         XCTAssertEqual(first?.id, "id-511")
         XCTAssertTrue(ReadGate.nextAnchored(false, unreadCount: 20, ready: true, firstUnread: first, visibleMessageIds: Set((511...518).map { "id-\($0)" })))
     }
+
+    /// 2026-10-02: an opening channel showed its held rows, then the catch-up changed them (reactions since the app last
+    /// looked) and the placement or the landing moved them. They stay hidden until final and placed.
+    func testOpeningRowsHiddenUntilFinalAndPlaced() {
+        func hides(hasRows: Bool = true, focused: Bool = false, placed: Bool = false, connecting: Bool = false, waits: Bool = false,
+                   landsOnOpen: Bool = false, landing: Bool = false) -> Bool {
+            ReadGate.hidesOpeningRows(hasRows: hasRows, focused: focused, placed: placed, connecting: connecting, waits: waits,
+                                      landsOnOpen: landsOnOpen, landing: landing)
+        }
+        XCTAssertFalse(hides()) // nothing on its way: shown at once (at the bottom)
+        XCTAssertTrue(hides(waits: true)) // the catch-up is coming
+        XCTAssertTrue(hides(connecting: true)) // the bootstrap and the catch-up are coming
+        XCTAssertTrue(hides(placed: true, connecting: true))
+        XCTAssertTrue(hides(landsOnOpen: true)) // about to land on the first unread row
+        XCTAssertTrue(hides(placed: true, landing: true))
+        XCTAssertFalse(hides(placed: true, waits: true, landsOnOpen: true)) // placed and landed: shown
+        XCTAssertFalse(hides(hasRows: false, connecting: true, waits: true)) // the empty state
+        XCTAssertFalse(hides(focused: true, connecting: true, waits: true)) // the search context
+    }
 }
